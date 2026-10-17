@@ -22,6 +22,12 @@ receipt retains its original source. The App reads selected-Node status every
 30 seconds only under existing finite permission; it does not renew permission.
 The old Windows package's automatic decay failed in user observation; the new
 window behavior awaits physical retest.
+The [login-first display boundary](native-app-validation.md#login-first-presentation-follow-up)
+at `1980dce` hides saved account/Owner/Node information until a trusted current
+account session is inspected. Independent source review found no blocker;
+portable UI normal/race each passed 141/0/0. New Windows rendering and interaction
+remain NOT_RUN. Existing valid-session restoration and original-request recovery are
+preserved, and login still grants no Root or Node authority.
 Live canvas, App SSE, real native Runtime and physical acceptance remain incomplete.
 It is not a browser product or a
 released installer. Development stays in 0.0.x until user acceptance; the

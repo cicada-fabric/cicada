@@ -287,3 +287,59 @@ did not establish an installed/approved Node or native Runtime execution. Later
 observations are recorded separately; they do not accept the new Windows build
 or full Node service/reboot/lease continuity. Repeated status polling must
 not extend an old heartbeat's freshness merely by receiving a newer ObservedAt.
+
+## Login-first presentation safety matrix
+
+Prepared from `5fee32c` on 2026-10-17; independently reviewed implementation
+`1980dced7c20da0be40ac8a03892a911d2ffab9b`. This is the presentation change for an
+existing trusted configuration before account login. It does not introduce a
+new account system, require password entry on every launch, or replace existing
+first-connection/Owner setup. A restored session may reveal the workspace only
+after this process completes trusted profile recovery and a fresh authenticated
+server inspection. Cached profile metadata, Root ACTIVE and a saved Node binding
+alone do not establish login.
+
+The Core's current SESSION_ACTIVE, OWNER_READY and OWNER_PROOF_PENDING account
+states may qualify with a verified Hub and an explicit future session deadline.
+OWNER_PROOF_PENDING must remain usable after account authentication; login does
+not activate Root or widen Node/Manager authority. SESSION_RECHECK_REQUIRED,
+LOGIN_REQUIRED, missing/malformed/expired deadline and an unverified Hub stay
+behind the presentation gate. Account recovery retains priority. A Node-only
+uncertain read does not itself end an otherwise verified account session.
+
+App owns the implementation and UI tests. QA independently reviewed the actual
+root layout, privacy predicate, input transitions and recovery reachability.
+App's final portable normal/race runs each passed 141/0/0, with Linux/Windows
+vet and Windows cross-build exit 0. These are **SOURCE_REVIEW / PORTABLE_PASS**,
+not native Windows execution or visual acceptance. See the
+[source-bound receipts](native-app-validation.md#login-first-presentation-follow-up).
+Existing 84-event and automatic-entry two-event receipts retain their tested
+source. No Hub/Node deployment or key change is part of this work.
+
+| ID | Boundary | Required oracle | State |
+| --- | --- | --- | --- |
+| LOGIN-01 | Existing configuration, not logged in | Root layout exposes only the login form and necessary neutral entry/recovery controls; no status card, stored account/Owner/Node values, fingerprints, grant deadlines, canvas or preview | SOURCE_REVIEW + PORTABLE_PASS |
+| LOGIN-02 | Cached or untrusted session | SESSION_RECHECK/expired/malformed/no session or unverified Hub never reveals details, even with cached Root ACTIVE, Node online, bound Node or stored receipts | SOURCE_REVIEW + PORTABLE_PASS |
+| LOGIN-03 | Current account authentication | Freshly verified SESSION_ACTIVE/OWNER_READY/OWNER_PROOF_PENDING may reveal the workspace; Root pending remains pending and available actions are unchanged | SOURCE_REVIEW + PORTABLE_PASS |
+| LOGIN-04 | Input privacy | Stored username is not prefilled; password stays masked and is cleared on submit, login/authentication loss and full scope change. Clearing is transition-based so typing is not erased every frame | SOURCE_REVIEW + PORTABLE_PASS |
+| LOGIN-05 | Hidden sections and stale input | Details, fingerprint expansion, preview/canvas and old profile identity widgets cannot leak through an alternate branch or dispatch hidden management/Node actions before login | SOURCE_REVIEW + PORTABLE_PASS |
+| LOGIN-06 | Multiple profiles and routing | Prelogin selection uses neutral labels bound to exact trusted profile IDs; never silently pick another account/Hub from a username. Credentials are sent only through the existing verified origin/pin flow | SOURCE_REVIEW + PORTABLE_PASS |
+| LOGIN-07 | Recovery without identity disclosure | Account Recover/Retry and, where required, saved Node recovery remain reachable with neutral copy; retain original IDs/ciphertext/receipts and priority. An unauthenticated screen does not display Node identity to explain recovery | SOURCE_REVIEW + PORTABLE_PASS |
+| LOGIN-08 | Necessary first connection | No-profile/unfinished setup can still reach the existing controlled connection, exact Owner import/proof and activation flow; the login view neither fabricates a Hub nor generates new keys or authority | SOURCE_REVIEW + PORTABLE_PASS |
+| LOGIN-09 | Logout, expiry and scope transition | Hide old workspace information when account authentication is lost/rechecked or scope changes; clear stale input/expansion state, while preserving encrypted profiles, keys, Node bindings and pending recovery | SOURCE_REVIEW + PORTABLE_PASS |
+| LOGIN-10 | Automation and authority | The presentation gate grants nothing and does not mutate AvailableActions. A hidden screen pauses future Node ticks and reopening starts a fresh interval without discarding an in-flight packet. Existing guards still require current exact permission; ordinary Node pending with valid account login retains its separate busy/recovery semantics | SOURCE_REVIEW + PORTABLE_PASS |
+
+`TestAccountInformationRequiresCurrentTrustedSession` covers LOGIN-02/03;
+`TestPreLoginPresentationHidesIdentityButPreservesGenericRecovery` covers the
+projection, original action/profile locator preservation and recovery ordering
+in LOGIN-01/05/06/07. `TestLoginRestoresOriginalBindingAndFirstSetupStillHasItsOwnFlow`
+covers LOGIN-08/09, and `TestPresentationInputResetUsesFullScopeAndAuthenticationEdge`
+covers LOGIN-04/06/09. `TestNativeAccountScreenPauseRestartsIntervalWithoutDroppingPending`
+covers LOGIN-10's coordinator behavior. The root layout branches, widget reset,
+credential dispatch and unchanged Core guards were reviewed separately; these
+portable tests do not execute the Windows root renderer, vault or TCP recovery.
+
+New Windows login-first rendering/interaction remains **NOT_RUN** until executed
+on the matching artifact. The report that the Node works and that a new App
+shows Node information before login is **USER_REPORTED**; it is not an
+independent reproduction or a transfer of the old 84+2 results to this UI change.

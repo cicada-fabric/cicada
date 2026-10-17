@@ -1536,3 +1536,129 @@ Windows/public HTTPS/Ubuntu initial flow remains USER_REPORTED_PARTIAL; physical
 Node user-service/reboot, full natural N3 expiry/Node continuity, real Codex/
 Runtime execution, new-package public HTTPS, strict PQTLS, live canvas/SSE,
 installer and N4 remain unaccepted.
+
+### Login-first presentation follow-up
+
+2026-10-17; preparation baseline `5fee32c`, App implementation
+`1980dced7c20da0be40ac8a03892a911d2ffab9b`. The user reported that the Node
+worked and that the App showed saved Node information before login. This is
+USER_REPORTED, not an independently reproduced Windows run. The new source
+hides saved Hub/account/Owner/Node details until a trusted current account
+session has been inspected. Existing valid-session restoration is preserved;
+there is no new password-on-every-launch policy.
+
+QA independently reviewed the actual Windows root layout and its child-widget
+branches, not only the visibility predicate. Before login the renderer uses a
+reduced snapshot, a neutral numbered profile selector and separate public
+status/recovery controls; it does not draw the status card, Node section,
+details, canvas or preview. The deadline must be explicit, canonical and in
+the future, the Hub verified, and the exact account/Owner/device scope present.
+SESSION_ACTIVE, OWNER_READY and OWNER_PROOF_PENDING may qualify. Root pending
+is still pending, and account login still creates no Root/Node/Manager power.
+
+Account Recover/Retry precedes a new login. Necessary Node recovery remains
+reachable without showing its identity; a Node-only pending read in a valid
+account session does not hide the workspace. First connection, Owner key
+import/proof and activation preserve their existing paths. The projection
+does not mutate the Core snapshot, AvailableActions, trusted profile IDs or
+saved bindings. The Core, vault, cryptographic and server files are byte-for-byte
+unchanged from `5fee32c`; original-packet recovery and authorization remain
+their responsibility.
+
+Stored usernames are no longer prefilled. Passwords remain masked and clear
+on submission. Full Hub/account/Owner/device/key scope changes and both
+authentication transition edges reset input, consent, details, Node-pin
+expansion, preview, canvas and scroll state. Repeated unauthenticated frames
+preserve manual typing. Hidden screens pause future Node reads; a fresh
+interval starts after successful login. In-flight/uncertain packets are not
+discarded, and a second current-session check guards the scheduling entry.
+
+All paths below are relative to
+`/home/zyf/Cicada/.local/evidence/n3-login-gate/run-20261017T112228Z-187b47/`.
+Hashes are SHA-256.
+
+| Evidence | Scope and result | Receipt hash |
+| --- | --- | --- |
+| `app/final/receipt.json` | Producer portable UI normal/race each 141/0/0; Linux/Windows vet and amd64 cross-build exit 0. Tested `5fee32c` plus dirty App inputs; Go/module manifest stable `b9f78ea9e5b5c132d5afdc178e35c0a38825021b8e075baf159ced71a20060f7`; all 1150 files independently match committed `1980dce` | `ae381930ab144fe146249670bca35304fac8fa0a357e13d5de9bb601a9cf5c37` |
+| `qa/review-final.json` | Independent source review and tooling SCOPED_PASS; 68/68 strict production pins, 13 parser tests, contract, shell syntax and diff checks exit 0; producer manifest matches 1150 files | `bebb65bcb9b9353dc19369b8680ebdbaa00b1b1f28e1f44e42d07d1fdd374c30` |
+| `native/run-20261017T114144Z-lQ96Ie/validation.json` | Root broad native gate on clean `1980dce`: 340/0/0; Windows dependency listing/build exit 0; source stable | `26c482c03c7ca14ab1a4056333ce32af2bf1a7b2191d4d2f7f0e6e845b6bcd9b` |
+| `client-interop/result.json` | Standard disposable real-TCP interop PASS, all four runners exit 0, clean `1980dce`; cleanup CONFIRMED, five owned container/image resources EXACT_ABSENT | `c789e92a20318240e0d96ce58f154faa70f30635e85c7bef6d4a1cfd58b521a8` |
+| `app-build-receipt.json` | Clean `1980dce` Windows delivery build exit 0; separate from the native gate's test binary | `7134879b2d4a15d47cf27e36dab8c858100338e784721a595b506745d506ce02` |
+
+The first QA tooling receipt, `qa/review.json`, retains FAIL with hash
+`daecc8fc745dbbf1d248f8463eccdfb6286b979b0a03d47f744da0442acea741`.
+The comparison accidentally prepended `cicada-go` to paths that already
+contained it. Correcting only this path interpretation produced the final
+1150/1150 match; product tests were not rerun to hide a failure. The earlier
+producer `app/receipt.json` is also retained; the `app/final` receipt above
+belongs to the final source.
+Root's initial cleanup verifier also expected PASS where the cleanup schema
+uses CONFIRMED; `interop-verification.json` retains the correction (hash
+`a3225ed89ca0d0ffad9468f22a633a1df1536c602aba049cffacceefe2966516`).
+No product rerun or historical receipt mutation was needed. Root recorded
+the four resident containers unchanged; the disposable gate does not use a
+shared development Hub.
+
+The delivery artifact is
+`/home/zyf/Cicada/.local/artifacts/n3-login-gate/run-20261017T112228Z-187b47/cicada-app.exe`,
+13,407,232 bytes, independently rehashed as
+`27aa167c847f278b26e7a2e908f7baab4e6eec7971b10b32f0b4f7a72ccb4b28`.
+Its source fingerprint is
+`ececaacf28c29b153b11082d8c92264f71fcf06344b62ba24cdca07a234e34da`.
+The external SHA-bound source/packaging manifest attributes it to clean
+`1980dce`; it has no embedded Git attribution. Producer and broad-gate
+cross-build outputs are distinct artifacts, not interchangeable hashes.
+
+The production evidence tool now strictly pins 68 inputs, adding
+`appui/login_view.go` and updating only the changed UI file hashes. Its overall
+and UI reviewed source are `1980dce`; unchanged App Core remains attributed to
+`854a594`, Hub runtime to `ec72bf2`, and the other prior component sources remain
+unchanged. The earlier 84-event and separate two-event actual-process results
+were not rerun for this presentation-only change and retain their original
+source, binaries and manifests. They are not new Windows or `1980dce` TCP results.
+
+Recheck QA tooling from the repository root:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts -p test_native_app_n3_evidence.py
+python3 scripts/app-node-authority-contract.py check
+bash -n scripts/test-native-app-n3.sh
+PYTHONDONTWRITEBYTECODE=1 python3 - <<'PY'
+import hashlib, pathlib, runpy
+pins = runpy.run_path('scripts/native_app_n3_evidence.py')['CONTRACT']['files']
+assert len(pins) == 68
+assert all(hashlib.sha256(pathlib.Path(p).read_bytes()).hexdigest() == h for p, h in pins.items())
+print('68/68 production pins match')
+PY
+```
+
+For the broad gate, set `CICADA_NATIVE_APP_GOMODCACHE` to the existing read-only
+`/home/zyf/Cicada/.local/cache/n2-acceptance/gomod-go1.27.2-stable`, use a private
+`CICADA_NATIVE_APP_GOCACHE` and fresh `CICADA_NATIVE_APP_ARTIFACT_ROOT`, then run
+`bash scripts/test-native-app.sh` (exit 0 required). To reproduce zero skips,
+also set `CICADA_APPKEYS_SYNTHETIC_OPENSSL_KEY_DIR` to
+`/home/zyf/Cicada/.local/state/n2-acceptance/synthetic-openssl-owner-8t2OKM`;
+these are four disposable synthetic PEM fixtures, never deployment keys. An
+unset optional fixture can produce a skip and does not reproduce 340/0/0.
+The script pins Go image
+`sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61`,
+mounts repository/module cache read-only, locks its private build cache and
+creates a fresh output directory. Producer targeted normal/race commands are
+recorded verbatim in its receipt; they run `go test [-race] -json -count=1
+./internal/appui/...` inside that pinned disposable container.
+For standard disposable interop, give `CICADA_INTEROP_OUTPUT` a fresh,
+task-owned path under `.local/evidence`, then run
+`bash scripts/test-client-hub-interop.sh --suite client` (exit 0 required;
+cleanup must be CONFIRMED). Do not point this gate at an existing Hub.
+
+No blocker was found in the reviewed presentation scope. New-artifact Windows
+GUI/layout/interaction/high-DPI, DPAPI and ACL execution remain **NOT_RUN**.
+Physical verification must check signed-out first display, fresh restored
+session inspection, manual login restoring the same saved Node, logout/expiry
+hiding details, neutral exact-request recovery, profile scope switching and
+keyboard focus/scroll behavior. Record the exact artifact hash and separate
+results; do not log credentials or recreate a real binding just for this test.
+Historical user-reported partial successes and idle failure remain in their
+original records. New-package public HTTPS, physical Node service/reboot,
+natural full N3 lease continuity, strict PQTLS, native Runtime, Android,
+canvas/SSE and installer acceptance remain separate and unaccepted.

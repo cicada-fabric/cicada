@@ -241,3 +241,47 @@ after a durable commit. Evidence records request/response hashes and assertion
 names only; codes, passwords, session tokens, private keys and complete proof
 or packet payloads remain in disposable private fixture state. Linux password
 vault tests cannot establish Windows DPAPI/ACL or GUI behavior.
+
+## Login-first display boundary
+
+The login-first change protects saved Hub/account/Owner/Node metadata from
+display before current account authentication. Its preparation baseline is
+`5fee32c`; independently reviewed implementation is `1980dce`. This is a
+presentation boundary inside the trusted App process;
+it does not protect a compromised host or replace encrypted vault custody,
+cryptographic verification or server authorization. Implementation review and
+execution evidence are recorded separately in the [matrix](native-app-plan.md#login-first-presentation-safety-matrix)
+and [validation record](native-app-validation.md).
+
+A cached profile, saved Node binding, Root state or historical receipt cannot
+open the workspace. The display decision consumes the Core's authenticated
+snapshot: a verified exact Hub and nonempty account/Owner/device scope, one of
+SESSION_ACTIVE, OWNER_READY or OWNER_PROOF_PENDING, and an explicit canonical
+future session deadline. Trusted profile recovery must complete fresh server
+inspection in this process before the Core publishes these account states.
+This preserves existing valid-session restoration; it adds no requirement to
+enter a password on every launch. Account authentication remains independent
+of Root proof, finite Node status permission and Manager authority.
+
+Before that decision succeeds, the root renderer must use a reduced snapshot
+and a separate public branch. Saved identity values, pins, session/grant/Node
+deadlines, Node observations, details, canvas and preview cannot be shown by an
+alternate child widget. A saved-profile selector uses neutral numbered labels
+while retaining the exact trusted profile locator internally. User-entered
+credentials never select an origin or bypass the existing full-pin check.
+
+Account recovery has priority over a new login. An uncertain Node request may
+also need a neutral recovery entry before login; it retains the original
+encrypted request and receipt semantics without disclosing Node identity. A
+Node-only pending read during a still-valid account session does not close the
+workspace. Necessary first connection, exact Owner import/proof and activation
+remain reachable through the existing setup flow.
+
+Logout, authentication loss and complete scope changes clear transient inputs,
+consent and expanded/preview state without erasing keys, bindings or pending
+requests. Stable unauthenticated frames must not repeatedly clear typed input.
+The hidden screen pauses future Node polling; in-flight recovery and session
+inspection keep their existing Core guards. Showing a workspace never adds an
+AvailableAction, renews a grant, proves Root or authorizes a Node operation.
+Portable tests and source review cannot establish Windows GUI, DPAPI or ACL
+behavior; new-artifact physical execution remains NOT_RUN until recorded.
