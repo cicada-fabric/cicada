@@ -32,7 +32,7 @@ implemented or accepted by this plan.
 | --- | --- | --- |
 | N1 — Native foundation | Typed Hub connection and health verification; strict secret-free connection card; explicit transport policy; encrypted-vault identity and exact-packet persistence; existing encrypted claim/login/inspect/logout calls; honest account/Root pending states; native controller contract and deterministic protocol tests. | In progress in the current source checkpoint. See [validation](native-app-validation.md). |
 | N2 — Owner proof and finite activation | Reuse exact existing Owner keys; one-use local activation code; server-authorized Root proof; finite App lease; controlled pending-Owner continuation; trusted profile restart and authenticated recovery. Account login alone never activates Root. | Hub/App core implemented under [owner-activation-v1](hub-owner-activation-contract.md), schema 62; independent Linux protocol SCOPED_PASS (131 events, zero failures/skips). Oct 17 Windows initial flow/positive ACL are user-reported PARTIAL; dedicated native security tests and comprehensive visual acceptance remain NOT_RUN. See [validation](native-app-validation.md#n2-hubapp-integration). |
-| N3 — Authorized live canvas and Node actions | Add live objects only from an authenticated, authorized Hub/Node read path; add explicit guarded Node actions and status reconciliation. Empty/unavailable canvas stays empty; no demo objects are presented as live state. | Not implemented. Requires server-side read/action authorization and durable operation semantics. |
+| N3 — Authorized live canvas and Node actions | Add live objects only from an authenticated, authorized Hub/Node read path; add explicit guarded Node actions and status reconciliation. Empty/unavailable canvas stays empty; no demo objects are presented as live state. | Bounded Node enrollment/status/recovery implemented under `app-node-authority-v1`, schema 63: explicit INITIAL/READ_EXISTING consent, target-only status and durable recovery. Independent actual-process SCOPED_PASS: 84/0/0 on bookworm and 84/0/0 with identical binaries in Ubuntu 24.04.4. Live canvas, App SSE, native Runtime execution and physical acceptance remain incomplete. |
 | N4 — Legacy naming and surface retirement | Retire transitional browser and public Client names only after equivalent App behavior, migration and interoperability gates pass. Preserve old wire identifiers and historical evidence attribution. | Not started. |
 
 The authorized Android history-preserving subtree import is complete as
@@ -106,3 +106,163 @@ scope, with every expected test present and zero failures/skips. Prerequisite
 failure returns 2; gate failure returns 1. Physical NOT_RUN rows remain separate
 even when that scoped gate passes. Android, native Runtime, physical device, public HTTPS and native
 PQTLS are separate NOT_RUN scopes.
+
+## N3 independent safety model and acceptance matrix
+
+N3 was authorized on 2026-10-17 from clean `f8b5e58`. The first Node target is
+Ubuntu **24.04.3 x86_64/amd64**, ordinary user **zyf / UID 1000**, Codex
+**0.163.0**; Windows App remains x64. These are target requirements, not
+observations that those programs have run. ARM64, installer/root relocation,
+N4 and broad business/runtime acceptance are outside this checkpoint.
+
+Hub owns the shared protocol and production Guard; App owns the production
+controller/UI. Independent acceptance owns `cicada-go/acceptance/n3`, its
+disposable driver/evidence and this matrix. The integration owner reviewed `app-node-authority-v1` types at
+`a545988ac6c038da180413d4f29ffbf740c402d4`, then shared proof/framing helpers at
+`5f509befa6065ac41abeb23451ef8d41cc2c76aa`. The Store checkpoint is
+`e078c58d97413f5e0457acb3c586afbef1a9d438`, schema **63**. The production App controller was reviewed at
+`8df8ae5034f819ff3d839b6574f02c3c887af253`, followed by actual Hub/HTTP/CLI runtime
+`af92b16d3c0dc616280d694986692a2cbb1caa71`, phase **HUB_NODES_ONLY**.
+The runtime fixes were reviewed at `ec72bf2891bcc7bf98565beedbac54e51f35b7db`;
+UI-only guidance followed at `e81b9dce28133861b5a8c5f45bb065e9721309f3`.
+The final evidence driver pins 64 reviewed normative/helper/Store/App/runtime
+files and records all actual inputs separately. Both final real-process gates
+passed their exact 84-event inventory; original FAIL receipts remain unchanged
+in the [validation record](native-app-validation.md#n3-independent-process-acceptance).
+The Hub-owned
+[contract](hub-app-node-authority-contract.md) defines the protocol; this matrix
+defines independent invariants.
+Preparation or reuse of an existing N2/Client guard cannot count as N3 PASS.
+
+The assets are the established Owner/account/Hub/App identities, each actual
+grant instance, target Node identity/credential/generation, current epochs and
+CAS versions, exact pending ciphertext, terminal operation/digest fences and
+authenticated current observations. Adversaries may own another App/Node key,
+replay an old valid packet, replace a preview or grant, race cancellation or
+expiry against confirmation, lose replies, crash processes or deliver delayed
+packets. Transport or UI availability is not authority. Host administrators
+remain trusted; no stronger enclave/host compromise claim is introduced.
+
+An existing account session and Root proof do not silently widen or renew the
+N2 fifteen-minute lease. New authority must be explicit, finite and bound to
+the reviewed instance/target. Every accepted request keeps its original grant
+instance: later authority cannot retroactively legalize that request. A cached
+receipt may describe past success but must not revive current permission.
+
+Before the first N3 POST, including bootstrap status, the App must fetch
+`/v2/owner/app-node/capabilities` and recognize the reviewed profile and limits.
+Unsupported/404 means zero secret POSTs and zero new N3 pending operation.
+The five account operations are prepare, complete, status, cancel and reconcile;
+the INITIAL Client RPC allowlist is exactly `nodes.confirm`. `session.capabilities`
+is not allowed. Node status uses its separate HTTP read permission and returns
+only the selected Node. READ_EXISTING has an empty RPC allowlist and zero
+confirmation budget. Both profiles bind the exact account-session ID/expiry,
+not merely any live login for the same App. After session termination, a new
+login may request a new explicit status-only instance, but cannot revive the
+old grant or its pending packets.
+
+A status read is not a durable mutation: a cached historical receipt or a signed
+`READ_EXPIRED` for the exact read digest may settle only that read. A mutation
+requires its original receipt or durable operation/digest fence, with atomic
+Client counter handling; a counter gap/conflict must retain uncertainty.
+Diagnostic caches have rolling bounds, not a lifetime polling quota.
+
+The Store additionally requires the retained N2 Client session epoch **1**;
+a later reset/restore epoch cannot be silently adopted into the first N3 grant.
+`LoginRequired` describes a valid matching bound login, not whether a grant is
+live: an expired/self-cancelled grant with the same live login has false, with
+no operations/Node; an old session-ended instance under a new login has true.
+Fresh authenticated terminal diagnostics must release an obsolete unconfirmed
+preview so the user can explicitly start a safe new INITIAL instance.
+
+An INITIAL instance that became ACTIVE but never confirmed any Node may be
+abandoned: after authenticated expiry or self-cancellation, with no pending
+operation and no local/server successful confirmation provenance, explicit
+consent may create a new INITIAL instance from a valid pending candidate/code
+and current head. The same still-valid unconfirmed candidate may be explicitly
+selected again; its code is a selector, not authority. This cannot
+renew N2, erase history or bypass security revocation. Once confirmation has
+succeeded, only READ_EXISTING for the same exact binding is eligible. Acceptance
+must include an abandoned/expired-before-confirm to new-code success case.
+
+Node freshness is derived from an accepted bound relay heartbeat in
+`machines.last_seen`, capped at 120 seconds. Relay-only heartbeat `{}` does not
+make `machines.status` Worker-available. Empty, malformed, future or preapproval
+heartbeat is UNKNOWN; fresh is CONNECTED and aged is STALE. V1 has no OFFLINE
+shutdown signal. Repeated newer observation times never extend an old heartbeat.
+
+The reviewed helper applies the size erratum: only the five N3 account
+operations use a 384 KiB inner limit; default Client/N2 remains 256 KiB. Outer
+384 KiB, body 192 KiB, original/receipt 128 KiB remain unchanged. Its producer
+and integration review retain the real encrypted PQ outer-frame boundary tests
+in the [Hub helper receipt](hub-app-node-authority-validation.md). These receipts
+do not establish an independent production Hub/App/Node N3 result.
+
+| ID | Boundary/fault | Independent acceptance oracle | Executed scope, 2026-10-17 |
+| --- | --- | --- | --- |
+| N3-01 | Trusted Hub and stable identities | Full pin/origin/account/Owner/App scope is checked before secret POST; preserve existing identities and keys | SCOPED_PASS — declared Linux process scope |
+| N3-02 | Explicit instance authority | Account/password/public capabilities and expired N2 authority cannot create N3 permission; explicit consent binds the exact reviewed grant instance and allowlist | SCOPED_PASS — declared Linux process scope |
+| N3-03 | Old packet versus renewed authority | Persisted old packet retains its original grant instance/digest; granting new authority never executes the old packet under the new grant | SCOPED_PASS — declared Linux process scope |
+| N3-04 | Foreign scope/key/target | Real Hub independently rejects wrong Hub, Owner/account, App/device/instance, target Node/key/generation; do not count local constructor refusal as server rejection | SCOPED_PASS — declared Linux process scope |
+| N3-05 | Existing Root and new signed consent | Reuse the exact already ACTIVE Root proved during N2, without a fresh KEM ceremony. Pending/unproved/revoked Root, missing/forged domain-separated ML-DSA consent, wrong signer or unauthorized purpose/scope leave authority unchanged | SCOPED_PASS — declared Linux process scope |
+| N3-06 | Epoch/restore/revocation | Stale account/device/Node/grant epochs and restored-state receipts cannot authorize new execution or revive revoked state | SCOPED_TCP_EPOCH_REVOCATION; producer Store restore fence separately; full backup/restore NOT_RUN |
+| N3-07 | CAS/preview substitution | Missing/stale version or changed target/candidate/digest is refused without consuming a valid preview or creating partial bindings/credentials | SCOPED_PASS — declared Linux process scope |
+| N3-08 | Concurrent claim/confirm | Distinct candidates have one durable winner; identical exact retries recover the original result; another Owner/Node key cannot overwrite the winner | SCOPED_PASS — declared Linux process scope |
+| N3-09 | Grant expiry | Real short valid windows expire over TCP; logical clock tests and actual long wall-clock waits are recorded separately | SCOPED short-intent wall expiry; full N3 lease wall expiry NOT_RUN |
+| N3-10 | Revoke/expiry versus confirmation race | Current authority check and mutation commit share a transaction; each observed winner is consistent with one allowed ordering, with no partial effect or execution after a terminal fence | SCOPED cancel/confirm ordering; queued-expiry producer tests separate |
+| N3-11 | Before-forward and after-commit loss | Fault traces distinguish an unsent original from a mutation actually committed before its response was lost; confirm effects from persisted production state | SCOPED_PASS — declared Linux process scope |
+| N3-12 | Hub/App/Node crash windows | Actual owned child-process kills, disk reopen and exact request reuse preserve IDs/keys and one mutation; controller recreation alone is not process-crash evidence | SCOPED_PASS — declared Linux process scope |
+| N3-13 | Absent original, fence, late delivery | An authenticated absence observation alone cannot clear uncertainty. Durable original operation/digest terminal fence precedes replacement; delayed original cannot commit after restart | SCOPED_PASS — declared Linux process scope |
+| N3-14 | Duplicate/conflicting packet | Exact ciphertext recovers the exact durable receipt; same operation ID with changed ciphertext or reused nonce cannot replace it | SCOPED_PASS — declared Linux process scope |
+| N3-15 | Unsigned/corrupt response | HTTP 403, timeout and corrupt PQ response retain pending uncertainty; only authenticated target-bound settlement permits progress | SCOPED_PASS — declared Linux process scope |
+| N3-16 | Local persistence failure | Fail before network send; do not keep a memory-only replacement or regenerate identities after vault/disk failure | SCOPED_PASS — declared Linux process scope |
+| N3-17 | Target Node status privacy | Return only the authorized target Node projection; no owner-wide goals, tasks, workers or unrelated Nodes leak into the status payload | SCOPED_PASS — declared Linux process scope |
+| N3-18 | Genuine Node-only liveness | Installation, binding, credentials or a cached snapshot never imply online; only accepted current target Node heartbeats establish bounded Node freshness | SCOPED_PASS — declared Linux process scope |
+| N3-19 | Cached-online decay | Heartbeat/as-of TTL governs display on failed reads and elapsed time alone; fetching/recovering an old response does not refresh its heartbeat time | SCOPED_PASS — declared Linux process scope |
+| N3-20 | Node process/generation recovery | Restart/reconnect preserves approved Node identity; old credentials/generation cannot publish freshness or overwrite new status | SCOPED restart/revocation; key rotation NOT_RUN |
+| N3-21 | Honest Runtime/SSE boundaries | Node freshness is not an SSE live subscription or native Runtime availability/execution. Unrun Codex/native sessions remain unknown/NOT_RUN; no demo objects are rendered as live | SCOPED Node presentation; App SSE/native Runtime NOT_RUN |
+| N3-22 | Target platform/user | Validate actual OS/arch, UID/nonroot and Codex version only on the disposable target fixture or explicit physical receipt; a bookworm Go builder does not prove Ubuntu target behavior | SCOPED Ubuntu 24.04.4 container, x86_64/UID1000; physical 24.04.3/Codex NOT_RUN |
+| N3-23 | Private evidence and cleanup | Real crypto/TCP/persistent stores; task-owned state, ports, caches and resources; hashes/safe facts only, no secrets or full private payloads; modules read-only; exact cleanup | SCOPED_PASS — declared Linux process scope |
+| N3-24 | Windows/public/native Runtime | Independently attributable native Windows interaction, public HTTPS, physical Node and real native Runtime receipts required; Linux fixture results do not transfer | NOT_RUN Windows native/public HTTPS/physical/native Runtime |
+| N3-25 | Abandoned INITIAL and explicit read authority after expiry | Before any successful confirmation, authenticated terminal/no-pending state permits a new explicit INITIAL code/grant/head; after confirmation and consumed code, explicit Owner consent may create a new finite status-only instance for the same exact approved Node/binding, with current head CAS and zero confirmation budget; no re-pair, key upgrade or N2 renewal | SCOPED self-cancel/session replacement; full N3 lease wall expiry NOT_RUN |
+| N3-26 | Read-only renewal cannot authorize mutation | Old packets cannot borrow the new read grant; that grant cannot confirm; changed Node/binding/key/generation is rejected, and cached online state still follows the original heartbeat rather than a new poll's observation time | SCOPED_PASS — declared Linux process scope |
+
+The following actual cases supply the matrix evidence in both final runners;
+the full names and exact subcase inventory are in each result's `expected_tests`.
+Zero matching cases, missing prerequisites, skips, unknown outcomes and
+harness-only success never establish N3 acceptance. N2/Windows history and
+earlier failures retain their tested source attribution.
+
+| Matrix rows | Actual independent cases (`TestN3` prefix) |
+| --- | --- |
+| 01–02, 05 | `ActualAppUnsupportedCapabilitiesSendNoSecrets`, `ActualIdentityFlowAfterWallClockN2Expiry`, `ActualAppConsentBindingRelayAndWallClockDecay` |
+| 03, 25–26 | `OriginalInstanceCannotBorrowNewInitialOrReadGrant`, `ActualAppSelfCancelRequiresExplicitReadOnlyConsent`, `ActualUnconfirmedSessionReplacementAllowsNewInitial` |
+| 04–07, 09 | `ServerRejectsIndependentProofScopeAttacks`, `ServerRejectsForgedCompletionPreservingPreview`, `RealPersistedEpochAndRootSessionFences` |
+| 08, 14 | `ConcurrentPrepareConfirmAndConflictingReplay` |
+| 10 | `RealConfirmationVersusCancellationOrders` |
+| 11–15 | `ActualAppExactFaultRecoveryAndLateOriginal` (five operations × six faults), `ActualConfirmationLocalCommitCrashBoundaries` (three local CAS windows) |
+| 13–14 | `ReadCacheRollingBoundsAndPermanentMutationRecovery` |
+| 16 | `ActualVaultFailureStopsBeforeSecretSend` |
+| 17 | `StatusContainsOnlyExactSelectedNode` |
+| 18–21 | `ActualImmediateRelayHeartbeatRetainsSubsecondOrder`, `ActualAppConsentBindingRelayAndWallClockDecay`, `RevokedNodeCannotPublishOrReuseReadProvenance` |
+| 22–23 | Driver-recorded runner OS/arch, explicit UID 1000, image/binary/source hashes, isolation and owned-resource cleanup |
+
+N3-05's inactive/unproved-human and missing-N2-history checks additionally use
+the separately attributed producer Store case
+`TestN3StoreMissingCompletedN2AndInactiveHumanDenyAuthorityKeepDiagnostics`.
+For N3-06, independent TCP cases mutate only stopped private DB epoch or
+revocation rows and restart the actual Hub. The producer's
+`TestN3StoreRestoreAndSecurityRevocationPreserveIdentityCountersAndHistory`
+separately checks the Store restore fence and historical receipt. A full
+backup/restore campaign is **NOT_RUN**. N3-09 proves actual short intent expiry;
+natural full 15-minute N3 lease expiry remains **NOT_RUN**. The old N2 lease did
+expire naturally in both final runs. N3-10 checks actual cancel/confirm ordering;
+the producer's transaction-time tests separately cover expiry while queued.
+N3-20 covers retained INITIAL recovery and revoked credentials/bindings;
+Node key rotation/UPGRADE remains outside the slice. The rolling cache's
+five-minute age is an explicitly controlled persisted fixture, not a wall wait.
+
+The supplied Ubuntu 24.04.3 / x86_64 / UID 1000 / `codex --version` 0.163.0
+output is **USER_REPORTED_ENVIRONMENT**. It establishes neither an installed,
+approved Node nor real native Runtime execution. Repeated status polling must
+not extend an old heartbeat's freshness merely by receiving a newer ObservedAt.

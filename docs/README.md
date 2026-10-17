@@ -10,6 +10,12 @@ or start with the authoritative [v0.1.x technical guide](v01-technical-guide.md)
 current 0.0.5 source, deployment boundaries and remaining acceptance work.
 The native Windows-first App has N2 Hub/App core with independent Linux protocol
 SCOPED_PASS (131 events, zero failures/skips); native Windows remains NOT_RUN.
+The bounded N3 Node authority/status slice is implemented under
+[app-node-authority-v1](hub-app-node-authority-contract.md), schema 63, using the
+[identity/Node-only Hub](hub-nodes-only.md) with Control inference disabled.
+Independent [actual-process acceptance](native-app-validation.md#n3-independent-process-acceptance)
+passed 84/0/0 on bookworm and 84/0/0 using the same binaries in Ubuntu 24.04.4.
+Live canvas, App SSE, real native Runtime and physical acceptance remain incomplete.
 It is not a browser product or a
 released installer. Development stays in 0.0.x until user acceptance; the
 guide's v0.1.x names the planned first release line and its incrementing patch
@@ -19,7 +25,8 @@ number.
 |---|---|
 | Product architecture | [Adopted specification](../CICADA.md), [implementation status](architecture-v2-status.md), [completion ledger](completion-ledger.md) |
 | Hub Owner bootstrap checkpoint | [Operator guide](hub-owner-bootstrap.md), [first-signer contract](hub-owner-bootstrap-contract.md), [validation](hub-owner-bootstrap-validation.md), and [full onboarding design](owner-onboarding-design.md) — historical bounded Hub/account SCOPED PASS; original aggregate failures/timeouts retained. N2 adds [finite activation and exact pending-Owner continuation](hub-owner-activation-contract.md). Lost/revoked Root recovery is not implemented by N2 |
-| Native App | [Architecture](native-app-architecture.md), [plan and matrix](native-app-plan.md), [integration evidence and Windows procedure](native-app-validation.md#n2-hubapp-integration) — N2 Hub/App core implemented; independent Linux protocol SCOPED_PASS. Windows DPAPI/ACL/GUI, visual review and installer remain unaccepted. Unencrypted existing Owner identities can be vaulted and proved; encrypted PKCS#8 input unsupported. N3 App integration with existing Hub/Node status, preview/confirm and Guard APIs remains incomplete |
+| Native App | [Architecture](native-app-architecture.md), [plan and matrix](native-app-plan.md), [integration evidence and Windows procedure](native-app-validation.md#n2-hubapp-integration) — N2 independent Linux protocol SCOPED_PASS; bounded N3 Node enrollment/status/recovery SCOPED_PASS in two Linux containers. Windows DPAPI/ACL/GUI, visual review and installer remain unaccepted. Unencrypted existing Owner identities can be vaulted and proved; encrypted PKCS#8 input unsupported |
+| Identity/Node-only Hub | [Operator guide](hub-nodes-only.md), [N3 contract](hub-app-node-authority-contract.md), [Hub validation](hub-app-node-authority-validation.md) — standard HTTPS plus application PQ envelopes; strict PQTLS, native Runtime and physical deployment acceptance remain separate |
 | Deployment and platform interfaces | [CLI, legacy Web UI and local components](deployment-interface-design.md) — official-product research and platform delivery plan; the native App is the current user-interface target, and platform build/runtime evidence stays separate |
 | Install and operate | [Distribution](distribution.md), [development setup](../DEVELOPMENT.md), [Hub build provenance](hub-build-input-provenance.md) |
 | Identity and permissions | [Owner bootstrap](owner-approval-bootstrap.md), [Node trust](node-owner-trust.md), [permissions](permissions.md), [Network contract](network-m1-contract.md) |

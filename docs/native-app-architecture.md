@@ -102,7 +102,7 @@ The bounded sequence is:
 |---|---|---|
 | N1 — native foundation | Gio Windows UI source; typed Hub identity verification; account claim/login/inspect/logout; separate Owner and App-device identities; AES-GCM vault and durable exact-packet state; truthful Root/Manager pending state. | Partial in software 0.0.5. The app is not a released installer or an accepted Windows program. |
 | N2 — finite Owner activation | Single-code first Root proof; exact legacy `PENDING_PROOF` continuation; automatic profile/restart resume and authenticated error/status recovery. | Hub/App core implemented under `owner-activation-v1`, schema 62; independent Linux protocol gate SCOPED_PASS (131 test events, zero failures/skips). Native Windows remains NOT_RUN. See the [contract](hub-owner-activation-contract.md) and [receipts](native-app-validation.md#n2-hubapp-integration). |
-| N3 — authorized Hub/Node workspace | Integrate the App with existing authorized Hub/Node status, preview/confirm and Guard contracts; render live state and reconcile actions durably. | App integration is not implemented. Existing Hub/Node APIs and Guard remain the authority; do not rebuild them in the App. |
+| N3 — authorized Hub/Node workspace | Compose existing Hub/Node Guard, explicit Node preview/confirmation, target-only status and durable recovery in the native App. | Bounded `app-node-authority-v1` App core/UI and `serve --hub-nodes-only` implemented, schema 63. Independent actual App-core/Hub/Node process gates: 84/0/0 on bookworm and the same binaries 84/0/0 in Ubuntu 24.04.4; SCOPED_PASS. Live canvas, App SSE, native Runtime and physical acceptance remain incomplete. See the [matrix](native-app-plan.md#n3-independent-safety-model-and-acceptance-matrix) and [receipts](native-app-validation.md#n3-independent-process-acceptance). |
 | N4 — compatibility retirement | Retire browser product surfaces and public Client-facing names after equivalent App behavior; Hub public `/` returns 404. | Not implemented. Preserve frozen wire names and historical evidence. |
 
 The local vault uses AES-256-GCM with an authenticated, scope-bound envelope.
@@ -119,8 +119,23 @@ authority. Runtime zeroization is best-effort,
 not guaranteed by Go.
 
 The existing Hub/Node status, preview/confirm and server-side Guard APIs remain
-the authority for Node operations. N3 is the missing native App read/action
-composition and presentation, not a claim that no backend capability exists.
+the authority for Node operations. The bounded N3 App composes those operations:
+an already proved ACTIVE Root signs new, finite consent bound to the exact
+account login, App, Node candidate and grant head. INITIAL permits one
+`nodes.confirm`; a later explicit READ_EXISTING instance permits only status of
+the same confirmed binding. Neither renews N2 or confers general management
+permission. Public capabilities describe availability and never authorize a
+caller. See the [contract](hub-app-node-authority-contract.md) and
+[identity/Node-only service](hub-nodes-only.md).
+
+This service retains the existing identity, Client-Control and Node-Control
+keys and performs deterministic identity/Guard operations with Control inference
+disabled. Accepted relay heartbeats establish only bounded Node freshness;
+they do not establish Worker availability, an App SSE connection, model
+availability or native Runtime execution. A newly approved Node without a valid
+heartbeat for its current binding is UNKNOWN. After a Node stops, its last
+accepted heartbeat remains CONNECTED until the original 120-second deadline,
+then becomes STALE. Cached observations decay against that heartbeat time.
 
 Focused `appvault` and `appkeys` tests, race tests, vet, OpenSSL-generated
 synthetic PEM import and Windows amd64 cross-compilation have passed on a dirty
@@ -133,7 +148,7 @@ hash under `.cicada-data/native-app-foundation/`; neither that receipt nor a
 cross-build alone is an end-to-end App acceptance result.
 
 The software, schema and wire identities remain separate: current source is
-software `0.0.5`, Hub schema `62`, frozen Client contract
+software `0.0.5`, Hub schema `63` (N2's introduction was schema `62`), frozen Client contract
 `client-hub-v1.6.5`, encrypted wire `1`, catalog `55`. The App transition does
 not rename or revise those wire identifiers in place. See the [native App
 plan](native-app-plan.md), [account validation](hub-owner-account-validation.md)

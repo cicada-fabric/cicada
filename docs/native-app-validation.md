@@ -837,3 +837,509 @@ keeps cross-user NOT_RUN. Invalid/missing/skipped/failed evidence returns 1.
 Retain each `result.json`, logs, source/build hashes and artifact index. The
 synthetic public transfer directory can be removed by its owner after all
 phases and receipts are retained; never recursively clean an App data root.
+
+## N3 independent preparation — 2026-10-17
+
+N3 is authorized; its shared Hub contract is still awaiting integration-owner
+review at this checkpoint. The [independent matrix](native-app-plan.md#n3-independent-safety-model-and-acceptance-matrix)
+states invariants without creating another protocol or task book. The supplied
+Ubuntu 24.04.3 / x86_64 / `zyf` UID 1000 / Codex 0.163.0 output remains
+USER_REPORTED_ENVIRONMENT, not an approved Node or native Runtime result.
+
+Preparation owns `cicada-go/acceptance/n3`, `scripts/test-native-app-n3.sh` and
+its independent evidence checks. It does not modify Hub/App/Node production
+code, shared protocol, the current ACTIVE remote Owner, keys or deployment.
+The Hub worker owns focused server/Store/CLI guards, App owns controller/UI
+checks, and the integration owner owns full N2 regression, standard Client
+Docker interop and matched final App/Hub/Node builds. This gate does not repeat
+those broad campaigns.
+
+The infrastructure self-tests run an **actual acceptance-built Hub CLI** in
+`--hub-only` mode, real ML-KEM/ML-DSA encrypted frozen N2 activation packets over
+loopback TCP, disk SQLite and actual SIGKILL/restart. They distinguish faults
+before forwarding from lost/unsigned-403/corrupted replies after a committed
+prepare, inspect persisted production state with the Hub stopped, then recover
+the byte-identical response. Another test holds an unsent original at a TCP
+barrier, durably cancels its N2 authority, restarts Hub and delivers the late
+original, checking the authenticated cancellation and unchanged Root state.
+
+The packet-sender child is explicitly **an opaque harness, not production App**.
+The cancellation test uses an already frozen N2 authority transition, **not an
+N3 original-operation fence**. There is no production N3 App or Node actor yet.
+These results establish only the fault/process infrastructure and cannot accept
+the proposed N3 endpoints, grants, atomic confirmation, liveness or Runtime.
+Those cases will consume only the reviewed Hub contract and implementation.
+
+```sh
+scripts/test-native-app-n3.sh --require-n3
+python3 -m unittest discover -s scripts -p test_native_app_n3_evidence.py
+```
+
+The module cache defaults to the existing verified stable Go closure, mounted
+read-only. Build cache, state, artifacts and evidence are exclusive to
+`.local/{cache,state,artifacts,evidence}/n3-acceptance`; each run has a unique
+container name and label, no external network/host ports, UID 1000 and private
+loopback ports. Read-only source/caches, exact resource cleanup and bounded
+hash-only traces prevent a disposable test from using a shared Hub. Private
+synthetic configuration/packets remain in task fixture state, not evidence.
+
+Run `run-20261017T055520Z-7IgZLh` passed all five infrastructure lanes
+(`version`, `compile-cli`, `compile-tests`, `harness`, `vet`), each exit 0,
+with **6 passing events, zero failures/skips**. The required-N3 command returned
+**3**, deliberately: `harness=SCOPED_PASS`, **`n3_acceptance=NOT_RUN`**. There
+is no reviewed contract pin or complete real Hub/App/Node N3 test inventory;
+all N3 matrix rows remain NOT_RUN. Environment flags cannot promote them.
+Default driver success without `--require-n3` accepts only this stated harness
+scope; missing prerequisites return 2, and a harness failure returns 1.
+
+Tested source is `f8b5e58d243599b355f3fe4a85543a6219201a28` plus dirty acceptance
+preparation, stable source manifest
+`2218a575e2f98fdd329a512ec1e1f7908afec396dc90c40f8f2d2dae8ba0f8d6`.
+Builder image is
+`sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61`
+(Go 1.27.2 bookworm). This environment does not establish Ubuntu target-platform
+acceptance. The owned container was absent after cleanup.
+
+| Preparation artifact (outside repositories under `/home/zyf/Cicada/.local`) | SHA-256 |
+| --- | --- |
+| `evidence/n3-acceptance/run-20261017T055520Z-7IgZLh/result.json` | `58e410c016cd1a4baf914e5a88737dc46816bd974e5873111228c363ced003c1` |
+| Same run's `artifacts.sha256.json` | `796451af924ff55d72445e303ac9b81aa8c8730670f50037242ec3bf5f2934c5` |
+| `artifacts/n3-acceptance/run-20261017T055520Z-7IgZLh/n3.test` | `72bae4193da119f13f6ad5724fdf25be8e2dd18dc641d659e62305b89b7d1c22` |
+| Same run's `cicada` CLI | `eb8675ec137a0463da25f7b92d5a9a97b790e32b3ad874829c91d5c6ed190104` |
+
+The first attempt `run-20261017T055135Z-X9nZxc` remains FAIL/exit 1: an unused
+test import prevented test compilation and vet, and no harness case ran. The
+import was removed before the complete successful infrastructure rerun. Five
+Python evidence tests independently reject zero cases, hidden failures/skips,
+missing binaries, source changes, leftover resources and premature N3 promotion.
+Only documentation was subsequently extended with this result; old receipts
+are not rewritten as if they contained later provenance prose.
+
+N2 receipts, failed attempts and Oct 17 user-reported Windows observations
+retain their existing scope. Actual N3 Windows UI, public HTTPS, physical
+Ubuntu Node and real native Runtime acceptance remain separately NOT_RUN.
+
+### Reviewed types and actual App process infrastructure
+
+The integration owner reviewed `app-node-authority-v1` at
+`a545988ac6c038da180413d4f29ffbf740c402d4` and fast-forwarded this task worktree
+while preserving its acceptance draft. The new evidence driver pins the exact
+contract document, claims, DTOs, structural validators and manifest. Their
+status is **REVIEWED_TYPES_ONLY**; production N3 routes/actors are still unrun.
+The subsequent approved N3-only 384 KiB inner-limit correction is pending a
+delivered helper checkpoint and actual encrypted PQ outer-frame receipt;
+default Client/N2 inner 256 KiB and historical failure receipts remain distinct.
+
+Run `run-20261017T061318Z-MuU3RF` added two infrastructure cases. One pauses a
+real committed Hub response before delivery, SIGKILLs its packet-sender and Hub,
+checks the actual disk mutation and recovers the byte-identical receipt after
+restart. The other runs the **production App core in a separate process**,
+generates its real Owner/App keys, completes N2 proof and separate account login,
+then SIGKILLs App and Hub. A fresh App process discovers and authenticates the
+encrypted profile without activation/installer material, preserves identity,
+full pin and original finite expiry, and still has no Manager/canvas authority.
+This uses the synthetic password vault backend, not Windows DPAPI or native GUI.
+The raw packet sender remains a separately identified harness actor.
+
+All five lanes returned 0; **8 events passed, zero failures/skips**. Source
+`a545988` plus dirty acceptance inputs stayed stable at manifest
+`81d667d27595835f9911c228bc0570c1a99ab8589bf6738b155edf688c11615b`.
+The reviewed type hashes matched and the owned container was absent. The same
+pinned Go 1.27.2 bookworm image was used. `--require-n3` returned **3** with
+`harness=SCOPED_PASS`, `n3_acceptance=NOT_RUN`; all 26 N3 rows remain NOT_RUN.
+Six Python evidence checks passed, including rejection of changed contract bytes
+even when the source is otherwise stable and every lane reports zero.
+
+| New preparation artifact under `/home/zyf/Cicada/.local` | SHA-256 |
+| --- | --- |
+| `evidence/n3-acceptance/run-20261017T061318Z-MuU3RF/result.json` | `ad63384210ac05c893f708a0c89a53120b3becf44e1e84f06a86286099a47640` |
+| Same run's `artifacts.sha256.json` | `84d29d594499b6ff5b2fcf701d4aff20c2d49156727a461df344c9852fd700a3` |
+| `artifacts/n3-acceptance/run-20261017T061318Z-MuU3RF/n3.test` | `73f81c46805170885fdf59dc9991fca79b5cc26fcb5fda229ad7631ec5ea781f` |
+| Same run's `cicada` CLI | `5a31ba41af890ccf521b37cb68c2936b72ee850e24007c83c74a3efbd0237d06` |
+
+The validation record was extended after the run. Its new prose is not attributed
+to the earlier dirty-source manifest, and neither N3 nor physical/native scopes
+are promoted by the successful infrastructure cases.
+
+The preparation checkpoint was subsequently verified at
+`run-20261017T062013Z-bRSL8R`: **8 pass / 0 fail / 0 skip**, the same five lanes
+all 0, required-N3 exit **3**, contract pin matched and owned container absent.
+It also compares **both complete public identities** from the actual encrypted
+vault before/after restart, and verifies a private command mailbox to the still
+running App Controller. Snapshot-only commands use wall time; future deliberate
+App clock offsets are labeled `APP_LOGICAL_CLOCK_ONLY`. Private command files
+are isolated by a fresh per-process random mailbox ID and contain no real data.
+Source is still `a545988` plus dirty QA inputs, stable manifest
+`098e468897a5d914ad86015c3ec5e64c6ad7609c17fd8e0f8c21534182cb32ce`.
+The intermediate mailbox-only run `run-20261017T061605Z-7QMlEn` is retained with
+the same scoped outcome; it does not contain the later full-key comparison.
+
+| Final preparation artifact under `/home/zyf/Cicada/.local` | SHA-256 |
+| --- | --- |
+| `evidence/n3-acceptance/run-20261017T062013Z-bRSL8R/result.json` | `6e8f0e1f174a07577905a97c86adf3a7e7499b2e37c271d4902201c8dfad3477` |
+| Same run's `artifacts.sha256.json` | `297dcb43a547f086b2913badb9345b93e49e38901b69b069d05f35f5e7a8d8e9` |
+| `artifacts/n3-acceptance/run-20261017T062013Z-bRSL8R/n3.test` | `ccbbae9110ed100715ad79ed9d5678a92429387034f5450d8b8c9bd8e8c4049f` |
+| Same run's `cicada` CLI | `5a31ba41af890ccf521b37cb68c2936b72ee850e24007c83c74a3efbd0237d06` |
+
+An additional **narrow** infrastructure check, `TestN3HarnessActualAppVaultCommitBarrier`,
+ran separately at `vault-boundary-20261017T062803Z-s_qj6_sr`; the earlier eight
+events were not repeated. A test-only wrapper delegates the actual password
+protector unchanged and pauses `Protector.ID()` before the next real vault write.
+At that boundary a private copy of the previous atomic encrypted image is
+authenticated independently. The test observed a durable `session.inspect`
+response with its pending operation still unapplied, SIGKILLed the actual App
+and Hub, and successfully resumed the same production App profile. It did not
+simulate a response loss or replace vault persistence/cryptography.
+
+Compile, the one selected test and vet each returned 0, with one pass and no
+skip. Source `a545988` plus dirty QA inputs was stable at
+`3a6ab77b57259ce6b3169978647ebdc109fc4e71f8459a88cce9f7f3c06eb783`.
+The actual CLI is the unchanged earlier build (`5a31ba41…`); the newly compiled
+test binary SHA-256 is
+`f81bcd745642443f90733fde2f8e90bbb0fbdd7c9160f8caacb98e634c6e8fb0`.
+The owned container was absent. Result SHA-256 is
+`70f2f1c09e77797552ec4fce20ec481abea7be9b624d1dd66465af3df7f6de46`;
+artifact index SHA-256 is
+`b28cba98e6582786ccd941eaa86e871e578d2e10bc60f86855a052c298cb649d`.
+This proves the Linux local-commit fault seam only. N3 response/application and
+counter recovery remain NOT_RUN until the actual new actors use that seam.
+
+### Shared helper pin and integration-owner N2 regression
+
+The integration owner synchronized
+`5f509befa6065ac41abeb23451ef8d41cc2c76aa` into this task branch while preserving
+the independent acceptance draft. The strict pin now contains 19 normative/helper
+files and reports **SHARED_HELPERS_ONLY**. Contract document SHA-256 is
+`f92248fbd9fc1443a71071d40f5c38bd227dc9cd8ca696cf04f7e3e3150efed5`.
+The N3-only 384 KiB inner correction and actual encrypted outer-frame boundary
+checks belong to the [Hub producer receipt](hub-app-node-authority-validation.md).
+Its broad normal/race package checks each retain an opt-in OpenSSL SKIP;
+the focused N3 helper checks have 32 pass / 0 fail / 0 skip. These are shared
+helper evidence, not independent production N3 acceptance.
+
+The integration owner reran the complete N2 gate on **clean `5f509bef`**:
+`scripts/test-native-app-n2.sh --require-n2` returned **0**, all eight lanes
+returned 0, with **131 pass / 0 fail / 0 skip**, stable source manifest
+`89411d52685a7fa4d3e8f175b1be73644673546c72df84712b9c5e8f9758b0ba`.
+Result is `/home/zyf/Cicada/.local/evidence/n2-acceptance/run-20261017T063227Z-mn8LUa/result.json`,
+SHA-256 `46b07c6cd6f5cef6002462ef8c2a269c6a2844dbd4b31b7108cd4b0f93e5b9e9`.
+The owned container was absent; resident deployments were unchanged. This
+regression applies to helper integration only; later production Hub/App runtime
+changes require their own final regression. It is attributed to the integration
+owner's clean source, not this task's dirty draft.
+
+Independent QA compiled and vetted its newly added shared-wire adversary and
+Node-process orchestration at `compile-helpers-20261017T064154Z-lxojgi24`; both
+returned 0. **Zero runtime cases ran in that compile-only check.** App Action
+integration cases have a temporary test-only build tag pending the actual App
+commit sync; their absence cannot satisfy the final expected-case inventory.
+N3 runtime, physical Ubuntu 24.04.3 Node, Windows native custody/UI, public HTTPS,
+App SSE and real native Runtime remain NOT_RUN. QA owns the optional future
+Ubuntu **24.04.4** amd64 container actor lane at immutable image
+`sha256:224a1869083a311ef3f13648a154ba79832fbef6364d31493642ca03082da254`;
+it is separately attributable and cannot establish the user's physical target.
+
+The integration owner next synchronized Store checkpoint
+`e078c58d97413f5e0457acb3c586afbef1a9d438`: schema **63**, phase **STORE_ONLY**.
+The strict pin includes 31 normative/helper/Store files; contract SHA-256 is
+`d151210d8f0fbc7a712e8a0be2b28db6bb35e3fdaddc1e659ce05bf8f780dae4`.
+The Hub producer reports final focused normal and race each **31 pass / 0 fail /
+0 skip**, plus vet 0; earlier broad skips and interrupted runs stay in its
+receipt. No N3 HTTP endpoint is enabled by that source. Metadata and six QA
+evidence-parser checks passed after sync; the broad preparation harness was not
+repeated just to change the pin. The Store's retained N2 Client epoch-1 guard,
+exact bound-login semantics and old-original fencing remain explicit in the
+matrix. Runtime drafts include actual App/Hub/Node operations, loss and local
+CAS barriers, concurrent TCP requests and raw decrypted privacy canaries; those
+new cases remain **NOT_RUN** pending actual production App and HTTP/CLI source.
+
+### Actual App discovery guard against a legacy Hub
+
+The integration owner reviewed and synchronized actual App controller checkpoint
+`8df8ae5034f819ff3d839b6574f02c3c887af253` (parent `e078c58`). App producer
+focused normal/race each have 41 pass / 0 fail / 0 skip, separately attributed
+to `.local/evidence/n3-app/controller-final-20261017-j7l2o3eb/validation.json`.
+QA removed the temporary build tags and compiled all prepared integration cases
+against that actual Controller API. The strict pin now includes 48 source files,
+records `CONTROLLER_IMPLEMENTED` and retains protocol phase `STORE_ONLY`.
+No HTTP/CLI N3 service or physical/native result is inferred from the App commit.
+
+```sh
+scripts/test-native-app-n3.sh --discovery-only
+```
+
+Run `run-20261017T071158Z-Kc5MI6` used an actual newly built, matched Hub CLI in
+`--hub-only`, production App core in separate real processes, PQ N2 bootstrap,
+TCP and encrypted persistent vaults. Actual legacy-Hub discovery, injected 404
+and an unknown public capability profile each produced **zero N3 secret POSTs**,
+including bootstrap status, zero Client business RPC and zero durable Node
+pending requests. This is an independent check of App behavior before N3 service
+availability; the broader preparation harness was not repeated.
+
+All five lanes returned 0, with **4 pass / 0 fail / 0 skip**, exact expected
+test inventory, matched 48-file pin, source stability and owned container absent.
+The command returned **0 for this discovery-only scope**. `N3-01` is
+`PARTIAL_DISCOVERY_GUARD`; full `n3_acceptance` and all other N3 matrix rows
+remain **NOT_RUN**. Seven evidence-parser checks passed, including rejection of
+promoting this successful narrow scope into full N3 acceptance. Combining
+`--discovery-only` with `--require-n3` is rejected with exit 2.
+
+Tested source is `8df8ae5` plus dirty acceptance inputs, stable manifest
+`0e1a2e4418b430c863580add9ff76509a603f247d05a50e08df401c8e0de33cb`.
+The pinned Go 1.27.2 bookworm builder and read-only offline module closure were
+used; state/cache/ports/artifacts remained task-isolated. After the run only
+this receipt was added. All new runtime mutation/fault/Node cases are compiled
+but still unexecuted until the actual N3 HTTP/CLI implementation is synchronized.
+
+| Actual discovery artifact under `/home/zyf/Cicada/.local` | SHA-256 |
+| --- | --- |
+| `evidence/n3-acceptance/run-20261017T071158Z-Kc5MI6/result.json` | `28802ed5f44e713fe7f099d6bccc3977aadfac434c7b828f83ab3d9bdb35caec` |
+| Same run's `artifacts.sha256.json` | `c4b46cdca944c83af0a37d265ed77aa6ed60414d48e90113b3fa1cb0f2f2206a` |
+| `artifacts/n3-acceptance/run-20261017T071158Z-Kc5MI6/n3.test` | `37b5f0385cc2a33e0a8a118319170260a2dd48e758e01404dd6a149b783ad379` |
+| Same run's matched `cicada` CLI | `075744d7d8b8938325c68830efe941df32cc6da9698a5cdfb8cb1fc70af9ea6c` |
+
+The integration owner subsequently ran the native App integration gate on
+**clean `8df8ae5`**: **194 pass / 0 fail / 0 skip**, Windows crossbuild and
+runtime-dependency listing exit 0, with source stability. Receipt:
+`/home/zyf/Cicada/.local/evidence/n3-integration/run-20261017T055932Z-557c5d/native-app-checkpoint/run-20261017T071323Z-5N6p0e/validation.json`,
+SHA-256 `065f76c681c227861dd4ef2fb12ef538ceeb30c051379b61f93c5578a5a4f662`.
+This applies to the App + Store checkpoint, with N3 Hub runtime still absent;
+neither Windows native API execution nor real native Runtime is accepted.
+The integration owner retains final N2 regression, standard disposable Client
+interop and matched delivery builds after actual Hub runtime integration.
+
+### First real Hub/App/Node gate and natural-expiry fixture
+
+The integration owner synchronized actual runtime
+`af92b16d3c0dc616280d694986692a2cbb1caa71`, schema 63, phase
+`HUB_NODES_ONLY`. QA pins its 62 normative/helper/Store/App/runtime files and
+runs the actual CLI `serve --hub-nodes-only`, actual production App core in
+separate processes and real Node CLI `machine agent --relay-only`. No Control
+inference or native provider execution is required by these fixtures.
+
+First core run `run-20261017T073623Z-xsks6W` is retained as **FAIL**: exit 1,
+80 exact expected events, **66 pass / 14 fail / 0 skip**, stable dirty-source
+inputs, compile/CLI/version/vet lanes 0 and runtime lane 1. Result SHA-256:
+`e64ff84d53f17af247a9609dd9dd6773057f067e6292107a014f9876353951b1`.
+Passing events include all three real local confirmation CAS crash windows,
+concurrent reservation/confirmation, genuine proof/scope negatives, persisted
+epoch/session/Owner revocation and raw Node-only privacy canaries. Parent test
+failure events and failed subcases remain separate; this run is not accepted.
+
+Triage identified driver corrections, recorded after the immutable run:
+
+- Ordinary wire stress hit the existing authentication token bucket (4/sec,
+  burst 12). Retry 429 with the exact encrypted original, bounded backoff and
+  no new ID/nonce/ciphertext; injected App 429 cases remain outside that helper.
+- App recovery legitimately retries its saved original before reconciliation.
+  The delayed-unadmitted scenario must block that retry too before demanding a
+  durable original fence. The earlier success was not a fence bypass.
+- ACTIVE cancellation advances the published head. New intents must read a
+  fresh authenticated head; status-only head assertions include the cancellation
+  tombstone, without resetting Client counters.
+- Automated UI commands now allow ordinary human command cadence instead of
+  accidentally saturating normal admission during a multi-operation action.
+
+Two actual integration defects were handed to the Hub owner and independently
+reproduced there: `POST /v2/fabric/node/networks/direct/claim` received 404 in
+the narrow service, and a retained fresh INITIAL pending candidate was not
+installed after remote approval/restart. The owner isolated the exact guarded
+route fix and pending-state recovery; no broad route prefix or manual heartbeat
+substitute is accepted. The dedicated actual CLI reproduction
+`run-20261017T074853Z-R7ZMvH` is also **FAIL**, one failed case, no skip, compile
+and vet 0, stable source. Its result SHA-256 is
+`5cc51f09fc6ec5998391b838f7be26a7b67e2b9a0b4cb7e4d7772da7a1b8bad8`.
+Raw synthetic Node logs stay only in private task state; evidence records safe
+status categories and the private-log hash. The fresh pending recovery oracle
+is retained separately from legacy bearer-only behavior.
+
+```sh
+scripts/test-native-app-n3.sh --runtime-core
+scripts/test-native-app-n3.sh --case=TestN3ActualImmediateRelayHeartbeatRetainsSubsecondOrder
+scripts/test-native-app-n3.sh --seed-expiry
+```
+
+The last command creates a separate private, **synthetic acceptance-only** N2
+template and stops all writers. Seed run `run-20261017T072753Z-DKv6h2` completed
+all five setup lanes with exit 0 and one setup event; this is `SETUP_READY`,
+not N3 PASS. Actual N2 proof/login used `8df8ae5` plus dirty QA inputs, stable
+manifest `2758116cc635aeedf18f998178726c56d353675ebe2993ecc828e2169dc96ffe`.
+Its original immutable N2 lease ends at **2026-10-17T07:43:00.992469179Z**;
+the account session ends at **07:43:02.029619235Z**. Writers stopped at
+**07:28:02.177150457Z**. No clock or lease row is edited.
+
+Private template:
+`/home/zyf/Cicada/.local/state/n3-acceptance/run-20261017T072753Z-DKv6h2/retained-aged-n2`.
+Seed result SHA-256 is
+`33503e7cb30a61ec9a10c182c1d920a408df44dc70a7abd7a542c9ff9497aaa1`;
+artifact index SHA-256 is
+`d89ca390c76e16cb9f8b64e792e8e3814ba4fe9e7be1f5d8a14af552527127af`.
+After real expiry, a new task run copies this coherently stopped template into
+its own state, preserving the source. Symlinks, special files, unrelated roots,
+overwrites and unexpired input are refused. The actual aged test unlocks the
+same profile, performs a fresh real login and new explicit N3 consent, and
+compares original full keys/N2 expiry and the complete persisted N2 lease.
+Its result remains NOT_RUN until that test actually executes on reviewed runtime.
+
+### Hub-fix real-process rerun and corrected missing-row oracle
+
+On reviewed `ec72bf2891bcc7bf98565beedbac54e51f35b7db`, complete run
+`run-20261017T080405Z-qcf5yl` retained **FAIL**, exit 1: **83 pass / 1 fail /
+0 skip**, compile/version/vet lanes 0, stable dirty QA source manifest
+`dfceafa78318697889c42175da6a08ea1b31907d6d1a96c5469f6c734241f588`, owned
+container removed. Result SHA-256
+`695ddcc8aac1a987dfce87ce20139e56d178386e30f16662c9a09f6503bbff7e`; index
+`702b7a334131bc5ada3ec590fc2ea2f3e35a60cf93f565535a2fa3bdf66fd4fe`.
+
+The two production Node defects reproduced against `af92b16` are repaired by
+`ec72bf2`: all 30 actual App fault cases, retained INITIAL binding recovery and
+three immediate real Node CLI heartbeats now pass. This run also passed actual
+N2 natural expiry, Node credential/binding revocation, explicit replacement
+INITIAL/READ_EXISTING, proof negatives and privacy checks. Its only failure is
+an independent oracle error: Store `GetMachine` returns `(nil, nil)` for a
+missing row; the test incorrectly treated `err == nil` as machine existence.
+The corrected assertion checks the returned object and still fails on Store
+errors. No production change was made for this oracle correction. The case
+stopped before its 120-second decay wait; that timing claim in this failed
+run's metadata is not accepted. The evidence tool now attributes elapsed-time
+claims only when their actual case passes. Original receipts remain unchanged.
+
+Root then synchronized UI-only `e81b9dce28133861b5a8c5f45bb065e9721309f3`
+(five appui files and its README; no appcore/Hub/Node/protocol/vault changes).
+The next complete Linux and exact-binary Ubuntu runs use this reviewed source
+with corrected QA inputs. Their results are not inferred from the prior run.
+
+### N3 independent process acceptance
+
+2026-10-17: **SCOPED_PASS** for the bounded Node enrollment, target-only status
+and durable recovery slice. Actual production App core, Hub CLI and Node CLI
+ran as separate processes with real ML-KEM-768 / ML-DSA-65 / AES-GCM, loopback
+TCP and persistent SQLite/vault state. This is not full N3 live-canvas, desktop
+GUI, physical-machine, native Runtime or release acceptance.
+
+Source is `e81b9dce28133861b5a8c5f45bb065e9721309f3` **plus dirty QA code,
+scripts and documentation**, stable build/test manifest
+`dbf28641325cf4972bcca4ed2b18aa2495b0fbff8dc742078ecc1894b21d67e3`.
+Reviewed runtime fixes are `ec72bf2891bcc7bf98565beedbac54e51f35b7db`; the later
+`e81b9dc` changes only five appui files and the App README. The production
+App-core/Hub/Node/protocol/vault inputs did not change in that UI checkpoint.
+All 64 strict production/contract pins matched. Wire `1`, contract
+`app-node-authority-v1`, software `0.0.5`, schema `63`, Git source and Docker
+image identities remain distinct. Final documentation additions follow the
+tests and do not retroactively change their recorded manifests.
+
+| Gate | Result | Execution attribution |
+| --- | --- | --- |
+| `run-20261017T081549Z-XAbDdz` | **84 pass / 0 fail / 0 skip**; version, CLI compile, test compile, runtime and vet all exit **0** | Immutable Go 1.27.2 bookworm image `sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61` |
+| `ubuntu-20261017T082902Z-VMU6lg` | **84 pass / 0 fail / 0 skip**; runtime and test2json parse exit **0** | Exact accepted binaries, no recompile; Ubuntu **24.04.4 x86_64**, UID 1000; immutable image `sha256:224a1869083a311ef3f13648a154ba79832fbef6364d31493642ca03082da254` |
+
+Both runs used disposable `--network none` containers, read-only root/source,
+dropped capabilities, task-owned state/artifacts/ports and a task-owned locked
+Go build cache. The populated module cache was mounted **read-only**. Owned
+containers were absent afterward. No shared development Hub, resident
+deployment, public endpoint, real key or production credential was changed.
+Raw frames and synthetic private state stay in private task directories;
+reviewable receipts contain safe facts, public identities and hashes only.
+
+The genuine stopped N2 template from `8df8ae5` was independently copied into
+each run after its original 07:43:00.992469179Z deadline. Its source tree SHA-256
+remained `5f91ab669b3818526a52bd2648a5e3248cc604210d8d4dd87cb0ca64cc016037`
+after both runs, matching both copy receipts. Each actual App unlocked the same
+profile, made a fresh account login and completed new explicit N3 consent with
+the same complete original public identities and byte-equivalent persisted N2
+lease. No installer reuse, fresh Root ceremony or N2 renewal occurred. The Hub
+ran `--hub-nodes-only`, without Control inference or a `control-local` machine.
+Together with the independently retained N2 gate, this distinguishes account
+login, Root proof and operation-specific authority.
+
+The exact 84-event inventory is mandatory. It includes five operations × six
+network faults, three actual local CAS crash windows, concurrent preparation
+and confirmation, exact/conflicting replay, absent-original fencing and late
+delivery, proof/scope/epoch/revocation negatives, read-cache eviction and
+permanent mutation receipts, stopped-Node consent, real relay-only CLI recovery
+and subsecond heartbeat ordering, private target-only status, zero-budget
+READ_EXISTING and explicit abandoned-INITIAL recovery. UI actions use a normal
+one-second command cadence; independent wire stress retries 429 with unchanged
+ciphertext only. **Injected App 429 is never swallowed by that wire helper.**
+
+| Final artifact under `/home/zyf/Cicada/.local` | SHA-256 |
+| --- | --- |
+| `evidence/n3-acceptance/run-20261017T081549Z-XAbDdz/result.json` | `f29786333c4491cc20a825a9886fe20b0b308bfcb45242443b65477608f4f1ce` |
+| Same run's `artifacts.sha256.json` | `383c6edf008144cf2ce9b002d27b74d2fae656bcbe36e4c4d5293ed63eeab027` |
+| `artifacts/n3-acceptance/run-20261017T081549Z-XAbDdz/n3.test` | `bcbd70980b7b44474dff08621dc00cccb7c1d676c90283cdb498b99f6993461b` |
+| Same run's matched `cicada` CLI | `867fd1c9610764dde6fecee5b83e7e621d16fe2a167ae07ac81a5d4bb1554da8` |
+| `evidence/n3-acceptance/ubuntu-20261017T082902Z-VMU6lg/result.json` | `23558794d9399b9e0b18a46666ee477bafec008f30045808194227a5d48125aa` |
+| Same Ubuntu run's `artifacts.sha256.json` | `2328571c0fab7b9f818026ec2cb1df1892c5384dbbd3bf9e33b45ffc73cff65d` |
+
+These CLI/test binaries are acceptance artifacts. The integration owner builds
+final clean revision-stamped delivery artifacts after reviewing the acceptance
+checkpoint; delivery hashes are recorded separately, not inferred from these.
+
+Reproduce from this worktree with the pinned offline images and module cache:
+
+```sh
+# For a new campaign, create a new stopped synthetic template first.
+env -u CICADA_N3_AGED_SEED scripts/test-native-app-n3.sh --seed-expiry
+# Wait until that receipt's original N2 deadline has actually elapsed.
+# This recorded campaign retains the following unchanged synthetic template:
+export CICADA_N3_AGED_SEED=/home/zyf/Cicada/.local/state/n3-acceptance/run-20261017T072753Z-DKv6h2/retained-aged-n2
+scripts/test-native-app-n3.sh --require-n3
+# Substitute the successful Linux evidence directory printed by the last run:
+scripts/test-native-app-n3-ubuntu.sh /home/zyf/Cicada/.local/evidence/n3-acceptance/run-20261017T081549Z-XAbDdz
+```
+
+Every invocation allocates new private state and evidence. An unexpired,
+unrelated, symlinked or overwritten template is refused. The template is never
+mounted into a running product process; only the private clone is writable.
+Linux exit **0** accepts exactly its declared scope, **1** is a failed gate and
+**2** a prerequisite/selector failure. The seed returns SETUP_READY only;
+default harness, `--discovery-only`, `--runtime-core` (83 events without natural
+N2 expiry) and `--case=TestN3...` cannot promote to full 84-event acceptance.
+`--case` accepts only the explicitly whitelisted runtime parents. Ubuntu
+requires a successful full Linux receipt and its exact binaries/inventory.
+Interrupts and skips cannot become passes.
+
+| Finding | Disposition and independent evidence |
+| --- | --- |
+| Actual relay-only CLI hit 404 on exact `/v2/fabric/node/networks/direct/claim` | Fixed by Hub owner in `ec72bf2`; actual CLI idle polling and three immediate heartbeats pass in both final runners. No broad Fabric route was exposed |
+| Fresh retained INITIAL stayed PENDING after approval/restart | Fixed by Hub owner in `ec72bf2`; both final lifecycle cases install the original approved candidate/key, then establish real heartbeat freshness |
+| Pre-queue timestamp could admit an intent expired while waiting for the writer | Fixed by Hub owner in `ec72bf2`; separately attributed producer real-one-second RED/GREEN and transaction-time Client tests are in [Hub validation](hub-app-node-authority-validation.md#relay-restart-recovery-and-transaction-time-checkpoint). Independent short-intent TCP expiry passes; no claim of an independent writer-lock injection |
+| QA admission cadence, first-retry fencing, tombstone-head expectations and missing-row oracle | Driver/oracle corrections described in the retained failed-run records above; original failures remain FAIL. No production changes were made to satisfy these incorrect assumptions |
+
+No confirmed blocking defect remains in the **executed bounded process scope**.
+The following limits are explicit:
+
+- N3-06 uses stopped-private-DB epoch/revocation injection followed by actual
+  Hub restart. The producer Store restore-fence test is separate. Complete
+  backup/restore execution remains **NOT_RUN**.
+- Real wall time proves short intent expiry, the original fifteen-minute N2
+  expiry and 120-second Node heartbeat decay. Full fifteen-minute **N3** lease
+  natural expiry is **NOT_RUN**. App clock offsets are App-only logical tests;
+  renewable outer-cache aging is a controlled persisted fixture.
+- Node restart/revocation is accepted; Node key rotation/UPGRADE is outside
+  this slice. A heartbeat proves Node freshness only, never Worker availability,
+  model availability, App SSE or native Runtime/Codex execution.
+- Physical Ubuntu **24.04.3**, service installation and real Codex **0.163.0**
+  execution are **NOT_RUN**. The reported host information remains
+  USER_REPORTED_ENVIRONMENT; Ubuntu **24.04.4 container** acceptance is separate.
+- Native Windows **DPAPI, ACL and GUI** execution for these artifacts is
+  **NOT_RUN**. Earlier user-reported partial Windows observations stay attributed
+  to their original source. Cross-builds do not satisfy native acceptance.
+- Public HTTPS, strict PQTLS, Android interoperability, live canvas, App SSE,
+  real native Runtime, installer, N4 and general v0.1 product readiness remain
+  unaccepted by this checkpoint.
+
+Integration-owner regression receipts were independently hash-checked. Their
+sources and scopes remain separate:
+
+| Root gate | Source and result | Receipt under `/home/zyf/Cicada/.local` | SHA-256 |
+| --- | --- | --- | --- |
+| N2 `--require-n2` | Clean `ec72bf2`; 131/0/0, all eight lanes 0, stable source and cleanup | `evidence/n2-acceptance/run-20261017T080344Z-w08el5/result.json` | `016de1522409f3249e7c7696f8552cbc1a47ff0e6ecb161eb041a1270fb8b5d6` |
+| Native App gate | Clean `e81b9dc`; 205/0/0, Windows crossbuild/dependency listing 0; native execution NOT_RUN | `evidence/n3-integration/run-20261017T055932Z-557c5d/native-ux-final/run-20261017T081147Z-I6pbgX/validation.json` | `fb21ea7e93fe71873e5c05f1cde5870bd16fb24035265020eacda1a5eb0da14c` |
+| Standard Client disposable Docker interop | Clean `ec72bf2`; PASS, owned cleanup; legacy protocol scope | `evidence/n3-integration/run-20261017T055932Z-557c5d/standard-client-hubfix/result.json` | `f87922886156620f0dadc4660bbff72da03fe79f353f26b948f6283cbf35c91b` |
+
+Evidence/parser unit tests: **12 passed**. Shell syntax, strict source pins and
+Hub contract metadata checks pass. The full code and scripts remain exactly
+those executed above; only these existing documentation files were finalized
+after the gates. No push, merge, deployment or real-key rotation is authorized
+or performed by this acceptance checkpoint.
