@@ -51,7 +51,7 @@ func ValidateNativePairBootstrapTarget(q NativePairBootstrapPrepare, original []
 		return ErrInvalid
 	}
 	c, err := e2ee.VerifyOwnerNativePair(ch.Scope.Actor.OwnerPublic, q.OwnerProof, e2ee.OwnerNativePairBootstrapPreview, time.Time{})
-	if err != nil || !reflect.DeepEqual(c.Scope, ch.Scope) || c.Bootstrap.GroupLabel != ch.Bootstrap.GroupLabel || c.Bootstrap.Runtime != ch.Bootstrap.Runtime || c.Bootstrap.SlotCount != ch.Bootstrap.SlotCount || c.Bootstrap.Policy != ch.Bootstrap.Policy {
+	if err != nil || (!reflect.DeepEqual(c.Scope.Actor, ch.Scope.Actor) || !reflect.DeepEqual(c.Scope.Node, ch.Scope.Node)) || c.Bootstrap.GroupLabel != ch.Bootstrap.GroupLabel || c.Bootstrap.Runtime != ch.Bootstrap.Runtime || c.Bootstrap.SlotCount != ch.Bootstrap.SlotCount || c.Bootstrap.Policy != ch.Bootstrap.Policy {
 		return ErrInvalid
 	}
 	return nil
@@ -77,7 +77,7 @@ func ValidateNativePairPlanTarget(q NativePairConsentPrepare, original []byte, c
 		return ErrInvalid
 	}
 	bp, err := e2ee.VerifyOwnerNativePair(c.Scope.Actor.OwnerPublic, bootstrapProof, e2ee.OwnerNativePairBootstrapCommit, time.Time{})
-	if err != nil || bp.Bootstrap.PairID != ch.Plan.PairID || bp.Bootstrap.NetworkID != ch.Plan.NetworkID || bp.Bootstrap.GroupID != ch.Plan.GroupID || bp.Bootstrap.PeerExpiresAt != ch.Plan.PeerExpiresAt || bp.Bootstrap.Policy != ch.Plan.Policy || NativePairProofDigest(bootstrapProof) != ch.Plan.BootstrapProofDigest || bp.Scope.NodeTupleDigest != c.Scope.NodeTupleDigest {
+	if err != nil || bp.Bootstrap.PairID != ch.Plan.PairID || bp.Bootstrap.NetworkID != ch.Plan.NetworkID || bp.Bootstrap.GroupID != ch.Plan.GroupID || bp.Bootstrap.PeerExpiresAt != ch.Plan.PeerExpiresAt || bp.Bootstrap.Policy != ch.Plan.Policy || NativePairProofDigest(bootstrapProof) != ch.Plan.BootstrapProofDigest || !nativePairSameStableScope(bp.Scope, c.Scope) {
 		return ErrInvalid
 	}
 	return nil

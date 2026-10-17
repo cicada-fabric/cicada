@@ -57,13 +57,24 @@ func validateNativePairRequest(body any, hub HubIdentity, now time.Time) error {
 	}
 	if purpose := NativePairOwnerPurpose(op); purpose != "" {
 		var p e2ee.OwnerNativePairProof
-		if len(token) != MaxSessionTokenBytes || decodeCanonical(raw, e2ee.MaxOwnerNativePairProofBytes, &p) != nil || ValidateNativePairScope(p.Claims.Scope, hub) != nil ||
+		if len(token) != MaxSessionTokenBytes || decodeCanonical(raw, e2ee.MaxOwnerNativePairProofBytes, &p) != nil ||
 			!nativePairContextScope(c, p.Claims.Scope.Actor) || p.Claims.RequestID != c.RequestID || p.Claims.Nonce != hex.EncodeToString(c.ClientNonce) || p.Claims.IssuedAt != c.IssuedAt {
 			return ErrInvalid
 		}
 		if _, err := e2ee.VerifyOwnerNativePair(p.Claims.Scope.Actor.OwnerPublic, raw, purpose, now); err != nil {
 			return ErrInvalid
 		}
+		if purpose == e2ee.OwnerNativePairBootstrapPreview {
+			if ValidateNativePairBootstrapPreviewScope(p.Claims.Scope, hub) != nil {
+				return ErrInvalid
+			}
+		} else if ValidateNativePairScope(p.Claims.Scope, hub) != nil {
+			return ErrInvalid
+		}
+		if purpose == e2ee.OwnerNativePairRevoke && ValidateNativePairRevokeTarget(p.Claims) != nil {
+			return ErrInvalid
+		}
+
 	}
 	switch v := dereference(body).(type) {
 	case NativePairConsentComplete:

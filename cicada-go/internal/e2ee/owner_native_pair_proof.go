@@ -65,10 +65,25 @@ func nativePairToken(s string) bool {
 func nativePairRevision(n uint64) bool { return n > 0 && n < math.MaxInt64 }
 
 func validateOwnerNativePairScope(s OwnerNativePairScope) error {
+	if validateOwnerNativePairKnownScope(s) != nil || !nativePairRevision(s.NodeControlBindingVersion) || !canonicalSHA256Hex(s.CredentialCommitment) || !canonicalSHA256Hex(s.NodeTupleDigest) {
+		return ErrInvalidEnvelope
+	}
+	return nil
+}
+
+// Only the unknown-slot bootstrap preview may omit the three Store-derived
+// fields. It must omit all three; no other proof purpose can use this scope.
+func validateOwnerNativePairBootstrapPreviewScope(s OwnerNativePairScope) error {
+	if validateOwnerNativePairKnownScope(s) != nil || s.NodeControlBindingVersion != 0 || s.CredentialCommitment != "" || s.NodeTupleDigest != "" {
+		return ErrInvalidEnvelope
+	}
+	return nil
+}
+
+func validateOwnerNativePairKnownScope(s OwnerNativePairScope) error {
 	a, b := s.Actor, s.Node
-	if appNodeProofScope(a) != nil || a.HeadVersion != 0 || !nativePairRevision(s.NodeControlBindingVersion) ||
+	if appNodeProofScope(a) != nil || a.HeadVersion != 0 ||
 		len(a.Origin) > 512 || !utf8.ValidString(b.NodeName) || len(b.NodeName) > 128 || strings.ContainsAny(b.NodeName, "\x00\r\n") ||
-		!canonicalSHA256Hex(s.CredentialCommitment) || !canonicalSHA256Hex(s.NodeTupleDigest) ||
 		b.OwnerID != a.OwnerID || b.HubID != a.HubID || b.ClientDeviceID != a.DeviceID || b.OwnerKeyID != a.OwnerPublic.ID || b.State != "ACTIVE" ||
 		!nativePairToken(b.OwnerBindingID) || !nativePairToken(b.NodeID) || b.NodeID == "control-local" || b.NodeID == "worker-local" ||
 		ValidatePublicIdentity(b.NodePublic) != nil || ValidatePublicIdentity(b.HubNodeControlPublic) != nil || b.NodePublic.ID == b.HubNodeControlPublic.ID ||
@@ -95,7 +110,11 @@ func validateOwnerNativePairScope(s OwnerNativePairScope) error {
 // Structural proof checks are independent of current Store authority and of
 // full public manifest/digest recomputation in hubaccountwire.
 func ValidateOwnerNativePairClaims(c OwnerNativePairClaims, now time.Time) error {
-	if c.Version != 1 || ownerNativePairDomain(c.Purpose) == "" || validateOwnerNativePairScope(c.Scope) != nil ||
+	scopeErr := validateOwnerNativePairScope(c.Scope)
+	if c.Purpose == OwnerNativePairBootstrapPreview {
+		scopeErr = validateOwnerNativePairBootstrapPreviewScope(c.Scope)
+	}
+	if c.Version != 1 || ownerNativePairDomain(c.Purpose) == "" || scopeErr != nil ||
 		!appNodeProofID(c.RequestID) || !canonicalSHA256Hex(c.Nonce) {
 		return ErrInvalidEnvelope
 	}

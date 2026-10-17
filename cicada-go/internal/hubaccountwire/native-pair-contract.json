@@ -95,7 +95,8 @@
     "owner-proof": "cicada/native-pair/owner-proof/v1\u0000",
     "node-tuple": "cicada/native-pair/node-tuple/v1\u0000",
     "slot": "cicada/native-pair/slot/v1\u0000",
-    "consent-plan": "cicada/native-pair/consent-plan/v1\u0000"
+    "consent-plan": "cicada/native-pair/consent-plan/v1\u0000",
+    "revoke-target": "cicada/native-pair/revoke-target/v1\u0000"
   },
   "bounds": {
     "MaxNativePairOriginalBytes": 131072,
@@ -155,5 +156,16 @@
   "unknown_pair_id_only_for_bootstrap_prepare_reconcile": true,
   "absent_settles_mutation": false,
   "resets_budgets_on_retry_restart_or_reopen": false,
-  "runtime_executed_in_a1": false
+  "runtime_executed_in_a1": false,
+  "bootstrap_preview_store_fields": "ALL_EMPTY_ONLY",
+  "other_purposes_require_full_scope": true,
+  "stable_scope_replaceable_fields": [
+    "actor.account_session_id",
+    "actor.account_session_expires_at"
+  ],
+  "revoke_target_fields": [
+    "scope",
+    "pair_id",
+    "expected_revision"
+  ]
 }

@@ -25,7 +25,13 @@ type nativePairFixture struct {
 }
 
 func nativePairClaims(f nativePairFixture, purpose string, id string) e2ee.OwnerNativePairClaims {
-	return e2ee.OwnerNativePairClaims{Version: 1, Purpose: purpose, Scope: f.scope, RequestID: id, Nonce: strings.Repeat("d", 64), IssuedAt: formatUTC(f.f.now), ExpiresAt: formatUTC(f.f.now.Add(time.Minute))}
+	c := e2ee.OwnerNativePairClaims{Version: 1, Purpose: purpose, Scope: f.scope, RequestID: id, Nonce: strings.Repeat("d", 64), IssuedAt: formatUTC(f.f.now), ExpiresAt: formatUTC(f.f.now.Add(time.Minute))}
+	if purpose == e2ee.OwnerNativePairBootstrapPreview {
+		c.Scope.NodeControlBindingVersion = 0
+		c.Scope.CredentialCommitment = ""
+		c.Scope.NodeTupleDigest = ""
+	}
+	return c
 }
 
 func nativePairTestFixture(t *testing.T) nativePairFixture { return nativePairSizedFixture(t, false) }
@@ -696,5 +702,119 @@ func TestNativePairUnknownPrepareRecoveryAfterSessionExpiry(t *testing.T) {
 	rq.OriginalPacket, _ = json.Marshal(p)
 	if _, err = SealClientRequest(f.f.device, f.f.hub, rq); err == nil {
 		t.Fatal("unknown PairID exception broadened")
+	}
+}
+
+func TestNativePairPlanRejectsStableBootstrapScopeDrift(t *testing.T) {
+	f := nativePairTestFixture(t)
+	other, err := e2ee.NewIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct {
+		name    string
+		allowed bool
+		edit    func(*e2ee.OwnerNativePairScope)
+	}{
+		{"fresh_login", true, func(s *e2ee.OwnerNativePairScope) {
+			s.Actor.AccountSessionID = "synthetic-new-login"
+			s.Actor.AccountSessionExpiresAt = formatUTC(f.f.now.Add(30 * time.Minute))
+		}},
+		{"other_origin", false, func(s *e2ee.OwnerNativePairScope) { s.Actor.Origin = "https://another-synthetic.invalid" }},
+		{"other_account", false, func(s *e2ee.OwnerNativePairScope) { s.Actor.AccountID = "synthetic-other-account" }},
+		{"other_app_key", false, func(s *e2ee.OwnerNativePairScope) { s.Actor.DevicePublic = other.Public() }},
+		{"other_owner_key_version", false, func(s *e2ee.OwnerNativePairScope) { s.Actor.OwnerKeyVersion++ }},
+		{"other_client_epoch", false, func(s *e2ee.OwnerNativePairScope) { s.Actor.ClientSessionEpoch++ }},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			boot := f.bootstrap
+			tc.edit(&boot.Scope)
+			proof, err := e2ee.SignOwnerNativePair(f.f.owner, boot)
+			if err != nil {
+				t.Fatal(err)
+			}
+			p := f.plan
+			p.BootstrapProofDigest = NativePairProofDigest(proof)
+			p.Digest, _ = NativePairPlanDigest(p)
+			a, _ := NativePairSlotDigest(p.SlotA)
+			b, _ := NativePairSlotDigest(p.SlotB)
+			c := nativePairClaims(f, e2ee.OwnerNativePairConsentPreview, strings.Repeat("e", 32))
+			c.Consent = &e2ee.NativePairConsentClaims{PairID: p.PairID, ExpectedRevision: p.ExpectedRevision, SlotADigest: a, SlotBDigest: b, PeerExpiresAt: p.PeerExpiresAt}
+			intent, err := e2ee.SignOwnerNativePair(f.f.owner, c)
+			if err != nil {
+				t.Fatal(err)
+			}
+			q := NativePairConsentPrepare{Format: NativePairFormat, Context: nativePairContext(c), SessionToken: bytes.Repeat([]byte{7}, MaxSessionTokenBytes), OwnerProof: intent}
+			raw, err := SealClientRequest(f.f.device, f.f.hub, q)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ch := NativePairPlanChallenge{Format: NativePairFormat, RequestID: c.RequestID, RequestPacketDigest: NativePairPacketDigest(raw), Plan: p, ObservedAt: p.PreparedAt}
+			if got := ValidateNativePairPlanTarget(q, raw, ch, proof, f.f.hub, f.f.now); (got == nil) != tc.allowed {
+				t.Fatalf("stable bootstrap target allowed=%v err=%v", tc.allowed, got)
+			}
+		})
+	}
+}
+
+func TestNativePairRevokeCanonicalTargetAndFreshLogin(t *testing.T) {
+	f := nativePairTestFixture(t)
+	c := nativePairClaims(f, e2ee.OwnerNativePairRevoke, strings.Repeat("f", 32))
+	c.Revoke = &e2ee.NativePairRevokeClaims{PairID: f.plan.PairID, ExpectedRevision: f.plan.ExpectedRevision}
+	d, err := NativePairRevokeTargetDigest(c.Scope, c.Revoke.PairID, c.Revoke.ExpectedRevision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.Revoke.PairTargetDigest = d
+	if ValidateNativePairRevokeTarget(c) != nil {
+		t.Fatal("valid revoke target rejected")
+	}
+	proof, err := e2ee.SignOwnerNativePair(f.f.owner, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	q := NativePairRevoke{Format: NativePairFormat, Context: nativePairContext(c), SessionToken: bytes.Repeat([]byte{7}, MaxSessionTokenBytes), OwnerProof: proof}
+	raw, err := SealClientRequest(f.f.device, f.f.hub, q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, r, _ := NewClientRoute(f.f.hub, q, f.f.device.Public())
+	pub := f.f.device.Public()
+	var opened NativePairRevoke
+	if OpenRequestAt(f.f.hubPrivate, &pub, b, r, raw, &opened, f.f.now) != nil {
+		t.Fatal("real revoke PQ request rejected")
+	}
+	for _, edit := range []func(*e2ee.OwnerNativePairClaims){
+		func(c *e2ee.OwnerNativePairClaims) { c.Revoke.ExpectedRevision++ },
+		func(c *e2ee.OwnerNativePairClaims) { c.Revoke.PairID = strings.Repeat("0", 32) },
+		func(c *e2ee.OwnerNativePairClaims) { c.Scope.Actor.AccountSessionID = "synthetic-replacement-login" },
+	} {
+		bad := c
+		v := *c.Revoke
+		bad.Revoke = &v
+		edit(&bad)
+		if ValidateNativePairRevokeTarget(bad) == nil {
+			t.Fatal("revoke reused another exact target")
+		}
+	}
+	fresh := c
+	v := *c.Revoke
+	fresh.Revoke = &v
+	fresh.Scope.Actor.AccountSessionID = "synthetic-replacement-login"
+	fresh.Scope.Actor.AccountSessionExpiresAt = formatUTC(f.f.now.Add(30 * time.Minute))
+	fresh.Revoke.PairTargetDigest, err = NativePairRevokeTargetDigest(fresh.Scope, v.PairID, v.ExpectedRevision)
+	if err != nil || fresh.Revoke.PairTargetDigest == d || ValidateNativePairRevokeTarget(fresh) != nil {
+		t.Fatal("fresh login did not receive its own exact target")
+	}
+	fresh.Revoke.PairTargetDigest = strings.Repeat("0", 64)
+	badProof, err := e2ee.SignOwnerNativePair(f.f.owner, fresh)
+	if err != nil {
+		t.Fatal(err)
+	}
+	q.Context = nativePairContext(fresh)
+	q.OwnerProof = badProof
+	if _, err = SealClientRequest(f.f.device, f.f.hub, q); err == nil {
+		t.Fatal("arbitrary signed revoke target reached transport")
 	}
 }

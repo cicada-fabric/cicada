@@ -26,6 +26,9 @@ func syntheticNativePairClaims(t *testing.T) (*Identity, []OwnerNativePairClaims
 	base := OwnerNativePairClaims{Version: 1, Scope: scope, RequestID: strings.Repeat("1", 32), Nonce: strings.Repeat("2", 64), IssuedAt: stamp(0), ExpiresAt: stamp(time.Minute)}
 	preview := base
 	preview.Purpose = OwnerNativePairBootstrapPreview
+	preview.Scope.NodeControlBindingVersion = 0
+	preview.Scope.CredentialCommitment = ""
+	preview.Scope.NodeTupleDigest = ""
 	preview.Bootstrap = &NativePairBootstrapClaims{GroupLabel: "Synthetic bounded pair", Runtime: "codex", SlotCount: 2, Policy: NativePairFixedPeerPolicy()}
 	commit := base
 	commit.Purpose = OwnerNativePairBootstrapCommit
@@ -180,5 +183,33 @@ func TestOwnerNativePairProofRejectsMalformedAuthority(t *testing.T) {
 				t.Fatal("invalid authority was signed")
 			}
 		})
+	}
+}
+
+func TestOwnerNativePairPreviewCannotBorrowStoreFields(t *testing.T) {
+	owner, all, _ := syntheticNativePairClaims(t)
+	full := all[1].Scope
+	for mask := 1; mask < 8; mask++ {
+		c := all[0]
+		if mask&1 != 0 {
+			c.Scope.NodeControlBindingVersion = full.NodeControlBindingVersion
+		}
+		if mask&2 != 0 {
+			c.Scope.CredentialCommitment = full.CredentialCommitment
+		}
+		if mask&4 != 0 {
+			c.Scope.NodeTupleDigest = full.NodeTupleDigest
+		}
+		if _, err := SignOwnerNativePair(owner, c); err == nil {
+			t.Fatalf("preview accepted mixed/full Store fields mask=%d", mask)
+		}
+	}
+	for _, c := range all[1:] {
+		c.Scope.NodeControlBindingVersion = 0
+		c.Scope.CredentialCommitment = ""
+		c.Scope.NodeTupleDigest = ""
+		if _, err := SignOwnerNativePair(owner, c); err == nil {
+			t.Fatal("non-preview proof borrowed empty scope", c.Purpose)
+		}
 	}
 }

@@ -1,6 +1,6 @@
 # N3 bounded native Thread pair: contract proposal
 
-**A1 FREEZE CANDIDATE — wire/crypto only; no service permission is enabled.**
+**A1 CONTRACT WITH A2 HELPER CORRECTIONS — wire/crypto only; no service permission is enabled.**
 Baseline: `0fbd09105e73e1e6e2488dafcb0b7b14e8264faa`, 2026-10-17.
 Proposed separate contract identifier: `native-pair-v1`. Names and limits below
 become implementation requirements only after review. This is the proposed
@@ -388,7 +388,8 @@ App keeps the original typed DTO and sealed packet together in its existing
 private outbox. After `OpenClientResponse`, it must call
 `ValidateNativePairBootstrapTarget(originalDTO, originalPacket, challenge, hub, now)`
 before displaying/signing bootstrap completion. This verifies full original
-scope equality, original digest, exact label/policy, server IDs and 5/10/60 minute
+known Actor/Node equality, completed server tuple/digest, original packet digest,
+exact label/policy, server IDs and 5/10/60 minute
 bounds. Generate a new completion request ID and nonce; never sign the prepare
 request ID as completion. `ValidateNativePairBootstrapChallenge` is the
 standalone structural/pinned-Hub check; it does not replace this local target
@@ -427,9 +428,39 @@ failed evidence; they are not counted as acceptance passes.
 The carrier measurement uses a synthetic metadata wrapper. A2 must measure the
 actual `SameGroupSealedV1PeerKey` and delivery-authorization DTOs with complete
 evidence before accepting the production carrier bound. A1 does not establish
-service availability. Its three reviewed A2 prerequisites are documented in
-[the A1 validation record](hub-native-pair-a1-validation.md); App must wait for
-those exact helper corrections before relying on first bootstrap or revoke.
+service availability. The historical A1 helper gaps are documented in
+[the A1 validation record](hub-native-pair-a1-validation.md). The following A2
+wire correction closes those gaps before server availability is implemented.
+
+Only `NATIVE_PAIR_BOOTSTRAP_PREVIEW` requires `NodeControlBindingVersion=0`,
+`CredentialCommitment=""`, `NodeTupleDigest=""`. All three must be empty together;
+full or mixed partial server fields are rejected for that purpose. The original
+complete Actor and N3 Node binding still remain signed and validated. The
+purpose-specific `ValidateNativePairBootstrapPreviewScope` accepts only this
+shape; there is no caller-selected allow-partial flag. Commit, consent preview,
+slot consent, reject, revoke and peer evidence always require complete scope.
+
+Prepare derives the three fields after current Store Guard. App authenticates
+the pinned Hub response, checks the original complete Actor/Node field equality,
+then recomputes NodeTupleDigest over the supplied full tuple before Owner reviews
+and signs commit. App cannot derive CredentialCommitment without the raw Node
+credential and must not guess it. Before describe/Join policy acceptance, Node
+independently checks the signed full tuple against its actual local credential
+and control binding.
+
+Plan target and peer evidence share full stable bootstrap/Plan scope equality;
+only Actor account-session ID and expiry may differ for a new explicit login.
+Origin, account, Owner/App public keys, epochs and both Node/control key tuples
+cannot drift under that exception.
+
+Revoke uses `NativePairRevokeTargetDigest(scope, pairID, expectedRevision)` with
+`cicada/native-pair/revoke-target/v1` plus NUL. Canonical JSON field order is
+`scope`, `pair_id`, `expected_revision`. Dynamic budget, observation and heartbeat
+fields are absent. `ValidateNativePairRevokeTarget` and request transport reject
+an arbitrary target digest, even with an otherwise valid Owner signature. A new
+login uses its fresh complete scope, request ID, nonce and explicit Owner proof;
+it cannot execute old consent or borrow its target. These helpers do not replace
+current Store authorization.
 
 ## Reuse and file ownership
 

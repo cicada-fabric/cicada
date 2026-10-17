@@ -140,6 +140,26 @@ func nativePairToken(s string) bool {
 }
 
 func ValidateNativePairScope(s e2ee.OwnerNativePairScope, hub HubIdentity) error {
+	if validateNativePairKnownScope(s, hub) != nil || !isHex(s.CredentialCommitment, 32) || !nativePairPositive(s.NodeControlBindingVersion) {
+		return ErrInvalid
+	}
+	digest, err := NativePairNodeTupleDigest(s)
+	if err != nil || digest != s.NodeTupleDigest {
+		return ErrInvalid
+	}
+	return nil
+}
+
+// Only BootstrapPreview has this exact all-empty Store-field shape. Other
+// purpose validators always require ValidateNativePairScope.
+func ValidateNativePairBootstrapPreviewScope(s e2ee.OwnerNativePairScope, hub HubIdentity) error {
+	if validateNativePairKnownScope(s, hub) != nil || s.NodeControlBindingVersion != 0 || s.CredentialCommitment != "" || s.NodeTupleDigest != "" {
+		return ErrInvalid
+	}
+	return nil
+}
+
+func validateNativePairKnownScope(s e2ee.OwnerNativePairScope, hub HubIdentity) error {
 	if ValidateAppNodeScope(s.Actor, hub) != nil || s.Actor.HeadVersion != 0 || len(s.Actor.Origin) > 512 || !utf8.ValidString(s.Node.NodeName) || len(s.Node.NodeName) > 128 || strings.ContainsAny(s.Node.NodeName, "\x00\r\n") {
 		return ErrInvalid
 	}
@@ -154,17 +174,13 @@ func ValidateNativePairScope(s e2ee.OwnerNativePairScope, hub HubIdentity) error
 		!nativePairToken(n.OwnerBindingID) || !nativePairToken(n.NodeID) || n.NodeID == "control-local" || n.NodeID == "worker-local" ||
 		e2ee.ValidatePublicIdentity(n.NodePublic) != nil || e2ee.ValidatePublicIdentity(n.HubNodeControlPublic) != nil || n.NodePublic.ID == n.HubNodeControlPublic.ID ||
 		n.NodeKeyFingerprint != nodewire.IdentityFingerprint(n.NodePublic) || n.HubNodeControlFingerprint != nodewire.IdentityFingerprint(n.HubNodeControlPublic) ||
-		!isHex(s.CredentialCommitment, 32) || !nativePairPositive(s.NodeControlBindingVersion) || !nativePairToken(n.ApprovedRequestID) || !isHex(n.ApprovedCandidateDigest, 32) || validateCanonicalTime(n.ApprovedAt) != nil {
+		!nativePairToken(n.ApprovedRequestID) || !isHex(n.ApprovedCandidateDigest, 32) || validateCanonicalTime(n.ApprovedAt) != nil {
 		return ErrInvalid
 	}
 	for _, v := range []uint64{n.BindingVersion, n.CredentialVersion, n.NodeKeyEpoch, n.NodeKeyVersion, n.HubNodeControlKeyVersion, n.ApprovedRequestVersion} {
 		if !nativePairPositive(v) {
 			return ErrInvalid
 		}
-	}
-	digest, err := NativePairNodeTupleDigest(s)
-	if err != nil || digest != s.NodeTupleDigest {
-		return ErrInvalid
 	}
 	return nil
 }
@@ -273,10 +289,7 @@ func VerifyNativePairPeerEvidence(e NativePairPeerEvidence, hub HubIdentity, tru
 	if err != nil || b.Bootstrap.PairID != p.PairID || b.Bootstrap.NetworkID != p.NetworkID || b.Bootstrap.GroupID != p.GroupID || b.Bootstrap.PeerExpiresAt != p.PeerExpiresAt || b.Bootstrap.Policy != p.Policy || NativePairProofDigest(e.BootstrapOwnerProof) != p.BootstrapProofDigest {
 		return ErrInvalid
 	}
-	bs, ps := b.Scope, p.Scope
-	bs.Actor.AccountSessionID, ps.Actor.AccountSessionID = "", ""
-	bs.Actor.AccountSessionExpiresAt, ps.Actor.AccountSessionExpiresAt = "", ""
-	if !reflect.DeepEqual(bs, ps) {
+	if !nativePairSameStableScope(b.Scope, p.Scope) {
 		return ErrInvalid
 	}
 	for i, rawProof := range [][]byte{e.SlotAOwnerConsent, e.SlotBOwnerConsent} {
@@ -314,6 +327,36 @@ func ValidateNativePairConsentTarget(c e2ee.OwnerNativePairClaims, p NativePairC
 	}
 	if ae != nil || be != nil || v.PairID != p.PairID || v.ExpectedRevision != p.ExpectedRevision || v.PlanID != p.PlanID || v.PlanDigest != p.Digest || v.SlotADigest != a || v.SlotBDigest != b ||
 		v.SlotGeneration != s.Generation || v.SlotAttemptID != s.AttemptID || v.NativeSessionID != s.NativeSessionID || v.PeerNativeSessionID != other.NativeSessionID || v.PlanExpiresAt != p.ExpiresAt || v.PeerExpiresAt != p.PeerExpiresAt {
+		return ErrInvalid
+	}
+	return nil
+}
+
+// Full immutable scope, except the two explicitly replaceable administration
+// session fields. Used both before consent and in independent peer verification.
+func nativePairSameStableScope(a, b e2ee.OwnerNativePairScope) bool {
+	a.Actor.AccountSessionID, b.Actor.AccountSessionID = "", ""
+	a.Actor.AccountSessionExpiresAt, b.Actor.AccountSessionExpiresAt = "", ""
+	return reflect.DeepEqual(a, b)
+}
+
+func NativePairRevokeTargetDigest(scope e2ee.OwnerNativePairScope, pairID string, expectedRevision uint64) (string, error) {
+	if !isHex(pairID, RequestIDBytes) || !nativePairPositive(expectedRevision) {
+		return "", ErrInvalid
+	}
+	return nativePairDigest("cicada/native-pair/revoke-target/v1\x00", struct {
+		Scope            e2ee.OwnerNativePairScope `json:"scope"`
+		PairID           string                    `json:"pair_id"`
+		ExpectedRevision uint64                    `json:"expected_revision"`
+	}{scope, pairID, expectedRevision})
+}
+
+func ValidateNativePairRevokeTarget(c e2ee.OwnerNativePairClaims) error {
+	if c.Purpose != e2ee.OwnerNativePairRevoke || e2ee.ValidateOwnerNativePairClaims(c, time.Time{}) != nil {
+		return ErrInvalid
+	}
+	d, err := NativePairRevokeTargetDigest(c.Scope, c.Revoke.PairID, c.Revoke.ExpectedRevision)
+	if err != nil || c.Revoke.PairTargetDigest != d {
 		return ErrInvalid
 	}
 	return nil

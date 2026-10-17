@@ -65,6 +65,14 @@ def check():
     for helper in ("ValidateNativePairBootstrapTarget", "ValidateNativePairPlanTarget"):
         assert helper in targets and helper in prose
     assert manifest["mandatory_independent_owner_pin"] and manifest["mandatory_node_policy_marker"]
+    assert manifest["bootstrap_preview_store_fields"] == "ALL_EMPTY_ONLY"
+    assert manifest["other_purposes_require_full_scope"]
+    assert manifest["stable_scope_replaceable_fields"] == ["actor.account_session_id", "actor.account_session_expires_at"]
+    assert manifest["revoke_target_fields"] == ["scope", "pair_id", "expected_revision"]
+    assert "ValidateNativePairBootstrapPreviewScope" in validators + packets
+    assert "nativePairSameStableScope(bp.Scope, c.Scope)" in targets
+    assert "nativePairSameStableScope(b.Scope, p.Scope)" in validators
+    assert "ValidateNativePairRevokeTarget(p.Claims)" in packets
     assert not any(manifest[k] for k in ("recovery_requires_live_administration", "absent_settles_mutation",
         "resets_budgets_on_retry_restart_or_reopen", "runtime_executed_in_a1"))
     for path, digest in manifest["frozen_artifacts"].items():
