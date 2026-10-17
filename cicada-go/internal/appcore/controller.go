@@ -56,6 +56,17 @@ type nativeController struct {
 	owner                     *appkeys.Identity
 	profiles                  []localProfile
 	profileRecoveryRequired   bool
+	pairVersions              pairRecordVersions
+	pair                      pairAuthorityState
+	pairOriginal              *pairRequestRecord
+	pairOriginalResponse      *pairResponseRecord
+	pairRecovery              *pairRequestRecord
+	pairRecoveryResponse      *pairResponseRecord
+	pairReview                *pairReviewRecord
+	pairCurrent               *wire.NativePairResult
+	pairAvailable             bool
+	pairDiscoveryTried        bool
+	pairError                 string
 	session                   *wire.SessionContext
 	sessionNeedsCheck         bool
 	sessionStored             bool
@@ -106,7 +117,7 @@ func (c *nativeController) Snapshot() Snapshot {
 	if view.Account.SessionExpiresAt != "" && !c.cfg.Now().UTC().Before(parseExpiry(view.Account.SessionExpiresAt)) {
 		blocked := false
 		for _, action := range view.AvailableActions {
-			if action == ActionRetry || action == ActionRecover {
+			if action == ActionRetry || action == ActionRecover || action == ActionRecoverPair {
 				blocked = true
 			}
 		}
@@ -136,6 +147,7 @@ func (c *nativeController) Snapshot() Snapshot {
 		}
 	}
 	expireNodeView(&view, c.cfg.Now().UTC())
+	expirePairView(&view, c.cfg.Now().UTC())
 	return view
 }
 
@@ -184,7 +196,7 @@ func (c *nativeController) Dispatch(ctx context.Context, action Action) (dispatc
 	stop := context.AfterFunc(c.lifetime, cancel)
 	defer func() { stop(); cancel() }()
 	defer func() {
-		if dispatchErr == nil && !nodeActionKind(action.Kind) {
+		if dispatchErr == nil && !nodeActionKind(action.Kind) && !pairActionKind(action.Kind) && action.Kind != ActionExportOwnerPublic {
 			c.initializeNode(operationCtx)
 		}
 	}()
@@ -198,6 +210,22 @@ func (c *nativeController) Dispatch(ctx context.Context, action Action) (dispatc
 	}
 
 	switch action.Kind {
+	case ActionPreparePair:
+		return c.preparePair(operationCtx, action.Pair)
+	case ActionCompletePair:
+		return c.completePair(operationCtx, action.Pair)
+	case ActionRefreshPair:
+		return c.refreshPair(operationCtx)
+	case ActionPreparePairConsent:
+		return c.preparePairConsent(operationCtx, action.Pair)
+	case ActionApprovePairSlot:
+		return c.approvePairSlot(operationCtx, action.Pair)
+	case ActionRejectPairSlot:
+		return c.rejectPairSlot(operationCtx, action.Pair)
+	case ActionRevokePair:
+		return c.revokePair(operationCtx, action.Pair)
+	case ActionRecoverPair:
+		return c.recoverPair(operationCtx)
 	case ActionPreviewNode:
 		return c.previewNode(operationCtx, action.NodeCode, false)
 	case ActionReauthorizeNodeStatus:
@@ -253,6 +281,8 @@ func (c *nativeController) Dispatch(ctx context.Context, action Action) (dispatc
 		return c.generateOwner()
 	case ActionImportOwner:
 		return c.importOwner(operationCtx, action)
+	case ActionExportOwnerPublic:
+		return c.exportOwnerPublic(action.PublicExportPath)
 	case ActionClaimPrepare:
 		return c.claimPrepare(operationCtx)
 	case ActionClaimComplete:
@@ -457,6 +487,9 @@ func (c *nativeController) connect(ctx context.Context, action Action) error {
 	}
 	if err := c.loadCurrentPendingResponse(); err != nil {
 		return c.failStorage("APP_PENDING_RESPONSE_INVALID", err)
+	}
+	if err := c.loadPairState(); err != nil {
+		return c.failPairStorage(err)
 	}
 	c.requireSessionRecheck()
 	c.publish()

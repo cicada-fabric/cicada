@@ -52,8 +52,34 @@ type openFilenameW struct {
 var (
 	commonDialog      = windows.NewLazySystemDLL("comdlg32.dll")
 	getOpenFileName   = commonDialog.NewProc("GetOpenFileNameW")
+	getSaveFileName   = commonDialog.NewProc("GetSaveFileNameW")
 	commonDialogError = commonDialog.NewProc("CommDlgExtendedError")
 )
+
+func chooseOwnerPublicDestination(title string) (string, error) {
+	filter := append(utf16.Encode([]rune("Public JSON (*.json)\x00*.json\x00")), 0)
+	titleUTF16, err := syscall.UTF16PtrFromString(title)
+	if err != nil {
+		return "", errors.New("file picker configuration failed")
+	}
+	pathBuffer := make([]uint16, 32768)
+	copy(pathBuffer, utf16.Encode([]rune("owner-public.json")))
+	of := openFilenameW{structSize: uint32(unsafe.Sizeof(openFilenameW{})), filter: &filter[0], filterIndex: 1, file: &pathBuffer[0], maxFile: uint32(len(pathBuffer)), title: titleUTF16,
+		flags: ofnNoChangeDir | ofnPathMustExist | ofnNoDereferenceLink | ofnDontAddToRecent | ofnExplorer}
+	result, _, _ := getSaveFileName.Call(uintptr(unsafe.Pointer(&of)))
+	if result == 0 {
+		code, _, _ := commonDialogError.Call()
+		if code == 0 {
+			return "", errOwnerImportCancelled
+		}
+		return "", errors.New("native file picker failed")
+	}
+	path := syscall.UTF16ToString(pathBuffer)
+	if path == "" || !filepath.IsAbs(path) {
+		return "", errors.New("native file picker returned an invalid path")
+	}
+	return filepath.Clean(path), nil
+}
 
 func choosePEMFile(title string) (string, error) {
 	filter := append(utf16.Encode([]rune("PEM files (*.pem)\x00*.pem\x00All files (*.*)\x00*.*\x00")), 0)

@@ -90,6 +90,8 @@ type AccountSnapshot struct {
 	DeviceID             string       `json:"device_id,omitempty"`
 	RootState            RootState    `json:"root_state"`
 	OwnerFingerprint     string       `json:"owner_fingerprint,omitempty"`
+	LocalOwnerKeyID      string       `json:"local_owner_key_id,omitempty"`
+	OwnerPeerFingerprint string       `json:"owner_peer_fingerprint,omitempty"`
 	LocalOwnerKeyPresent bool         `json:"local_owner_key_present"`
 	SessionExpiresAt     string       `json:"session_expires_at,omitempty"`
 }
@@ -134,6 +136,7 @@ type Snapshot struct {
 	Setup            SetupSnapshot         `json:"setup"`
 	Authorization    AuthorizationSnapshot `json:"authorization"`
 	Node             NodeSetupSnapshot     `json:"node"`
+	Pair             PairSetupSnapshot     `json:"pair"`
 }
 
 type SetupSnapshot struct {
@@ -182,6 +185,7 @@ const (
 	ActionSetupAccount          ActionKind = "SET_UP_ACCOUNT"
 	ActionGenerateOwner         ActionKind = "GENERATE_OWNER_IDENTITY"
 	ActionImportOwner           ActionKind = "IMPORT_OWNER_IDENTITY"
+	ActionExportOwnerPublic     ActionKind = "EXPORT_OWNER_PUBLIC"
 	ActionClaimPrepare          ActionKind = "CLAIM_PREPARE"
 	ActionClaimComplete         ActionKind = "CLAIM_COMPLETE"
 	ActionLoginPrepare          ActionKind = "LOGIN_PREPARE"
@@ -197,6 +201,7 @@ const (
 // deliberately omitted from its String/GoString representations.
 type Action struct {
 	Kind ActionKind
+	Pair PairAction
 
 	// Exactly one connection material field may be set for ActionConnect.
 	ConnectionCard string
@@ -214,9 +219,10 @@ type Action struct {
 	// Nil preserves the existing explicitly requested refresh/recovery flow.
 	AutoNodeStatus *NodeStatusTarget
 
-	Username    string
-	Password    string
-	OwnerImport *OwnerImport
+	Username         string
+	Password         string
+	OwnerImport      *OwnerImport
+	PublicExportPath string
 
 	CanvasObjectID string
 	ViewportX      float32

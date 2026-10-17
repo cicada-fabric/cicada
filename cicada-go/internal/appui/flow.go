@@ -38,6 +38,9 @@ func Flow(s appcore.Snapshot) SetupFlow {
 		}
 		return flow
 	}
+	if s.Pair.Pending && has(appcore.ActionRecoverPair) {
+		return SetupFlow{Stage: "pair-recovery"}
+	}
 	if s.Node.Binding != nil && has(appcore.ActionLogin) {
 		return SetupFlow{Stage: "login", Primary: appcore.ActionLogin, Username: true, Password: true}
 	}
@@ -89,6 +92,9 @@ func Flow(s appcore.Snapshot) SetupFlow {
 	}
 	if has(appcore.ActionLogout) {
 		flow.Secondary = []appcore.ActionKind{appcore.ActionLogout}
+	}
+	if has(appcore.ActionExportOwnerPublic) {
+		flow.Secondary = append(flow.Secondary, appcore.ActionExportOwnerPublic)
 	}
 	return flow
 }

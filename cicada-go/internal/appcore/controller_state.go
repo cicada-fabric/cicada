@@ -347,6 +347,9 @@ func (c *nativeController) applyResponse(operation string, value any, request, r
 }
 
 func (c *nativeController) clearSession() {
+	c.pair.View.Current, c.pair.View.AdministrativePermission = false, false
+	c.pair.View.StateReviewID = ""
+	c.pairCurrent = nil
 	c.nodeChecked, c.nodeContextChecked, c.nodeReadRequestID = false, false, ""
 	if c.session != nil {
 		clear(c.session.SessionToken)
@@ -357,6 +360,7 @@ func (c *nativeController) clearSession() {
 }
 
 func (c *nativeController) clearRuntimeSecrets() {
+	c.clearPairRuntime()
 	c.clearNodeRuntime()
 	if c.state.Pending != nil {
 		clear(c.state.Pending.Request)
@@ -454,6 +458,10 @@ func (c *nativeController) publish() {
 			view.Account.SessionExpiresAt = c.session.ExpiresAt
 		}
 		view.Account.LocalOwnerKeyPresent = c.localOwnerMatchesHub()
+		if view.Account.LocalOwnerKeyPresent {
+			view.Account.LocalOwnerKeyID = c.owner.Public().ID
+			view.Account.OwnerPeerFingerprint, _ = ownerPeerKeyFingerprint(c.owner.Public())
+		}
 		if c.state.Username != "" {
 			view.Account.Username = c.state.Username
 		}
@@ -491,8 +499,10 @@ func (c *nativeController) publish() {
 	view.AvailableActions = c.availableActions()
 	c.populateSetup(&view)
 	c.populateNode(&view)
+	c.populatePair(&view)
 	if !c.profileRecoveryRequired {
 		view.AvailableActions = append(view.AvailableActions, c.nodeActions()...)
+		view.AvailableActions = append(view.AvailableActions, c.pairActions()...)
 	}
 	if c.storageFault {
 		view.Phase = PhaseError
@@ -538,6 +548,9 @@ func (c *nativeController) availableActions() []ActionKind {
 			actions = append(actions, ActionGenerateOwner)
 		}
 		actions = append(actions, ActionImportOwner)
+	}
+	if c.canExportOwnerPublic() {
+		actions = append(actions, ActionExportOwnerPublic)
 	}
 	if c.state.Pending != nil && len(c.state.Pending.Response) == 0 {
 		if c.state.Recovery == nil {

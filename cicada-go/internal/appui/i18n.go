@@ -83,6 +83,10 @@ const (
 	msgAccountID                 messageID = "account.id"
 	msgOwnerID                   messageID = "account.owner_id"
 	msgOwnerFingerprint          messageID = "account.owner_fingerprint"
+	msgOwnerKeyID                messageID = "account.owner_key_id"
+	msgOwnerPeerFingerprint      messageID = "account.owner_peer_fingerprint"
+	msgExportOwnerPublic         messageID = "account.export_owner_public"
+	msgExportOwnerPublicFailed   messageID = "account.export_owner_public_failed"
 	msgAccountState              messageID = "account.state"
 	msgRootState                 messageID = "root.state"
 	msgPrepareClaim              messageID = "account.prepare_claim"
@@ -193,6 +197,40 @@ const (
 	msgProfileRecoveryBody       messageID = "setup.profile_recovery_body"
 	msgRetrySavedConnection      messageID = "connection.retry_saved_connection"
 	msgProfileInUse              messageID = "error.profile_in_use"
+	msgPairTitle                 messageID = "pair.title"
+	msgPairIntro                 messageID = "pair.intro"
+	msgPairLabel                 messageID = "pair.label"
+	msgPairPrepare               messageID = "pair.prepare"
+	msgPairBootstrapReview       messageID = "pair.bootstrap_review"
+	msgPairBootstrapConsent      messageID = "pair.bootstrap_consent"
+	msgPairComplete              messageID = "pair.complete"
+	msgPairID                    messageID = "pair.id"
+	msgPairNode                  messageID = "pair.node"
+	msgPairJoinUntil             messageID = "pair.join_until"
+	msgPairUntil                 messageID = "pair.until"
+	msgPairRefresh               messageID = "pair.refresh"
+	msgPairReviewSlots           messageID = "pair.review_slots"
+	msgPairSlot                  messageID = "pair.slot"
+	msgPairSID                   messageID = "pair.sid"
+	msgPairFingerprint           messageID = "pair.fingerprint"
+	msgPairSlotConsent           messageID = "pair.slot_consent"
+	msgPairApproveSlot           messageID = "pair.approve_slot"
+	msgPairRejectSlot            messageID = "pair.reject_slot"
+	msgPairRecorded              messageID = "pair.recorded"
+	msgPairRevokeConsent         messageID = "pair.revoke_consent"
+	msgPairRevoke                messageID = "pair.revoke"
+	msgPairSaved                 messageID = "pair.saved"
+	msgPairPolicy                messageID = "pair.policy"
+	msgPairPrepared              messageID = "pair.state.prepared"
+	msgPairWaitingJoin           messageID = "pair.state.waiting_join"
+	msgPairWaitingConsent        messageID = "pair.state.waiting_consent"
+	msgPairActive                messageID = "pair.state.active"
+	msgPairExpired               messageID = "pair.state.expired"
+	msgPairRevoked               messageID = "pair.state.revoked"
+	msgPairUnavailable           messageID = "pair.error.unavailable"
+	msgPairUnknown               messageID = "pair.error.unknown"
+	msgPairTargetChanged         messageID = "pair.error.target_changed"
+	msgPairFenced                messageID = "pair.error.fenced"
 )
 
 const (
@@ -205,6 +243,44 @@ const (
 
 var catalog = map[Locale]map[messageID]string{
 	English: {
+		msgOwnerKeyID:                "Local Owner key ID",
+		msgOwnerPeerFingerprint:      "Local Owner fingerprint for Node trust",
+		msgExportOwnerPublic:         "Save Owner public key JSON to a new file",
+		msgExportOwnerPublicFailed:   "The public key could not be saved. Choose a new file in a writable folder; existing files are preserved.",
+		msgPairTitle:                 "Two Codex conversations",
+		msgPairIntro:                 "Prepare a private conversation between two actual Codex sessions on this Node, then review and approve each session.",
+		msgPairLabel:                 "Conversation name",
+		msgPairPrepare:               "Prepare conversation",
+		msgPairBootstrapReview:       "Review the two empty slots",
+		msgPairBootstrapConsent:      "Create these two empty slots on this Node. Each actual session still needs my separate approval.",
+		msgPairComplete:              "Create reviewed slots",
+		msgPairID:                    "Conversation ID",
+		msgPairNode:                  "Node",
+		msgPairJoinUntil:             "Sessions must join by",
+		msgPairUntil:                 "Permission ends",
+		msgPairRefresh:               "Check conversation",
+		msgPairReviewSlots:           "Review both actual sessions",
+		msgPairSlot:                  "Slot",
+		msgPairSID:                   "Actual session",
+		msgPairFingerprint:           "Candidate key fingerprint",
+		msgPairSlotConsent:           "Approve this exact session and key for the displayed peer and limits.",
+		msgPairApproveSlot:           "Approve this session",
+		msgPairRejectSlot:            "Reject this joined session",
+		msgPairRecorded:              "Approval recorded; permission starts only after both approvals.",
+		msgPairRevokeConsent:         "End this pair's permissions for both sessions.",
+		msgPairRevoke:                "Revoke this conversation",
+		msgPairSaved:                 "Saved observation. Check again for current state.",
+		msgPairPolicy:                "Only these two sessions: up to four questions and four replies, one outstanding question, at most 8 KiB per message. No shared history.",
+		msgPairPrepared:              "Empty slots awaiting approval",
+		msgPairWaitingJoin:           "Waiting for two actual sessions to join",
+		msgPairWaitingConsent:        "Waiting for separate session approvals",
+		msgPairActive:                "Limited conversation permission is active",
+		msgPairExpired:               "Conversation permission has ended",
+		msgPairRevoked:               "Conversation permission was revoked",
+		msgPairUnavailable:           "This Hub does not currently provide the conversation setup service. Saved requests are retained.",
+		msgPairUnknown:               "The saved request is not confirmed. Recover it before starting another operation.",
+		msgPairTargetChanged:         "The reviewed target changed or expired. Check the conversation and review it again.",
+		msgPairFenced:                "The request was safely rejected without its proposed change. Check the conversation before trying again.",
 		msgProfileRecoveryTitle:      "Saved connection unavailable",
 		msgProfileRecoveryBody:       "Retry opening your saved connection before continuing.",
 		msgRetrySavedConnection:      "Retry saved connection",
@@ -394,6 +470,44 @@ var catalog = map[Locale]map[messageID]string{
 		msgBackToActivation:          "Back to activation",
 	},
 	Chinese: {
+		msgOwnerKeyID:                "本地 Owner 完整密钥 ID",
+		msgOwnerPeerFingerprint:      "用于 Node 信任的本地 Owner 完整指纹",
+		msgExportOwnerPublic:         "将 Owner 公钥 JSON 保存为新文件",
+		msgExportOwnerPublicFailed:   "公钥保存失败。请在可写目录选择新文件名；已有文件会保留。",
+		msgPairTitle:                 "两个 Codex 会话",
+		msgPairIntro:                 "在此 Node 上准备两个真实 Codex 会话间的私有对话，再分别审核和同意每个会话。",
+		msgPairLabel:                 "对话名称",
+		msgPairPrepare:               "准备对话",
+		msgPairBootstrapReview:       "审核两个空席位",
+		msgPairBootstrapConsent:      "在此 Node 创建这两个空席位。真实会话加入后，仍须由我分别同意。",
+		msgPairComplete:              "创建已审核席位",
+		msgPairID:                    "对话编号",
+		msgPairNode:                  "Node",
+		msgPairJoinUntil:             "会话加入截止",
+		msgPairUntil:                 "权限截止",
+		msgPairRefresh:               "检查对话状态",
+		msgPairReviewSlots:           "审核两个真实会话",
+		msgPairSlot:                  "席位",
+		msgPairSID:                   "真实会话",
+		msgPairFingerprint:           "候选密钥指纹",
+		msgPairSlotConsent:           "同意此确切会话和密钥在所示对象与限额内对话。",
+		msgPairApproveSlot:           "同意此会话",
+		msgPairRejectSlot:            "拒绝此已加入会话",
+		msgPairRecorded:              "已记录同意；两个席位均同意后，权限才会生效。",
+		msgPairRevokeConsent:         "结束这对会话双方的权限。",
+		msgPairRevoke:                "撤销此对话权限",
+		msgPairSaved:                 "这是已保存的观察记录，请重新检查当前状态。",
+		msgPairPolicy:                "仅限这两个会话：最多四次提问和四次回复，同一时间一个未完成提问，每条消息至多 8 KiB，不共享历史。",
+		msgPairPrepared:              "空席位等待确认",
+		msgPairWaitingJoin:           "等待两个真实会话加入",
+		msgPairWaitingConsent:        "等待分别同意两个会话",
+		msgPairActive:                "有限对话权限已生效",
+		msgPairExpired:               "对话权限已结束",
+		msgPairRevoked:               "对话权限已撤销",
+		msgPairUnavailable:           "此 Hub 当前未提供对话设置服务，已保存请求会继续保留。",
+		msgPairUnknown:               "已保存请求的结果尚未确认，请先恢复后再开始其他操作。",
+		msgPairTargetChanged:         "审核对象已变化或过期，请检查对话后重新审核。",
+		msgPairFenced:                "请求已被安全拒绝，未执行该变更。重试前请检查当前对话。",
 		msgProfileRecoveryTitle:      "暂时无法打开已保存连接",
 		msgProfileRecoveryBody:       "请重试打开已保存连接后继续。",
 		msgRetrySavedConnection:      "重试已保存连接",

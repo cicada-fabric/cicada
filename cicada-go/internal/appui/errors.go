@@ -5,6 +5,18 @@ package appui
 func ErrorText(locale Locale, code string) string {
 	id := msgRequestFailed
 	switch code {
+	case "APP_OWNER_PUBLIC_EXPORT_FAILED":
+		id = msgExportOwnerPublicFailed
+	case "APP_PAIR_UNAVAILABLE":
+		id = msgPairUnavailable
+	case "APP_PAIR_REQUEST_UNKNOWN", "APP_PAIR_RESPONSE_INVALID", "APP_PAIR_RECOVERY_INVALID", "APP_PAIR_RECOVERY_UNRESOLVED":
+		id = msgPairUnknown
+	case "APP_PAIR_TARGET_CHANGED":
+		id = msgPairTargetChanged
+	case "APP_PAIR_REQUEST_FENCED":
+		id = msgPairFenced
+	case "APP_PAIR_COMMIT_FAILED":
+		id = msgLocalUnlockFailed
 	case "APP_PROFILE_IN_USE":
 		id = msgProfileInUse
 	case "APP_NODE_UNAVAILABLE":

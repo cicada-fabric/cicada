@@ -16,7 +16,7 @@ func accountDisplayFixture(now time.Time) appcore.Snapshot {
 	s.Hub = appcore.HubSnapshot{Verified: true, Origin: "https://private-hub.invalid", HubID: "private-hub-id", Fingerprint: "private-hub-pin", Service: "private-service"}
 	s.Account = appcore.AccountSnapshot{State: appcore.AccountStateOwnerReady, RootState: appcore.RootStateActive, DeviceEnrolled: true,
 		AccountID: "private-account-id", OwnerID: "private-owner-id", DeviceID: "private-device-id", Username: "private-cached-user",
-		OwnerFingerprint: "private-owner-pin", SessionExpiresAt: now.Add(10 * time.Minute).Format(time.RFC3339Nano)}
+		OwnerFingerprint: "private-owner-pin", LocalOwnerKeyID: "private-local-owner-key", OwnerPeerFingerprint: "private-owner-node-pin", SessionExpiresAt: now.Add(10 * time.Minute).Format(time.RFC3339Nano)}
 	s.Setup = appcore.SetupSnapshot{OwnerKeyStored: true, Purpose: "INITIAL", ExpectedOwnerKeyID: "private-owner-key-id", AuthorizationDeadline: now.Add(11 * time.Minute).Format(time.RFC3339Nano)}
 	s.Authorization = appcore.AuthorizationSnapshot{State: "EXPIRED", ExpiresAt: now.Add(-time.Hour).Format(time.RFC3339Nano)}
 	s.Node.Binding = &appcore.NodeBindingSnapshot{ID: "private-binding-id", NodeID: "private-node-id", Name: "private-node-name", Version: 1, Authorized: true}
@@ -25,6 +25,9 @@ func accountDisplayFixture(now time.Time) appcore.Snapshot {
 	s.Node.Connectivity.LastHeartbeatAt = now.Add(-time.Minute).Format(time.RFC3339Nano)
 	s.Profiles = []appcore.ProfileSnapshot{{ID: "opaque-locator", Origin: "https://private-profile.invalid", AccountID: "private-profile-account", OwnerID: "private-profile-owner"}}
 	s.Canvas = appcore.CanvasSnapshot{State: appcore.CanvasAvailable, Objects: []appcore.CanvasObject{{ID: "private-canvas-id", Label: "private-canvas-name"}}}
+	s.Pair = appcore.PairSetupSnapshot{Available: true, PairID: "private-pair-id", NodeID: "private-pair-node", Label: "private-pair-label", State: "ACTIVE",
+		AdministrativePermission: true, Current: true, ReviewID: "private-pair-review", PeerExpiresAt: now.Add(time.Hour).Format(time.RFC3339Nano),
+		Slots: [2]appcore.PairSlotSnapshot{{Slot: "A", NativeSessionID: "private-pair-sid-a", PeerNativeSessionID: "private-pair-sid-b", CandidateFingerprint: "private-pair-pin"}}}
 	return s
 }
 
@@ -106,7 +109,7 @@ func TestPreLoginPresentationHidesIdentityButPreservesGenericRecovery(t *testing
 				t.Fatal("login screen showed private or competing account decisions")
 			}
 			raw, _ := json.Marshal(view)
-			for _, secret := range []string{"private-hub", "private-service", "private-account", "private-owner", "private-device", "private-cached-user", "private-node", "private-binding", "private-profile", "private-canvas", s.Account.SessionExpiresAt, s.Node.Access.ExpiresAt, s.Authorization.ExpiresAt, s.Node.Connectivity.LastHeartbeatAt} {
+			for _, secret := range []string{"private-hub", "private-service", "private-account", "private-owner", "private-device", "private-cached-user", "private-node", "private-binding", "private-profile", "private-canvas", "private-pair", s.Account.SessionExpiresAt, s.Node.Access.ExpiresAt, s.Authorization.ExpiresAt, s.Node.Connectivity.LastHeartbeatAt, s.Pair.PeerExpiresAt} {
 				if strings.Contains(string(raw), secret) {
 					t.Fatalf("pre-login display contains protected metadata %q", secret)
 				}

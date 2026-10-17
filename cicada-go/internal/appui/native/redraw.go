@@ -39,6 +39,8 @@ func scheduleSnapshotRedraw(gtx layout.Context, snapshot appcore.Snapshot, now t
 		consider(candidate.AuthorizationExpiresAt, reviewLive)
 	}
 	consider(snapshot.Node.Connectivity.FreshUntil, snapshot.Node.ConnectionState() == appcore.NodeOnline)
+	consider(snapshot.Pair.ReviewExpiresAt, slices.Contains(snapshot.AvailableActions, appcore.ActionCompletePair) || slices.Contains(snapshot.AvailableActions, appcore.ActionApprovePairSlot))
+	consider(snapshot.Pair.PeerExpiresAt, snapshot.Pair.Current)
 	if immediate {
 		gtx.Execute(op.InvalidateCmd{})
 	} else if scheduled {

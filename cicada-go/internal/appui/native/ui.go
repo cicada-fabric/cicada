@@ -62,45 +62,53 @@ func RunWindow(controller appcore.Controller) error {
 }
 
 type view struct {
-	cancelReplacement   widget.Clickable
-	controller          appcore.Controller
-	window              *app.Window
-	ctx                 context.Context
-	cancel              context.CancelFunc
-	theme               *material.Theme
-	locale              appui.Locale
-	activation          widget.Editor
-	username            widget.Editor
-	password            widget.Editor
-	buttons             map[appcore.ActionKind]*widget.Clickable
-	profileButtons      map[string]*widget.Clickable
-	contentList         widget.List
-	canvasList          widget.List
-	langEN              widget.Clickable
-	langZH              widget.Clickable
-	previewButton       widget.Clickable
-	detailsButton       widget.Clickable
-	details             bool
-	consent             widget.Bool
-	nodeCode            widget.Editor
-	nodeIdentityConsent widget.Bool
-	nodeAccessConsent   widget.Bool
-	nodeReviewID        string
-	nodePinDetails      bool
-	nodePinButton       widget.Clickable
-	inputScope          appui.InputScope
-	accountVisible      bool
-	replacementInput    bool
-	canvas              canvasWidget
-	preview             bool
-	busy                atomic.Bool
-	autoBusy            atomic.Bool
-	updates             nodeStatusUpdater
-	closed              atomic.Bool
-	workerWG            sync.WaitGroup
-	statusMu            sync.Mutex
-	failed              bool
-	uiErrorCode         string
+	cancelReplacement    widget.Clickable
+	controller           appcore.Controller
+	window               *app.Window
+	ctx                  context.Context
+	cancel               context.CancelFunc
+	theme                *material.Theme
+	locale               appui.Locale
+	activation           widget.Editor
+	username             widget.Editor
+	password             widget.Editor
+	buttons              map[appcore.ActionKind]*widget.Clickable
+	profileButtons       map[string]*widget.Clickable
+	pairButtons          map[string]*widget.Clickable
+	pairLabel            widget.Editor
+	pairBootstrapConsent widget.Bool
+	pairSlotAConsent     widget.Bool
+	pairSlotBConsent     widget.Bool
+	pairRevokeConsent    widget.Bool
+	pairReviewID         string
+	pairStateReviewID    string
+	contentList          widget.List
+	canvasList           widget.List
+	langEN               widget.Clickable
+	langZH               widget.Clickable
+	previewButton        widget.Clickable
+	detailsButton        widget.Clickable
+	details              bool
+	consent              widget.Bool
+	nodeCode             widget.Editor
+	nodeIdentityConsent  widget.Bool
+	nodeAccessConsent    widget.Bool
+	nodeReviewID         string
+	nodePinDetails       bool
+	nodePinButton        widget.Clickable
+	inputScope           appui.InputScope
+	accountVisible       bool
+	replacementInput     bool
+	canvas               canvasWidget
+	preview              bool
+	busy                 atomic.Bool
+	autoBusy             atomic.Bool
+	updates              nodeStatusUpdater
+	closed               atomic.Bool
+	workerWG             sync.WaitGroup
+	statusMu             sync.Mutex
+	failed               bool
+	uiErrorCode          string
 }
 
 func newView(controller appcore.Controller, ctx context.Context, cancel context.CancelFunc, window *app.Window) *view {
@@ -113,6 +121,7 @@ func newView(controller appcore.Controller, ctx context.Context, cancel context.
 		locale:         appui.English,
 		buttons:        make(map[appcore.ActionKind]*widget.Clickable),
 		profileButtons: make(map[string]*widget.Clickable),
+		pairButtons:    make(map[string]*widget.Clickable),
 	}
 	// Keep Gio system-font fallback enabled for Windows CJK fonts. Layout
 	// dimensions use dp/sp so Windows scaling applies to text and controls.
@@ -126,6 +135,7 @@ func newView(controller appcore.Controller, ctx context.Context, cancel context.
 	v.activation.MaxLen = appui.ActivationCodeInputLimit()
 	v.nodeCode.SingleLine, v.nodeCode.MaxLen = true, 32
 	v.username.MaxLen, v.password.MaxLen = 128, 1024
+	v.pairLabel.MaxLen, v.pairLabel.SingleLine = 128, true
 	v.activation.InputHint = 1
 	v.username.InputHint = 1
 	v.password.Mask = '•'
@@ -356,6 +366,9 @@ func (v *view) contentRows(s appcore.Snapshot, flow appui.SetupFlow, information
 	if informationVisible && appui.NodeCardVisible(s, flow) {
 		rows = append(rows, v.nodeSection(s))
 	}
+	if informationVisible && appui.PairFlow(s, time.Now()).Visible {
+		rows = append(rows, v.pairSection(s))
+	}
 	for _, kind := range flow.Secondary {
 		if label, ok := v.actionLabel(kind); ok {
 			if kind == appcore.ActionConnect && s.Setup.ReplacementAllowed {
@@ -399,6 +412,9 @@ func (v *view) resetPresentationInputs() {
 	v.consent.Value = false
 	v.nodeIdentityConsent.Value, v.nodeAccessConsent.Value = false, false
 	v.nodeReviewID = ""
+	v.pairLabel.SetText("")
+	v.pairBootstrapConsent.Value, v.pairSlotAConsent.Value, v.pairSlotBConsent.Value, v.pairRevokeConsent.Value = false, false, false, false
+	v.pairReviewID, v.pairStateReviewID = "", ""
 	v.nodePinDetails = false
 	v.details, v.preview, v.replacementInput = false, false, false
 	v.canvas = canvasWidget{}
@@ -520,7 +536,17 @@ func (v *view) actionFor(kind appcore.ActionKind, s appcore.Snapshot) (appcore.A
 		}
 		action.OwnerImport = ownerImport
 		return action, true
-	case appcore.ActionRecover, appcore.ActionRefresh, appcore.ActionActivationStatus, appcore.ActionDiscoverProfiles, appcore.ActionGenerateOwner, appcore.ActionClaimPrepare,
+	case appcore.ActionExportOwnerPublic:
+		path, err := chooseOwnerPublicDestination(appui.Text(v.locale, "account.export_owner_public"))
+		if err != nil {
+			if !errors.Is(err, errOwnerImportCancelled) {
+				v.markFailed("APP_OWNER_PUBLIC_EXPORT_FAILED")
+			}
+			return appcore.Action{}, false
+		}
+		action.PublicExportPath = path
+		return action, true
+	case appcore.ActionRecoverPair, appcore.ActionRecover, appcore.ActionRefresh, appcore.ActionActivationStatus, appcore.ActionDiscoverProfiles, appcore.ActionGenerateOwner, appcore.ActionClaimPrepare,
 		appcore.ActionSessionInspect, appcore.ActionLogout, appcore.ActionRetry:
 		return action, true
 	default:
@@ -634,24 +660,26 @@ func (v *view) clearSensitiveInputs() {
 
 func (v *view) actionLabel(kind appcore.ActionKind) (string, bool) {
 	key := map[appcore.ActionKind]string{
-		appcore.ActionConnect:          "connection.connect",
-		appcore.ActionActivateApp:      "setup.activate_app",
-		appcore.ActionLogin:            "account.login",
-		appcore.ActionSetupAccount:     "account.claim",
-		appcore.ActionRecover:          "operation.recover_connection",
-		appcore.ActionRecoverNode:      "operation.recover_connection",
-		appcore.ActionRefresh:          "account.refresh",
-		appcore.ActionActivationStatus: "account.refresh",
-		appcore.ActionDiscoverProfiles: "connection.discover_profiles",
-		appcore.ActionGenerateOwner:    "account.generate_local_owner",
-		appcore.ActionImportOwner:      "account.select_owner_files",
-		appcore.ActionClaimPrepare:     "account.prepare_claim",
-		appcore.ActionClaimComplete:    "account.complete_claim",
-		appcore.ActionLoginPrepare:     "account.start_login",
-		appcore.ActionLoginComplete:    "account.login",
-		appcore.ActionSessionInspect:   "account.refresh",
-		appcore.ActionLogout:           "account.logout",
-		appcore.ActionRetry:            "operation.recover_exact",
+		appcore.ActionConnect:           "connection.connect",
+		appcore.ActionActivateApp:       "setup.activate_app",
+		appcore.ActionLogin:             "account.login",
+		appcore.ActionSetupAccount:      "account.claim",
+		appcore.ActionRecover:           "operation.recover_connection",
+		appcore.ActionRecoverNode:       "operation.recover_connection",
+		appcore.ActionRecoverPair:       "operation.recover_connection",
+		appcore.ActionRefresh:           "account.refresh",
+		appcore.ActionActivationStatus:  "account.refresh",
+		appcore.ActionDiscoverProfiles:  "connection.discover_profiles",
+		appcore.ActionGenerateOwner:     "account.generate_local_owner",
+		appcore.ActionImportOwner:       "account.select_owner_files",
+		appcore.ActionExportOwnerPublic: "account.export_owner_public",
+		appcore.ActionClaimPrepare:      "account.prepare_claim",
+		appcore.ActionClaimComplete:     "account.complete_claim",
+		appcore.ActionLoginPrepare:      "account.start_login",
+		appcore.ActionLoginComplete:     "account.login",
+		appcore.ActionSessionInspect:    "account.refresh",
+		appcore.ActionLogout:            "account.logout",
+		appcore.ActionRetry:             "operation.recover_exact",
 	}
 	label, ok := key[kind]
 	return appui.Text(v.locale, label), ok
@@ -813,6 +841,12 @@ func (v *view) accountSummary(s appcore.Snapshot) string {
 	}
 	if account.OwnerFingerprint != "" {
 		parts = append(parts, appui.Text(v.locale, "account.owner_fingerprint")+": "+safeDisplay(account.OwnerFingerprint, 64))
+	}
+	if account.LocalOwnerKeyID != "" {
+		parts = append(parts, appui.Text(v.locale, "account.owner_key_id")+": "+account.LocalOwnerKeyID)
+	}
+	if account.OwnerPeerFingerprint != "" {
+		parts = append(parts, appui.Text(v.locale, "account.owner_peer_fingerprint")+": "+account.OwnerPeerFingerprint)
 	}
 	return appui.Text(v.locale, "section.account") + ": " + strings.Join(parts, "  •  ")
 }

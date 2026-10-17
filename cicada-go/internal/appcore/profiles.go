@@ -135,6 +135,9 @@ func (c *nativeController) resumeProfile(ctx context.Context, id string) error {
 	if err := c.loadCurrentPendingResponse(); err != nil {
 		return c.failStorage("APP_PENDING_RESPONSE_INVALID", err)
 	}
+	if err := c.loadPairState(); err != nil {
+		return c.failPairStorage(err)
+	}
 	c.profileRecoveryRequired = false
 	// Cached inspections are receipts, not current authorization. Recover an
 	// uncertain packet first, then ask for fresh authenticated session state.
@@ -148,6 +151,11 @@ func (c *nativeController) resumeProfile(ctx context.Context, id string) error {
 			return err
 		}
 		c.requireSessionRecheck()
+	}
+	if c.hasPairPending() {
+		if err := c.recoverPair(ctx); err != nil {
+			return err
+		}
 	}
 	if c.session != nil {
 		if err := c.inspectSession(ctx); err != nil {

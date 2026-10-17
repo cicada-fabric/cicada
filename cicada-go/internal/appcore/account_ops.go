@@ -247,7 +247,7 @@ func (c *nativeController) retry(ctx context.Context) error {
 }
 
 func (c *nativeController) canBeginOperation() bool {
-	return (c.state.Pending == nil || len(c.state.Pending.Response) != 0) && c.state.Recovery == nil
+	return (c.state.Pending == nil || len(c.state.Pending.Response) != 0) && c.state.Recovery == nil && !c.hasPairPending()
 }
 
 func (c *nativeController) sendNew(ctx context.Context, operation string, body any) error {
