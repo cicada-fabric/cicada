@@ -41,6 +41,31 @@ func inFlightAutoView(s appcore.Snapshot) appcore.Snapshot {
 	return s
 }
 
+func TestNativeAccountScreenPauseRestartsIntervalWithoutDroppingPending(t *testing.T) {
+	now := time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)
+	s := autoStatusView(now)
+	var u nodeStatusUpdater
+	u.afterControls(s, now, false)
+	u.pauseForAccountScreen()
+	// A later successful login starts a fresh interval; a tick from before
+	// the locked screen must never issue immediately after signing in.
+	if at, target := u.afterControls(s, now.Add(time.Minute), false); target != nil || !at.Equal(now.Add(90*time.Second)) {
+		t.Fatal("account screen retained an old due automatic request")
+	}
+	u.afterControls(s, now.Add(90*time.Second), false)
+	ctx := u.begin(context.Background())
+	pending := inFlightAutoView(s)
+	u.pauseForAccountScreen()
+	if ctx.Err() != nil || !pending.Node.Pending {
+		t.Fatal("privacy transition discarded an uncertain in-flight request")
+	}
+	u.complete(pending, now.Add(91*time.Second), errors.New("synthetic lost response"))
+	if at, target := u.afterControls(s, now.Add(2*time.Minute), false); target != nil || !at.IsZero() {
+		t.Fatal("login bypassed explicit recovery of an uncertain request")
+	}
+	u.close()
+}
+
 func TestNativeAutomaticStatusSchedulesThroughGioAndContinuesFromUnknownOrStale(t *testing.T) {
 	now := time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)
 	for _, state := range []string{"unknown", "stale", "connected"} {

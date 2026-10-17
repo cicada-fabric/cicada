@@ -12,6 +12,12 @@ import (
 
 const nodeStatusUpdateInterval = 30 * time.Second
 
+func (u *nodeStatusUpdater) pauseForAccountScreen() {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	u.armed = false
+}
+
 // The Windows frame loop and portable tests share this coordinator. All due
 // decisions happen after foreground controls have had their turn in the frame.
 type nodeStatusUpdater struct {

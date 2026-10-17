@@ -185,6 +185,10 @@ const (
 	msgNodeAccountRecoveryFirst  messageID = "node.account_recovery_first"
 	msgNodeUpdatingStatus        messageID = "node.updating_status"
 	msgNodeCheckingStatusAccess  messageID = "node.checking_status_access"
+	msgSavedConnection           messageID = "connection.saved_connection"
+	msgCheckSavedSession         messageID = "setup.check_saved_session"
+	msgContinueSavedSession      messageID = "setup.continue_saved_session"
+	msgPrivateRecoveryBody       messageID = "setup.private_recovery_body"
 )
 
 const (
@@ -197,6 +201,10 @@ const (
 
 var catalog = map[Locale]map[messageID]string{
 	English: {
+		msgSavedConnection:           "Saved connection",
+		msgCheckSavedSession:         "Verify your saved sign-in to continue.",
+		msgContinueSavedSession:      "Continue sign-in",
+		msgPrivateRecoveryBody:       "A saved request has an unconfirmed result. Recover it before continuing.",
 		msgNodeUnavailableError:      "This Hub's Node connection service is unavailable. Your saved requests are retained.",
 		msgNodeCodeInvalid:           "Enter the current connection code shown on your Node.",
 		msgNodeCounterConflict:       "The saved Node conversation could not be reconciled safely. Its state has been retained.",
@@ -378,6 +386,10 @@ var catalog = map[Locale]map[messageID]string{
 		msgBackToActivation:          "Back to activation",
 	},
 	Chinese: {
+		msgSavedConnection:           "保存的连接",
+		msgCheckSavedSession:         "验证已保存的登录后继续。",
+		msgContinueSavedSession:      "继续登录",
+		msgPrivateRecoveryBody:       "一个已保存请求的结果尚未确认，请先恢复后继续。",
 		msgNodeUnavailableError:      "此 Hub 的 Node 连接服务当前不可用。已保存的请求会继续保留。",
 		msgNodeCodeInvalid:           "请输入 Node 当前屏幕上显示的连接码。",
 		msgNodeCounterConflict:       "暂时无法安全核对此 Node 会话，原有状态已保留。",

@@ -88,7 +88,8 @@ type view struct {
 	nodeReviewID        string
 	nodePinDetails      bool
 	nodePinButton       widget.Clickable
-	inputScope          string
+	inputScope          appui.InputScope
+	accountVisible      bool
 	replacementInput    bool
 	canvas              canvasWidget
 	preview             bool
@@ -134,35 +135,56 @@ func newView(controller appcore.Controller, ctx context.Context, cancel context.
 
 func (v *view) layout(gtx layout.Context) {
 	paint.Fill(gtx.Ops, v.theme.Bg)
-	snapshot := v.controller.Snapshot()
-	if scope := snapshot.Hub.Origin + "/" + snapshot.Account.AccountID; scope != v.inputScope {
-		v.inputScope = scope
-		v.username.SetText(snapshot.Account.Username)
-		v.password.SetText("")
-		v.consent.Value = false
-		v.nodeCode.SetText("")
-		v.nodeIdentityConsent.Value, v.nodeAccessConsent.Value = false, false
-		v.nodeReviewID = ""
+	raw := v.controller.Snapshot()
+	now := time.Now()
+	presentation := appui.PresentScreen(raw, now)
+	if appui.ResetPresentationInputs(v.inputScope, v.accountVisible, raw, now) {
+		v.resetPresentationInputs()
 	}
-	scheduleSnapshotRedraw(gtx, snapshot, time.Now())
+	v.inputScope, v.accountVisible = appui.InputScopeFor(raw), presentation.InformationVisible
+	snapshot := presentation.Snapshot
+	scheduleSnapshotRedraw(gtx, raw, now)
 	managementAuthorized := snapshot.Management == appcore.ManagementAuthorized
 	objects, isPreview := v.canvasObjects(snapshot, managementAuthorized)
 	layout.UniformInset(28).Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 		return layout.Flex{Axis: layout.Vertical, Spacing: layout.SpaceBetween}.Layout(gtx,
 			layout.Rigid(v.header),
 			layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
-				rows := append([]layout.Widget{func(gtx layout.Context) layout.Dimensions { return v.statusCard(gtx, snapshot) }}, v.contentRows(snapshot, managementAuthorized, objects, isPreview)...)
-				return v.card(gtx, func(gtx layout.Context) layout.Dimensions {
-					return v.contentList.Layout(gtx, len(rows), func(gtx layout.Context, index int) layout.Dimensions {
-						return layout.Inset{Top: 8, Bottom: 8, Left: 4, Right: 4}.Layout(gtx, rows[index])
+				flow := presentation.Flow
+				var rows []layout.Widget
+				if presentation.InformationVisible {
+					flow = v.updates.accountFlow(snapshot, now)
+					rows = append(rows, func(gtx layout.Context) layout.Dimensions { return v.statusCard(gtx, snapshot) })
+				} else {
+					rows = append(rows, v.publicStatusRows(snapshot)...)
+				}
+				rows = append(rows, v.contentRows(snapshot, flow, presentation.InformationVisible, managementAuthorized, objects, isPreview)...)
+				content := func(gtx layout.Context) layout.Dimensions {
+					return v.card(gtx, func(gtx layout.Context) layout.Dimensions {
+						return v.contentList.Layout(gtx, len(rows), func(gtx layout.Context, index int) layout.Dimensions {
+							return layout.Inset{Top: 8, Bottom: 8, Left: 4, Right: 4}.Layout(gtx, rows[index])
+						})
 					})
+				}
+				if presentation.InformationVisible {
+					return content(gtx)
+				}
+				return layout.Center.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+					width := min(gtx.Constraints.Max.X, gtx.Dp(440))
+					gtx.Constraints.Min = image.Pt(width, 0)
+					gtx.Constraints.Max.X = width
+					return content(gtx)
 				})
 			}),
 		)
 	})
 	// Foreground controls above have already processed this frame's clicks.
 	// The background due decision can neither block them nor issue I/O here.
-	v.scheduleAutomaticNodeStatus(gtx)
+	if presentation.InformationVisible {
+		v.scheduleAutomaticNodeStatus(gtx)
+	} else {
+		v.updates.pauseForAccountScreen()
+	}
 }
 
 func (v *view) header(gtx layout.Context) layout.Dimensions {
@@ -249,8 +271,7 @@ func (v *view) statusCard(gtx layout.Context, s appcore.Snapshot) layout.Dimensi
 	})
 }
 
-func (v *view) contentRows(s appcore.Snapshot, managementAuthorized bool, objects []appui.CanvasObject, preview bool) []layout.Widget {
-	flow := v.updates.accountFlow(s, time.Now())
+func (v *view) contentRows(s appcore.Snapshot, flow appui.SetupFlow, informationVisible, managementAuthorized bool, objects []appui.CanvasObject, preview bool) []layout.Widget {
 	if v.replacementInput && s.Setup.ReplacementAllowed {
 		flow = appui.SetupFlow{Stage: "replace", Primary: appcore.ActionConnect}
 	}
@@ -260,8 +281,8 @@ func (v *view) contentRows(s appcore.Snapshot, managementAuthorized bool, object
 		rows = append(rows, v.headingRow(appui.Text(v.locale, "setup.welcome")), v.labelRow(appui.Text(v.locale, "setup.welcome_body")))
 		if len(s.Profiles) > 0 {
 			rows = append(rows, v.headingRow(appui.Text(v.locale, "connection.saved_profiles")))
-			for _, profile := range s.Profiles {
-				rows = append(rows, v.profileRow(profile))
+			for index, profile := range s.Profiles {
+				rows = append(rows, v.profileRow(profile, index))
 			}
 		}
 		rows = append(rows, v.headingRow(appui.Text(v.locale, "setup.step_connect")), v.editorRow(&v.activation, appui.Text(v.locale, "connection.material"), false))
@@ -278,8 +299,14 @@ func (v *view) contentRows(s appcore.Snapshot, managementAuthorized bool, object
 		rows = append(rows, v.headingRow(appui.Text(v.locale, "setup.step_account")))
 	case "login":
 		rows = append(rows, v.headingRow(appui.Text(v.locale, "account.login")), v.labelRow(appui.Text(v.locale, "setup.login_body")))
+	case "session-check":
+		rows = append(rows, v.headingRow(appui.Text(v.locale, "account.login")), v.labelRow(appui.Text(v.locale, "setup.check_saved_session")))
 	case "recovery":
-		rows = append(rows, v.headingRow(appui.Text(v.locale, "operation.recover_connection")), v.labelRow(appui.Text(v.locale, "setup.recovery_body")))
+		body := "setup.recovery_body"
+		if !informationVisible {
+			body = "setup.private_recovery_body"
+		}
+		rows = append(rows, v.headingRow(appui.Text(v.locale, "operation.recover_connection")), v.labelRow(appui.Text(v.locale, body)))
 	case "ready":
 		rows = append(rows, v.headingRow(appui.Text(v.locale, "setup.account_ready")))
 		if s.Account.State == appcore.AccountStateOwnerProof {
@@ -316,9 +343,12 @@ func (v *view) contentRows(s appcore.Snapshot, managementAuthorized bool, object
 		})
 	}
 	if label, ok := v.actionLabel(flow.Primary); ok && !(flow.Stage == "ready" && s.Node.Available) {
-		rows = append(rows, v.actionButton(flow.Primary, label, s))
+		if !informationVisible && flow.Stage == "session-check" {
+			label = appui.Text(v.locale, "setup.continue_saved_session")
+		}
+		rows = append(rows, v.actionButton(flow.Primary, label, s, flow))
 	}
-	if appui.NodeCardVisible(s, flow) {
+	if informationVisible && appui.NodeCardVisible(s, flow) {
 		rows = append(rows, v.nodeSection(s))
 	}
 	for _, kind := range flow.Secondary {
@@ -329,7 +359,7 @@ func (v *view) contentRows(s appcore.Snapshot, managementAuthorized bool, object
 			rows = append(rows, v.actionButton(kind, label, s))
 		}
 	}
-	if flow.Stage == "ready" {
+	if informationVisible && flow.Stage == "ready" {
 		if !s.Node.Available && !s.Node.Pending {
 			rows = append(rows, v.labelRow(appui.Text(v.locale, "account.management_disabled")), v.canvasSection(s, managementAuthorized, objects, preview))
 		}
@@ -337,7 +367,40 @@ func (v *view) contentRows(s appcore.Snapshot, managementAuthorized bool, object
 	return rows
 }
 
-func (v *view) actionButton(kind appcore.ActionKind, label string, s appcore.Snapshot) layout.Widget {
+func (v *view) publicStatusRows(s appcore.Snapshot) []layout.Widget {
+	var rows []layout.Widget
+	if v.busy.Load() {
+		rows = append(rows, v.labelRow(appui.Text(v.locale, "operation.in_progress")))
+	}
+	v.statusMu.Lock()
+	code, failed := v.uiErrorCode, v.failed
+	v.statusMu.Unlock()
+	if s.ErrorCode != "" {
+		code = s.ErrorCode
+	}
+	if code != "" {
+		rows = append(rows, v.labelRow(appui.ErrorText(v.locale, code)))
+	} else if failed {
+		rows = append(rows, v.labelRow(appui.Text(v.locale, "common.request_failed")))
+	}
+	return rows
+}
+
+func (v *view) resetPresentationInputs() {
+	v.activation.SetText("")
+	v.username.SetText("")
+	v.password.SetText("")
+	v.nodeCode.SetText("")
+	v.consent.Value = false
+	v.nodeIdentityConsent.Value, v.nodeAccessConsent.Value = false, false
+	v.nodeReviewID = ""
+	v.nodePinDetails = false
+	v.details, v.preview, v.replacementInput = false, false, false
+	v.canvas = canvasWidget{}
+	v.contentList.Position, v.canvasList.Position = layout.Position{}, layout.Position{}
+}
+
+func (v *view) actionButton(kind appcore.ActionKind, label string, s appcore.Snapshot, selectedFlow ...appui.SetupFlow) layout.Widget {
 	button := v.buttons[kind]
 	if button == nil {
 		button = new(widget.Clickable)
@@ -349,6 +412,9 @@ func (v *view) actionButton(kind appcore.ActionKind, label string, s appcore.Sna
 			enabled = v.nodeActionEnabled(kind, s)
 		}
 		flow := appui.Flow(s)
+		if len(selectedFlow) != 0 {
+			flow = selectedFlow[0]
+		}
 		if v.replacementInput && s.Setup.ReplacementAllowed {
 			flow = appui.SetupFlow{Stage: "replace", Primary: appcore.ActionConnect}
 		}
@@ -502,7 +568,12 @@ func (v *view) scheduleAutomaticNodeStatus(gtx layout.Context) {
 	if v.closed.Load() {
 		return
 	}
-	at, target := v.updates.afterControls(v.controller.Snapshot(), time.Now(), v.busy.Load())
+	snapshot, now := v.controller.Snapshot(), time.Now()
+	if !appui.AccountInformationVisible(snapshot, now) {
+		v.updates.pauseForAccountScreen()
+		return
+	}
+	at, target := v.updates.afterControls(snapshot, now, v.busy.Load())
 	if !at.IsZero() {
 		gtx.Execute(op.InvalidateCmd{At: at})
 	}
@@ -563,6 +634,7 @@ func (v *view) actionLabel(kind appcore.ActionKind) (string, bool) {
 		appcore.ActionLogin:            "account.login",
 		appcore.ActionSetupAccount:     "account.claim",
 		appcore.ActionRecover:          "operation.recover_connection",
+		appcore.ActionRecoverNode:      "operation.recover_connection",
 		appcore.ActionRefresh:          "account.refresh",
 		appcore.ActionActivationStatus: "account.refresh",
 		appcore.ActionDiscoverProfiles: "connection.discover_profiles",
@@ -937,7 +1009,7 @@ func (v *view) headingRow(label string) layout.Widget {
 	return func(gtx layout.Context) layout.Dimensions { return material.H6(v.theme, label).Layout(gtx) }
 }
 
-func (v *view) profileRow(profile appcore.ProfileSnapshot) layout.Widget {
+func (v *view) profileRow(profile appcore.ProfileSnapshot, index int) layout.Widget {
 	button := v.profileButtons[profile.ID]
 	if button == nil {
 		button = new(widget.Clickable)
@@ -949,8 +1021,7 @@ func (v *view) profileRow(profile appcore.ProfileSnapshot) layout.Widget {
 		}
 		return v.card(gtx, func(gtx layout.Context) layout.Dimensions {
 			return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
-				layout.Rigid(v.labelRow(safeDisplay(profile.Origin, 256))),
-				layout.Rigid(v.labelRow(appui.Text(v.locale, "account.id")+": "+safeDisplay(profile.AccountID, 128))),
+				layout.Rigid(v.labelRow(appui.SavedConnectionLabel(v.locale, index))),
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 					return layout.Inset{Top: 12}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 						return v.button(gtx, button, appui.Text(v.locale, "connection.resume_profile"), !v.busy.Load())

@@ -253,9 +253,10 @@ create an idle redraw loop. No network polling or automatic authorization was
 added. Status is fetched on demand; an out-of-date cached observation does not
 establish whether the Hub has since received a newer Node heartbeat.
 
-The saved Node card stays visible through account login, expiry and recovery.
-It separates the saved connection, current observation and this App's finite
-status access, with account login or saved-packet recovery taking priority.
+At that checkpoint, the saved Node card remained visible through account login,
+expiry and recovery. The login privacy checkpoint below supersedes that display
+choice. Within a signed-in account, the card separates the saved connection,
+current observation and this App's finite status access.
 Observation timestamps are hidden without current access. "Continue viewing
 status" still opens the exact status-only review and requires explicit consent.
 Status-access expiry does not revoke the saved Node binding or request a new
@@ -299,3 +300,35 @@ on dirty `530f5d5` source. Evidence is retained at
 `~/Cicada/.local/evidence/n3-app/auto-observation-20261017-z_8hgpqy`.
 These are real-PQ core actor and portable scheduler results; Win32 execution,
 physical Ubuntu and independent process/interoperability gates remain separate.
+
+The login privacy checkpoint shows a narrow, centered sign-in form before a
+current trusted account session is confirmed. It hides Hub/account/Owner/Node
+identity, saved binding details, status dates, connection health, key-storage
+hints and canvas/preview controls. Saved profiles use numbered labels. Cached
+usernames never prefill the editor; a manually entered username survives a
+failed attempt, while passwords still clear on submission. Trusted scope changes
+and sign-in transitions clear inputs, expanded details, preview/selection,
+scroll positions and finite-consent checkboxes. Valid restored sessions can
+continue after authenticated inspection; Owner-proof-pending sessions still
+reach their existing flow without requiring Root to be active.
+
+First connection, Owner initialization and finite activation keep their existing
+steps. Generic recovery remains available before sign-in using the original
+controller action. Hiding information does not alter the vault, saved binding,
+available actions or exact pending packet. A fresh login reveals the same binding
+even if status access has ended. The account screen pauses future automatic Node
+reads and starts a fresh interval when eligible again; it cannot bypass an
+uncertain request's explicit recovery. Normal in-flight Node observations do not
+hide information for an otherwise valid account.
+
+The final dirty source relative to `5fee32c` passed **141 UI/native events in each
+normal and race run, zero failures/skips**, Linux/Windows vet and Windows amd64
+cross-build in the fixed Go 1.27.2 builder. Before/after Go/module manifests are
+`b9f78ea9e5b5c132d5afdc178e35c0a38825021b8e075baf159ced71a20060f7`.
+Commands, individual results, private-cache mounts, manifest and unsigned artifact
+hash are retained at
+`~/Cicada/.local/evidence/n3-login-gate/run-20261017T112228Z-187b47/app/final`.
+The parent App receipt is an earlier source and is not this checkpoint's receipt.
+Win32 rendering/interaction/high-DPI, Windows DPAPI/ACL, physical devices, native
+Runtime, Android and public HTTPS remain NOT_RUN for this change. Independent
+Docker process/interoperability acceptance belongs to the integration owner.
