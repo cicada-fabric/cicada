@@ -1,0 +1,159 @@
+{
+  "contract_revision": "native-pair-v1",
+  "implementation_phase": "WIRE_ONLY",
+  "format": "cicada.native-pair.v1",
+  "wire_version": 1,
+  "account_route_epoch": 1,
+  "account_packet_sequence": 1,
+  "discovery": {
+    "method": "GET",
+    "path": "/v2/owner/native-pairs/capabilities",
+    "response": "NativePairCapabilities"
+  },
+  "operations": [
+    {
+      "method": "POST",
+      "operation": "owner.native_pair.bootstrap_prepare",
+      "path": "/v2/owner/native-pairs/bootstrap/prepare",
+      "request": "NativePairBootstrapPrepare",
+      "response": "NativePairBootstrapChallenge",
+      "owner_purpose": "NATIVE_PAIR_BOOTSTRAP_PREVIEW"
+    },
+    {
+      "method": "POST",
+      "operation": "owner.native_pair.bootstrap_complete",
+      "path": "/v2/owner/native-pairs/bootstrap/complete",
+      "request": "NativePairBootstrapComplete",
+      "response": "NativePairResult",
+      "owner_purpose": "NATIVE_PAIR_BOOTSTRAP_COMMIT"
+    },
+    {
+      "method": "POST",
+      "operation": "owner.native_pair.slot_reject",
+      "path": "/v2/owner/native-pairs/slots/reject",
+      "request": "NativePairSlotReject",
+      "response": "NativePairResult",
+      "owner_purpose": "NATIVE_PAIR_SLOT_REJECT"
+    },
+    {
+      "method": "POST",
+      "operation": "owner.native_pair.consent_prepare",
+      "path": "/v2/owner/native-pairs/consent/prepare",
+      "request": "NativePairConsentPrepare",
+      "response": "NativePairPlanChallenge",
+      "owner_purpose": "NATIVE_PAIR_CONSENT_PREVIEW"
+    },
+    {
+      "method": "POST",
+      "operation": "owner.native_pair.consent_complete",
+      "path": "/v2/owner/native-pairs/consent/complete",
+      "request": "NativePairConsentComplete",
+      "response": "NativePairResult",
+      "owner_purpose": "NATIVE_PAIR_SLOT_CONSENT"
+    },
+    {
+      "method": "POST",
+      "operation": "owner.native_pair.status",
+      "path": "/v2/owner/native-pairs/status",
+      "request": "NativePairStatusRequest",
+      "response": "NativePairResult",
+      "owner_purpose": ""
+    },
+    {
+      "method": "POST",
+      "operation": "owner.native_pair.revoke",
+      "path": "/v2/owner/native-pairs/revoke",
+      "request": "NativePairRevoke",
+      "response": "NativePairResult",
+      "owner_purpose": "NATIVE_PAIR_REVOKE"
+    },
+    {
+      "method": "POST",
+      "operation": "owner.native_pair.reconcile",
+      "path": "/v2/owner/native-pairs/reconcile",
+      "request": "NativePairReconcileRequest",
+      "response": "NativePairReconciled",
+      "owner_purpose": ""
+    }
+  ],
+  "bootstrap_prepare_unadmitted_response": "NativePairBootstrapFence",
+  "node_control_operations": [
+    "node.native_pair.describe",
+    "node.native_pair.join",
+    "node.native_pair.reconcile"
+  ],
+  "owner_purposes": {
+    "NATIVE_PAIR_BOOTSTRAP_PREVIEW": "cicada/owner/native-pair/v1/bootstrap-preview\u0000",
+    "NATIVE_PAIR_BOOTSTRAP_COMMIT": "cicada/owner/native-pair/v1/bootstrap-commit\u0000",
+    "NATIVE_PAIR_CONSENT_PREVIEW": "cicada/owner/native-pair/v1/consent-preview\u0000",
+    "NATIVE_PAIR_SLOT_CONSENT": "cicada/owner/native-pair/v1/slot-consent\u0000",
+    "NATIVE_PAIR_SLOT_REJECT": "cicada/owner/native-pair/v1/slot-reject\u0000",
+    "NATIVE_PAIR_REVOKE": "cicada/owner/native-pair/v1/revoke\u0000"
+  },
+  "digest_domains": {
+    "packet": "cicada/native-pair/packet/v1\u0000",
+    "owner-proof": "cicada/native-pair/owner-proof/v1\u0000",
+    "node-tuple": "cicada/native-pair/node-tuple/v1\u0000",
+    "slot": "cicada/native-pair/slot/v1\u0000",
+    "consent-plan": "cicada/native-pair/consent-plan/v1\u0000"
+  },
+  "bounds": {
+    "MaxNativePairOriginalBytes": 131072,
+    "MaxNativePairReceiptBytes": 262144,
+    "MaxNativePairBodyBytes": 196608,
+    "MaxNativePairPacketBytes": 262144,
+    "MaxNativePairInnerPacketBytes": 393216,
+    "MaxNativePairPlanBytes": 131072,
+    "MaxNativePairEvidenceBytes": 262144,
+    "MaxNativePairCarrierBytes": 327680,
+    "MaxNativePairReconcileBodyBytes": 360448,
+    "MaxNativePairReconcilePacketBytes": 655360,
+    "MaxNativePairReconcileInnerPacketBytes": 655360,
+    "MaxOwnerNativePairProofBytes": 32768
+  },
+  "fixed_policy": {
+    "max_root_asks": 4,
+    "max_replies": 4,
+    "max_replies_per_ask": 1,
+    "max_outstanding_asks": 1,
+    "max_causal_depth": 0,
+    "max_messages": 8,
+    "max_plaintext_bytes": 8192,
+    "max_total_plaintext_bytes": 65536,
+    "max_ciphertext_bytes": 131072,
+    "max_total_ciphertext_bytes": 1048576,
+    "max_native_deliveries": 8
+  },
+  "group_grants": [
+    "directory.read",
+    "message.ask",
+    "message.receive",
+    "message.reply"
+  ],
+  "clocks_seconds": {
+    "intent": 60,
+    "bootstrap_preview": 300,
+    "join": 600,
+    "consent_plan": 300,
+    "peer_absolute": 3600
+  },
+  "max_slot_generations": 16,
+  "scope_max_origin_bytes": 512,
+  "selector_and_label_max_bytes": 128,
+  "legacy_decoder_outer_bytes": 393216,
+  "legacy_client_inner_bytes": 262144,
+  "frozen_artifacts": {
+    "cicada-go/internal/clientcontract/catalog.json": "a4ba36df0690e15dbaad36ea93d79586b25380bf31ebc5e0da5c3c1122e14db9",
+    "cicada-go/internal/hubaccountwire/activation-contract.json": "b3201cc13cfe80baa23260fa926d0bf98b4b50a1efcd7efeb4a8c3521302053f",
+    "cicada-go/internal/hubaccountwire/app-node-contract.json": "6a7c6dba95d3cf43fd84b928b190812326e280a35fab769ba4c4e5dffa4b8492",
+    "cicada-go/internal/e2ee/owner_app_node_claims.go": "75f4c0e9331761a1cf93a98dfab97bab6278cc985d968dba7a50ca11caac933e"
+  },
+  "mandatory_independent_owner_pin": true,
+  "mandatory_node_policy_marker": true,
+  "expired_administration_does_not_revoke_peer": true,
+  "recovery_requires_live_administration": false,
+  "unknown_pair_id_only_for_bootstrap_prepare_reconcile": true,
+  "absent_settles_mutation": false,
+  "resets_budgets_on_retry_restart_or_reopen": false,
+  "runtime_executed_in_a1": false
+}

@@ -28,7 +28,7 @@ func marshalPacket(packet Packet) ([]byte, error) {
 		return nil, ErrInvalid
 	}
 	data, err := json.Marshal(packet)
-	if err != nil || len(data) > appNodeOuterLimit(packet.Packet.Route.Operation) {
+	if err != nil || len(data) > outerLimitForRoute(packet.Packet.Route) {
 		return nil, ErrInvalid
 	}
 	return data, nil

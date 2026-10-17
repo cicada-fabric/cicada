@@ -49,7 +49,11 @@ func SealClientRequest(device *e2ee.Identity, hub HubIdentity, body any) ([]byte
 		return nil, ErrInvalid
 	}
 	var inner []byte
-	if appNodeOperation(route.Operation) {
+	if route.Operation == OperationNativePairReconcile {
+		inner, err = clientwire.SealNativePairReconcileRequest(device, hub.Public, binding, route, plaintext)
+	} else if nativePairOperation(route.Operation) {
+		inner, err = clientwire.SealRequestWithLimits(device, hub.Public, binding, route, plaintext, maxBodyForOperation(route.Operation), innerLimitForOperation(route.Operation))
+	} else if appNodeOperation(route.Operation) {
 		inner, err = clientwire.SealRequestWithLimits(device, hub.Public, binding, route, plaintext, MaxAppNodeBodyBytes, MaxAppNodeInnerPacketBytes)
 	} else if extensionOperation(route.Operation) {
 		inner, err = clientwire.SealRequestWithBodyLimit(device, hub.Public, binding, route, plaintext, MaxActivationBodyBytes)
@@ -70,7 +74,7 @@ func SealClientRequest(device *e2ee.Identity, hub HubIdentity, body any) ([]byte
 // PreflightRequest performs bounded canonical outer validation before any PQ
 // decapsulation. It does not authorize the sender or decrypt protected fields.
 func PreflightRequest(raw []byte, expectedOperation string) (Packet, error) {
-	packet, err := DecodePacket(raw)
+	packet, err := decodePacketForOperation(raw, expectedOperation)
 	if err != nil || packet.Packet.Route.Direction != clientwire.DirectionRequest ||
 		packet.Packet.Route.Operation != expectedOperation || !knownOperation(expectedOperation) {
 		return Packet{}, ErrInvalid
@@ -86,7 +90,7 @@ func OpenRequest(hub *e2ee.Identity, trustedDevice *e2ee.PublicIdentity, binding
 }
 
 func OpenRequestAt(hub *e2ee.Identity, trustedDevice *e2ee.PublicIdentity, binding clientwire.Binding, expectedRoute clientwire.Route, raw []byte, out any, now time.Time) error {
-	packet, err := DecodePacket(raw)
+	packet, err := decodePacketForOperation(raw, expectedRoute.Operation)
 	if err != nil || hub == nil || expectedRoute.Direction != clientwire.DirectionRequest ||
 		packet.Packet.Route != expectedRoute || !validBinding(binding, expectedRoute) ||
 		(expectedRoute.Operation != OperationClaimPrepare && expectedRoute.Operation != OperationActivationPrepare && trustedDevice == nil) {
@@ -100,7 +104,11 @@ func OpenRequestAt(hub *e2ee.Identity, trustedDevice *e2ee.PublicIdentity, bindi
 		return ErrInvalid
 	}
 	var opened clientwire.Opened
-	if appNodeOperation(expectedRoute.Operation) {
+	if expectedRoute.Operation == OperationNativePairReconcile {
+		opened, err = clientwire.OpenNativePairReconcileRequest(hub, packet.SenderPublicIdentity, binding, expectedRoute, inner)
+	} else if nativePairOperation(expectedRoute.Operation) {
+		opened, err = clientwire.OpenRequestWithLimits(hub, packet.SenderPublicIdentity, binding, inner, maxBodyForOperation(expectedRoute.Operation), innerLimitForOperation(expectedRoute.Operation))
+	} else if appNodeOperation(expectedRoute.Operation) {
 		opened, err = clientwire.OpenRequestWithLimits(hub, packet.SenderPublicIdentity, binding, inner, MaxAppNodeBodyBytes, MaxAppNodeInnerPacketBytes)
 	} else if extensionOperation(expectedRoute.Operation) {
 		opened, err = clientwire.OpenRequestWithBodyLimit(hub, packet.SenderPublicIdentity, binding, inner, MaxActivationBodyBytes)
@@ -158,7 +166,11 @@ func SealResponse(hub *e2ee.Identity, device e2ee.PublicIdentity, requestRoute c
 	binding := clientwire.Binding{HubID: route.HubID, OwnerID: route.OwnerID, DeviceID: route.DeviceID,
 		SessionEpoch: route.SessionEpoch, HubKeyVersion: route.SenderKeyVersion, DeviceKeyVersion: route.ReceiverKeyVersion}
 	var inner []byte
-	if appNodeOperation(route.Operation) {
+	if route.Operation == OperationNativePairReconcile {
+		inner, err = clientwire.SealNativePairReconcileResponse(hub, device, binding, route, plaintext)
+	} else if nativePairOperation(route.Operation) {
+		inner, err = clientwire.SealResponseWithLimits(hub, device, binding, route, plaintext, maxBodyForOperation(route.Operation), innerLimitForOperation(route.Operation))
+	} else if appNodeOperation(route.Operation) {
 		inner, err = clientwire.SealResponseWithLimits(hub, device, binding, route, plaintext, MaxAppNodeBodyBytes, MaxAppNodeInnerPacketBytes)
 	} else if extensionOperation(route.Operation) {
 		inner, err = clientwire.SealResponseWithBodyLimit(hub, device, binding, route, plaintext, MaxActivationBodyBytes)
@@ -185,7 +197,7 @@ func OpenClientResponse(device *e2ee.Identity, hub HubIdentity, requestBytes, re
 		request.Packet.Route.ReceiverKeyID != hub.Public.ID || request.Packet.Route.HubID != hub.HubID {
 		return ErrInvalid
 	}
-	response, err := DecodePacket(responseBytes)
+	response, err := decodePacketForOperation(responseBytes, request.Packet.Route.Operation)
 	if err != nil || response.Packet.Route != responseRoute(request.Packet.Route) ||
 		!reflect.DeepEqual(response.SenderPublicIdentity, hub.Public) {
 		return ErrInvalid
@@ -198,7 +210,11 @@ func OpenClientResponse(device *e2ee.Identity, hub HubIdentity, requestBytes, re
 		return ErrInvalid
 	}
 	var opened clientwire.Opened
-	if appNodeOperation(request.Packet.Route.Operation) {
+	if request.Packet.Route.Operation == OperationNativePairReconcile {
+		opened, err = clientwire.OpenNativePairReconcileResponse(device, hub.Public, binding, responseRoute(request.Packet.Route), inner)
+	} else if nativePairOperation(request.Packet.Route.Operation) {
+		opened, err = clientwire.OpenResponseWithLimits(device, hub.Public, binding, inner, maxBodyForOperation(request.Packet.Route.Operation), innerLimitForOperation(request.Packet.Route.Operation))
+	} else if appNodeOperation(request.Packet.Route.Operation) {
 		opened, err = clientwire.OpenResponseWithLimits(device, hub.Public, binding, inner, MaxAppNodeBodyBytes, MaxAppNodeInnerPacketBytes)
 	} else if extensionOperation(request.Packet.Route.Operation) {
 		opened, err = clientwire.OpenResponseWithBodyLimit(device, hub.Public, binding, inner, MaxActivationBodyBytes)
@@ -219,6 +235,26 @@ func OpenClientResponse(device *e2ee.Identity, hub HubIdentity, requestBytes, re
 		return ErrInvalid
 	}
 	switch value := dereference(out).(type) {
+	case NativePairBootstrapChallenge:
+		if value.RequestPacketDigest != NativePairPacketDigest(requestBytes) || ValidateNativePairBootstrapChallenge(value, hub, time.Time{}) != nil {
+			return ErrInvalid
+		}
+	case NativePairPlanChallenge:
+		if value.RequestPacketDigest != NativePairPacketDigest(requestBytes) || ValidateNativePairPlan(value.Plan, hub) != nil {
+			return ErrInvalid
+		}
+	case NativePairBootstrapFence:
+		if value.RequestPacketDigest != NativePairPacketDigest(requestBytes) {
+			return ErrInvalid
+		}
+	case NativePairResult:
+		if value.RequestPacketDigest != NativePairPacketDigest(requestBytes) {
+			return ErrInvalid
+		}
+	case NativePairReconciled:
+		if value.RequestPacketDigest != NativePairPacketDigest(requestBytes) {
+			return ErrInvalid
+		}
 	case ActivationChallenge:
 		if value.Binding.PreparePacketDigest != ActivationPacketDigest(requestBytes) {
 			return ErrInvalid
@@ -245,14 +281,16 @@ func OpenClientResponse(device *e2ee.Identity, hub HubIdentity, requestBytes, re
 
 // DecodePacket rejects unknown fields, duplicate/noncanonical JSON encodings,
 // malformed public identities, unexpected operations, and oversized frames.
-func DecodePacket(raw []byte) (Packet, error) {
+func DecodePacket(raw []byte) (Packet, error) { return decodePacketWithLimit(raw, MaxPacketBytes) }
+
+func decodePacketWithLimit(raw []byte, limit int) (Packet, error) {
 	var packet Packet
-	if err := decodeCanonical(raw, MaxPacketBytes, &packet); err != nil ||
+	if err := decodeCanonical(raw, limit, &packet); err != nil ||
 		packet.Format != PacketFormat || packet.Version != PacketVersion ||
 		e2ee.ValidatePublicIdentity(packet.SenderPublicIdentity) != nil || validateRouteHeader(packet.Packet.Route, packet.SenderPublicIdentity) != nil {
 		return Packet{}, ErrInvalid
 	}
-	if len(raw) > appNodeOuterLimit(packet.Packet.Route.Operation) {
+	if len(raw) > outerLimitForRoute(packet.Packet.Route) {
 		return Packet{}, ErrInvalid
 	}
 	inner, err := json.Marshal(packet.Packet)

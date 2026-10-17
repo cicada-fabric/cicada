@@ -123,10 +123,14 @@ func sealWithBodyLimit(sender e2ee.PublicIdentity, operations e2ee.PrivateOperat
 }
 
 func sealWithLimits(sender e2ee.PublicIdentity, operations e2ee.PrivateOperations, receiver e2ee.PublicIdentity, binding Binding, route Route, direction string, plaintext []byte, trustedSender *e2ee.Identity, limit, packetLimit int) ([]byte, error) {
-	if packetLimit <= 0 || packetLimit > 384*1024 {
+	return sealWithScopedLimits(sender, operations, receiver, binding, route, direction, plaintext, trustedSender, limit, packetLimit, false)
+}
+
+func sealWithScopedLimits(sender e2ee.PublicIdentity, operations e2ee.PrivateOperations, receiver e2ee.PublicIdentity, binding Binding, route Route, direction string, plaintext []byte, trustedSender *e2ee.Identity, limit, packetLimit int, nativePair bool) ([]byte, error) {
+	if !validScopedPacketLimits(route, limit, packetLimit, nativePair) {
 		return nil, ErrInvalidPacket
 	}
-	if operations == nil || limit <= 0 || limit > 192*1024 || len(plaintext) == 0 || len(plaintext) > limit {
+	if operations == nil || len(plaintext) == 0 || len(plaintext) > limit {
 		return nil, ErrInvalidPacket
 	}
 	if err := validateRoute(route, binding, sender, receiver, direction); err != nil {
@@ -171,7 +175,15 @@ func openWithBodyLimit(recipient e2ee.PublicIdentity, operations e2ee.PrivateOpe
 }
 
 func openWithLimits(recipient e2ee.PublicIdentity, operations e2ee.PrivateOperations, sender e2ee.PublicIdentity, binding Binding, data []byte, direction string, expectedRoute *Route, trustedRecipient *e2ee.Identity, limit, packetLimit int) (Opened, error) {
-	if packetLimit <= 0 || packetLimit > 384*1024 || operations == nil || limit <= 0 || limit > 192*1024 || len(data) == 0 || len(data) > packetLimit {
+	return openWithScopedLimits(recipient, operations, sender, binding, data, direction, expectedRoute, trustedRecipient, limit, packetLimit, false)
+}
+
+func openWithScopedLimits(recipient e2ee.PublicIdentity, operations e2ee.PrivateOperations, sender e2ee.PublicIdentity, binding Binding, data []byte, direction string, expectedRoute *Route, trustedRecipient *e2ee.Identity, limit, packetLimit int, nativePair bool) (Opened, error) {
+	var expected Route
+	if expectedRoute != nil {
+		expected = *expectedRoute
+	}
+	if !validScopedPacketLimits(expected, limit, packetLimit, nativePair) || operations == nil || len(data) == 0 || len(data) > packetLimit {
 		return Opened{}, ErrInvalidPacket
 	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
