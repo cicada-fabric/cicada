@@ -4,7 +4,7 @@ import "github.com/cicada-ai/cicada/internal/e2ee"
 
 const (
 	NativePairContractRevision             = "native-pair-v1"
-	NativePairImplementationPhase          = "WIRE_ONLY"
+	NativePairImplementationPhase          = "SERVER_PREPARATION"
 	NativePairCapabilitiesPath             = "/v2/owner/native-pairs/capabilities"
 	NativePairFormat                       = "cicada.native-pair.v1"
 	OperationNativePairBootstrapPrepare    = "owner.native_pair.bootstrap_prepare"
@@ -30,6 +30,9 @@ const (
 	MaxNativePairReconcilePacketBytes      = 640 * 1024
 	MaxNativePairReconcileInnerPacketBytes = 640 * 1024
 	MaxNativePairSlotGenerations           = uint64(16)
+	MaxNativePairCapabilitiesBytes         = 8 * 1024
+	MaxNativePairNodeOriginalBytes         = 32 * 1024
+	MaxNativePairNodeReceiptBytes          = 128 * 1024
 )
 
 type NativePairState string
@@ -134,6 +137,21 @@ type NativePairBootstrapFence struct {
 	Operation           string `json:"operation"`
 	RequestID           string `json:"request_id"`
 	RequestPacketDigest string `json:"request_packet_digest"`
+	State               string `json:"state"`
+	NoEffect            bool   `json:"no_effect"`
+	ErrorCode           string `json:"error_code"`
+	ObservedAt          string `json:"observed_at"`
+}
+
+// A known-pair mutation may be permanently fenced even when the target row
+// is unavailable. PairID comes from the authenticated original Owner proof;
+// no current domain state or permission is invented to represent rejection.
+type NativePairRejectionFence struct {
+	Format              string `json:"format"`
+	Operation           string `json:"operation"`
+	RequestID           string `json:"request_id"`
+	RequestPacketDigest string `json:"request_packet_digest"`
+	PairID              string `json:"pair_id"`
 	State               string `json:"state"`
 	NoEffect            bool   `json:"no_effect"`
 	ErrorCode           string `json:"error_code"`
@@ -279,6 +297,18 @@ type NativePairNodeReconcile struct {
 	Nonce            []byte `json:"nonce"`
 	IssuedAt         string `json:"issued_at"`
 	OriginalPacket   []byte `json:"original_packet"`
+}
+
+type NativePairNodeReconciled struct {
+	ContractRevision     string `json:"contract_revision"`
+	PairID               string `json:"pair_id"`
+	OriginalOperation    string `json:"original_operation"`
+	OriginalOperationID  string `json:"original_operation_id"`
+	OriginalSequence     uint64 `json:"original_sequence"`
+	OriginalPacketDigest string `json:"original_packet_digest"`
+	State                string `json:"state"`
+	ReceiptPacket        []byte `json:"receipt_packet,omitempty"`
+	ObservedAt           string `json:"observed_at"`
 }
 
 type NativePairBudgetObservation struct {

@@ -89,3 +89,169 @@ epochs and native SIDs must remain retained throughout that work.
 Android, Windows native App, physical devices, real native Runtime conversation,
 automatic wake and public HTTPS: **NOT RUN** here. No model call, production key,
 resident deployment replacement, push or merge was performed.
+
+## A2 Store/HTTP preparation (available false)
+
+Date: 2026-10-17. Base: `96c07d83528dc3a1429972d015ec3726156f2ef3`
+plus the separately hashed dirty inputs below. Contract `native-pair-v1`, phase
+`SERVER_PREPARATION`, schema 64. This is a Hub preparation checkpoint, not the
+complete pair chain or a user-ready conversation. Public `available=false`.
+
+The [contract](hub-native-pair-contract.md) and exact Go DTOs remain authoritative.
+Existing Client wire/catalog, N2/N3 purposes, identities and epochs are unchanged.
+Only the explicit Hub Nodes composition routes the eight new App operations.
+Bootstrap prepare/complete, status, revoke and reconcile execute the guarded
+preparation flow; consent/slot-reject currently return a permanent no-effect
+fence. There is no Node pair RPC implementation or peer permission activation.
+
+### Implemented boundary
+
+The Store acquires its SQLite writer before sampling the trusted clock. Fresh
+mutations reuse completed N2 device/Root and permanent N3 Node confirmation
+provenance, a current account session, the original Owner public key, exact
+credential/binding/key/epoch tuple and a purpose-specific Owner proof. Login or
+an App-device PQ signature alone cannot replace that proof or adopt another
+Owner/Node. Store converts the existing 32-byte credential digest to lowercase
+hex without hashing it again.
+
+Prepare reserves one immutable challenge and fixed deadlines. Complete atomically
+creates one private ACTIVE Network, mapped ACTIVE Group and two empty slots;
+it does not invent native SIDs, Endpoint candidates or peer grants. Revoke is
+covered for PREPARED and WAITING_JOIN, preserving rows/keys/epochs. No ACTIVE-pair
+revocation or native delivery acceptance is claimed at this stage.
+
+Effects, consumed nonce/CAS and exact sealed receipt commit in one transaction.
+A sealing failure rolls back the domain effects. A failure after random ID
+allocation but before admission publishes no PairID in its bootstrap fence or
+outer recovery metadata. Two independent Store connections competing to complete
+produce one domain effect and one permanent rejection fence. A held second
+SQLite writer proves time is sampled after writer acquisition; an expired
+preview receives a fence and reserves no pair.
+
+Exact history remains recoverable after reopen, login expiry or Root revocation.
+Reconcile either returns the exact committed receipt or permanently fences the
+unadmitted original; it never executes old consent. Known-pair fences bind the
+verified Owner-proof PairID, exact operation/ID/packet digest and no-effect
+outcome. Late originals return the same fence. Primary proof/nonce/slot/plan,
+message-budget and Node-receipt tables are retained and included in restore
+coverage; bounded read/rate caches are separate. Restore tests reject ten kinds
+of history, deadline, generation, proof or budget rollback.
+
+Status only advertises current administration when its query session ID and
+account/device/Client epochs match the actual token-derived actor. Device-only
+history and mismatched coordinates remain diagnostic. A cached exact read is
+historical; after the five-minute cache, an aged original becomes READ_EXPIRED
+with no slot pointers or administration. It cannot settle a mutation.
+
+Network/Group row builders were extracted behind existing validated callers.
+Their legacy timestamps retain RFC3339 second precision; new signed deadlines
+retain RFC3339Nano. No legacy validator or frozen protocol is relaxed.
+
+### Source and deterministic evidence
+
+Evidence root: `~/Cicada/.local/evidence/n3-hub/`. Go image:
+`sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61`.
+Tests use synthetic identities, disposable databases/TCP, read-only source/root,
+network-disabled containers, offline immutable module cache and separate writable
+Go cache. Every runner manifest records HEAD, all dirty input hashes, image and
+arguments; its inputs-unchanged check passed. After both final runs, only the
+contract Markdown evidence link and this validation record were updated.
+All tested code, test files, JSON and checker inputs remain byte-for-byte
+unchanged; the final worktree is not identical to the earlier full manifests.
+
+| Lane under `runtime/` | Result | Source-manifest SHA-256 |
+| --- | --- | --- |
+| `native-pair-a2-preparation-regressions` | 24 pass / 0 fail / 0 skip | `c1fd180950b1e8a953bdebaefe8682052d183f4f8d253605fd9d47173a6a0d62` |
+| `native-pair-a2-preparation-normal-fixed`, complete six packages | 1715 pass / 0 fail / 11 skip | `29d92d127a01de1c5627908b3cb59a9406bddab3528642d99b59fcb7f750eb45` |
+| `native-pair-a2-preparation-race`, earlier scoped range | 65 pass / 0 fail / 0 skip | `cb7d1fc11556f3f92f9f2c7ac3f575379331485660e680201de79ee5bb8a8cdd` |
+| `native-pair-a2-preparation-final-scope` | 73 pass / 0 fail / 0 skip | `4a820d8d71588e946322af367901ca9bd8189f544a47c8d5bdc9b3f73820e5b6` |
+| `native-pair-a2-preparation-final-race` | 73 pass / 0 fail / 0 skip | `cb657131c1339f6b4d87e36ccd095dbe8c5586f72fc013999fc059fad3e43fdb` |
+
+The six complete packages are `e2ee`, `clientwire`, `hubaccountwire`, `hubauth`,
+`store`, `server`. The final scoped range reruns all native-pair wire/Store/TCP
+cases and affected topology/migration regressions. Relative to the complete
+six-package run, only one production Go file changed:
+`hub_native_pair_reconcile_v1.go` adds the exact current-status context check.
+Two test files add revoke/status coverage and strengthen the concurrency case
+with separate Store connections; contract JSON bounds/prose/checker also changed.
+The complete earlier run is not relabeled as this final source. Both final
+normal/race runs test these final inputs. Final six-package `go vet` exited 0;
+N2, N3, native-pair, catalog metadata checks and `git diff --check` passed.
+
+The complete-run skips remain NOT_RUN, not passes:
+
+| Exact test | Reason |
+| --- | --- |
+| `TestExternalOwnerOpenSSLRealSignatureInterop` | Independent OpenSSL 3.5.9 executable not supplied |
+| `TestHubBoundedCapacityDocker` | Isolated bounded-capacity fixture not supplied |
+| `TestClientDockerHubSmoke` | Isolated Hub URL/DB/token fixture not supplied in normal lane |
+| `TestClientDockerHubHeadlessOperator` | Isolated headless Docker fixture not supplied in normal lane |
+| `TestClientDockerHubOwnerBootstrap` | Disposable Docker Hub fixture not supplied in normal lane |
+| `TestFabricDirectoryHidesRealUnjoinedNativeThreadHTTP` | No live owned native SID; real Runtime is user-only |
+| `TestGroupSpacesM2DockerHub` | Disposable Group Spaces fixture not supplied |
+| `TestNetworkM1DockerHub` | Disposable Network M1 fixture not supplied |
+| `TestStateBackupRestorePhysicalBindAliases` | Two disposable bind mounts not supplied |
+| `TestStateMaintenanceNonrootBindMountAliases` | Two disposable bind mounts not supplied |
+| `TestHubForwardPrepareRejectsPhysicalBindCapsuleBeforeFence` | Two disposable bind mounts not supplied |
+
+The separate standard disposable gate below executes its three skipped client
+cases, but does not cover the other skipped scopes.
+
+Earlier failures are retained: the initial 30-pass/2-fail run used an invalid
+synthetic LOGGED_OUT session enum, corrected to REVOKED. The first broad run was
+stopped after five real regressions (exit 143; 1156 pass/5 fail/8 skip): three
+legacy topology timestamp-precision failures, a pre-v61 fixture leaving later
+N3 tables while removing migration history, and an expected migration ledger
+ending at 63. Production row precision and disposable migration fixtures were
+corrected before the successful full run. These failed/interrupted lanes are
+not counted as successful acceptance.
+
+### Actual TCP framing and disposable compatibility gate
+
+The two production-HTTP tests create synthetic account/Owner/App and Node through
+actual N2 activation/login, Node PQ proof, Owner approval and N3 confirmation;
+there is no DB grant injection in that TCP fixture. Store tests separately reuse
+the historical synthetic N2 guard fixture and do not establish N2 acceptance.
+Development HTTP probes explicitly bypass their own unavailable discovery gate
+to test the new handlers. The supported capability decoder rejects false;
+this is not supported App setup or full Runtime acceptance.
+
+One successful TCP path performs exactly four pair POSTs: prepare, its exact
+retry, complete, reconcile. The original setup has no SID/peer rights. Additional
+cases exercise unadmitted original/late replay, malformed/noncanonical/oversize
+frames, wrong Origin, missing Owner proof, substituted Owner and wrong Node.
+Only byte lengths, elapsed times and HTTP statuses are logged, without tokens,
+keys, proof bodies or peer payloads.
+
+Final normal observations (request/response bytes; elapsed microseconds):
+prepare 74252/51925, 24888; exact retry 74252/51925, 14897;
+complete 75321/17546, 22112; reconcile 196028/58961, 37547.
+These are single synthetic loopback samples under concurrent test load, not a
+performance guarantee. Handlers add no background poll, inference or native
+queue activity; idle resource performance has not been measured. Actual full
+peer-key/delivery evidence carrier size still needs the next checkpoint.
+
+`native-pair-a2-preparation-client-interop/result.json`: PASS, exit 0, owned
+cleanup CONFIRMED (all three containers, both temporary image tags and scratch
+EXACT_ABSENT). Receipt SHA-256:
+`abe7748cc694688ee5b81189aad1d0203ee3b6f7d064930e2221649b9b881a30`.
+Built dirty base `96c07d8`, source fingerprint
+`0387321c88514df2b130140e70e0106a2f443648c46226de24eb4add30806f2c`;
+Hub image `sha256:67c88c746deaea48b9e2522394caeb0e6ede035b30c8df0b701288ceabbe5da5`.
+This compatibility gate predates the final status guard/test/contract changes;
+its exact source remains separately attributed. It tests existing client TCP
+transport/Owner bootstrap/recovery/headless behavior, not native-pair delivery.
+
+### Remaining delivery boundary
+
+Node describe/zero Join/detached reconciliation, actual candidate publication,
+plan freezing, both atomic consents, reserved-scope bypass Guards, full signed
+peer evidence, current delivery Guards and durable peer/native budgets remain
+for the next checkpoint. No capability is enabled until that chain closes.
+The independent QA readiness gate remains RED; no user package is produced here.
+Real same-gpu1 original-Thread conversation belongs only to the user. No agent
+created/seeded real SIDs, started a model turn, armed delivery or invoked a real
+native queue. Windows/Android native execution, physical device, real Runtime
+conversation, unattended wake, strict PQTLS and public HTTPS are NOT RUN.
+No production credential, resident deployment, identity rotation, push or merge
+was used. No new dependency or coordination infrastructure was added.

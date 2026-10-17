@@ -21,7 +21,7 @@ const (
 	// CurrentV2SchemaVersion is the highest versioned migration installed by
 	// Store initialization.  It is intentionally independent of the product
 	// version so a binary can refuse a ledger with a changed definition.
-	CurrentV2SchemaVersion = 63
+	CurrentV2SchemaVersion = 64
 
 	v2MigrationRunning = "running"
 	v2MigrationApplied = "applied"
@@ -566,6 +566,7 @@ var v2Migrations = []v2Migration{
 	},
 	{Version: 62, ID: "v1.hub.owner_activation", Description: "add finite exact Owner/App activation, nonrenewable App leases and authenticated account rejection fencing", Objects: []string{"hub_owner_activation_v1", "hub_owner_activation_v1_pending", "hub_owner_operations_v1", "hub_owner_operations_v1_nonce", "hub_app_leases_v1", "hub_owner_activation_v1_no_delete", "hub_owner_activation_v1_immutable", "hub_owner_operations_v1_no_delete", "hub_owner_operations_v1_no_update", "hub_app_leases_v1_no_delete", "hub_app_leases_v1_immutable"}, Apply: func(s *Store) error { return s.initializeHubActivationSchema() }},
 	{Version: 63, ID: "v1.hub.app_node_authority", Description: "add finite same-App exact Node authority, head CAS, permanent confirmation provenance and exact receipt/fences with bounded read caches", Objects: []string{"hub_app_node_heads_v1", "hub_app_node_grants_v1", "hub_app_node_grants_v1_pending", "hub_app_node_grants_v1_active", "hub_app_node_operations_v1", "hub_app_node_operations_v1_nonce", "hub_app_node_provenance_v1", "hub_app_node_reads_v1", "hub_app_node_rates_v1", "hub_app_node_heads_v1_no_delete", "hub_app_node_heads_v1_monotone", "hub_app_node_grants_v1_no_delete", "hub_app_node_grants_v1_immutable", "hub_app_node_operations_v1_no_delete", "hub_app_node_operations_v1_no_update", "hub_app_node_provenance_v1_no_delete", "hub_app_node_provenance_v1_no_update"}, Apply: func(s *Store) error { return s.initializeHubAppNodeSchema() }},
+	{Version: 64, ID: "v1.hub.native_pair", Description: "add bounded explicit native Thread pair, immutable Owner/slot/plan/receipt history and durable message budgets", Objects: []string{"hub_native_pair_guard_v1", "hub_native_pairs_v1", "hub_native_pairs_v1_nonterminal", "hub_native_pair_slots_v1", "hub_native_pair_slots_v1_current", "hub_native_pair_slots_v1_native", "hub_native_pair_plans_v1", "hub_native_pair_plans_v1_current", "hub_native_pair_consents_v1", "hub_native_pair_operations_v1", "hub_native_pair_operations_v1_nonce", "hub_native_pair_reads_v1", "hub_native_pair_rates_v1", "hub_native_pair_messages_v1", "hub_native_pair_node_operations_v1", "hub_native_pairs_v1_no_delete", "hub_native_pairs_v1_coordinates", "hub_native_pair_slots_v1_no_delete", "hub_native_pair_slots_v1_coordinates", "hub_native_pair_plans_v1_no_delete", "hub_native_pair_plans_v1_coordinates", "hub_native_pair_consents_v1_no_delete", "hub_native_pair_consents_v1_no_update", "hub_native_pair_operations_v1_no_delete", "hub_native_pair_operations_v1_no_update", "hub_native_pair_messages_v1_no_delete", "hub_native_pair_messages_v1_no_update", "hub_native_pair_node_operations_v1_no_delete", "hub_native_pair_node_operations_v1_no_update"}, Apply: func(s *Store) error { return s.initializeHubNativePairSchema() }},
 }
 
 // legacyInventoryColumns selects stable columns from the pre-v2 authority

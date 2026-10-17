@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate native-pair A1 metadata; no runtime/service acceptance claim."""
+"""Validate bounded native-pair preparation metadata; no acceptance claim."""
 import ast
 import hashlib
 import json
@@ -32,7 +32,10 @@ def check():
     prose = (ROOT / "docs/hub-native-pair-contract.md").read_text()
     strings = go_string_values(types + claims)
     assert manifest["contract_revision"] == strings["NativePairContractRevision"] == "native-pair-v1"
-    assert manifest["implementation_phase"] == strings["NativePairImplementationPhase"] == "WIRE_ONLY"
+    assert manifest["implementation_phase"] == strings["NativePairImplementationPhase"] == "SERVER_PREPARATION"
+    assert manifest["public_available"] is False
+    service = (ROOT / "cicada-go/internal/hubauth/native_pair.go").read_text()
+    assert re.search(r'Available:\s*false', service)
     assert manifest["format"] == strings["NativePairFormat"]
     assert manifest["wire_version"] == manifest["account_route_epoch"] == manifest["account_packet_sequence"] == 1
     assert len(manifest["operations"]) == 8
@@ -65,6 +68,9 @@ def check():
     for helper in ("ValidateNativePairBootstrapTarget", "ValidateNativePairPlanTarget"):
         assert helper in targets and helper in prose
     assert manifest["mandatory_independent_owner_pin"] and manifest["mandatory_node_policy_marker"]
+    assert manifest["runtime_acceptance_operator"] == "USER_ONLY"
+    assert manifest["known_pair_unadmitted_response"] == "NativePairRejectionFence"
+    assert "ValidateNativePairRejectionTarget" in packets
     assert manifest["bootstrap_preview_store_fields"] == "ALL_EMPTY_ONLY"
     assert manifest["other_purposes_require_full_scope"]
     assert manifest["stable_scope_replaceable_fields"] == ["actor.account_session_id", "actor.account_session_expires_at"]
@@ -85,7 +91,7 @@ def check():
     assert 'r.Operation == NativePairReconcileOperation' in limits
     assert 'bodyLimit <= 192*1024' in limits and 'packetLimit <= 384*1024' in limits
     assert 'return decodePacketWithLimit(raw, MaxPacketBytes)' in (WIRE / "packet.go").read_text()
-    print("native-pair-v1 A1 wire/crypto metadata PASS (service/runtime unavailable)")
+    print("native-pair-v1 preparation metadata PASS (public availability disabled)")
 
 
 if __name__ == "__main__":

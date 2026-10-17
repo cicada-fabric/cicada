@@ -40,6 +40,31 @@ func (h *hubNodesHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	path := r.URL.Path
+	if path == wire.NativePairCapabilitiesPath {
+		if r.Method != http.MethodGet {
+			writeError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+			return
+		}
+		caps, err := h.account.NativePairCapabilities()
+		if err != nil {
+			writeError(w, http.StatusServiceUnavailable, errors.New("native pair unavailable"))
+			return
+		}
+		raw, err := json.Marshal(caps)
+		if err != nil || len(raw) > wire.MaxNativePairCapabilitiesBytes {
+			writeError(w, http.StatusServiceUnavailable, errors.New("native pair metadata unavailable"))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(raw)
+		return
+	}
+	for _, op := range wire.NativePairHTTPOperations() {
+		if path == wire.NativePairHTTPPath(op) {
+			h.base.hubAccount(w, r, op)
+			return
+		}
+	}
 	if path == wire.AppNodeCapabilitiesPath {
 		if r.Method != http.MethodGet {
 			writeError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))

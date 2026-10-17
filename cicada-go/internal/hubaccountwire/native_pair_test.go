@@ -818,3 +818,57 @@ func TestNativePairRevokeCanonicalTargetAndFreshLogin(t *testing.T) {
 		t.Fatal("arbitrary signed revoke target reached transport")
 	}
 }
+
+func TestNativePairClosedDiscoveryAndKnownPairFence(t *testing.T) {
+	f := nativePairTestFixture(t)
+	caps := NativePairCapabilities{Format: NativePairFormat, ContractRevision: NativePairContractRevision, Available: true, ServeMode: "--hub-nodes-only", TransportPolicy: AppNodeTransportHTTPS, HTTPOperations: NativePairHTTPOperations(), NodeOperations: NativePairNodeOperations(), PeerTransport: "SEALED_RELAY", Policy: e2ee.NativePairFixedPeerPolicy()}
+	raw, _ := json.Marshal(caps)
+	if _, err := DecodeNativePairCapabilities(raw); err != nil {
+		t.Fatal(err)
+	}
+	for _, edit := range []func(*NativePairCapabilities){
+		func(c *NativePairCapabilities) { c.Available = false }, func(c *NativePairCapabilities) { c.ServeMode = "full" }, func(c *NativePairCapabilities) { c.TransportPolicy = "HTTP" }, func(c *NativePairCapabilities) { c.PeerTransport = "DIRECT" }, func(c *NativePairCapabilities) { c.Policy.MaxRootAsks++ }, func(c *NativePairCapabilities) { c.HTTPOperations = append(NativePairHTTPOperations(), "manager.rpc") }, func(c *NativePairCapabilities) {
+			c.NodeOperations = []string{OperationNativePairNodeJoin, OperationNativePairNodeDescribe, OperationNativePairNodeReconcile}
+		},
+	} {
+		c := caps
+		edit(&c)
+		raw, _ := json.Marshal(c)
+		if _, err := DecodeNativePairCapabilities(raw); err == nil {
+			t.Fatal("unsupported discovery accepted")
+		}
+	}
+	claims := nativePairSlotConsent(f, f.plan.SlotA)
+	q := NativePairConsentComplete{Format: NativePairFormat, Context: nativePairContext(claims), SessionToken: bytes.Repeat([]byte{7}, MaxSessionTokenBytes), OwnerProof: f.evidence.SlotAOwnerConsent, GroupKeyProof: f.evidence.SlotAGroupKeyProof}
+	original, err := SealClientRequest(f.f.device, f.f.hub, q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, route, _ := NewClientRoute(f.f.hub, q, f.f.device.Public())
+	fence := NativePairRejectionFence{Format: NativePairFormat, Operation: route.Operation, RequestID: route.OperationID, RequestPacketDigest: NativePairPacketDigest(original), PairID: f.plan.PairID, State: "REJECTED_FENCED", NoEffect: true, ErrorCode: "TARGET_UNAVAILABLE", ObservedAt: formatUTC(f.f.now)}
+	packet, err := SealResponse(f.f.hubPrivate, f.f.device.Public(), route, fence)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got NativePairRejectionFence
+	if OpenClientResponse(f.f.device, f.f.hub, original, packet, &got) != nil || ValidateNativePairRejectionTarget(got, q, original) != nil {
+		t.Fatal("bound no-effect fence rejected")
+	}
+	bad := got
+	bad.PairID = strings.Repeat("f", 32)
+	if ValidateNativePairRejectionTarget(bad, q, original) == nil {
+		t.Fatal("other pair fence settled original")
+	}
+	bad = got
+	bad.NoEffect = false
+	if _, err = SealResponse(f.f.hubPrivate, f.f.device.Public(), route, bad); err == nil {
+		t.Fatal("effectful no-effect fence accepted")
+	}
+	statusRoute := route
+	statusRoute.Operation = OperationNativePairStatus
+	bad = got
+	bad.Operation = statusRoute.Operation
+	if _, err = SealResponse(f.f.hubPrivate, f.f.device.Public(), statusRoute, bad); err == nil {
+		t.Fatal("read borrowed mutation fence")
+	}
+}

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+	"time"
 )
 
 // This ledger is separate from the encrypted Client request ledger: a request
@@ -174,19 +175,47 @@ FROM client_topology_group_creates_v2 WHERE request_id=? AND owner_id=? AND netw
 	}
 	group.ID = NewID("grp")
 	group.ParentGroupID = parentID
-	timestamp := now()
-	_, err = tx.Exec(`INSERT INTO groups
+	created, err := insertGroupWithOwnerMembershipTx(tx, group, time.Now().UTC(), "")
+	if err != nil {
+		return nil, err
+	}
+	timestamp := created.CreatedAt
+
+	if clientRequestID != "" {
+		createdJSON, err := json.Marshal(created)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := tx.Exec(`INSERT INTO client_topology_group_creates_v2
+(request_id,owner_id,network_id,input_digest,group_id,created_group_json,created_at)
+VALUES (?,?,?,?,?,?,?)`, clientRequestID, group.OwnerPrincipalID, group.NetworkID,
+			digest, group.ID, string(createdJSON), timestamp); err != nil {
+			return nil, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return created, nil
+}
+
+// The caller derives a complete authorized Group and stable reserved ID.
+func insertGroupWithOwnerMembershipTx(tx *sql.Tx, group Group, at time.Time, ownerExpiry string) (*Group, error) {
+	// Legacy group.manage callers compare against an RFC3339 second clock.
+	// Preserve that row precision while deriving it from the caller's one At.
+	timestamp := at.UTC().Format(time.RFC3339)
+	_, err := tx.Exec(`INSERT INTO groups
 (id,network_id,parent_group_id,owner_principal_id,trust_domain_id,name,state,purpose,revision,
  policy_ref,context_policy,isolation_profile,external_mode,version,created_at,updated_at)
 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		group.ID, group.NetworkID, parentID, group.OwnerPrincipalID, group.TrustDomainID, group.Name,
+		group.ID, group.NetworkID, group.ParentGroupID, group.OwnerPrincipalID, group.TrustDomainID, group.Name,
 		group.State, group.Purpose, group.Revision, group.PolicyRef, group.ContextPolicy,
 		group.IsolationProfile, group.ExternalMode, group.Version, timestamp, timestamp)
 	if err != nil {
 		return nil, err
 	}
 	membership, roles, grants, authorization, err := normalizeMembership(Membership{
-		PrincipalID: group.OwnerPrincipalID, GroupID: group.ID, Role: "owner", Roles: []string{"owner"},
+		PrincipalID: group.OwnerPrincipalID, GroupID: group.ID, Role: "owner", Roles: []string{"owner"}, EffectiveAt: timestamp, ExpiresAt: ownerExpiry,
 		Grants: []string{"group.manage", "membership.manage", "representative.manage", "policy.manage"},
 		Status: MembershipStatusActive,
 	})
@@ -205,21 +234,6 @@ VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 	}
 	created, err := scanGroup(tx.QueryRow(`SELECT `+groupColumns+` FROM groups WHERE id=?`, group.ID))
 	if err != nil {
-		return nil, err
-	}
-	if clientRequestID != "" {
-		createdJSON, err := json.Marshal(created)
-		if err != nil {
-			return nil, err
-		}
-		if _, err := tx.Exec(`INSERT INTO client_topology_group_creates_v2
-(request_id,owner_id,network_id,input_digest,group_id,created_group_json,created_at)
-VALUES (?,?,?,?,?,?,?)`, clientRequestID, group.OwnerPrincipalID, group.NetworkID,
-			digest, group.ID, string(createdJSON), timestamp); err != nil {
-			return nil, err
-		}
-	}
-	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 	return created, nil

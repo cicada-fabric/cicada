@@ -1,6 +1,6 @@
 {
   "contract_revision": "native-pair-v1",
-  "implementation_phase": "WIRE_ONLY",
+  "implementation_phase": "SERVER_PREPARATION",
   "format": "cicada.native-pair.v1",
   "wire_version": 1,
   "account_route_epoch": 1,
@@ -8,7 +8,10 @@
   "discovery": {
     "method": "GET",
     "path": "/v2/owner/native-pairs/capabilities",
-    "response": "NativePairCapabilities"
+    "response": "NativePairCapabilities",
+    "serve_mode": "--hub-nodes-only",
+    "peer_transport": "SEALED_RELAY",
+    "operations_ordered": true
   },
   "operations": [
     {
@@ -110,7 +113,10 @@
     "MaxNativePairReconcileBodyBytes": 360448,
     "MaxNativePairReconcilePacketBytes": 655360,
     "MaxNativePairReconcileInnerPacketBytes": 655360,
-    "MaxOwnerNativePairProofBytes": 32768
+    "MaxOwnerNativePairProofBytes": 32768,
+    "MaxNativePairCapabilitiesBytes": 8192,
+    "MaxNativePairNodeOriginalBytes": 32768,
+    "MaxNativePairNodeReceiptBytes": 131072
   },
   "fixed_policy": {
     "max_root_asks": 4,
@@ -167,5 +173,27 @@
     "scope",
     "pair_id",
     "expected_revision"
-  ]
+  ],
+  "public_available": false,
+  "known_pair_unadmitted_response": "NativePairRejectionFence",
+  "runtime_acceptance_operator": "USER_ONLY",
+  "credential_commitment_encoding": "LOWERCASE_HEX_OF_EXISTING_SHA256",
+  "node_http_path": "/v2/node/control/rpc",
+  "node_join_result": "fabric.JoinResult",
+  "mcp_join": {
+    "tool": "cicada_join",
+    "selectors": [
+      "pair_id",
+      "slot"
+    ],
+    "slot_values": [
+      "A",
+      "B"
+    ],
+    "mutually_exclusive_explicit": [
+      "group_id"
+    ],
+    "sid_from_trusted_context": true,
+    "candidate_publication": "NODE_AUTOMATIC_AFTER_DURABLE_ZERO_JOIN"
+  }
 }

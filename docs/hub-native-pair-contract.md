@@ -1,10 +1,11 @@
 # N3 bounded native Thread pair: contract proposal
 
-**A1 CONTRACT WITH A2 HELPER CORRECTIONS — wire/crypto only; no service permission is enabled.**
+**SERVER PREPARATION — guarded setup/recovery only; public availability remains false until the Node and peer Guards close.**
 Baseline: `0fbd09105e73e1e6e2488dafcb0b7b14e8264faa`, 2026-10-17.
 Proposed separate contract identifier: `native-pair-v1`. Names and limits below
 become implementation requirements only after review. This is the proposed
 public boundary, not another task/implementation-status ledger.
+Scoped preparation evidence is appended to the existing [A1/A2 validation record](hub-native-pair-a1-validation.md#a2-storehttp-preparation-available-false).
 
 ## Result and fixed scope
 
@@ -125,12 +126,54 @@ budgets or peer deadline. Expired/revoked old scopes remain recorded. This first
 version does not support moving that SID to a new pair or migrating an unrelated
 scope; return a typed conflict instead of creating a replacement SID or rekeying.
 
+The sole MCP selector is additive `cicada_join(pair_id, slot)`, with both
+parameters required together and `slot` exactly `A` or `B`. Explicit `group_id`
+is mutually exclusive; the pair branch ignores a legacy default
+`CICADA_GROUP_ID`. Native SID, Node and workspace still come from trusted local
+context. Node authenticates describe, verifies/persists the required policy
+marker and original tuple, then durably sends exact Join. An uncertain Join
+cannot refresh generation through another describe. Node persists the returned
+zero-Join session and original Endpoint private key before automatically
+publishing the existing self-attested candidate. Intermediate output is
+`JOINED_ZERO`/`CANDIDATE_PUBLICATION_PENDING`; only actual Hub acceptance plus
+local durable application yields `CANDIDATE_READY`. Neither implies peer rights.
+
+All three Node methods use POST `/v2/node/control/rpc`, existing `CicadaNode`
+authentication and `nodewire` v1 PQ. Describe returns its existing typed
+`NativePairNodeDescription` as the normal RPC `result`; Join returns the existing
+`fabric.JoinResult` inside that envelope, retaining credentials only on Node.
+Detached reconcile binds the original Node route/operation ID/sequence/digest,
+not App authentication, and does not consume the blocked business sequence.
+
+CredentialCommitment is lowercase hex encoding of the same 32-byte SHA-256
+represented by the existing raw-base64url Node credential digest. Hub strictly
+decodes that stored digest and Node hashes its actual trimmed credential; there
+is no second hash. The first Store-only Node-Control binding version comes from
+the independently Owner-pinned bootstrap and is durably pinned, not claimed as a
+value locally derivable before that first proof. Subsequent tuple changes cannot
+be silently adopted. Existing binding.status JSON is unchanged.
+
+Original Owner public-key transfer uses only flat `e2ee.PublicIdentity` JSON
+(`id`, `kem_public`, `signing_public`; byte arrays are base64), at most 32768 bytes.
+App displays the retained Owner ID, full key ID and the existing
+`nodekeys.PeerKeyFingerprint`: `sha256:` plus lowercase hex SHA-256 of
+`cicada/nodekeys/peer-key-fingerprint/v1` plus NUL, then KEM bytes, then signing
+bytes, with no other separator. This differs from the Hub/Node-Control and N2
+display fingerprints. The user independently compares those values before
+`machine trust-owner-key` on the original Node/state/WriterRoot. Its existing
+regular-file/no-symlink checks and maintenance locks remain authoritative;
+the user normally stops and restarts the original Node service around pinning.
+No private key, session credential or replacement identity is transferred.
+
 ## Minimum DTOs and signed statements
 
 The authoritative Go/JSON DTOs are `internal/hubaccountwire/native_pair_types.go`
 and `internal/e2ee/owner_native_pair_claims.go`; canonical validators and digest
-helpers sit beside them. A1 is `WIRE_ONLY`: no service advertises or executes
-these operations. Required fields cannot be inferred from display labels.
+helpers sit beside them. A1 was `WIRE_ONLY`. The Store/HTTP preparation checkpoint implements guarded
+setup and recovery but advertises `available=false` while Node Join, dual
+consent and Relay Guards are incomplete; supported Apps send zero new secret
+POSTs on this discovery response. Explicit synthetic protocol tests can exercise
+the guarded development routes without representing a supported user flow. Required fields cannot be inferred from display labels.
 
 | DTO | Required contents |
 | --- | --- |
@@ -349,6 +392,23 @@ Bare `ABSENT` never settles a mutation. All other originals require exact PairID
 The nested receipt must be opened against the original route and its pair ID
 checked against the outer diagnostic result before closing pending.
 
+For a known-pair mutation whose target row is unavailable,
+`NativePairRejectionFence` binds the verified original operation/request ID,
+packet digest and mandatory Owner-proof PairID. Its only outcome is
+`REJECTED_FENCED`, `no_effect=true`; it carries no fabricated domain state,
+authority or budget. `ValidateNativePairRejectionTarget(fence, originalDTO,
+originalPacket)` verifies that exact target after the nested Hub receipt is
+opened. Only bootstrap-complete, consent-prepare/complete, slot-reject and revoke
+can use it. Unknown-ID bootstrap-prepare retains its distinct BootstrapFence.
+The permanent fence must commit before returning; ABSENT cannot close pending.
+
+An aged/lost reconcile query may receive a new diagnostic ID/nonce/time with the
+same exact business original bytes/route/digest/PairID. App durably replaces only
+its current diagnostic query and rejects late replies for older query IDs.
+It does not replace/re-sign the business original or execute a new business
+intent. The read cache remains five minutes; fresh diagnostics are bounded to
+128/minute, without an implicit retry loop.
+
 Node reconcile is detached diagnostic authentication and must not consume the
 blocked business sequence. Recovery cannot require a replacement login while
 pending blocks that login. Receipt recovery never refreshes proofs, deadlines,
@@ -383,6 +443,14 @@ must precede secret use. Old servers/modes return unavailable; upgraded clients
 must not silently fall back to broad Client rights or direct transport.
 
 ## Frozen A1 call sequence and size correction
+
+Public discovery fixes `serve_mode="--hub-nodes-only"`,
+`peer_transport="SEALED_RELAY"`, and the existing HTTPS application-PQ policy
+(or explicit loopback-test policy). `DecodeNativePairCapabilities` requires
+canonical JSON up to 8 KiB, available=true, exact format/revision/fixed budget,
+and closed ordered HTTP/Node lists from `NativePairHTTPOperations` and
+`NativePairNodeOperations`. Unavailable preparation metadata cannot authorize
+an App request or create pending state.
 
 App keeps the original typed DTO and sealed packet together in its existing
 private outbox. After `OpenClientResponse`, it must call
@@ -495,22 +563,18 @@ packet/pin/persistence techniques are reusable without new authority.
    one slot/consent/activation effect, preserved nonces/counters and no replay of
    uncertain queue work. App logout/lease expiry does not revoke already ACTIVE
    peer authority; the signed peer deadline and actual peer Guards do.
-4. Real Runtime lane under the user's current explicit two-Thread authorization:
-   Root first verifies the concrete scope and execution limits; this does not
-   require asking the user again by default. Create/select two owned real Threads
-   before the dialogue; retain their original SIDs and distinct private context
-   witnesses. A must not know B's answer. A's MCP ASK reaches B over actual sealed
-   Relay; B answers from its original context with MCP Reply; original A produces
-   the B-only answer plus its own context witness. The first gate permits at
-   most one ASK, one Reply and two receiver native submissions; no recursive
-   follow-up. Root separately fixes and records setup/seed/continuation model
-   turns, per-call/overall time limits and provider exposure before running,
-   records any inability to stop an already running native turn, and does not
-   call that a hard billing guarantee. Root/scripts may observe IDs,
-   receipts and digests, never transfer the peer body/answer. A second Node ID or
-   replacement Thread cannot stand in for the same physical/logical Node case.
-5. Record queue acceptance, actual consumption, loaded/unattended wake, controlled
-   same-SID continuation, revoke-before-delivery and reopen continuity separately.
+4. Real Runtime acceptance belongs to the user: on the same gpu1 Node the user
+   selects two owned real Threads, retains their original SIDs and distinct
+   private context, explicitly Joins both and approves their actual candidates
+   through the original App vault. The user initiates A's MCP ASK and B's MCP
+   Reply and confirms that original A receives the B-only answer with its own
+   context intact. Root/QA/scripts do not create/seed SIDs, start model turns,
+   arm delivery or call a real native queue for this acceptance. They may supply
+   reviewed builds, exact supported steps and read-only diagnostics. They never
+   transfer the peer body/answer. Synthetic isolated fixtures remain a separate
+   lane and cannot stand in for this user-operated conversation.
+5. Record queue acceptance, actual consumption, loaded/unattended wake, user
+   continuation of the same SID, revoke-before-delivery and reopen continuity separately.
    Missing consumption is not a conversation PASS. Hub storage/HTTP traces must
    exclude private peer plaintext; actual cost/provider use is bounded and
    attributed to that test's stated execution plan.

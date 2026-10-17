@@ -247,6 +247,10 @@ func OpenClientResponse(device *e2ee.Identity, hub HubIdentity, requestBytes, re
 		if value.RequestPacketDigest != NativePairPacketDigest(requestBytes) {
 			return ErrInvalid
 		}
+	case NativePairRejectionFence:
+		if value.RequestPacketDigest != NativePairPacketDigest(requestBytes) {
+			return ErrInvalid
+		}
 	case NativePairResult:
 		if value.RequestPacketDigest != NativePairPacketDigest(requestBytes) {
 			return ErrInvalid

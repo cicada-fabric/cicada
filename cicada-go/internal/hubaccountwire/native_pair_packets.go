@@ -145,6 +145,10 @@ func validateNativePairResponse(body any, r clientwire.Route) error {
 		return ErrInvalid
 	}
 	switch v := dereference(body).(type) {
+	case NativePairRejectionFence:
+		if !nativePairKnownMutation(r.Operation) || v.Operation != r.Operation || v.Format != NativePairFormat || v.RequestID != r.OperationID || !isHex(v.RequestPacketDigest, 32) || !isHex(v.PairID, RequestIDBytes) || v.State != "REJECTED_FENCED" || !v.NoEffect || !nativePairToken(v.ErrorCode) || len(v.ErrorCode) > 64 || validateCanonicalTime(v.ObservedAt) != nil {
+			return ErrInvalid
+		}
 	case NativePairBootstrapFence:
 		if r.Operation != OperationNativePairBootstrapPrepare || v.Operation != r.Operation || v.Format != NativePairFormat || v.RequestID != r.OperationID || !isHex(v.RequestPacketDigest, 32) || v.State != "REJECTED_FENCED" || !v.NoEffect || !nativePairToken(v.ErrorCode) || len(v.ErrorCode) > 64 || validateCanonicalTime(v.ObservedAt) != nil {
 			return ErrInvalid
@@ -185,6 +189,55 @@ func validateNativePairResponse(body any, r clientwire.Route) error {
 	}
 	raw, err := json.Marshal(body)
 	if err != nil || len(raw) > maxBodyForOperation(r.Operation) {
+		return ErrInvalid
+	}
+	return nil
+}
+
+func nativePairKnownMutation(op string) bool {
+	switch op {
+	case OperationNativePairBootstrapComplete, OperationNativePairSlotReject, OperationNativePairConsentPrepare, OperationNativePairConsentComplete, OperationNativePairRevoke:
+		return true
+	}
+	return false
+}
+
+func nativePairClaimsPairID(c e2ee.OwnerNativePairClaims) string {
+	switch c.Purpose {
+	case e2ee.OwnerNativePairBootstrapCommit:
+		if c.Bootstrap != nil {
+			return c.Bootstrap.PairID
+		}
+	case e2ee.OwnerNativePairConsentPreview, e2ee.OwnerNativePairSlotConsent:
+		if c.Consent != nil {
+			return c.Consent.PairID
+		}
+	case e2ee.OwnerNativePairSlotReject:
+		if c.Reject != nil {
+			return c.Reject.PairID
+		}
+	case e2ee.OwnerNativePairRevoke:
+		if c.Revoke != nil {
+			return c.Revoke.PairID
+		}
+	}
+	return ""
+}
+
+// Call after opening this fence against the original pinned Hub request route.
+// Original DTO and ciphertext are the exact pair retained in the local outbox.
+func ValidateNativePairRejectionTarget(v NativePairRejectionFence, originalBody any, original []byte) error {
+	op, _, ctx, _, rawProof := nativePairRequestParts(originalBody)
+	p, err := nativePairOriginal(original)
+	if err != nil || !nativePairKnownMutation(op) || p.Packet.Route.Operation != op || p.Packet.Route.OperationID != ctx.RequestID || p.Packet.Route.OwnerID != ctx.OwnerID || p.Packet.Route.DeviceID != ctx.DeviceID || p.Packet.Route.HubID != ctx.HubID || p.Packet.Route.SessionEpoch != HandshakeEpoch || validateNativePairResponse(v, p.Packet.Route) != nil || v.RequestPacketDigest != NativePairPacketDigest(original) || validateNativePairDevice(originalBody, p.SenderPublicIdentity) != nil {
+		return ErrInvalid
+	}
+	var proof e2ee.OwnerNativePairProof
+	if decodeCanonical(rawProof, e2ee.MaxOwnerNativePairProofBytes, &proof) != nil {
+		return ErrInvalid
+	}
+	c, err := e2ee.VerifyOwnerNativePair(proof.Claims.Scope.Actor.OwnerPublic, rawProof, NativePairOwnerPurpose(op), time.Time{})
+	if err != nil || !nativePairContextScope(ctx, c.Scope.Actor) || c.RequestID != ctx.RequestID || c.Nonce != hex.EncodeToString(ctx.ClientNonce) || c.IssuedAt != ctx.IssuedAt || nativePairClaimsPairID(c) != v.PairID {
 		return ErrInvalid
 	}
 	return nil

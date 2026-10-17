@@ -301,6 +301,26 @@ func (s *Store) NetworkMode() (string, error) {
 }
 
 func (s *Store) CreateNetwork(network Network) (*Network, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	created, err := createNetworkTx(tx, network, time.Now().UTC())
+	if err != nil {
+		return nil, err
+	}
+	if err = tx.Commit(); err != nil {
+		return nil, err
+	}
+	return created, nil
+}
+
+// Shared row builder. Each caller establishes its own authenticated authority;
+// Hub/native-pair composition keeps it in the same receipt transaction.
+func createNetworkTx(tx *sql.Tx, network Network, at time.Time) (*Network, error) {
 	network.ID, network.HubID = strings.TrimSpace(network.ID), strings.TrimSpace(network.HubID)
 	network.Name, network.OwnerID = strings.TrimSpace(network.Name), strings.TrimSpace(network.OwnerID)
 	if network.HubID == "" || network.Name == "" || network.OwnerID == "" {
@@ -318,18 +338,16 @@ func (s *Store) CreateNetwork(network Network) (*Network, error) {
 	if !validNetworkContextPolicy(network.ContextPolicy) {
 		return nil, ErrNetworkConflict
 	}
-	timestamp := now()
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	timestamp := at.UTC().Format(time.RFC3339)
 	var localHubID string
-	if err := s.db.QueryRow(`SELECT hub_id FROM client_device_hub_config_v2 WHERE id=1`).Scan(&localHubID); err != nil || localHubID != network.HubID {
+	if err := tx.QueryRow(`SELECT hub_id FROM client_device_hub_config_v2 WHERE id=1`).Scan(&localHubID); err != nil || localHubID != network.HubID {
 		return nil, ErrNetworkPermission
 	}
 	var ownerKind, ownerStatus string
-	if err := s.db.QueryRow(`SELECT kind,status FROM principals WHERE id=?`, network.OwnerID).Scan(&ownerKind, &ownerStatus); err != nil || ownerKind != PrincipalKindHuman || ownerStatus != PrincipalStatusActive {
+	if err := tx.QueryRow(`SELECT kind,status FROM principals WHERE id=?`, network.OwnerID).Scan(&ownerKind, &ownerStatus); err != nil || ownerKind != PrincipalKindHuman || ownerStatus != PrincipalStatusActive {
 		return nil, ErrNetworkPermission
 	}
-	_, err := s.db.Exec(`INSERT INTO networks_v2(id,hub_id,name,owner_id,state,context_policy,version,created_at,updated_at) VALUES(?,?,?,?,?,?,1,?,?)`, network.ID, network.HubID, network.Name, network.OwnerID, network.State, network.ContextPolicy, timestamp, timestamp)
+	_, err := tx.Exec(`INSERT INTO networks_v2(id,hub_id,name,owner_id,state,context_policy,version,created_at,updated_at) VALUES(?,?,?,?,?,?,1,?,?)`, network.ID, network.HubID, network.Name, network.OwnerID, network.State, network.ContextPolicy, timestamp, timestamp)
 	if err != nil {
 		return nil, fmt.Errorf("create network: %w", err)
 	}

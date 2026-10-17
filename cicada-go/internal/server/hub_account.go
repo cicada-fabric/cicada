@@ -65,7 +65,14 @@ func (h *Handler) hubAccount(response http.ResponseWriter, request *http.Request
 			return
 		}
 	}
-	raw, e := io.ReadAll(http.MaxBytesReader(response, request.Body, wire.MaxPacketBytes))
+	limit := wire.MaxPacketBytes
+	if wire.NativePairHTTPPath(operation) != "" {
+		limit = wire.MaxNativePairOriginalBytes
+		if operation == wire.OperationNativePairReconcile {
+			limit = wire.MaxNativePairReconcilePacketBytes
+		}
+	}
+	raw, e := io.ReadAll(http.MaxBytesReader(response, request.Body, int64(limit)))
 	if e != nil {
 		writeError(response, http.StatusRequestEntityTooLarge, errors.New("Hub account packet exceeds limit"))
 		return
