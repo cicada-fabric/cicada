@@ -154,6 +154,17 @@ func (c *nativeController) Dispatch(ctx context.Context, action Action) (dispatc
 	if closed {
 		return ErrClosed
 	}
+	if action.AutoNodeStatus != nil && action.Kind != ActionRefreshNode {
+		return ErrInvalidAction
+	}
+	if action.AutoNodeStatus != nil {
+		// A skipped background read must not perform manual-session
+		// housekeeping, discover context or change any vault version.
+		operationCtx, cancel := context.WithCancel(ctx)
+		stop := context.AfterFunc(c.lifetime, cancel)
+		defer func() { stop(); cancel() }()
+		return c.refreshNodeAutomatically(operationCtx, *action.AutoNodeStatus)
+	}
 	if c.storageFault && action.Kind != ActionConnect && action.Kind != ActionResumeProfile && action.Kind != ActionDiscoverProfiles {
 		return c.fail(PhaseError, "APP_STORAGE_RECOVERY_REQUIRED", errors.New("reconnect to recover encrypted App state"))
 	}

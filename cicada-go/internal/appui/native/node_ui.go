@@ -17,6 +17,10 @@ import (
 func (v *view) nodeSection(s appcore.Snapshot) layout.Widget {
 	return func(gtx layout.Context) layout.Dimensions {
 		flow := appui.NodeFlow(s)
+		updating := v.updates.showingProgress(s, time.Now())
+		if updating {
+			flow = appui.NodeSetupFlow{Stage: "bound"}
+		}
 		reviewID := ""
 		if s.Node.Candidate != nil {
 			reviewID = s.Node.Candidate.ReviewID
@@ -100,6 +104,9 @@ func (v *view) nodeSection(s appcore.Snapshot) layout.Widget {
 			rows = append(rows, layout.Rigid(v.labelRow(appui.Text(v.locale, "node.recovery"))))
 		case "bound":
 			key := appui.NodeStatusMessage(s)
+			if updating {
+				key = "node.updating_status"
+			}
 			rows = append(rows, layout.Rigid(v.nodeCaption(appui.Text(v.locale, "node.connection_status"))), layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 				label := material.Body1(v.theme, appui.Text(v.locale, key))
 				switch key {
@@ -118,6 +125,9 @@ func (v *view) nodeSection(s appcore.Snapshot) layout.Widget {
 			}
 			if accessKey == "" {
 				accessKey = "node.access_unconfirmed"
+			}
+			if updating {
+				accessKey = "node.checking_status_access"
 			}
 			rows = append(rows, layout.Rigid(v.nodeCaption(appui.Text(v.locale, "node.status_access"))), layout.Rigid(v.labelRow(appui.Text(v.locale, accessKey))))
 			times := []struct{ key, value string }{{"node.access_until", displayNodeTime(s.Node.Access.ExpiresAt)}}

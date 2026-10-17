@@ -210,6 +210,9 @@ type Action struct {
 	NodeReviewID        string
 	ConfirmNodeIdentity bool
 	ConfirmNodeAccess   bool
+	// AutoNodeStatus limits a background read to this exact current target.
+	// Nil preserves the existing explicitly requested refresh/recovery flow.
+	AutoNodeStatus *NodeStatusTarget
 
 	Username    string
 	Password    string

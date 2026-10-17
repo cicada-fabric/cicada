@@ -277,3 +277,25 @@ is `685bdf3a81dafed9ec2a754a954520b1be298e81e9a6ffd5c29569f9918eded1`.
 The fixed Go 1.27.2 builder, private cache, read-only module closure, RED/GREEN
 logs and unsigned build are recorded at
 `~/Cicada/.local/evidence/n3-app/native-status-20261017-fu0fc8pv`.
+
+The automatic observation checkpoint reads only the selected saved Node every
+30 seconds after completion, while its exact current finite grant and bound
+account session remain valid. Foreground controls are processed first; an
+in-flight read is briefly busy with HTTP capped at ten seconds or the earlier
+effective expiry. Minimizing pauses future ticks; closing cancels the worker.
+Core checks the full expected scope, grant, confirmed binding and authenticated
+observation under its action lock before any new packet or vault write. Every
+read still persists its exact encrypted packet and authenticated receipt.
+Uncertain errors pause automation for explicit recovery; authenticated terminal
+outcomes settle normally, and late receipts never become fresh permission.
+Normal background reads use a quiet progress indication without overlaying old
+authority or extending heartbeat freshness. No Owner proof, pairing, grant
+renewal, Client counter or confirmation-budget operation is automatic. Normal
+and race each passed **104 UI/native plus 35 core events, zero failures/skips**;
+Linux/Windows vet and Windows amd64 build passed with the fixed Go 1.27.2
+builder. Before/after Go/module manifests both hash to
+`8700f5d8cc629b64ab71a251ceccbc0acf5ae890df1e46547fce8a033a01e7de`,
+on dirty `530f5d5` source. Evidence is retained at
+`~/Cicada/.local/evidence/n3-app/auto-observation-20261017-z_8hgpqy`.
+These are real-PQ core actor and portable scheduler results; Win32 execution,
+physical Ubuntu and independent process/interoperability gates remain separate.

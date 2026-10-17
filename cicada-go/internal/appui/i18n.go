@@ -183,6 +183,8 @@ const (
 	msgNodeCheckAccess           messageID = "node.check_access"
 	msgNodeCheckForCurrentStatus messageID = "node.check_for_current_status"
 	msgNodeAccountRecoveryFirst  messageID = "node.account_recovery_first"
+	msgNodeUpdatingStatus        messageID = "node.updating_status"
+	msgNodeCheckingStatusAccess  messageID = "node.checking_status_access"
 )
 
 const (
@@ -211,6 +213,8 @@ var catalog = map[Locale]map[messageID]string{
 		msgNodeCheckAccess:           "Check status access",
 		msgNodeCheckForCurrentStatus: "Check Node status to get the latest result.",
 		msgNodeAccountRecoveryFirst:  "Recover the saved account request before checking this Node's current status.",
+		msgNodeUpdatingStatus:        "Checking for the latest status…",
+		msgNodeCheckingStatusAccess:  "Checking current status access…",
 
 		msgNodeReviewStatus:          "Review this status access",
 		msgNodeStatusScope:           "Allow only status reads for this previously approved Node until the displayed expiry. This does not pair the Node again or renew its previous authorization.",
@@ -390,6 +394,8 @@ var catalog = map[Locale]map[messageID]string{
 		msgNodeCheckAccess:           "检查状态访问",
 		msgNodeCheckForCurrentStatus: "请检查 Node 状态以获取最新结果。",
 		msgNodeAccountRecoveryFirst:  "请先恢复已保存的账户请求，再查看此 Node 的当前状态。",
+		msgNodeUpdatingStatus:        "正在检查最新状态…",
+		msgNodeCheckingStatusAccess:  "正在核对当前状态访问…",
 
 		msgNodeReviewStatus:          "确认此次状态访问",
 		msgNodeStatusScope:           "仅允许在显示的截止时间前查看此前已批准 Node 的状态。本次授权不会重新配对 Node，也不会续期此前的授权。",

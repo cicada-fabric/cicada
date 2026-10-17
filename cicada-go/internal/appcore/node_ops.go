@@ -266,6 +266,13 @@ func (c *nativeController) sendNodePending(ctx context.Context, fresh bool) erro
 	if err := c.persistNode(); err != nil {
 		return c.failStorage("APP_NODE_COMMIT_FAILED", err)
 	}
+	if ctx.Err() != nil {
+		if err := c.applyNodeResponse(p, false); err != nil {
+			return c.failNode("APP_NODE_RESPONSE_INVALID", err)
+		}
+		c.publish()
+		return ctx.Err()
+	}
 	if err := c.applyNodeResponse(p, fresh); err != nil {
 		return c.failNode("APP_NODE_RESPONSE_INVALID", err)
 	}

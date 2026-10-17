@@ -295,6 +295,11 @@ func (c *nativeController) nodeActions() []ActionKind {
 	if c.nodeCanStartInitial() {
 		actions = append(actions, ActionPreviewNode)
 	}
+	if c.node.Grant != nil && !c.nodeChecked && !c.hasNodePending() && !c.nodeGrantLive() {
+		// A settled historical/cancelled read can require an explicit fresh
+		// inspection. It does not authorize another background read by itself.
+		actions = append(actions, ActionRefreshNode)
+	}
 	return actions
 }
 

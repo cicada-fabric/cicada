@@ -46,10 +46,13 @@ func RunWindow(controller appcore.Controller) error {
 		switch event := window.Event().(type) {
 		case app.DestroyEvent:
 			view.closed.Store(true)
+			view.updates.close()
 			cancel()
 			view.clearSensitiveInputs()
 			view.workerWG.Wait()
 			return event.Err
+		case app.ConfigEvent:
+			view.updates.setMinimized(event.Config.Mode == app.Minimized)
 		case app.FrameEvent:
 			gtx := app.NewContext(&ops, event)
 			view.layout(gtx)
@@ -90,6 +93,8 @@ type view struct {
 	canvas              canvasWidget
 	preview             bool
 	busy                atomic.Bool
+	autoBusy            atomic.Bool
+	updates             nodeStatusUpdater
 	closed              atomic.Bool
 	workerWG            sync.WaitGroup
 	statusMu            sync.Mutex
@@ -155,6 +160,9 @@ func (v *view) layout(gtx layout.Context) {
 			}),
 		)
 	})
+	// Foreground controls above have already processed this frame's clicks.
+	// The background due decision can neither block them nor issue I/O here.
+	v.scheduleAutomaticNodeStatus(gtx)
 }
 
 func (v *view) header(gtx layout.Context) layout.Dimensions {
@@ -195,7 +203,7 @@ func (v *view) statusCard(gtx layout.Context, s appcore.Snapshot) layout.Dimensi
 		if s.Hub.Origin != "" {
 			rows = append(rows, layout.Rigid(v.labelRow(safeDisplay(s.Hub.Origin, 256))))
 		}
-		if v.busy.Load() {
+		if v.busy.Load() && !v.autoBusy.Load() {
 			rows = append(rows, layout.Rigid(v.labelRow(appui.Text(v.locale, "operation.in_progress"))))
 		}
 		if s.Setup.OwnerKeyStored {
@@ -242,7 +250,7 @@ func (v *view) statusCard(gtx layout.Context, s appcore.Snapshot) layout.Dimensi
 }
 
 func (v *view) contentRows(s appcore.Snapshot, managementAuthorized bool, objects []appui.CanvasObject, preview bool) []layout.Widget {
-	flow := appui.Flow(s)
+	flow := v.updates.accountFlow(s, time.Now())
 	if v.replacementInput && s.Setup.ReplacementAllowed {
 		flow = appui.SetupFlow{Stage: "replace", Primary: appcore.ActionConnect}
 	}
@@ -457,25 +465,64 @@ func (v *view) startDispatch(action appcore.Action) {
 	v.workerWG.Add(1)
 	go func() {
 		defer v.workerWG.Done()
-		err := v.controller.Dispatch(v.ctx, action)
-		if err == nil && action.Kind == appcore.ActionDiscoverProfiles {
-			profiles := v.controller.Snapshot().Profiles
-			if len(profiles) == 1 {
-				err = v.controller.Dispatch(v.ctx, appcore.Action{Kind: appcore.ActionResumeProfile, ProfileID: profiles[0].ID})
-			}
+		v.dispatchForeground(action)
+	}()
+}
+
+func (v *view) dispatchForeground(action appcore.Action) {
+	err := v.ctx.Err()
+	if err == nil {
+		err = v.controller.Dispatch(v.ctx, action)
+	}
+	if err == nil && action.Kind == appcore.ActionDiscoverProfiles {
+		profiles := v.controller.Snapshot().Profiles
+		if len(profiles) == 1 {
+			err = v.controller.Dispatch(v.ctx, appcore.Action{Kind: appcore.ActionResumeProfile, ProfileID: profiles[0].ID})
 		}
-		clearOwnerImport(action.OwnerImport)
-		// Best-effort removal of secret-bearing references. Go strings cannot
-		// guarantee physical zeroization, but they need not remain in this UI.
-		action.Password = ""
-		action.ActivationCode = ""
-		action.Username = ""
-		action.NodeCode = ""
-		v.statusMu.Lock()
-		v.failed = err != nil
-		v.uiErrorCode = ""
-		v.statusMu.Unlock()
-		v.busy.Store(false)
+	}
+	clearOwnerImport(action.OwnerImport)
+	// Best-effort removal of secret-bearing references. Go strings cannot
+	// guarantee physical zeroization, but they need not remain in this UI.
+	action.Password = ""
+	action.ActivationCode = ""
+	action.Username = ""
+	action.NodeCode = ""
+	v.statusMu.Lock()
+	v.failed = err != nil
+	v.uiErrorCode = ""
+	v.statusMu.Unlock()
+	v.updates.foregroundCompleted(v.controller.Snapshot(), time.Now(), action, err)
+	v.busy.Store(false)
+	if !v.closed.Load() {
+		v.window.Invalidate()
+	}
+}
+
+func (v *view) scheduleAutomaticNodeStatus(gtx layout.Context) {
+	if v.closed.Load() {
+		return
+	}
+	at, target := v.updates.afterControls(v.controller.Snapshot(), time.Now(), v.busy.Load())
+	if !at.IsZero() {
+		gtx.Execute(op.InvalidateCmd{At: at})
+	}
+	if target == nil {
+		return
+	}
+	if !v.busy.CompareAndSwap(false, true) {
+		v.updates.complete(v.controller.Snapshot(), time.Now(), appcore.ErrControllerBusy)
+		return
+	}
+	v.autoBusy.Store(true)
+	ctx := v.updates.begin(v.ctx)
+	v.workerWG.Add(1)
+	go func() {
+		defer v.workerWG.Done()
+		err := v.controller.Dispatch(ctx, appcore.Action{Kind: appcore.ActionRefreshNode, AutoNodeStatus: target})
+		v.updates.completeAndRelease(v.controller.Snapshot(), time.Now(), err, func() {
+			v.autoBusy.Store(false)
+			v.busy.Store(false)
+		})
 		if !v.closed.Load() {
 			v.window.Invalidate()
 		}
