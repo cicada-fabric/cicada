@@ -502,8 +502,22 @@ func (s *Store) ConfirmNodeControlKeyRequest(ownerID, clientDeviceID, codeDigest
 		return nil, err
 	}
 	defer tx.Rollback()
+	binding, err := confirmNodeControlKeyRequestTx(tx, ownerID, clientDeviceID, codeDigest,
+		expectedVersion, expectedCandidateDigest, currentHubKeyID, currentHubFingerprint, time.Now().UTC())
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return binding, nil
+}
+
+// Reused by finite N3 confirmation inside the request/effect/receipt writer transaction.
+func confirmNodeControlKeyRequestTx(tx *sql.Tx, ownerID, clientDeviceID, codeDigest string,
+	expectedVersion int64, expectedCandidateDigest, currentHubKeyID, currentHubFingerprint string, at time.Time) (*NodeControlKeyBinding, error) {
 	var hubID, ownerKeyID string
-	err = tx.QueryRow(`SELECT hub.hub_id,device.owner_key_id
+	err := tx.QueryRow(`SELECT hub.hub_id,device.owner_key_id
 FROM client_device_hub_config_v2 hub
 JOIN client_devices_v2 device ON device.owner_id=? AND device.device_id=? AND device.state='ACTIVE'
 JOIN owner_approval_keys_v2 owner_key ON owner_key.owner_id=device.owner_id
@@ -539,7 +553,7 @@ FROM node_control_key_requests_v1 WHERE code_digest=?`, codeDigest).Scan(
 		candidate.HubNodeControlFingerprint != currentHubFingerprint {
 		return nil, ErrNodeControlPairingChanged
 	}
-	if candidate.State != NodeControlPairingPending || !networkFutureExpiry(candidate.ExpiresAt, time.Now().UTC()) {
+	if candidate.State != NodeControlPairingPending || !networkFutureExpiry(candidate.ExpiresAt, at) {
 		return nil, ErrNodeControlPairingNotFound
 	}
 	var nodePublic, hubPublic e2ee.PublicIdentity
@@ -562,7 +576,7 @@ FROM node_control_key_requests_v1 WHERE code_digest=?`, codeDigest).Scan(
 	if err != nil || computedCandidate != expectedCandidateDigest {
 		return nil, ErrNodeControlPairingChanged
 	}
-	stamp := time.Now().UTC().Format(time.RFC3339Nano)
+	stamp := at.Format(time.RFC3339Nano)
 	var bindingID string
 	var credentialVersion int64
 	if candidate.Mode == NodeControlPairingInitial {
@@ -679,10 +693,7 @@ VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'ACTIVE',1,?,?)`,
 	if err != nil {
 		return nil, err
 	}
-	if err := tx.Commit(); err != nil {
-		return nil, err
-	}
-	return s.NodeControlKeyForCredential(credentialDigest, candidate.NodeID)
+	return nodeControlCurrentBindingTx(tx, credentialDigest, candidate.NodeID)
 }
 
 func (s *Store) NodeControlKeyForCredential(credentialDigest, nodeID string) (*NodeControlKeyBinding, error) {

@@ -1,0 +1,25 @@
+package store
+
+// N3 history is separate from the immutable N2 enrollment lease. Read caches
+// and renewable diagnostic buckets are intentionally not authority/history.
+func (s *Store) initializeHubAppNodeSchema() error {
+	_, err := s.db.Exec(`
+CREATE TABLE hub_app_node_heads_v1(owner_id TEXT NOT NULL,device_id TEXT NOT NULL,head_version INTEGER NOT NULL CHECK(head_version>=0),latest_grant_id TEXT NOT NULL DEFAULT '',provenance_id TEXT NOT NULL DEFAULT '',PRIMARY KEY(owner_id,device_id));
+CREATE TABLE hub_app_node_grants_v1(grant_id TEXT PRIMARY KEY,account_id TEXT NOT NULL,owner_id TEXT NOT NULL,device_id TEXT NOT NULL,claims_json TEXT NOT NULL,state TEXT NOT NULL CHECK(state IN('PREPARED','ACTIVE','EXPIRED','SESSION_ENDED','CANCELLED','REVOKED')),reason TEXT NOT NULL DEFAULT '',owner_proof BLOB,remaining INTEGER NOT NULL CHECK(remaining IN(0,1)),provenance_id TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL);
+CREATE UNIQUE INDEX hub_app_node_grants_v1_pending ON hub_app_node_grants_v1(owner_id,device_id) WHERE state='PREPARED';
+CREATE UNIQUE INDEX hub_app_node_grants_v1_active ON hub_app_node_grants_v1(owner_id,device_id) WHERE state='ACTIVE';
+CREATE TABLE hub_app_node_operations_v1(owner_id TEXT NOT NULL,device_id TEXT NOT NULL,operation_id TEXT NOT NULL,operation TEXT NOT NULL,kind TEXT NOT NULL CHECK(kind IN('APP_NODE_AUTHORITY','CLIENT_CONTROL')),request_digest TEXT NOT NULL CHECK(length(request_digest)=64),state TEXT NOT NULL CHECK(state IN('COMPLETED','REJECTED_FENCED')),nonce_digest TEXT NOT NULL DEFAULT '',response_packet BLOB NOT NULL CHECK(length(response_packet)>0 AND length(response_packet)<=131072),created_at TEXT NOT NULL,PRIMARY KEY(owner_id,device_id,operation_id));
+CREATE UNIQUE INDEX hub_app_node_operations_v1_nonce ON hub_app_node_operations_v1(owner_id,device_id,nonce_digest) WHERE nonce_digest!='';
+CREATE TABLE hub_app_node_provenance_v1(provenance_id TEXT PRIMARY KEY,grant_id TEXT NOT NULL UNIQUE,owner_id TEXT NOT NULL,device_id TEXT NOT NULL,client_request_id TEXT NOT NULL UNIQUE,operation_id TEXT NOT NULL UNIQUE,request_digest TEXT NOT NULL CHECK(length(request_digest)=64),head_version INTEGER NOT NULL CHECK(head_version>0),binding_json TEXT NOT NULL,created_at TEXT NOT NULL);
+CREATE TABLE hub_app_node_reads_v1(owner_id TEXT NOT NULL,device_id TEXT NOT NULL,operation_id TEXT NOT NULL,operation TEXT NOT NULL,request_digest TEXT NOT NULL CHECK(length(request_digest)=64),state TEXT NOT NULL CHECK(state IN('COMPLETED','REJECTED_FENCED','READ_EXPIRED')),response_packet BLOB NOT NULL CHECK(length(response_packet)>0 AND length(response_packet)<=393216),created_at TEXT NOT NULL,PRIMARY KEY(owner_id,device_id,operation_id));
+CREATE TABLE hub_app_node_rates_v1(owner_id TEXT NOT NULL,device_id TEXT NOT NULL,window_start TEXT NOT NULL,requests INTEGER NOT NULL CHECK(requests>=0 AND requests<=128),PRIMARY KEY(owner_id,device_id));
+CREATE TRIGGER hub_app_node_heads_v1_no_delete BEFORE DELETE ON hub_app_node_heads_v1 BEGIN SELECT RAISE(ABORT,'N3 head history is permanent');END;
+CREATE TRIGGER hub_app_node_heads_v1_monotone BEFORE UPDATE ON hub_app_node_heads_v1 WHEN NEW.owner_id!=OLD.owner_id OR NEW.device_id!=OLD.device_id OR NEW.head_version<OLD.head_version OR (NEW.head_version=OLD.head_version AND NEW.latest_grant_id!=OLD.latest_grant_id) OR (OLD.provenance_id!='' AND NEW.provenance_id!=OLD.provenance_id) BEGIN SELECT RAISE(ABORT,'N3 head/provenance cannot roll back');END;
+CREATE TRIGGER hub_app_node_grants_v1_no_delete BEFORE DELETE ON hub_app_node_grants_v1 BEGIN SELECT RAISE(ABORT,'N3 grant history is permanent');END;
+CREATE TRIGGER hub_app_node_grants_v1_immutable BEFORE UPDATE ON hub_app_node_grants_v1 WHEN NEW.grant_id!=OLD.grant_id OR NEW.account_id!=OLD.account_id OR NEW.owner_id!=OLD.owner_id OR NEW.device_id!=OLD.device_id OR NEW.claims_json!=OLD.claims_json OR NEW.created_at!=OLD.created_at OR (OLD.owner_proof IS NOT NULL AND NEW.owner_proof IS NOT OLD.owner_proof) OR NEW.remaining>OLD.remaining OR (OLD.provenance_id!='' AND NEW.provenance_id!=OLD.provenance_id) OR (OLD.state NOT IN('PREPARED','ACTIVE') AND (NEW.state!=OLD.state OR NEW.reason!=OLD.reason OR NEW.remaining!=OLD.remaining OR NEW.provenance_id!=OLD.provenance_id OR NEW.owner_proof IS NOT OLD.owner_proof)) OR (OLD.state='ACTIVE' AND NEW.state='PREPARED') BEGIN SELECT RAISE(ABORT,'N3 grant coordinates/deadlines are immutable');END;
+CREATE TRIGGER hub_app_node_operations_v1_no_delete BEFORE DELETE ON hub_app_node_operations_v1 BEGIN SELECT RAISE(ABORT,'N3 operation history is permanent');END;
+CREATE TRIGGER hub_app_node_operations_v1_no_update BEFORE UPDATE ON hub_app_node_operations_v1 BEGIN SELECT RAISE(ABORT,'N3 exact receipts/fences are immutable');END;
+CREATE TRIGGER hub_app_node_provenance_v1_no_delete BEFORE DELETE ON hub_app_node_provenance_v1 BEGIN SELECT RAISE(ABORT,'N3 confirmation provenance is permanent');END;
+CREATE TRIGGER hub_app_node_provenance_v1_no_update BEFORE UPDATE ON hub_app_node_provenance_v1 BEGIN SELECT RAISE(ABORT,'N3 confirmation provenance is immutable');END;`)
+	return err
+}

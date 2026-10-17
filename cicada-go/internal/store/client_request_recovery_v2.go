@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 )
 
 var ErrClientRequestRecoveryUnavailable = errors.New("Client request predates durable response reservation")
@@ -35,6 +36,9 @@ func (s *Store) initializeClientRequestRecoveryV2Schema() error {
 }
 
 func validateRecoveryLookup(input AcceptClientRequestInput) error {
+	if strings.HasPrefix(input.OperationID, "n3.") {
+		return ErrClientDeviceRevoked
+	}
 	if err := validateOwnerApprovalID(input.OwnerID); err != nil {
 		return err
 	}

@@ -173,7 +173,7 @@ func (s *Store) fenceHubAccountRestore(receipt string) error {
 	if prior == receipt {
 		return nil
 	}
-	for _, statement := range []string{`UPDATE hub_account_config_v1 SET epoch=epoch+1,restore_receipt=? WHERE id=1`, `UPDATE hub_account_claims_v1 SET state='CANCELLED' WHERE state IN('ISSUED','PREPARED')`, `UPDATE hub_account_attempts_v1 SET state='CANCELLED' WHERE state='PENDING'`, `UPDATE hub_account_sessions_v1 SET state='REVOKED' WHERE state='ACTIVE'`, `UPDATE hub_owner_activation_v1 SET state='CANCELLED' WHERE state IN('ISSUED','PREPARED')`, `UPDATE hub_app_leases_v1 SET state='REVOKED' WHERE state='ACTIVE'`} {
+	for _, statement := range []string{`UPDATE hub_account_config_v1 SET epoch=epoch+1,restore_receipt=? WHERE id=1`, `UPDATE hub_account_claims_v1 SET state='CANCELLED' WHERE state IN('ISSUED','PREPARED')`, `UPDATE hub_account_attempts_v1 SET state='CANCELLED' WHERE state='PENDING'`, `UPDATE hub_account_sessions_v1 SET state='REVOKED' WHERE state='ACTIVE'`, `UPDATE hub_owner_activation_v1 SET state='CANCELLED' WHERE state IN('ISSUED','PREPARED')`, `UPDATE hub_app_leases_v1 SET state='REVOKED' WHERE state='ACTIVE'`, `UPDATE hub_app_node_grants_v1 SET state='REVOKED',reason='RESTORE_FENCE' WHERE state IN('PREPARED','ACTIVE')`} {
 		if strings.Contains(statement, "restore_receipt") {
 			_, e = tx.Exec(statement, receipt)
 		} else {

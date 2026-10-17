@@ -573,6 +573,12 @@ WHERE owner_id = ? AND device_id = ? AND state = 'ACTIVE' AND session_epoch = ?`
 // not be dispatched again. A row left PROCESSING after restart is an
 // intentionally durable recovery signal, not permission to re-execute.
 func (s *Store) AcceptClientRequest(input AcceptClientRequestInput) (*ClientRequestAcceptance, error) {
+	// Tagged N3 requests have one atomic admission path in explicit Hub Nodes
+	// composition. Legacy dispatch must never borrow a later finite grant.
+	if strings.HasPrefix(input.OperationID, "n3.") {
+		return nil, ErrClientDeviceRevoked
+	}
+
 	if err := validateOwnerApprovalID(input.OwnerID); err != nil {
 		return nil, err
 	}

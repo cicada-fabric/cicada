@@ -1,8 +1,8 @@
 # Finite App authority for one INITIAL Node
 
 Reviewed contract `app-node-authority-v1`, 2026-10-17, phase
-**SHARED_HELPERS_ONLY — reviewed types plus shared proof/framing helpers; no N3
-HTTP service or App behavior is enabled by this checkpoint.** Root approved this
+**STORE_ONLY — reviewed types, shared proof/framing helpers and Store state
+machine; no N3 HTTP service or App behavior is enabled by this checkpoint.** Root approved this
 contract before implementation. The normative types are
 `internal/e2ee/owner_app_node_claims.go` and
 `internal/hubaccountwire/app_node_authority*.go`; metadata is
@@ -30,13 +30,20 @@ and cannot obtain broad rights through the old no-lease-row compatibility path.
 Clients that never opted into N2/N3 keep their existing behavior. A future legacy
 N3 adoption would require its own durable restriction/migration contract.
 
+N2 establishes the App Client key/session at epoch 1. Its old account activation
+binding has no Client-epoch field; this slice therefore also requires the
+retained Client key version and session epoch to remain 1 for first N3 admission.
+A later Client-epoch reset is a security change and cannot be silently adopted
+through the old N2 history. No counter or identity is reset to satisfy this gate.
+
 `owner-activation-v1` and its immutable, nonrenewable 15-minute lease remain
 unchanged. `OwnerDeviceGrant` v1 remains an enrollment proof, never a runtime
 lease. Frozen `client-hub-v1.6.5`, encrypted wire 1, 55 catalog operations, old
 account operations and old Owner-bootstrap vectors remain byte-compatible.
 Software version, proposed next schema migration, Git revision and artifact
-digest are recorded separately. The anticipated migration follows schema 62;
-this types checkpoint neither reserves nor implements it.
+digest are recorded separately. Schema 63 implements the private Store state
+machine and extends restore inventory/floor rules; it does not enable an HTTP
+service by itself.
 
 The INITIAL Client RPC operations are the exact ordered list
 `["nodes.confirm"]`. The initial confirmation budget is
@@ -238,6 +245,12 @@ Owner/App identities and Owner-key version must match the parent's. Hub checks
 the original unchanged ACTIVE owner binding, credential version, Node key,
 Node-Control key/epoch and approved candidate tuple. Changed keys, epochs or
 binding fail closed rather than being adopted as the old Node.
+
+An ACTIVE parent in the same still-current bound login cannot roll into an
+early READ_EXISTING lease. Prepare requires expiry, bound-session end or
+SELF_CANCEL; an ACTIVE parent is eligible only when the explicitly authenticated
+current login is a different session. This is explicit reauthorization after a
+lifecycle boundary, never periodic early refresh.
 
 Published head metadata keeps `LatestGrantID` after expiry/self-cancel and a
 `ConfirmationProvenanceID` naming the immutable exact successful confirmation

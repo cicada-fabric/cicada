@@ -1,5 +1,89 @@
 # N3 Hub authority validation
 
+## Store checkpoint
+
+2026-10-17, phase STORE_ONLY. Predecessor shared-helper commit:
+`5f509befa6065ac41abeb23451ef8d41cc2c76aa`. Schema 63 adds private head,
+proposal/grant, exact receipt/fence, confirmation provenance, rolling read-cache
+and renewable diagnostic-rate tables. Wire version remains 1 and contract
+revision remains app-node-authority-v1. No N3 HTTP endpoint or
+`--hub-nodes-only` executable composition is enabled by this checkpoint.
+
+Evidence is private and synthetic at
+`/home/zyf/Cicada/.local/evidence/n3-hub/store/`. Final normal input manifest
+`checkpoint-final-normal-source.json` has SHA-256
+`d1311ce9730ffbbc4ca03c7958d7d2700647a5d5fcaccdfbfdaee878ae521517`;
+final race input manifest `checkpoint-final-race-source.json` has SHA-256
+`19a98429ef1f611f1eac0f42a5881eb66ca374ae37f49bbda512d95a68fdda4f`.
+These identify dirty input based on the predecessor; all listed input hashes
+remained unchanged during each run. This validation section was added afterward.
+The same immutable Go 1.27.2 image and isolated container controls described
+below were used. Containers used neither production credentials nor a resident
+Hub. N2 enrollment and Node proof rows are explicitly synthetic Store guard
+fixtures; N3 Owner signatures and N3/Client envelopes are real cryptography.
+
+| Lane | Result and exact scope |
+| --- | --- |
+| Final normal | PASS: 31 events, zero failures/skips; `^TestN3Store\|^TestNodeControlOwnerConfirmationAndCredentialDigestRemainExact$` |
+| Final race | PASS: the same 31 events, zero failures/skips, `-race`; 279.718 seconds |
+| N3 within both final lanes | PASS: 30 events, zero failures/skips, including schema-63 after-apply rollback/restart |
+| Final Store vet | PASS: `go vet ./internal/store` |
+| Prior broader normal regression | 111 passed events, zero failures; one separately recorded physical-bind fixture skip, before the final LoginRequired correction |
+| Prior broader race | NOT_COMPLETED: intentionally stopped with exit 143 to fix the known LoginRequired semantic issue; 12 events had passed, no pass claimed for the full lane |
+| N3/N2 metadata and diff check | PASS |
+| HTTP, CLI composition, integrated Docker product interop | NOT_RUN: remaining implementation/integrated acceptance |
+| Real Ubuntu Node, native Windows, public HTTPS, strict PQ TLS, real Runtime | NOT_RUN |
+
+The broader normal command used
+`^TestN3Store\|^TestN2\|^TestNodeControl\|^TestV2Migration\|^TestHubRestore\|^TestHubForward`
+in `./internal/store`, with `-count=1`. Its input manifest SHA-256 was
+`75402a6bb788b4121af4e44920ea05290c42de7f1e75b7c7c757704aa51c5776`.
+The skipped test was
+`TestHubForwardPrepareRejectsPhysicalBindCapsuleBeforeFence`: two disposable
+bind mounts were not supplied. That skip is not a pass. The final correction
+changed only current-login projection/terminal assertions; final N3 normal/race
+and Store vet cover it. Older migration and legacy Node transaction regressions
+remain attributed to the earlier tested input, not silently relabelled.
+
+Verified Store behavior includes one concurrent preview winner; head CAS;
+separate PREPARED and published authority; exact N2 completion/public-key/epoch
+source; no authority for inactive or wrong-kind humans; exact bound account
+session; INITIAL and explicit READ_EXISTING; refusal of early same-session
+refresh; self-cancel preserving confirmation provenance; and explicit new INITIAL
+only for terminal unconfirmed history. Confirm uses the existing shared Node
+confirmation transaction helper. Its Node effect, budget, Client request and
+response slots, provenance and exact sealed receipt commit together. A seal
+failure rolls them all back. Lost-response/restart retries return identical
+ciphertext and consume no additional slot. Fences block late originals;
+gapped/changed-epoch slots stay unresolved rather than skipping/resetting counters.
+
+Status/reconcile read projections do not write grant transitions or Client
+counters. More than 128 ordinary polls remain usable while read-cache storage
+stays bounded. Expired uncached reads receive READ_EXPIRED. Permanent target
+fences remain recoverable after the outer diagnostic cache ages out. A still
+valid matching bound login returns LoginRequired=false even for EXPIRED or
+CANCELLED authority; terminal state, empty operations and nil Node independently
+deny business. Wrong/new/expired bound login remains LoginRequired=true.
+
+Node observation verifies exact successful confirmation provenance and the
+unchanged current binding/key/credential tuple. Accepted relay heartbeat time
+can be CONNECTED while Worker status remains offline. Stale, future,
+pre-approval and malformed heartbeat cases remain distinguishable; unsuitable
+heartbeat data produces UNKNOWN. Restore preserves Owner/account/credential,
+keys, Client counters and permanent history while fencing pending/active N3
+authority. Restore coverage protects head floors, immutable claims/receipts and
+provenance, and explicitly permits eviction of the two non-authority read/rate
+tables. Legacy admission/recovery refuses tagged N3 packets, preserving the
+single atomic entry point and permanent N2 restrictions.
+
+Earlier failing attempts are retained: fixture credential digest was initially
+noncanonical, candidate expiry initially exceeded the existing fifteen-minute
+pairing bound, and a replacement fixture code initially had thirteen characters.
+Those fixture errors were corrected before the final lanes; no failure or
+interrupted lane was counted as pass.
+
+## Shared-helper checkpoint (historical)
+
 2026-10-17 shared-helper checkpoint, scoped to synthetic local tests.
 Contract: [app-node-authority-v1](hub-app-node-authority-contract.md).
 The contract-only predecessor is

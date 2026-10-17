@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check additive N3 shared-helper metadata; do not assert server availability."""
+"""Check additive N3 Store metadata; do not assert server availability."""
 import json
 import pathlib
 import re
@@ -17,7 +17,7 @@ def check():
     catalog = json.loads((ROOT / "cicada-go/internal/clientcontract/catalog.json").read_text())
     n2 = json.loads((package / "activation-contract.json").read_text())
     assert manifest["contract_revision"] == "app-node-authority-v1"
-    assert manifest["status"] == "SHARED_HELPERS_ONLY"
+    assert manifest["status"] == "STORE_ONLY"
     assert manifest["wire_version"] == manifest["account_packet_sequence"] == manifest["account_route_epoch"] == 1
     assert manifest["packet_format"] == "cicada.owner-account-packet.v1"
     assert manifest["frozen_client_contract"] == catalog["contract_revision"] == "client-hub-v1.6.5"
@@ -30,6 +30,7 @@ def check():
     assert manifest["confirmation_limit"] == 1 and manifest["status_only_confirmation_limit"] == 0
     assert manifest["node_status_read_explicit"] and manifest["account_session_bound"]
     assert manifest["requires_completed_n2_history"]
+    assert manifest["requires_n2_client_session_epoch"] == 1
     assert not any(manifest[k] for k in ("runtime_lease_renewable", "absent_settles_pending", "n2_lease_mutable", "other_modes_accept_n3", "liveness_uses_worker_status"))
     assert n2["allowed_operations"] == ["nodes.list", "session.capabilities"]
     assert n2["runtime_lease_seconds"] == 900 and not n2["runtime_lease_renewable"]
@@ -55,7 +56,7 @@ def check():
         assert value in source and value in prose, value
     for error in manifest["error_codes"]:
         assert error in prose, error
-    print("app-node-authority-v1 shared-helper metadata PASS (no server availability asserted)")
+    print("app-node-authority-v1 Store metadata PASS (no server availability asserted)")
 
 
 if __name__ == "__main__":

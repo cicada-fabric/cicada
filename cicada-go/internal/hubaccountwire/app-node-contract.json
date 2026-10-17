@@ -1,6 +1,6 @@
 {
   "contract_revision": "app-node-authority-v1",
-  "status": "SHARED_HELPERS_ONLY",
+  "status": "STORE_ONLY",
   "packet_format": "cicada.owner-account-packet.v1",
   "wire_version": 1,
   "account_packet_sequence": 1,
@@ -46,6 +46,7 @@
   "absent_settles_pending": false,
   "n2_lease_mutable": false,
   "requires_completed_n2_history": true,
+  "requires_n2_client_session_epoch": 1,
   "serve_mode": "--hub-nodes-only",
   "other_modes_accept_n3": false,
   "node_control_operations": ["node.binding.status"],
