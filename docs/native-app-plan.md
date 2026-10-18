@@ -424,24 +424,28 @@ the conversation lane with its actual route recorded. It is not direct PASS.
 | N3-TT-16 | Crypto epochs, budget and replay | Separate App session epoch, native binding epoch, E2EE key/counter/replay state and message budgets. Approved `native-pair-v1` fixes four independent ASK roots in either direction, at most one outstanding ASK, one reply per ASK/four replies/eight messages/eight native deliveries, 8 KiB plaintext per message and 64 KiB total plaintext, 128 KiB ciphertext per message and 1 MiB total ciphertext. Exact retries cannot reset/double-charge budget or revive permission | CONTRACT_DEFINED; full real acceptance NOT_RUN |
 | N3-TT-17 | Lightweight, measured operation | Reuse existing Go/crypto/transport/persistence with no new coordination service/dependency. Record actual request/response JSON bytes, peer ciphertext bytes, latency, requests/retries/native submissions, owned-SID model calls and idle pair traffic separately; no extra authorization renewal, model loop or polling is inferred from availability | NOT_RUN |
 
-The following is a **manual acceptance skeleton after delivery**, not a set of
-currently executable pair commands. At 2026-10-17 13:57 UTC, independent public
-HTTPS GETs still show clean Hub `e42640d`, old App/Node capabilities available,
-and new native-pair capabilities HTTP 404. The delivered Windows App remains
-`1980dce`, SHA-256
-`27aa167c847f278b26e7a2e908f7baab4e6eec7971b10b32f0b4f7a72ccb4b28`;
-it has no pair UI/Dispatch. The `84d7aee` profile fix and new pair WIP are not a
-new user-delivered package. Current executable manual scope remains normal
-account login and the original gpu1 Node status. Pair Join/authorization/dialogue
-steps below are **NOT_RUN / DELIVERY_PENDING**.
+The following is a **user-operated manual acceptance skeleton**. The historical
+2026-10-17 13:57 UTC preflight found public Hub `e42640d` with native-pair HTTP
+404 and the user-delivered `1980dce` App without Pair UI/Dispatch. That was the
+older DELIVERY_PENDING checkpoint; it is not the current build status.
+
+The integrated candidate is now packaged as `Cicada-N3-4ca29df.zip` from clean
+`4ca29dfc76f3eec9143676d554b3a26c1a178f1b`; see the
+[final delivery record](native-app-validation.md#final-clean-4ca-delivery-and-independent-artifact-review).
+Its `delivery.json` and `SHA256SUMS` identify `cicada-app.exe`, Linux `cicada`,
+protocol revisions and dependency notices. This is a reviewed local delivery
+candidate, not a release or deployment. Windows physical GUI/DPAPI/ACL, matching
+public Hub/Node operation and the real original-SID A/B/A dialogue remain
+**NOT_RUN / USER_VALIDATION_PENDING**. QA/Root have not upgraded resident services
+or executed native turns/queues. Later documentation commits do not change the
+package's clean-4ca build attribution.
 
 1. **Verify the delivered upgrade.** Root supplies actual reviewed Hub/Node/App
    revisions, source/image fingerprints, Windows executable SHA-256 and real
    entry names. The user checks the executable with PowerShell
    `Get-FileHash -LiteralPath '<delivered EXE path>' -Algorithm SHA256` and
-   compares the release manifest. This is a checksum template, not a delivered
-   filename. Preserve the original account, vault, Owner/device keys, Node ID
-   and bindings. A cross-build alone is not Windows GUI/DPAPI/ACL acceptance.
+   compares `delivery.json`/`SHA256SUMS` for the delivered `cicada-app.exe`.
+   Preserve the original account, vault, Owner/device keys, Node ID and bindings. A cross-build alone is not Windows GUI/DPAPI/ACL acceptance.
    Before the two-Thread procedure, the user manually verifies that the actual
    Node service can resolve the reviewed Codex executable through its existing
    `CICADA_CODEX_BIN` override or its own `PATH`, and that its `CODEX_HOME`/login
@@ -490,8 +494,9 @@ steps below are **NOT_RUN / DELIVERY_PENDING**.
    No default localhost API, manually supplied session token or guessed new
    flags/tool fields can fill that gap. MCP session persistence remains private
    and scoped by origin/harness/native SID/Node; registration grants no rights.
-   Root will add exact tool/CLI syntax after implementation; generic old Join,
-   a guessed command, a second Node or an operator DB grant is not a substitute.
+   Root supplies exact launch/tool syntax for the reviewed package and matching
+   user-operated Hub/Node upgrade; generic old Join, a guessed command, a second
+   Node or an operator DB grant is not a substitute.
 4. **Authorize the actual pair in the App.** Review both distinct actual SIDs,
    the same Node/Network/Group, candidates and expiry. Only after **both** original
    candidates are ready, prepare their exact five-minute consent Plan and
@@ -505,7 +510,8 @@ steps below are **NOT_RUN / DELIVERY_PENDING**.
    Both B and A receive through the guarded delivery path confirmed for the
    delivered build, each in its original context; A reports the correlated
    answer plus its own witness. The exact delivery/receipt entry point remains
-   DELIVERY_PENDING. This Pair tool contract is limited to ASK/Reply/status/cancel;
+   USER_VALIDATION_PENDING on the user's actual upgraded services and Threads.
+   This Pair tool contract is limited to ASK/Reply/status/cancel;
    no receive-tool invocation is prescribed here. The ASK/Reply names are usable
    only after the new chain is delivered and authorized. If the user must
    explicitly continue B/A at a safe point, label USER_CONTROLLED_SAME_SID;
@@ -521,12 +527,14 @@ steps below are **NOT_RUN / DELIVERY_PENDING**.
    observations are USER_REPORTED until independently backed by matching traces;
    absent traces and unexecuted Windows checks remain NOT_RUN/NOT_PROVEN.
 
-The delivery gaps include per-Thread Cicada MCP configuration/loading, the guarded Hub setup/peer surface, trusted Node reserved
-Join/candidate/Owner-pin/policy enforcement, and the delivered Windows App's
-original-vault pair review/consent/reconcile flow. Missing routes, grants or UI
-stop the manual procedure; there is no raw SQL, broad Client grant or old Hub
-fallback. No deployment operation is authorized by this skeleton. Keep destructive
-loss/restart, budget exhaustion and revocation adversaries in the isolated
+Remaining manual prerequisites are matching user-operated Hub/Node/App
+upgrades, reviewed per-Thread Cicada MCP configuration/loading and the real
+original-account/SID delivery path. The integrated candidate includes Hub/Node
+reserved Join/candidate/Owner-pin guards and App original-vault Pair actions;
+isolated evidence does not prove those paths on public deployment or physical
+Windows. Missing routes, grants or UI stop the manual procedure; there is no
+raw SQL, broad Client grant or old Hub fallback. No deployment operation is
+authorized by this skeleton. Keep destructive loss/restart, budget exhaustion and revocation adversaries in the isolated
 protocol fixture. A revoke receipt cannot undo already consumed native work.
 
 Fault coverage includes pre-forward/post-commit loss, corrupt/unsigned reply,

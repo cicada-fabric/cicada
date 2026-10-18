@@ -2022,8 +2022,10 @@ were used. App's delivery owner separately confirms the user-delivered Windows
 EXE remains `1980dce`, SHA-256
 `27aa167c847f278b26e7a2e908f7baab4e6eec7971b10b32f0b4f7a72ccb4b28`;
 `84d7aee` is integrated development code, not a new recorded user delivery.
-The delivered App has no pair UI/Dispatch. Current manual scope is login and
-original gpu1 status; the full pair path is DELIVERY_PENDING, **NOT_RUN**.
+At that historical checkpoint the delivered App had no pair UI/Dispatch;
+manual scope was login and original gpu1 status, with the full pair path
+DELIVERY_PENDING and **NOT_RUN**. The later clean-4ca package is recorded below;
+this preflight does not describe its current build status.
 
 The [manual skeleton](native-app-plan.md#same-node-real-codex-thread-acceptance-preparation)
 starts with matching upgrade-package hashes, then the user's two same-Node Joins,
@@ -2952,3 +2954,93 @@ consumption. Windows GUI/DPAPI/ACL, physical devices, real Codex Threads/queue/
 Runtime and public deployment remain **NOT_RUN**. Final integrated standard
 compatibility interop and any Windows artifact build belong to Root; they are
 not claimed by this result.
+
+### Final clean-4ca delivery and independent artifact review
+
+2026-10-18 UTC, **SCOPED_PASS** for the local integrated delivery candidate.
+Root assembled `Cicada-N3-4ca29df.zip` from clean
+`4ca29dfc76f3eec9143676d554b3a26c1a178f1b`, software version **0.0.5**.
+Build-source fingerprint v4 is
+`e08ed98df63bc8fcc3f2647e3bf32636185dbe1a177a11b7a3fa5f4b5369c424`.
+The source inventory's **1298** entries independently match committed blobs;
+the fingerprint also includes its recorded filesystem modes. Root's final
+source bookend is byte-identical to `source-info.json`, SHA-256
+`2f212b593793fbf7f318e112c45123830017db966753fa8d84f8618a37226625`.
+This record is a later documentation checkpoint: **do not rebuild or relabel
+these artifacts to the documentation HEAD**. Earlier dirty-source gates retain
+their original attribution above.
+
+Artifacts are under
+`/home/zyf/Cicada/.local/artifacts/n3-native-pair-delivery/run-20261018T024547Z-0688d4/`;
+matching evidence is under `.local/evidence/n3-native-pair-delivery/` with the
+same run ID. The ZIP has **45** safe, unique file members and **44** SHA256SUMS
+entries. Independent CRC, hash, size and disk-byte checks all passed. It has one
+Windows EXE, one Linux executable, build/delivery/source metadata and licenses;
+no fixture state, vault, grant, session or credential files are included.
+
+| Artifact | Bytes | SHA-256 |
+| --- | --- | --- |
+| `Cicada-N3-4ca29df.zip` | 16814901 | `b9a573490f98d567bc924c137e834662adde8c914180e52a49939ce6fe63b9a4` |
+| `cicada-app.exe` | 13784576 | `7e919c58660c83bfa9b16a4225850181eb08f444a51bf1773f5f64740660fab7` |
+| `cicada` | 26292384 | `5ffad8db514a79bafe93e607a894d19a8cf2e029432bd7fc1938accac12a1bfb` |
+| `delivery.json` | 13240 | `22fd64d1a5a547f24ff6384a04ed9ffac57444da96115f7baf97365afeaf9161` |
+
+Windows is **amd64 PE32+, GUI subsystem 2, CGO=0**; cross-build exit **0**.
+Its **11** actual linked dependency modules match the retained notices and
+compiled package graph. `internal/buildinfo` is not linked and there is no
+runtime version API: version/revision/dirty/fingerprint identity is external
+metadata bound to the EXE SHA-256. Original build metadata is preserved at
+`build/windows-app-original-build-metadata.json`; `delivery.json` explicitly maps
+its original license paths to `licenses/app/`. The first buildid metadata read
+failed, exit **1**, because tmpfs was non-executable; metadata-only retry exited
+**0**, with no EXE rebuild. Physical GUI/DPAPI/ACL and fonts remain **NOT_RUN**.
+
+The standard disposable Client interop exited **0**; required Smoke,
+HeadlessOperator, OwnerBootstrap and RecoveryFixture tests all passed. Re-run
+from an isolated checkout of the recorded source with
+`bash scripts/test-client-hub-interop.sh --suite client`; a new run gets its own
+source/results and cannot replace this receipt. All five owned Docker resources
+and scratch were independently absent. Four resident containers' ID/image/start/
+restart metadata matched before/after and the independent current observation.
+
+Linux is **ELF64 amd64, CGO=0, no ELF interpreter**. Its **12** linked module
+identities and **19** module notice files match actual binary metadata and
+original read-only cache bytes. The delivery image `a3c46544…629a24d` differs
+from the cleaned interop image `9df515f8…840852`: the complete source objects
+match; same image/binary is **not asserted**. The first strict image-identity
+check aborted before export and remains recorded. The exported binary itself
+then passed `TestN3NativePairBootstrapAndExactReplay`, **1/0/0**, exit **0**,
+in **7.70 s**: real PQ/TCP, host-bound SQLite, actual Hub restart and byte-exact
+prepare/complete replay. This is an empty-slot scene, not native Join, full
+pair activation or Runtime acceptance. Its original reused `n3.test` SHA-256 is
+`5cacad8075979a0c3017a0f088fa3eeaa2ca1d33ab049bfa920fc79f07a66dd2`;
+compilation remains attributed to dirty `7e6e3d5` plus QA WIP. All **1247**
+original Go/module inputs independently equal clean-4ca blobs; no recompilation
+is implied. Smoke attempt 01 failed on Go cache setup with **zero tests**, exit
+**1**; attempt 02 corrected harness cache settings and passed. Both original
+commands/logs/exits remain, with isolated host-bound state and network-disabled
+Docker. Export/smoke containers and delivery image are independently absent.
+
+| Matching evidence `result.json` | SHA-256 |
+| --- | --- |
+| `app-build/` | `1788248453dca4630d1d8a42c66a781d92c29421d8ea3ab9060df8747a5b34e4` |
+| `client-interop/` | `e07c2c03e681500292a8ffa40f6ec1ceb9f686b8d2c9e078fbc5ecb0839d4b9a` |
+| `packaged-linux-smoke-02/` | `a9d1d163accea5c4fd105e37cc656902f12b79a721d89124b2d62ad03f500b63` |
+
+Exact Windows build argv and Linux smoke replay argv are retained in their
+respective `*.command.json`/`command.json`; replay requires fresh owned outputs
+and state. QA performed read-only review, including Go binary-metadata reads,
+with **zero new test executions or builds**. Independent reports under
+`.local/evidence/native-pair-review/delivery-4ca-build-review-8n24muyd/` are:
+`windows-subbuild-review.json` (`9aa1e5f4…7001`), `client-interop-review.json`
+(`d07567fb…f8aa`), `linux-export-review.json` (`f536abc2…00eb`) and
+`zip-review.json` (`e1ae6b61…114e`); each retains its full hashes and scope.
+
+This closes local package assembly and artifact provenance review. It does
+not accept real original Codex A/B/A turns, native queue/model/Runtime, direct
+routing, Windows physical checks or current public HTTPS pair operation:
+all remain **NOT_RUN / USER_ONLY** where applicable. Public/resident deployments
+and real keys/state were untouched; `main` remains
+`0a33932ba2abdc0462ee993ba5acc07078098a2b`. The existing manual skeleton still
+requires user-operated matching upgrades, the original account/Node/binding,
+reviewed per-launch MCP loading and the service's absolute `CICADA_CODEX_BIN`.
