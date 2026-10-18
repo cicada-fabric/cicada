@@ -629,3 +629,64 @@ interop, real original-SID native Runtime/Windows, physical devices/Android,
 public HTTPS and strict PQTLS remain separate pending/NOT RUN gates. Nothing in
 these synthetic scoped results authorizes model/queue/provider use, deployment,
 real key rotation or public availability.
+
+## 2026-10-18 controlled Pair transport capability projection
+
+A subsequent App real-TCP consumer run on the integrated producer exposed a
+transport metadata gap before its first MCP ASK could enter Relay: controlled
+zero-Join used the shared native Endpoint row builder's empty capabilities,
+while the existing MCP dispatcher requires both current cards to advertise
+`local_peer_delivery: "sealed_v1"`. Earlier scripted Node fixtures explicitly
+supplied that metadata. The App failed cases remain attributed to their own
+consumer source/receipt and did not execute a native queue; this Hub change does
+not relabel them as passes or fill the missing value on the consumer.
+
+Root approved the minimum producer correction. On
+`1c4a59d774c530a0cf5823bf81f585192650ea10` plus the exact dirty inputs, only the
+controlled Pair zero-Join's existing Endpoint READY CAS now records that fixed
+capability in its own writer transaction. The shared ordinary Endpoint row
+builder and ordinary Join defaults remain unchanged. This is implementation
+availability metadata, not caller authorization: Network grants and Group grants
+remain empty and the endpoint remains undiscoverable; both explicit consents
+and every subsequent Store Guard remain necessary. Owner/account/Node/key/SID,
+lease owner, epochs, deadlines, immutable receipts/fences, wire/catalog IDs,
+byte bounds and public availability are unchanged. No state/key reset, Node-side
+capability invention or deployment is used.
+
+Necessary normal validation completed **6/0/0**, exit 0, inputs unchanged:
+`runtime/native-pair-transport-projection-normal-20261018T014759Z-summary.json`,
+source SHA-256
+`74871cc25c0208d26093acd4c2442480da6a7e8b8156778247b2169e9dcd446e`.
+Its 2,262 product inputs exclude only this append-only non-input validation
+record. The pinned offline image is still
+`sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61`
+(Go 1.27.2); source and module cache are read-only, the task build cache is locked,
+and normal temporary SQLite files use the disposable container filesystem.
+
+Real N2/N3 PQ, Node zero-Join and current self HTTP verify that the actual sealed
+Join receipt's Endpoint and NetworkCard, zero-grant WhoAmI, and post-double-consent
+resolve all project the same fixed transport capability. The zero memberships
+remain at revision 1 with no grants; pre-consent resolve is still HTTP 403. The
+same selected TCP flow exercises current peer evidence/claim/authorization and
+revoke denial, plus the existing complete carrier byte boundaries. Exact Node
+Join response/recovery and ordinary Group/Network Join regressions run in the
+same selector; the ordinary Join Endpoint/Card acquire no implicit Pair capability.
+The native-pair contract checker passes with public availability disabled.
+
+The matching necessary local race is pending at this record point. No real
+models/providers/native queues/SIDs, resident Hub, physical device or public
+HTTPS are touched. App's consumer rerun and Root's final combined-source SDK
+interop/readiness gates remain separate; the public capability flag remains
+false and no ordinary caller receives a new grant.
+
+The matching necessary transport-projection race completed **6/0/0**, exit 0,
+inputs unchanged: `runtime/native-pair-transport-projection-race-20261018T015007Z-summary.json`,
+source SHA `10efc6664ec8a4b80cfe9f668725b2c7695853073808694d5266cd464f32cf9a`.
+All 2,262 selected product input hashes still match the normal source; only this
+excluded validation record was appended. Race SQLite temp uses isolated tmpfs,
+which is not disk/power-loss recovery evidence. No invocation-specific executed
+binary hash was captured or borrowed from earlier checks. The actual App/MCP
+consumer rerun remains pending on Root's synchronized source, and the earlier
+consumer failure is retained independently. No additional public availability,
+permissions, key/epoch changes, standard interop, deployment or Runtime claim is
+introduced by this checkpoint.

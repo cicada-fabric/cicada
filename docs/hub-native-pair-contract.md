@@ -265,6 +265,11 @@ limits, not provider HTTP call, model turn, token or cost limits.
    membership is ACTIVE `member`, `grants:[]`, with no inherited peer grants.
    This permits only the existing self `whoami`, heartbeat and self-attested
    candidate publication/read. It cannot resolve/enumerate peers or ASK/Reply.
+   Controlled Pair Join records the existing
+   `local_peer_delivery: "sealed_v1"` Endpoint capability in that same transaction;
+   its Join/WhoAmI/resolve cards project the same value. This describes the
+   implemented transport, supplies no grants, and cannot bypass double consent
+   or any current Guard. Ordinary Join defaults remain unchanged.
    The Node keeps Endpoint private keys; the Hub sees public candidates only.
 4. With both candidates ready, `consent/prepare` freezes one plan. A candidate,
    binding, key, Node tuple, lease identity, Network/Group or membership revision change

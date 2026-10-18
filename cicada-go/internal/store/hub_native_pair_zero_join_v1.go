@@ -84,7 +84,10 @@ func nativePairZeroJoinTx(tx *sql.Tx, p *hubNativePair, q wire.NativePairNodeJoi
 	if err = insertSessionBindingRowTx(tx, binding, capabilities, stamp); err != nil {
 		return nil, err
 	}
-	endpointUpdate, err := tx.Exec(`UPDATE fabric_endpoints SET group_id=?,binding_id=?,migration_state='READY',updated_at=? WHERE id=? AND principal_id=? AND migration_state='MIGRATION_PENDING_GROUP'`, p.group, binding.ID, stamp, endpoint, principal)
+	// The fixed Pair uses the existing sealed Relay transport. This describes
+	// implementation availability only; both memberships still have no grants
+	// and every peer operation waits for the two explicit Owner consents.
+	endpointUpdate, err := tx.Exec(`UPDATE fabric_endpoints SET group_id=?,binding_id=?,migration_state='READY',capabilities_json='{"local_peer_delivery":"sealed_v1"}',updated_at=? WHERE id=? AND principal_id=? AND migration_state='MIGRATION_PENDING_GROUP'`, p.group, binding.ID, stamp, endpoint, principal)
 	if err != nil {
 		return nil, err
 	}

@@ -75,6 +75,13 @@ func TestExplicitJoinIsIdempotentAndRotatesBindingCredential(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, present := first.Endpoint.Capabilities["local_peer_delivery"]; present {
+		t.Fatal("ordinary Join acquired implicit Pair transport metadata")
+	}
+	if _, present := first.NetworkCard.Capabilities["local_peer_delivery"]; present {
+		t.Fatal("ordinary Join card acquired implicit Pair transport metadata")
+	}
+
 	second, err := service.Join(input)
 	if err != nil {
 		t.Fatal(err)

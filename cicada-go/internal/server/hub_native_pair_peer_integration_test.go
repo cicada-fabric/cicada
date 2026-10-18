@@ -64,6 +64,19 @@ func TestNativePairPeerRealTCPConsentResolveAskClaimAndRevoke(t *testing.T) {
 		if !reply.OK || json.Unmarshal(reply.Result, &joins[i]) != nil {
 			t.Fatal("synthetic HTTP zero Join refused")
 		}
+		if joins[i].Endpoint.Capabilities["local_peer_delivery"] != "sealed_v1" || joins[i].NetworkCard.Capabilities["local_peer_delivery"] != "sealed_v1" {
+			t.Fatal("actual Pair Join omitted the existing sealed transport availability")
+		}
+		member, e := a.f.db.GetMembershipByPrincipalGroup(joins[i].Endpoint.PrincipalID, ch.Bootstrap.GroupID)
+		if e != nil || len(member.Grants) != 0 || member.Revision != 1 {
+			t.Fatal("transport availability conferred peer authorization", e)
+		}
+		self := a.pairHTTP(t, http.MethodGet, "/v2/fabric/whoami", "CicadaSession "+joins[i].SessionToken, ch.Bootstrap.GroupID, nil, http.StatusOK)
+		var selfCard fabric.NetworkCard
+		if json.Unmarshal(self, &selfCard) != nil || selfCard.EndpointID != joins[i].Endpoint.ID || selfCard.NativeSessionID != q.NativeSessionID || selfCard.BindingID != joins[i].BindingID || selfCard.BindingEpoch != joins[i].BindingEpoch || selfCard.Capabilities["local_peer_delivery"] != "sealed_v1" {
+			t.Fatal("actual zero-grant whoami changed identity or transport availability")
+		}
+
 		var err error
 		keys[i], err = e2ee.NewIdentity()
 		if err != nil {
@@ -75,6 +88,9 @@ func TestNativePairPeerRealTCPConsentResolveAskClaimAndRevoke(t *testing.T) {
 		}
 		a.pairHTTP(t, http.MethodPost, "/v2/fabric/endpoint-keys", "CicadaSession "+joins[i].SessionToken, ch.Bootstrap.GroupID, map[string]any{"attestation": json.RawMessage(proof)}, http.StatusOK)
 	}
+	// Availability cannot supply directory/peer rights before either consent.
+	a.pairHTTP(t, http.MethodPost, "/v2/fabric/resolve", "CicadaSession "+joins[0].SessionToken, ch.Bootstrap.GroupID, fabric.ResolveInput{Query: joins[1].Endpoint.ID}, http.StatusForbidden)
+
 	statusQ := wire.NativePairStatusRequest{Format: wire.NativePairFormat, Context: a.context(t), SessionToken: a.session.Token, PairID: ch.Bootstrap.PairID}
 	packet := a.seal(t, statusQ)
 	var status wire.NativePairResult
@@ -126,7 +142,7 @@ func TestNativePairPeerRealTCPConsentResolveAskClaimAndRevoke(t *testing.T) {
 	}
 	resolve := a.pairHTTP(t, http.MethodPost, "/v2/fabric/resolve", "CicadaSession "+joins[0].SessionToken, ch.Bootstrap.GroupID, fabric.ResolveInput{Query: joins[1].Endpoint.ID}, http.StatusOK)
 	var card fabric.NetworkCard
-	if json.Unmarshal(resolve, &card) != nil || card.EndpointID != joins[1].Endpoint.ID {
+	if json.Unmarshal(resolve, &card) != nil || card.EndpointID != joins[1].Endpoint.ID || card.Capabilities["local_peer_delivery"] != "sealed_v1" {
 		t.Fatal("bounded resolve lost actual peer")
 	}
 	base := "/v2/relay/nodes/" + a.scope.Node.NodeID + "/group/sealed/"
