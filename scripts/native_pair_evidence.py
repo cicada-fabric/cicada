@@ -20,6 +20,7 @@ A3_EXPECTED = {'TestQANativePairA3' + name for name in (
     'LostActivationAckRecoversAcceptedHistory', 'CurrentRequiredAndExactCoordinates')}
 A3_HTTP_EXPECTED = {'TestQANativePairA3HTTPExactBodyAndAtomicRejection'}
 A3_SIZE_EXPECTED = {'TestQANativePairA3DeliveryOverflowCannotPublishAuthority'}
+APP_OWNER_EXPECTED = {'TestN3AppPairActionsBootstrapDualConsentAndRevoke'}
 
 
 def sha(path):
@@ -90,7 +91,7 @@ def terminal_events(path):
 
 
 def finish(run, artifacts, image, owned, mode='protocol'):
-    if mode not in ('protocol', 'store', 'a3', 'a3-http', 'a3-size-store'):
+    if mode not in ('protocol', 'store', 'a3', 'a3-http', 'a3-size-store', 'app-owner'):
         raise ValueError('Only protocol and isolated core regression modes are active.')
     before, after = [json.loads((run / f'source-{side}.json').read_text()) for side in ('before', 'after')]
     results, diagnostics, metrics = {}, [], []
@@ -111,8 +112,8 @@ def finish(run, artifacts, image, owned, mode='protocol'):
     exits = {p.stem: int(p.read_text().strip()) for p in run.glob('*.exit')}
     matched = before == after
     expected = {'store': STORE_EXPECTED, 'a3': A3_EXPECTED, 'a3-http': A3_HTTP_EXPECTED,
-                'a3-size-store': A3_SIZE_EXPECTED, 'protocol': EXPECTED}[mode]
-    core = mode != 'protocol'
+                'a3-size-store': A3_SIZE_EXPECTED, 'app-owner': APP_OWNER_EXPECTED, 'protocol': EXPECTED}[mode]
+    core = mode not in ('protocol', 'app-owner')
     stages = ('version', 'compile-tests', 'compile-race', 'harness', 'race', 'vet') if core else ('version', 'compile-cli', 'compile-tests', 'harness', 'vet')
     race = terminal_events(run / 'race.log') if core else None
     race_passed = not core or (set(race) == expected and all(v == 'pass' for v in race.values()))
@@ -122,6 +123,7 @@ def finish(run, artifacts, image, owned, mode='protocol'):
                          'a3': {'nativepair-a3.test', 'nativepair-a3-race.test'},
                          'a3-http': {'nativepair-a3-http.test', 'nativepair-a3-http-race.test'},
                          'a3-size-store': {'nativepair-a3-size.test', 'nativepair-a3-size-race.test'},
+                         'app-owner': {'cicada', 'n3.test'},
                          'protocol': {'cicada', 'n3.test'}}[mode]
     binaries_stable = set(binary_records[0]) == expected_binaries and binary_records[0] == binary_records[1]
     passed = (all(exits.get(n) == 0 for n in stages)
@@ -139,6 +141,7 @@ def finish(run, artifacts, image, owned, mode='protocol'):
              'a3': 'DISPOSABLE_PRODUCER_CORE_REAL_PQ_TCP_N2_N3_AND_A3_NOT_PUBLIC_SDK_APP_UI_OR_RUNTIME',
              'a3-http': 'REAL_PQ_TCP_SYNTHETIC_RELAY_DERIVED_TYPED_HTTP_BYTE_BOUNDARIES_NOT_RUNTIME',
              'a3-size-store': 'SYNTHETIC_STORE_PQ_ORIGINAL_CONSENT_ACTIVATION_SIZE_ATOMICITY_NOT_TCP_OR_RUNTIME',
+             'app-owner': 'ACTUAL_APP_CORE_CHILD_PAIR_OWNER_ACTIONS_AND_SYNTHETIC_NODE_PQ_TO_PRODUCTION_HUB_NOT_GUI_OR_RUNTIME',
              'protocol': 'REAL_TCP_PQ_BOOTSTRAP_AND_RECOVERY_ONLY'}[mode]
     summary = {'scope': scope,
                'status': 'SCOPED_PASS' if passed else ('EXPECTED_RED_SERVICE_UNAVAILABLE' if expected_red else 'FAIL'),
@@ -156,10 +159,12 @@ def finish(run, artifacts, image, owned, mode='protocol'):
                'diagnostics': diagnostics, 'http_measurements': metrics,
                'artifacts': {p.name: {'sha256': sha(p), 'bytes': p.stat().st_size} for p in artifacts.iterdir() if p.is_file()},
                'evidence_sha256': {p.name: sha(p) for p in run.iterdir() if p.is_file() and p.name != 'result.json'},
-               'not_run': ['production_App_native_pair', 'actual_Codex_dialogue', 'real_native_same_Node_sealed_Relay_consumption',
+               'not_run': ([] if mode == 'app-owner' else ['production_App_native_pair']) +
+                          ['actual_Codex_dialogue', 'real_native_same_Node_sealed_Relay_consumption',
                            'native_queue_consumption', 'Windows_DPAPI', 'Windows_ACL', 'Windows_GUI'] +
                           (['full_public_availability_gate', 'actual_sender_writer_current_enforcement'] if mode in ('a3', 'a3-http') else
                            ['Node_reserved_slot_RPC', 'public_TCP_dual_consent_surface', 'actual_sender_writer_current_enforcement'] if mode == 'a3-size-store' else
+                           ['native_MCP_consumer', 'actual_sender_writer_current_enforcement', 'native_App_GUI'] if mode == 'app-owner' else
                            ['Node_reserved_slot_Join', 'dual_Owner_consent']),
                'private_payloads_exported': False, 'model_turns_started': 0,
                'native_daemon_touched': False, 'public_deployment_touched': False}

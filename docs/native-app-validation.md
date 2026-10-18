@@ -2716,3 +2716,239 @@ and public deployment remain **NOT_RUN** by these gates. Root owns final
 integrated compatibility interop. No older four-case/cache/public-RED suite was
 rerun, no production implementation was edited by QA, and no Git mutation or
 deployment was performed during these gates.
+
+### Prepared actual App Owner actions bridge: compile-only
+
+2026-10-18 UTC, **COMPILE_PASS_RUNTIME_NOT_RUN**, exit **0**; Go version,
+compile-only and static vet each exit **0**, with **zero tests executed**.
+No Hub, App or Node child, native SID, model/provider/queue or deployment was
+started. Pair availability remains false; no known-RED runtime gate was run.
+
+Read-only coverage review found that the existing five protocol tests use the
+production App only for N2/N3, then load test-owned identities and perform Pair
+Owner actions through an independent wire caller. Conversely,
+`TestPairControllerTwoExplicitConsentsAndProjectedActivation` uses a scripted
+HTTP Doer with a fixed clock, not the production Hub. Neither supplies an
+actual App Pair Action-to-Hub positive. The existing App process mailbox already
+accepts `*appcore.Action` and returns the display-safe `Snapshot`, so no new
+actor framework or product API was needed.
+
+That review also identified a concrete source-contract mismatch: App
+`pair_authority.go` signed GroupKeyProof with its click-time `Now`, while Hub
+`hub_native_pair_consent_v1.go` requires its `IssuedAt` to equal the reviewed
+Plan's `PreparedAt`. It was reported to Root and the App owner; QA did not modify
+production code. App owns its single-line manifest-time correction and separate
+RED/green component evidence. This compile-only source predates integration of
+that correction, and cannot establish the correction's runtime behavior.
+
+The new single scenario,
+`TestN3AppPairActionsBootstrapDualConsentAndRevoke`, is **PREPARED / NOT_RUN**.
+It keeps the original App process, original vault and original public
+Owner/device pins. All Pair bootstrap, status, separate A/B consent and revoke
+requests go through production `Controller.Dispatch`; the driver never opens
+the App's private vault or signs a Pair/GroupKey Owner proof. It generates only
+its synthetic Node's proof/credential and synthetic candidate keys, uses actual
+Node PQ reserved zero-Joins and self attestations, and reads public Store
+evidence with the owned Hub stopped. Its independent oracles require both
+memberships/key grants ineffective before and after first consent, original
+CURRENT grants only after second consent, exact signed manifest times under a
+wall clock, and effective grant removal by App revoke. It does not use SQL to
+create ACTIVE/grants or invoke a native MCP consumer/queue/Runtime.
+
+Root preserved the sole new-file WIP while synchronizing the QA branch from
+`1c4a59d` to `3814439bbbe68e7e7d2c881439420f2b9bf8b1aa`. The compiled input
+is **dirty `3814439` plus the new QA test and two driver/helper changes**.
+All **1294** complete Go/contract/checker/QA inputs matched before/after.
+Joint inventory SHA-256 is
+`618751b581a3af763928a2b4052c9af5fdc7fb45c2bb3257057a6440bad50515`;
+the identical snapshot file SHA-256 is
+`5766859a8fba771f91a1cdb7776b312a6add8d0e8bbd338931014fba8572846e`.
+
+Evidence is retained under
+`/home/zyf/Cicada/.local/evidence/native-pair-app-owner-compile-only/run-20261018T015904Z-7hmazmnd`;
+its `result.json` is 2466 bytes, SHA-256
+`6ec666b1b836dbb062bf2f92a94c417d4ee2da0cc9e6c1caf996298b9515b03d`.
+The corresponding `.local/artifacts/native-pair-app-owner-compile-only` run
+retains **compiled, unexecuted** `n3-app-owner.test`, 22610606 bytes, SHA-256
+`f546d8fbf523bb7a75b5177f613767ae9824efe5bbaf14537b6c88d28ea35592`.
+The exact compiler command was:
+
+```sh
+go test -mod=readonly -buildvcs=false -trimpath -c -o /out/n3-app-owner.test ./acceptance/n3
+```
+
+The pinned offline Go Docker image, complete argv/log/exit files and source
+snapshots are retained. Product/QA and the shared module cache mounted
+read-only; the task build cache was exclusively locked. The exact container
+`cicada-app-owner-compile-run-20261018t015904z-7hmazmnd` was observed absent.
+The fixture state mount was host-bound, but compilation created no acceptance
+database or runtime durability evidence.
+
+After Root integrates App/Hub fixes and explicitly approves actual readiness,
+the prepared runtime command is `bash scripts/test-native-pair.sh --app-owner`.
+It builds the actual CLI and N3 binary in fresh isolated state, then requires
+exactly this one test to pass without skip. That command has **not executed**.
+It will retain its own new source/binary/exit/cleanup record; this compilation
+does not become that later source's runtime PASS. Fresh native MCP and real
+queue/model/Runtime, Windows GUI/DPAPI/ACL and public HTTPS remain **NOT_RUN**.
+
+The existing user-only manual skeleton was reordered with Root's review:
+verify the delivery, prepare each original per-launch Codex/MCP context and let
+the user complete one harmless initial turn in A and B before App bootstrap.
+Preserve the original account, `CODEX_HOME`, Node state and Codex-injected SIDs;
+Join within the original ten-minute `JoinUntil`, and prepare the five-minute
+Plan only after both candidates are ready. This is **DELIVERY_PENDING** guidance,
+not evidence that any real turn, SID, Join or queue was operated by QA.
+
+Root separately reported a read-only resident-Node preflight on 2026-10-18:
+systemd MainPID `1860672`, restricted inspection of only `PATH`/`CODEX_HOME`, and
+`shutil.which('codex', path=<that service PATH>) == None`. The interactive shell
+has `/home/zyf/.local/bin/codex` version `0.163.0`; the Node uses default
+`CODEX_HOME`. This is **ROOT_REPORTED_READONLY_PREFLIGHT**, not QA execution,
+native Runtime acceptance or a product-code defect. No other environment values
+were exported, no unit was changed and no queue was executed. The existing
+manual skeleton now requires the user to configure the reviewed Codex path for
+the actual service and confirm the original account before A/B acceptance, preserving existing
+Node identity/state/binding without re-registration. Exact service changes and
+all actual turns remain user-operated delivery steps.
+
+A further Root read-only check found no `CICADA_CODEX_BIN` override in that
+same service environment. The existing production native delivery code already
+supports it, so the minimal future user-operated setting is
+`CICADA_CODEX_BIN=/home/zyf/.local/bin/codex`; the original PATH, Codex
+account/`CODEX_HOME` and Node state/identity/binding stay unchanged. This refines
+the manual resolution step above, adds no product feature and does not imply
+that a unit setting/restart or any Runtime operation has been performed.
+
+### Ready protocol five PASS and actual App revoke failure
+
+2026-10-18 UTC. Root explicitly authorized two isolated gates after integrating
+the real readiness source `995126d716bf25f078a4cc500121ed578434b491`. Production
+availability was true; no discovery shim supplied a positive. The actual App
+Owner scene ran first and **failed**, exit **1**. The original five public
+protocol cases then passed **5/0/0**, exit **0**, on the unchanged source.
+No old cache/core/size gate, real native SID/queue/Runtime, deployment or Git
+operation was executed by these runs.
+
+Commands from the QA worktree were:
+
+```sh
+bash scripts/test-native-pair.sh --app-owner
+bash scripts/test-native-pair.sh
+```
+
+Each allocated fresh owned host-bound fixture state and a distinct container.
+The recorded input is **dirty `995126d` plus the five QA WIP files**, not a
+clean commit execution. Both runs checked **1304** complete Go/contract/checker/
+QA inputs, with identical joint inventory SHA-256
+`c9cb0a01497bd5a881b8030cb185fb8ffb9960cc6c73a2ae61f67c0b34a82cf0`.
+All four before/after snapshot files have SHA-256
+`063fc76b60ed1fc38e2d8d8cece56401bd74f8be1e6356aa3e163767f2745b47`.
+The runner did not modify source between gates.
+
+Evidence below is under `.local/evidence/native-pair-acceptance/`;
+matching `.local/artifacts/native-pair-acceptance` directories retain each run's
+actual CLI and test binary, plus pre/post inventories in the evidence directory.
+
+| Result | Outcome | SHA-256 |
+| --- | --- | --- |
+| `run-20261018T022252Z-nACGtZ/result.json` | Actual App single scene FAIL; harness 1, version/CLI compile/test compile/vet 0 | `6e38e613fe51959bb254506bd6215963317f55cde30531ef9d983e1dc7415fe1` |
+| `run-20261018T022542Z-OlAX5c/result.json` | Original public protocol 5/0/0 PASS; all five stage exits 0 | `8aa3dc46675b28ac5217a4f9b853b74c67fe96734e9ec550283599b6d38392bc` |
+
+| Actual executed binary, identical in both runs | Bytes | SHA-256 |
+| --- | --- | --- |
+| `cicada` | 34143102 | `f4fb4016c22ee5919760bfa8a94b44e5187830e9d5f7ed8fcc4d665938d19ced` |
+| `n3.test` | 22632344 | `0f0f935bcbcbee294514e5b2e7a77baf173e30ba00d65dfceecc92ffef8f2fd9` |
+
+Each run's own pre/post executed-binary hashes match. Exact Docker/Go argv,
+version, logs, exits and source snapshots are retained. Source and shared
+modules were read-only; the task build-cache lock serialized execution.
+SQLite fixture files used host-bound `/state/tmp`; no power-loss durability is
+inferred. Both exact run-derived containers were observed absent.
+
+The five protocol cases prove actual bootstrap/exact replay across Hub restart,
+wrong-Node Owner proof fencing, missing Owner proof denial, pre-forward loss and
+post-commit loss with exact original reconciliation. They close the earlier
+service-unavailable five-case RED **only on this ready source**. Their Pair
+Owner actions remain an independent wire caller after actual App N2/N3; this
+does not accept the App Pair Action chain or real native consumption.
+
+The separate actual App process made its own Pair bootstrap/status and two
+explicit slot consents from its original vault, using the production Hub and
+real synthetic Node PQ zero-Joins/candidates. Assertions reached real original
+CURRENT key grants, projected memberships and exact signed manifest times.
+The final `REVOKE_EXACT_NATIVE_PAIR` failed with `OTHER` /
+`APP_PAIR_RESPONSE_INVALID` under `WALL_CLOCK` at
+`app_pair_runtime_test.go:183`; the whole 15.91-second scene is **FAIL**, with
+zero accepted full scenes. No driver-held Owner private key or Pair proof was
+used. This actual cross-component failure was handed to Root and the App owner;
+QA made no production fix. It does not prove Hub no-effect, failed revocation,
+or that the authenticated original can be replaced. The original failed receipt
+and source attribution remain unchanged while the owner investigates.
+
+App-owner completion/revoke acceptance remains pending necessary verification
+on the owner's fix. These five public-case results cannot be reattributed to a
+later fix's source or used as its App-owner PASS. Actual native MCP/queue/Runtime,
+Windows GUI/DPAPI/ACL and public deployment remain **NOT_RUN** by these gates.
+
+### Actual App Owner bridge after the terminal-slot fix
+
+2026-10-18 UTC, **SCOPED_PASS**, **1/0/0**, driver exit **0**, all five stage
+exits **0**. Root integrated App's narrow returned-slot validator at
+`7e6e3d54322eabc076ae7a48fdd7cb3cf1667376` and authorized only the affected
+`bash scripts/test-native-pair.sh --app-owner` scene. The Go test and two
+driver/helper files are byte-identical to the original `995126d` failed run.
+No five-case protocol, older core/cache/size, consumer or model/Runtime gate
+was repeated. The original App FAIL and five public PASS remain on their
+original source above.
+
+The fixture is the existing actual App child/vault against the real Hub CLI,
+with a synthetic Node's real PQ pairing/zero-Joins and candidate attestations.
+The App signs every Owner and GroupKey proof itself. Actual bootstrap, fresh
+status, separate A/B consent, projected memberships and both original CURRENT
+key grants passed. App revoke then applied the authenticated terminal
+historical-slot response, settled its original operation, and independent
+public Store checks confirmed neither key grant remained effective. The
+whole scene took **16.18 seconds** under `WALL_CLOCK`; no driver-held Owner
+private key, SQL-created ACTIVE/grant, capability shim or real native SID was
+used.
+
+App's fix classifies only completely absent candidate data as historical;
+mixed fields and full candidates still use the original complete validator.
+Base slot position, generation, attempt, original Node/runtime, identifiers,
+epochs/revisions and lease ceiling remain checked. Candidate-less history is
+limited to waiting JOINED_ZERO or terminal JOINED_ZERO/ACTIVE, with terminal
+administrative permission false. ACTIVE activation/consent/Plan verification
+remains strict. The owner's separate 42-event normal/race and lost-revoke
+component records retain their own source and original infrastructure/compile
+failures; this single actual App scene does not relabel them.
+
+Evidence:
+`/home/zyf/Cicada/.local/evidence/native-pair-acceptance/run-20261018T023857Z-e1llc9/result.json`,
+4394 bytes, SHA-256
+`75268d011af433bbb215a0f0bca0df9ba15136a8902d99cb69ec1a1752b914a9`.
+The tested source is **dirty `7e6e3d5` plus the five QA WIP files**, not a clean
+commit execution. All **1306** inputs match before/after; joint inventory
+SHA-256 is `416b2757d45d035986bd9c9d349f48739a44e8a2c0775ec1f182697a88719294`,
+and both snapshot files have SHA-256
+`a5cbf56c03c355e0396cd3ac2b3f2379035c894648faa312a14f396b5d4a548e`.
+
+| Actual executed binary in the matching artifacts run | Bytes | SHA-256 |
+| --- | --- | --- |
+| `cicada` | 34143102 | `f4fb4016c22ee5919760bfa8a94b44e5187830e9d5f7ed8fcc4d665938d19ced` |
+| `n3.test` | 22634386 | `5cacad8075979a0c3017a0f088fa3eeaa2ca1d33ab049bfa920fc79f07a66dd2` |
+
+Pre/post binary hashes match. The Hub CLI is unchanged from the first runtime
+gate; the actual App child is in this newly compiled N3 binary. Exact argv,
+logs, exits and source/binary inventories are retained. State/SQLite were on
+owned host-bound `/state/tmp`; source/shared modules were read-only and the
+task build cache exclusively locked. Exact container
+`cicada-native-pair-run-20261018t023857z-e1llc9` was observed absent. No host
+power-loss durability or production deployment is inferred.
+
+This closes the observed App revoke integration defect **on this source**.
+It accepts the bounded portable App-owner core chain, not native GUI or model
+consumption. Windows GUI/DPAPI/ACL, physical devices, real Codex Threads/queue/
+Runtime and public deployment remain **NOT_RUN**. Final integrated standard
+compatibility interop and any Windows artifact build belong to Root; they are
+not claimed by this result.

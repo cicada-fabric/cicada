@@ -442,35 +442,61 @@ steps below are **NOT_RUN / DELIVERY_PENDING**.
    compares the release manifest. This is a checksum template, not a delivered
    filename. Preserve the original account, vault, Owner/device keys, Node ID
    and bindings. A cross-build alone is not Windows GUI/DPAPI/ACL acceptance.
+   Before the two-Thread procedure, the user manually verifies that the actual
+   Node service can resolve the reviewed Codex executable through its existing
+   `CICADA_CODEX_BIN` override or its own `PATH`, and that its `CODEX_HOME`/login
+   use the original Codex account. An interactive shell finding
+   Codex is not evidence that the resident service can launch it. Root's
+   2026-10-18 read-only preflight found `codex` absent from the actual Node
+   service PATH, while the interactive shell found
+   `/home/zyf/.local/bin/codex` version `0.163.0`; the Node used default
+   `CODEX_HOME` and had no `CICADA_CODEX_BIN` override. This is a deployment
+   prerequisite, not a product-code failure. The existing native delivery code
+   already accepts an absolute executable path: the minimal user-operated unit
+   setting is `CICADA_CODEX_BIN=/home/zyf/.local/bin/codex`, preserving the
+   original PATH, account, `CODEX_HOME`, Node state, identity and binding without
+   re-registration. Root supplies reviewed service-specific setting/restart
+   steps before A/B acceptance. QA/Root do not replace the real
+   unit or execute a native queue during development.
    Root's read-only installed Codex 0.163.0 `mcp list --json` currently returns
    `[]`: Cicada MCP registration/loading is another delivery prerequisite.
    Supply reviewed configuration limited to these two Thread launches, preserving
    global tools/model/config. Check Cicada MCP actually loaded in **each** Thread;
    a global listing or a present executable is not that proof. Do not run a
    persistent global `codex mcp add` as an inferred setup action.
+   Root supplies the exact reviewed Cicada executable/API origin, original
+   Hub/Owner pins and scoped MCP session-state location before these launches.
+   Both use the original `CODEX_HOME`, Codex account, approved
+   `CICADA_MACHINE_ID=gpu1-node` and original `CICADA_NODE_STATE_DIR`.
+   The user personally launches/selects A and B and completes one harmless
+   initial turn in each, establishing two distinct original native SIDs and
+   checking its actual loaded MCP tools. Root/scripts do not start those turns.
+   Native SID is injected by Codex and verified against its local
+   session/workspace record; never set literal `CODEX_THREAD_ID` or
+   `CODEX_SESSION_ID` values to impersonate A/B. Complete these configuration
+   and initial-turn prerequisites **before** starting App Pair bootstrap.
 2. **Prepare two empty slots in the App.** The user logs in normally, selects
    the original gpu1 Node and uses the delivered new pair authorization entry.
    Review the existing Owner/Node pins, private Group and bounded policy before
    approving bootstrap. Login/status access alone supplies no Root/pair right.
    No native SID or peer permission is inferred from the two empty slots.
-3. **Join the user's two actual Threads on the same Node.** The user personally
-   selects/opens A and B, retains both original SIDs and distinct private context
+   Both already-prepared Threads must Join within the original displayed
+   `JoinUntil` (the bounded ten-minute Join window); downloading/configuring the
+   CLI or creating initial native context must not consume that window.
+3. **Join the user's two actual Threads on the same Node.** The user returns
+   to those same initialized A and B, retains their SIDs and distinct private context
    witnesses, and gives a fresh at-least-128-bit answer only to B. In each
    original Thread, use the delivered reserved-slot Join entry for its own slot.
-   Both launches use the actual approved `CICADA_MACHINE_ID=gpu1-node` and the
-   original `CICADA_NODE_STATE_DIR`, not a fresh Node directory. Native SID is
-   injected by Codex and verified against its local session/workspace record;
-   never set a literal `CODEX_THREAD_ID`/`CODEX_SESSION_ID` to impersonate A/B.
-   Root supplies the exact Cicada executable/API origin, original Hub/Owner pins
-   and scoped MCP session-state location after the new Node entry is reviewed.
    No default localhost API, manually supplied session token or guessed new
    flags/tool fields can fill that gap. MCP session persistence remains private
    and scoped by origin/harness/native SID/Node; registration grants no rights.
    Root will add exact tool/CLI syntax after implementation; generic old Join,
    a guessed command, a second Node or an operator DB grant is not a substitute.
 4. **Authorize the actual pair in the App.** Review both distinct actual SIDs,
-   the same Node/Network/Group, candidates and expiry; approve each slot's exact
-   consent. Empty slots and the first consent leave peer traffic denied. Only
+   the same Node/Network/Group, candidates and expiry. Only after **both** original
+   candidates are ready, prepare their exact five-minute consent Plan and
+   approve each slot's exact consent within its displayed expiry. Empty slots
+   and the first consent leave peer traffic denied. Only
    the compatible second consent may activate both. The Owner key stays in the
    original App vault. The App does not carry peer questions or answers.
 5. **A asks, B answers, A receives.** The user tells original A to make one
@@ -570,3 +596,31 @@ zero-Join fixture rather than Node RPC. The Pair-only HTTP writer now emits
 exactly the preflight's Marshal bytes without LF; ordinary Group encoding is
 unchanged. The initial size fix retains separate source attribution. The earlier
 four A3 cases, Store 9+9 and five known-RED public protocol cases were not rerun.
+
+One final portable App-owner bridge is prepared at
+`acceptance/n3/app_pair_runtime_test.go`:
+`TestN3AppPairActionsBootstrapDualConsentAndRevoke`. It reuses the existing
+separate production App actor and its vault. Every Pair/GroupKey Owner proof is
+created by `Controller.Dispatch` through the real App actions; the driver reads
+only the Hub's public Owner record and creates only synthetic Node/candidate
+keys. Actual Node PQ zero-Joins/candidate publication connect App bootstrap,
+fresh status, separate slot approvals, real CURRENT key grants and App revoke.
+This fills a gap between the existing scripted App HTTP tests and the
+independent Pair wire caller; neither earlier layer accepts this bridge.
+
+The opt-in command `bash scripts/test-native-pair.sh --app-owner` selects only
+this one scene using the original disposable driver. After its compile-only
+check on dirty `3814439` (zero tests), Root integrated the App/Hub fixes and
+explicitly authorized the real ready surface on dirty `995126d`. The original
+five public protocol cases then passed **5/0/0**. The actual App scene reached
+bootstrap/status, both explicit consents and verified real CURRENT grants, but
+failed its final App revoke with `APP_PAIR_RESPONSE_INVALID`; that original
+whole scene remains **FAIL**. App's narrow terminal-slot fix was then integrated
+at `7e6e3d5`; the unchanged single scene passed **1/0/0**, including actual App
+revoke application and effective grant removal. The five protocol cases were
+not rerun or reattributed to that later source. Both original failure and
+necessary successful rerun retain their own source/binaries. No discovery
+shim, private initialization probe or driver-held Owner signer substituted for
+these fresh App actions. See the [same-source runtime receipts](native-app-validation.md#ready-protocol-five-pass-and-actual-app-revoke-failure).
+Production GUI/Windows DPAPI/ACL, real native MCP/queue/Runtime and user-operated
+two-Thread acceptance stay separate and **NOT_RUN**.
