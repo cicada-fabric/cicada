@@ -345,6 +345,47 @@ swapped, oversized or invalid evidence fails closed even if legacy Group grants
 would allow the message. Ciphertext format is unchanged. Evidence JSON is bounded
 to 256 KiB and the complete new authorization carrier to 320 KiB.
 
+The two existing typed carriers, `SameGroupSealedV1PeerKey` and
+`SameGroupSealedV1DeliveryAuthorization`, carry separate optional top-level
+`native_pair_evidence` and `native_pair_current` fields. Legacy Groups omit both;
+a persisted pair-policy-required Group must have both. Evidence appears once.
+`NativePairPeerCurrent` is bounded to 4 KiB and has exactly `state=CURRENT`,
+`control_revision`, `observed_at`, `sender`, and `receiver`. Each
+`NativePairCurrentSlot` has exactly `slot`, `generation`, `attempt_id`,
+`native_session_id`, `network_access_binding_id`, `network_access_epoch`,
+`network_membership_revision`, `endpoint_network_revision`, `lease_owner`, and
+`lease_ceiling`. These coordinates come from actual slot, Network and native
+binding rows in the same authorization transaction; the signed Plan cannot be
+copied into a purported current observation. Original native and Network access
+leases must both be live and at or below the signed ceiling. The old carrier's
+Sender/Receiver fields independently match the Plan's identities, candidate keys,
+binding and projected membership revisions. In particular, the old peer-key
+receiver native-session field remains redacted; its current SID comes from the
+separate current object. `VerifyNativePairPeerAuthorization` verifies the
+independently pinned Owner evidence and the directional current coordinates;
+callers also retain the old carrier checks and final exact-attempt delivery Guard.
+CURRENT describes the observation time and does not replace that final Guard.
+JSON expansion counts toward the complete 320 KiB limit; a larger carrier fails
+closed without increasing legacy bounds or omitting evidence.
+Before enabling pair permissions, the authorization writer must preflight the
+exact complete peer-key/delivery carrier encoding before committing effects or
+admission. An oversized encoding rejects and rolls back, without truncation or
+partial publication. The preparation checkpoint adds the shared DTOs, validators
+and actual-carrier measurements; production peer activation/preflight remains
+unavailable with public capabilities false.
+
+The existing Group heartbeat is also the same-identity pair lease renewal path.
+Its writer transaction rechecks the current pair/slot, original Node tuple,
+native binding and Network access binding, and extends both still-live leases
+together without changing their IDs, epochs, credentials or lease owner. Both
+remain bounded by the Owner's absolute peer ceiling. It never calls
+`network_renew`, whose directory credential rotation changes its epoch. After
+both slots were accepted before `JoinUntil` and entered `WAITING_CONSENT` or
+`ACTIVE`, their existing sessions may heartbeat past that Join deadline. An
+incomplete `WAITING_JOIN` pair loses self/heartbeat authority at `JoinUntil`, even
+if both of its original lease deadlines are still later. Historical Join receipt recovery never renews or
+resurrects an expired lease, reoccupies a slot or creates a replacement key.
+
 The existing native writer ledger, inbox/outbox, provider admission and queue
 uncertainty rules remain authoritative. `codex queue --thread SID` acceptance is
 `CONSUMPTION_UNCONFIRMED`, not model consumption. Automatic loaded/cold wake and

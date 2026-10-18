@@ -137,6 +137,10 @@ func (h *hubNodesHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.base.ServeHTTP(w, r)
 		return
 	}
+	if path == "/v2/fabric/whoami" || path == "/v2/fabric/endpoint-keys" || path == "/v2/fabric/heartbeat" {
+		h.nativePairSelf(w, r)
+		return
+	}
 	if hubNodesRelayPath(path) {
 		h.base.ServeHTTP(w, r)
 		return

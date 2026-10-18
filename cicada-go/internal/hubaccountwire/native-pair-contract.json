@@ -116,7 +116,10 @@
     "MaxOwnerNativePairProofBytes": 32768,
     "MaxNativePairCapabilitiesBytes": 8192,
     "MaxNativePairNodeOriginalBytes": 32768,
-    "MaxNativePairNodeReceiptBytes": 131072
+    "MaxNativePairNodeReceiptBytes": 131072,
+    "MaxNativePairPeerCurrentBytes": 4096,
+    "MaxNativePairNodeReconcileBodyBytes": 196608,
+    "MaxNativePairNodeReconcilePacketBytes": 393216
   },
   "fixed_policy": {
     "max_root_asks": 4,
@@ -195,5 +198,77 @@
     ],
     "sid_from_trusted_context": true,
     "candidate_publication": "NODE_AUTOMATIC_AFTER_DURABLE_ZERO_JOIN"
+  },
+  "node_join_required_fields": [
+    "contract_revision",
+    "pair_id",
+    "slot",
+    "expected_generation",
+    "bootstrap_proof_digest",
+    "runtime",
+    "native_session_id",
+    "workspace"
+  ],
+  "node_description_fields": [
+    "contract_revision",
+    "pair_id",
+    "hub_identity",
+    "bootstrap_owner_proof",
+    "slot_a_generation",
+    "slot_b_generation"
+  ],
+  "peer_authorization_carriers": {
+    "types": [
+      "SameGroupSealedV1PeerKey",
+      "SameGroupSealedV1DeliveryAuthorization"
+    ],
+    "evidence_field": "native_pair_evidence",
+    "evidence_type": "NativePairPeerEvidence",
+    "current_field": "native_pair_current",
+    "current_type": "NativePairPeerCurrent",
+    "current_fields": [
+      "state",
+      "control_revision",
+      "observed_at",
+      "sender",
+      "receiver"
+    ],
+    "current_slot_type": "NativePairCurrentSlot",
+    "current_slot_fields": [
+      "slot",
+      "generation",
+      "attempt_id",
+      "native_session_id",
+      "network_access_binding_id",
+      "network_access_epoch",
+      "network_membership_revision",
+      "endpoint_network_revision",
+      "lease_owner",
+      "lease_ceiling"
+    ],
+    "current_state": "CURRENT",
+    "current_source": "SAME_STORE_TRANSACTION",
+    "pair_required": "BOTH_REQUIRED",
+    "legacy": "BOTH_OMITTED",
+    "complete_encoding_preflight": "BEFORE_AUTHORIZATION_COMMIT",
+    "oversized": "REJECT_AND_ROLLBACK_WITHOUT_TRUNCATION"
+  },
+  "same_identity_heartbeat": {
+    "operation": "/v2/fabric/heartbeat",
+    "method": "POST",
+    "updates": [
+      "native_lease",
+      "network_access_lease"
+    ],
+    "preserves": [
+      "binding_id",
+      "epoch",
+      "credential",
+      "lease_owner"
+    ],
+    "ceiling": "SIGNED_PEER_EXPIRES_AT",
+    "expired_lease": "REJECT",
+    "network_renew_used": false,
+    "join_receipt_renews_lease": false
   }
 }

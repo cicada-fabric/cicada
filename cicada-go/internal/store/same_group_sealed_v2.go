@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/cicada-ai/cicada/internal/e2ee"
+	wire "github.com/cicada-ai/cicada/internal/hubaccountwire"
 )
 
 const (
@@ -47,6 +48,8 @@ type SameGroupSealedV1PeerKey struct {
 	NativeContextScope NativeContextScopeMetadata        `json:"native_context_scope"`
 	Sender             SameGroupSealedV1EndpointEvidence `json:"sender"`
 	Receiver           SameGroupSealedV1EndpointEvidence `json:"receiver"`
+	NativePairEvidence *wire.NativePairPeerEvidence      `json:"native_pair_evidence,omitempty"`
+	NativePairCurrent  *wire.NativePairPeerCurrent       `json:"native_pair_current,omitempty"`
 }
 
 type SameGroupSealedV1Send struct {
@@ -102,6 +105,8 @@ type SameGroupSealedV1DeliveryAuthorization struct {
 	Sender             SameGroupSealedV1EndpointEvidence       `json:"sender"`
 	Receiver           SameGroupSealedV1EndpointEvidence       `json:"receiver"`
 	TaskHandoff        *SealedTaskHandoffDeliveryAuthorization `json:"task_handoff,omitempty"`
+	NativePairEvidence *wire.NativePairPeerEvidence            `json:"native_pair_evidence,omitempty"`
+	NativePairCurrent  *wire.NativePairPeerCurrent             `json:"native_pair_current,omitempty"`
 }
 
 type sameGroupEndpointPair struct {

@@ -27,6 +27,7 @@ type HubNativePairInput struct {
 type HubNativePairSeal func(any) ([]byte, error)
 
 type hubNativePair struct {
+	accountHub                                                               wire.HubIdentity
 	id, hub, account, owner, device, node, network, group                    string
 	scope                                                                    e2ee.OwnerNativePairScope
 	bootstrap                                                                e2ee.NativePairBootstrapClaims
@@ -104,8 +105,8 @@ func nativePairInput(in HubNativePairInput) (wire.NativePairRequestContext, []by
 
 func readNativePair(tx *sql.Tx, id string) (*hubNativePair, error) {
 	var p hubNativePair
-	var scope, bootstrap string
-	err := tx.QueryRow(`SELECT pair_id,hub_id,account_id,owner_id,device_id,node_id,network_id,group_id,scope_json,bootstrap_json,bootstrap_owner_proof,state,control_revision,plan_id,prepare_operation_id,proof_expires_at,join_until,peer_expires_at,created_at,terminal_reason FROM hub_native_pairs_v1 WHERE pair_id=?`, id).Scan(&p.id, &p.hub, &p.account, &p.owner, &p.device, &p.node, &p.network, &p.group, &scope, &bootstrap, &p.bootstrapProof, &p.state, &p.revision, &p.planID, &p.prepareID, &p.proofExpires, &p.joinUntil, &p.peerExpires, &p.created, &p.reason)
+	var scope, bootstrap, accountHub string
+	err := tx.QueryRow(`SELECT pair_id,hub_id,account_id,owner_id,device_id,node_id,network_id,group_id,scope_json,bootstrap_json,bootstrap_owner_proof,state,control_revision,plan_id,prepare_operation_id,proof_expires_at,join_until,peer_expires_at,created_at,terminal_reason,account_hub_identity_json FROM hub_native_pairs_v1 WHERE pair_id=?`, id).Scan(&p.id, &p.hub, &p.account, &p.owner, &p.device, &p.node, &p.network, &p.group, &scope, &bootstrap, &p.bootstrapProof, &p.state, &p.revision, &p.planID, &p.prepareID, &p.proofExpires, &p.joinUntil, &p.peerExpires, &p.created, &p.reason, &accountHub)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -114,6 +115,11 @@ func readNativePair(tx *sql.Tx, id string) (*hubNativePair, error) {
 	}
 	if json.Unmarshal([]byte(scope), &p.scope) != nil || json.Unmarshal([]byte(bootstrap), &p.bootstrap) != nil {
 		return nil, ErrHubAccountRejected
+	}
+	if accountHub != "" {
+		if json.Unmarshal([]byte(accountHub), &p.accountHub) != nil || wire.ValidateNativePairScope(p.scope, p.accountHub) != nil {
+			return nil, ErrHubAccountRejected
+		}
 	}
 	return &p, nil
 }

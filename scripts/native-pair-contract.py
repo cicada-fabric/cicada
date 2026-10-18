@@ -64,6 +64,29 @@ def check():
     for field, _, tag in struct_fields(claims, "NativePairPeerPolicy"):
         assert policy_values.get(field, 0) == manifest["fixed_policy"][tag], field
     assert manifest["group_grants"] == ["directory.read", "message.ask", "message.receive", "message.reply"]
+    carrier = manifest["peer_authorization_carriers"]
+    assert [tag for _, _, tag in struct_fields(types, carrier["current_type"])] == carrier["current_fields"]
+    assert [tag for _, _, tag in struct_fields(types, carrier["current_slot_type"])] == carrier["current_slot_fields"]
+    carrier_source = (ROOT / "cicada-go/internal/store/same_group_sealed_v2.go").read_text()
+    for name in carrier["types"]:
+        fields = struct_fields(carrier_source, name)
+        assert ("NativePairEvidence", "*wire.NativePairPeerEvidence", "native_pair_evidence,omitempty") in fields
+        assert ("NativePairCurrent", "*wire.NativePairPeerCurrent", "native_pair_current,omitempty") in fields
+    assert carrier["pair_required"] == "BOTH_REQUIRED" and carrier["legacy"] == "BOTH_OMITTED"
+    assert carrier["current_source"] == "SAME_STORE_TRANSACTION"
+    assert carrier["current_state"] == "CURRENT"
+    assert carrier["complete_encoding_preflight"] == "BEFORE_AUTHORIZATION_COMMIT"
+    assert carrier["oversized"] == "REJECT_AND_ROLLBACK_WITHOUT_TRUNCATION"
+    current = (WIRE / "native_pair_current.go").read_text()
+    assert "VerifyNativePairPeerAuthorization" in current and "ValidateNativePairPeerCurrent" in current
+    assert 'evidence == nil || current == nil' in current
+    node_fields = [tag for _, _, tag in struct_fields(types, "NativePairNodeJoin")]
+    assert set(manifest["node_join_required_fields"]).issubset(node_fields)
+    assert [tag for _, _, tag in struct_fields(types, "NativePairNodeDescription")] == manifest["node_description_fields"]
+    heartbeat = manifest["same_identity_heartbeat"]
+    assert heartbeat["operation"] == "/v2/fabric/heartbeat" and heartbeat["method"] == "POST"
+    assert heartbeat["expired_lease"] == "REJECT" and not heartbeat["network_renew_used"]
+    assert not heartbeat["join_receipt_renews_lease"]
     assert manifest["max_slot_generations"] == 16
     for helper in ("ValidateNativePairBootstrapTarget", "ValidateNativePairPlanTarget"):
         assert helper in targets and helper in prose

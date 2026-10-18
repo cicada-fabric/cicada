@@ -306,6 +306,9 @@ func (s *Store) AdmitClientTopologyEndpointForClientRequest(requestID, authentic
 		_ = tx.Rollback()
 		return nil, nil, cause
 	}
+	if err = nativePairLegacyAllowed(tx, "", in.GroupID, ""); err != nil {
+		return rollback(err)
+	}
 	actor, err := clientTopologyEndpointAdmissionRequestTx(tx, requestID, ownerID, "topology.apply")
 	if err != nil {
 		return rollback(err)
@@ -339,13 +342,7 @@ func (s *Store) AdmitClientTopologyEndpointForClientRequest(requestID, authentic
 		in.GroupID, ownerID, in.NetworkID, in.ExpectedGroupVersion).Scan(&groupState); err != nil || groupState != GroupStateActive {
 		return rollback(ErrVersionConflict)
 	}
-	member, rolesJSON, grantsJSON, authJSON, err := normalizeMembership(Membership{
-		PrincipalID: p.EndpointPrincipalID, GroupID: in.GroupID, Role: "member", Roles: []string{"member"},
-		Grants: []string{}, Status: MembershipStatusActive,
-	})
-	if err != nil {
-		return rollback(err)
-	}
+
 	timestamp := now()
 	if p.EndpointMigrationState == EndpointMigrationPendingGroup {
 		result, err := tx.Exec(`UPDATE fabric_endpoints SET migration_state=?,updated_at=?
@@ -359,19 +356,11 @@ AND migration_state=?`, EndpointMigrationReady, timestamp, in.EndpointID, p.Endp
 			return rollback(ErrVersionConflict)
 		}
 	}
-	if _, err := tx.Exec(`INSERT INTO memberships
-(id,principal_id,group_id,role,roles_json,grants_json,authorization_json,status,
- effective_at,expires_at,revoked_at,revocation_reason,revision,version,created_at,updated_at)
-VALUES (?,?,?,?,?,?,?,?,?,'','','',1,1,?,?)`,
-		member.ID, member.PrincipalID, member.GroupID, member.Role, rolesJSON, grantsJSON, authJSON,
-		member.Status, member.EffectiveAt, timestamp, timestamp); err != nil {
-		return rollback(ErrVersionConflict)
-	}
-	if _, err := tx.Exec(`INSERT INTO endpoint_group_memberships
-(endpoint_id,group_id,status,revision,created_at,updated_at) VALUES(?,?,'active',1,?,?)`,
-		in.EndpointID, in.GroupID, timestamp, timestamp); err != nil {
+	member, err := insertZeroGroupAdmissionTx(tx, p.EndpointPrincipalID, in.GroupID, in.EndpointID, "", time.Now().UTC())
+	if err != nil {
 		return rollback(err)
 	}
+
 	if err := tx.Commit(); err != nil {
 		return nil, nil, err
 	}

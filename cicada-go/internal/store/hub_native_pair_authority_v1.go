@@ -36,7 +36,10 @@ func nativePairCached(tx *sql.Tx, c wire.NativePairRequestContext, op, digest st
 			return nativePairReceipt{}, ErrHubAccountRejected
 		}
 		start, e := time.Parse(time.RFC3339Nano, created)
-		if e == nil && at.Before(start.Add(5*time.Minute)) {
+		if e != nil {
+			return nativePairReceipt{}, ErrHubAccountRejected
+		}
+		if at.Before(start.Add(5 * time.Minute)) {
 			return r, nil
 		}
 		return nativePairReceipt{}, nil
@@ -76,17 +79,33 @@ func nativePairSaveRead(tx *sql.Tx, c wire.NativePairRequestContext, op, pair, d
 		return err
 	}
 	var drop []string
-	kept := 0
+	type entry struct {
+		id        string
+		protected bool
+	}
+	var live []entry
+	protected := 0
 	for rows.Next() {
 		var id, created string
 		if err = rows.Scan(&id, &created); err != nil {
 			break
 		}
 		start, e := time.Parse(time.RFC3339Nano, created)
-		if e != nil || !at.Before(start.Add(5*time.Minute)) || kept >= 127 || id == c.RequestID {
+		if e != nil {
+			err = ErrHubAccountRejected
+			break
+		}
+		if !at.Before(start.Add(5 * time.Minute)) {
 			drop = append(drop, id)
 		} else {
-			kept++
+			// A first admitted read may be issued 30 seconds ahead. Keep its
+			// exact receipt until the entire 60-second freshness interval is
+			// over, so an evicted ID can never acquire a new observation.
+			hold := at.Before(start.Add(90 * time.Second))
+			live = append(live, entry{id, hold})
+			if hold {
+				protected++
+			}
 		}
 	}
 	re := rows.Err()
@@ -96,6 +115,23 @@ func nativePairSaveRead(tx *sql.Tx, c wire.NativePairRequestContext, op, pair, d
 	}
 	if re != nil {
 		return re
+	}
+	if protected >= 128 {
+		return ErrHubOwnerDiagnosticsFull
+	}
+	olderCapacity := 127 - protected
+	for _, row := range live {
+		if row.id == c.RequestID {
+			return ErrHubAccountRejected
+		}
+		if row.protected {
+			continue
+		}
+		if olderCapacity > 0 {
+			olderCapacity--
+		} else {
+			drop = append(drop, row.id)
+		}
 	}
 	for _, id := range drop {
 		if _, err = tx.Exec(`DELETE FROM hub_native_pair_reads_v1 WHERE owner_id=? AND device_id=? AND operation_id=?`, c.OwnerID, c.DeviceID, id); err != nil {
@@ -246,7 +282,7 @@ func nativePairProcessTx(tx *sql.Tx, a *hubAppNodeActor, in HubNativePairInput, 
 	var body any
 	switch op {
 	case wire.OperationNativePairBootstrapPrepare:
-		body, pair, err = nativePairPrepareTx(tx, a, current, claims, c, digest, in.At)
+		body, pair, err = nativePairPrepareTx(tx, a, current, claims, c, digest, in.At, in.Hub)
 	case wire.OperationNativePairBootstrapComplete:
 		body, err = nativePairCompleteTx(tx, a, claims, raw, c, digest, in.At)
 	case wire.OperationNativePairRevoke:

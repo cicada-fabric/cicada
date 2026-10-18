@@ -97,6 +97,9 @@ func (s *Service) join(input JoinInput, ownerID, trustDomainID, authenticatedNod
 	if err != nil || group.State != store.GroupStateActive {
 		return nil, ErrNotFoundOrNotAuthorized
 	}
+	if s.store.CheckLegacyGroupEnrollment(group.ID) != nil {
+		return nil, ErrNotFoundOrNotAuthorized
+	}
 	// The configured Fabric owner is the trust boundary for this Service.
 	// Knowing an active Group ID does not authorize this owner to create or
 	// rejoin an Endpoint in another owner's Group, even when both happen to be

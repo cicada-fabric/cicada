@@ -10,7 +10,7 @@ import (
 	wire "github.com/cicada-ai/cicada/internal/hubaccountwire"
 )
 
-func nativePairPrepareTx(tx *sql.Tx, a *hubAppNodeActor, scope e2ee.OwnerNativePairScope, claims e2ee.OwnerNativePairClaims, c wire.NativePairRequestContext, digest string, at time.Time) (any, string, error) {
+func nativePairPrepareTx(tx *sql.Tx, a *hubAppNodeActor, scope e2ee.OwnerNativePairScope, claims e2ee.OwnerNativePairClaims, c wire.NativePairRequestContext, digest string, at time.Time, hub wire.HubIdentity) (any, string, error) {
 	rows, err := tx.Query(`SELECT pair_id FROM hub_native_pairs_v1 WHERE owner_id=? AND hub_id=? AND node_id=? AND state IN('PREPARED','WAITING_JOIN','WAITING_CONSENT','ACTIVE')`, a.scope.OwnerID, a.scope.HubID, scope.Node.NodeID)
 	if err != nil {
 		return nil, "", err
@@ -81,7 +81,11 @@ func nativePairPrepareTx(tx *sql.Tx, a *hubAppNodeActor, scope e2ee.OwnerNativeP
 	if err != nil {
 		return nil, "", err
 	}
-	_, err = tx.Exec(`INSERT INTO hub_native_pairs_v1(pair_id,hub_id,account_id,owner_id,device_id,node_id,network_id,group_id,scope_json,bootstrap_json,state,control_revision,prepare_operation_id,proof_expires_at,join_until,peer_expires_at,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,'PREPARED',1,?,?,?,?,?)`, id, a.scope.HubID, a.scope.AccountID, a.scope.OwnerID, a.scope.DeviceID, scope.Node.NodeID, b.NetworkID, b.GroupID, string(scopeJSON), string(bootstrapJSON), c.RequestID, challenge.ProofExpiresAt, b.JoinUntil, b.PeerExpiresAt, b.PreparedAt)
+	hubJSON, err := json.Marshal(hub)
+	if err != nil {
+		return nil, "", err
+	}
+	_, err = tx.Exec(`INSERT INTO hub_native_pairs_v1(pair_id,hub_id,account_id,owner_id,device_id,node_id,network_id,group_id,scope_json,bootstrap_json,state,control_revision,prepare_operation_id,proof_expires_at,join_until,peer_expires_at,created_at,account_hub_identity_json) VALUES(?,?,?,?,?,?,?,?,?,?,'PREPARED',1,?,?,?,?,?,?)`, id, a.scope.HubID, a.scope.AccountID, a.scope.OwnerID, a.scope.DeviceID, scope.Node.NodeID, b.NetworkID, b.GroupID, string(scopeJSON), string(bootstrapJSON), c.RequestID, challenge.ProofExpiresAt, b.JoinUntil, b.PeerExpiresAt, b.PreparedAt, string(hubJSON))
 	return challenge, id, err
 }
 

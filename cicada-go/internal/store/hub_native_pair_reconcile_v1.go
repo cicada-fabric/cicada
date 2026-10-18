@@ -2,6 +2,7 @@ package store
 
 import (
 	"database/sql"
+	"time"
 
 	wire "github.com/cicada-ai/cicada/internal/hubaccountwire"
 )
@@ -10,6 +11,13 @@ func nativePairStatusTx(tx *sql.Tx, a *hubAppNodeActor, in HubNativePairInput, s
 	c, _, _, op, pair, err := nativePairInput(in)
 	if err != nil {
 		return nativePairReceipt{}, err
+	}
+	// A far-future original could later become fresh after this bounded cache
+	// is evicted. Never publish a forgettable READ_EXPIRED settlement for it,
+	// including when this is the original read inside detached reconciliation.
+	issued, err := time.Parse(time.RFC3339Nano, c.IssuedAt)
+	if err != nil || issued.After(in.At.Add(30*time.Second)) {
+		return nativePairReceipt{}, ErrHubAccountRejected
 	}
 	if err = nativePairReadRate(tx, c, in.At); err != nil {
 		return nativePairReceipt{}, err

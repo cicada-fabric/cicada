@@ -255,3 +255,127 @@ native queue. Windows/Android native execution, physical device, real Runtime
 conversation, unattended wake, strict PQTLS and public HTTPS are NOT RUN.
 No production credential, resident deployment, identity rotation, push or merge
 was used. No new dependency or coordination infrastructure was added.
+
+## A2 Node producer and CURRENT preparation — 2026-10-18
+
+This checkpoint remains `SERVER_PREPARATION`, with public availability **false**.
+It adds authenticated Node describe/zero Join/detached reconciliation, scoped
+self/key-publication/heartbeat, reserved-scope legacy rejection, and the shared
+CURRENT contract. Dual consent, ACTIVE peer authorization and native conversation
+are not completed by this checkpoint.
+
+Execution base: `a451b9bb2bd57acebe248a9ab80310f214c8c040` plus the recorded
+dirty Hub inputs, not that commit alone. Root's fast-forward from `209b208`
+retained all 40 existing dirty file hashes. Evidence is under
+`~/Cicada/.local/evidence/n3-hub/runtime/`. Product freeze
+`native-pair-node-checkpoint-product-freeze-20261018T002507Z.json`, SHA-256
+`7009a91f0e620faea4ba162ec9fd4b4230b8be3b8f8363dd68822bbba11b3252`, records
+2,242 inputs matching the final normal source. Only this append-only validation
+record, which selected tests/checks do not read, is excluded.
+
+Node zero Join consumes the exact reserved slot/generation, grants no peer
+permissions, preserves the Node's opaque workspace and returns `fabric.JoinResult`.
+New effects, sequence, exact sealed receipt and rejection fence commit together.
+Additive schema v65 retains v64 history; old opaque Node outcomes remain UNKNOWN
+instead of being inferred from slot state. Retained-key recovery supplies
+history/fences, not fresh credentials or permission after revocation/expiry.
+
+The confirmed read-cache defect now protects exact fresh receipts for 90 seconds
+(including the existing 30-second clock allowance), with capacity backpressure.
+Eviction cannot mint a fresh observation for the same still-fresh original.
+Far-future status and detached originals fail before publishing read/rate rows.
+Five-minute retention, 128 entries and 128 requests/minute remain unchanged;
+no permanent poll tombstones are added. Independent original failure receipt:
+`48e77fa4a1536d4b94112f2c9de255aee6478a22aaec6a33ff5f19142c452291`.
+
+Ordinary Group heartbeat synchronizes still-live native/access leases in one
+writer transaction, retaining IDs, epochs, credentials and lease owner, capped
+at the signed peer ceiling. It does not use epoch-rotating `network_renew`.
+The time tests use actual accepted zero-permission slots in WAITING_CONSENT,
+not SQL-fabricated ACTIVE authority. Both slots accepted before JoinUntil may
+retain their existing leases past it; incomplete WAITING_JOIN loses self and
+renew permission exactly at JoinUntil even while both original lease deadlines
+are later. Rejection/native-write rollback leaves both leases unchanged.
+Historical receipt recovery cannot renew a lease or replace a SID/key.
+
+The earlier 30-case source `a35981b103cb3221bac33c744a277ad1425211e6d696dfcedf6d7c22c94797c0`
+had an insufficient one-slot cross-deadline positive fixture. The 124-case source
+`788d72b7608c7fa47a33e381a8c139aa605eb134fa409e52003c9192657b9184` also predates the
+explicit incomplete-Join guard. Those original records remain separate.
+
+Final ordinary command, in the fixed isolated Docker environment recorded in
+`native-pair-node-checkpoint-commands.json`:
+
+```text
+go test -json ./internal/hubaccountwire ./internal/store ./internal/fabric ./internal/hubnodes ./internal/server -run 'Test.*NativePair|Test.*NativeSelf|TestSameGroupSealed|Test.*SessionBinding.*Lease|TestV2MigrationsUpgradeLegacyStateAndRemainRepeatable|TestHubNodes' -count=1 -timeout=240s
+```
+
+`native-pair-node-final-scope-20261018T000731Z-summary.json`: exit 0,
+**125 PASS / 0 FAIL / 0 SKIP** including subtests, inputs unchanged; source
+manifest `dcf163287d7bdb186f27ea7bacfa8c8c007b4debb86b2b6686d70c3d96060a51`.
+This lane used ordinary disk-backed container `/tmp`. The Go toolchain image is
+`sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61`, with
+network disabled and module inputs read-only. It is not a deployed Hub image.
+
+Both race attempts below remain **FAILED / TIMEOUT**, not acceptance passes:
+
+| Invocation | Completed observations | Terminal result / source manifest |
+| --- | --- | --- |
+| `native-pair-node-final-race-20261018T001145Z` | 64 PASS, no completed assertion failure | Store timeout at 240s; `604832973c6a039c9f06e755970b244bcbf2133e03c240dd40d5e17273bce8bf` |
+| `native-pair-node-local-race-20261018T001854Z` | 30 PASS, no completed assertion failure | Store timeout at 240s; `0cc9f89ab80115c33da1c28299f864e7203e32e1996de65d1473408f157088c0` |
+
+Both inputs remained unchanged and no race report was observed. The first
+timeout stack was in synthetic fixture migration/fsync; it does not establish
+a unique cause. Isolated `/tmp` tmpfs still showed roughly 18s per independent
+Store fixture. The same-source necessary split selections completed with the
+same 240s limit (both use isolated `/tmp` tmpfs):
+
+| Successful race invocation | Exact `-run` selector | Result / source manifest |
+| --- | --- | --- |
+| `native-pair-node-cache-carrier-race-20261018T002556Z` | `TestNativePairNodeRealTCP\|TestHubNativePair(ReadCache\|FutureRead)\|TestNativePair(PeerCurrent\|ActualPeerCarriers)` | exit 0; **20/0/0**; `a0aba6cac5290858b3d9ea20395bdfd014cf560c251ebc88f0acd2f1821cc8d5` |
+| `native-pair-node-heartbeat-race-20261018T002556Z` | `TestHubNativePairHeartbeat` | exit 0; **11/0/0**; `9256f7cb80aaf22ae8e627918bc7e873ecd55f800a8d7a7be1bad3885104c766` |
+
+Both record unchanged frozen inputs. The two successful selections do not
+change either earlier TIMEOUT into a successful invocation.
+Tmpfs does not establish disk-recovery behavior. The normal temporary binary
+was not retained; no test was repeated solely to capture its identity. The first
+failed race lane's separate binary artifact captures its live `store.test`,
+SHA-256 `9275dbdf553f2e660a994987d20d00db6f82dbd3a2bb950bed85ea3cbb06d5e3`.
+That identity is not transferred to another invocation.
+
+Actual Store DTOs with real synthetic PQ keys and all five proofs measure
+peer-key **323,499**, delivery authorization **326,194**, CURRENT **1,569** bytes,
+within unchanged 320 KiB/4 KiB limits. Evidence appears once beside independent
+current coordinates; old peer-key receiver SID redaction remains. Actual JSON
+expansion produces a **330,685** byte typed authorization that is rejected;
+the ASCII fixture is not coverage of every token shape. Before enabling pair
+permissions, the production authorization transaction must preflight its exact
+complete encoding, rejecting/rolling back oversize without truncation or partial
+publication. The typed fixture does not establish that production provider.
+
+Remaining approved production points are dual consent/old GroupKeyGrant
+activation, actual-row CURRENT/evidence, Relay budget/cancel/revoke guards, and
+bounded peer-route plus App/Node consumer integration. No new message protocol,
+general RPC permission, Owner identity or key is introduced. QA's necessary
+Store overlay has its own normal/race binaries and source/overlay manifests;
+its independent conclusions are not inferred from these producer results.
+
+No agent used real SIDs, models, native queues, providers, resident state or real
+credentials. Real gpu1 original-Thread conversation, Windows native execution,
+physical devices, Android, public HTTPS and strict PQTLS remain NOT RUN for this
+source. Prior full Client interop stays attributed to its original source.
+
+Independent QA completed its necessary host-bound Store overlay gate at
+`.local/evidence/native-pair-acceptance/run-20261018T002713Z-UQRXnU/result.json`,
+SHA-256 `856cdff87698bb2cb0f246bc65b163e673fa88b8c83e7504b3b89d10bf307a33`:
+**SCOPED_PASS**, normal **9/0/0**, race **9/0/0**, compile/version/harness/vet
+exit 0. All 2,242 frozen product inputs plus five QA inputs matched before and
+after; its actual executed binary hashes also matched. Its container is absent.
+This lane used host-bound DB files, not tmpfs. It independently covers cache
+capacity/90-second skew protection, close/reopen and historical recovery,
+future direct/reconcile rollback, and single/double-slot JoinUntil minus 1ns,
+equal and plus 1ns boundaries, atomic lease renewal and terminal candidate
+publication rejection. It does not fabricate ACTIVE permission through SQL.
+QA's source/overlay/binary evidence is separate from producer evidence. This
+focused synthetic result changes neither recorded TIMEOUT into a pass and
+does not establish E2E, ACTIVE peer permissions or real native conversation.

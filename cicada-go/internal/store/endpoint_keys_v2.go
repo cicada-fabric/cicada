@@ -112,6 +112,11 @@ func (s *Store) registerEndpointKeyCandidate(scope *NativeActorScope, endpointID
 		_ = tx.Rollback()
 		return nil, cause
 	}
+	if scope == nil {
+		if err = nativePairLegacyAllowed(tx, "", "", bindingID); err != nil {
+			return rollback(err)
+		}
+	}
 	if scope != nil {
 		// Acquire the SQLite writer before reading authority, including when
 		// another Store handle concurrently revokes this selected Group.

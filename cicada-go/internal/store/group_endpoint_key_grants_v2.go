@@ -220,6 +220,9 @@ func (s *Store) AcceptGroupEndpointKeyGrant(authenticatedOwnerID, groupID, endpo
 		_ = tx.Rollback()
 		return nil, cause
 	}
+	if err = nativePairLegacyAllowed(tx, "", groupID, ""); err != nil {
+		return rollback(err)
+	}
 	nowAt := time.Now().UTC()
 	manifest, err := readGroupEndpointKeyGrantManifest(tx, authenticatedOwnerID, groupID,
 		endpointID, ownerKeyID, submitted.IssuedAt, submitted.ExpiresAt, nowAt)

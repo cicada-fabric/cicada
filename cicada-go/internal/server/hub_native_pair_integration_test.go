@@ -23,6 +23,9 @@ type nativePairTCPActor struct {
 	owner, device *e2ee.Identity
 	scope         e2ee.OwnerNativePairScope
 	session       wire.AppNodeSession
+	node          *e2ee.Identity
+	nodeToken     string
+	nodeHub       nodebinding.HubIdentity
 }
 
 // Real N2/N3 PQ over disposable TCP. The keys/Node are synthetic and there is
@@ -59,7 +62,7 @@ func nativePairTCP(t *testing.T) *nativePairTCPActor {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, digest, err := fabric.NewNodeCredential()
+	nodeToken, digest, err := fabric.NewNodeCredential()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +115,7 @@ func nativePairTCP(t *testing.T) *nativePairTCPActor {
 	}
 	scope := initial.Result.Authority.Scope
 	scope.HeadVersion = 0
-	return &nativePairTCPActor{f: f, owner: owner, device: device, scope: e2ee.OwnerNativePairScope{Actor: scope, Node: *confirmed.Binding}, session: session}
+	return &nativePairTCPActor{f: f, owner: owner, device: device, node: node, nodeToken: nodeToken, nodeHub: nodeHub, scope: e2ee.OwnerNativePairScope{Actor: scope, Node: *confirmed.Binding}, session: session}
 }
 
 func (a *nativePairTCPActor) context(t *testing.T) wire.NativePairRequestContext {

@@ -846,6 +846,9 @@ func (s *Store) UpsertMembership(membership Membership) (*Membership, error) {
 	timestamp := now()
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err = nativePairLegacyAllowed(s.db, "", membership.GroupID, ""); err != nil {
+		return nil, err
+	}
 	var principalStatus, groupState string
 	if err := s.db.QueryRow(`SELECT p.status, g.state FROM principals p CROSS JOIN groups g WHERE p.id = ? AND g.id = ?`, membership.PrincipalID, membership.GroupID).Scan(&principalStatus, &groupState); errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrMembershipNotActive
@@ -1226,6 +1229,9 @@ func (s *Store) UpdateClientTopologyMembershipAuthorizationForClientRequest(requ
 		return nil, err
 	}
 	defer tx.Rollback()
+	if err = nativePairLegacyAllowed(tx, "", groupID, ""); err != nil {
+		return nil, err
+	}
 	actor, err := trustedClientTopologyMutationTx(tx, requestID, ownerID)
 	if err != nil {
 		return nil, err
@@ -1661,6 +1667,9 @@ func (s *Store) CreateSessionBinding(binding SessionBinding) (*SessionBinding, e
 		_ = tx.Rollback()
 		return nil, e
 	}
+	if err = nativePairLegacyAllowed(tx, "", binding.GroupID, ""); err != nil {
+		return rollback(err)
+	}
 	var endpointNative string
 	err = tx.QueryRow(`SELECT native_session_id FROM fabric_endpoints WHERE id = ?`, binding.EndpointID).Scan(&endpointNative)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -1701,23 +1710,10 @@ func (s *Store) CreateSessionBinding(binding SessionBinding) (*SessionBinding, e
 	if !errors.Is(err, sql.ErrNoRows) {
 		return rollback(err)
 	}
-	if _, err := tx.Exec(`INSERT INTO session_bindings
-(id, endpoint_id, principal_id, group_id, native_session_id, node_id,
- workspace_id, epoch, lease_owner, lease_expires_at, status, credential_hash,
- credential_hash_version, version, mode, context_continuity, capabilities_json,
- replaces_binding_id, revocation_reason, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		binding.ID, binding.EndpointID, binding.PrincipalID, binding.GroupID,
-		binding.NativeSessionID, binding.NodeID, binding.WorkspaceID, binding.Epoch,
-		binding.LeaseOwner, binding.LeaseExpiresAt, binding.Status,
-		binding.CredentialHash, binding.CredentialHashVersion, binding.Version,
-		binding.Mode, binding.ContextContinuity, capabilitiesJSON,
-		binding.ReplacesBindingID, binding.RevocationReason, timestamp, timestamp); err != nil {
-		if isSQLiteConstraint(err) {
-			return rollback(ErrSessionBindingConflict)
-		}
-		return rollback(fmt.Errorf("create session binding: %w", err))
+	if err = insertSessionBindingRowTx(tx, binding, capabilitiesJSON, timestamp); err != nil {
+		return rollback(err)
 	}
+
 	if binding.Status != SessionBindingStatusPending {
 		if _, err := tx.Exec(`UPDATE fabric_endpoints SET principal_id = ?, group_id = ?, binding_id = ?, migration_state = ?, updated_at = ? WHERE id = ?`, binding.PrincipalID, binding.GroupID, binding.ID, EndpointMigrationReady, timestamp, binding.EndpointID); err != nil {
 			return rollback(err)
@@ -1970,6 +1966,10 @@ func (s *Store) AcquireSessionBindingLeaseUntil(bindingID, leaseOwner, leaseExpi
 }
 
 func (s *Store) RenewSessionBindingLease(bindingID, leaseOwner string, expectedEpoch uint64, leaseExpiresAt string) (*SessionBinding, error) {
+	return s.renewSessionBindingLease(bindingID, leaseOwner, expectedEpoch, leaseExpiresAt, time.Now)
+}
+
+func (s *Store) renewSessionBindingLease(bindingID, leaseOwner string, expectedEpoch uint64, leaseExpiresAt string, clock func() time.Time) (*SessionBinding, error) {
 	bindingID = strings.TrimSpace(bindingID)
 	leaseOwner = strings.TrimSpace(leaseOwner)
 	leaseExpiresAt = strings.TrimSpace(leaseExpiresAt)
@@ -1983,11 +1983,16 @@ func (s *Store) RenewSessionBindingLease(bindingID, leaseOwner string, expectedE
 		return nil, err
 	}
 	defer tx.Rollback()
+	// Acquire the writer before sampling lease deadlines or current authority.
+	// This changes no coordinates and cannot publish a renewed lease.
+	if _, err = tx.Exec(`UPDATE session_bindings SET version=version WHERE id=?`, bindingID); err != nil {
+		return nil, err
+	}
 	binding, err := getSessionBindingLeaseTx(tx, bindingID)
 	if err != nil {
 		return nil, err
 	}
-	currentTime := time.Now().UTC()
+	currentTime := clock().UTC()
 	if err := validFutureLeaseExpiry(leaseExpiresAt, currentTime); err != nil {
 		return nil, err
 	}
@@ -2007,8 +2012,12 @@ func (s *Store) RenewSessionBindingLease(bindingID, leaseOwner string, expectedE
 	if !currentExpiry.After(currentTime) {
 		return nil, ErrSessionBindingLeaseExpired
 	}
+	leaseExpiresAt, err = renewNativePairAccessLeaseTx(tx, binding, leaseExpiresAt, currentTime)
+	if err != nil {
+		return nil, err
+	}
 	result, err := tx.Exec(`UPDATE session_bindings SET lease_expires_at = ?, status = ?, version = version + 1, updated_at = ? WHERE id = ? AND epoch = ? AND version = ? AND lease_owner = ? AND status IN ('active', 'leased', 'online', 'ready', 'acquired')`,
-		leaseExpiresAt, SessionBindingStatusLeased, now(), bindingID, expectedEpoch, binding.Version, leaseOwner)
+		leaseExpiresAt, SessionBindingStatusLeased, currentTime.Format(time.RFC3339), bindingID, expectedEpoch, binding.Version, leaseOwner)
 	if err != nil {
 		return nil, err
 	}
@@ -2060,6 +2069,9 @@ func (s *Store) RotateSessionBindingCredential(bindingID string, expectedEpoch u
 		return nil, err
 	}
 	defer tx.Rollback()
+	if err = nativePairLegacyAllowed(tx, "", "", bindingID); err != nil {
+		return nil, err
+	}
 	binding, err := getSessionBindingLeaseTx(tx, bindingID)
 	if err != nil {
 		return nil, err

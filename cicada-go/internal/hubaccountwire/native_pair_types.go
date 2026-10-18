@@ -25,6 +25,7 @@ const (
 	MaxNativePairInnerPacketBytes          = 384 * 1024
 	MaxNativePairPlanBytes                 = 128 * 1024
 	MaxNativePairEvidenceBytes             = 256 * 1024
+	MaxNativePairPeerCurrentBytes          = 4 * 1024
 	MaxNativePairCarrierBytes              = 320 * 1024
 	MaxNativePairReconcileBodyBytes        = 352 * 1024
 	MaxNativePairReconcilePacketBytes      = 640 * 1024
@@ -33,6 +34,9 @@ const (
 	MaxNativePairCapabilitiesBytes         = 8 * 1024
 	MaxNativePairNodeOriginalBytes         = 32 * 1024
 	MaxNativePairNodeReceiptBytes          = 128 * 1024
+	MaxNativePairNodeReconcileBodyBytes    = 192 * 1024
+	MaxNativePairNodeReconcilePacketBytes  = 384 * 1024
+	NativePairNodeJoinFenceCode            = "NATIVE_PAIR_REJECTED_FENCED"
 )
 
 type NativePairState string
@@ -265,6 +269,30 @@ type NativePairPeerEvidence struct {
 	SlotBGroupKeyProof  []byte                `json:"slot_b_group_key_proof"`
 }
 
+// Current coordinates come from the same live Store transaction as the
+// containing peer-key or delivery authorization. Owner-signed Plan fields
+// describe the approved basis and must never stand in for this observation.
+type NativePairPeerCurrent struct {
+	State           string                `json:"state"`
+	ControlRevision uint64                `json:"control_revision"`
+	ObservedAt      string                `json:"observed_at"`
+	Sender          NativePairCurrentSlot `json:"sender"`
+	Receiver        NativePairCurrentSlot `json:"receiver"`
+}
+
+type NativePairCurrentSlot struct {
+	Slot                      string `json:"slot"`
+	Generation                uint64 `json:"generation"`
+	AttemptID                 string `json:"attempt_id"`
+	NativeSessionID           string `json:"native_session_id"`
+	NetworkAccessBindingID    string `json:"network_access_binding_id"`
+	NetworkAccessEpoch        uint64 `json:"network_access_epoch"`
+	NetworkMembershipRevision uint64 `json:"network_membership_revision"`
+	EndpointNetworkRevision   uint64 `json:"endpoint_network_revision"`
+	LeaseOwner                string `json:"lease_owner"`
+	LeaseCeiling              string `json:"lease_ceiling"`
+}
+
 type NativePairNodeJoin struct {
 	ContractRevision     string `json:"contract_revision"`
 	PairID               string `json:"pair_id"`
@@ -273,6 +301,7 @@ type NativePairNodeJoin struct {
 	BootstrapProofDigest string `json:"bootstrap_proof_digest"`
 	Runtime              string `json:"runtime"`
 	NativeSessionID      string `json:"native_session_id"`
+	Workspace            string `json:"workspace"`
 	EndpointName         string `json:"endpoint_name"`
 }
 
@@ -282,11 +311,12 @@ type NativePairNodeDescribe struct {
 }
 
 type NativePairNodeDescription struct {
-	ContractRevision    string `json:"contract_revision"`
-	PairID              string `json:"pair_id"`
-	BootstrapOwnerProof []byte `json:"bootstrap_owner_proof"`
-	SlotAGeneration     uint64 `json:"slot_a_generation"`
-	SlotBGeneration     uint64 `json:"slot_b_generation"`
+	ContractRevision    string      `json:"contract_revision"`
+	PairID              string      `json:"pair_id"`
+	HubIdentity         HubIdentity `json:"hub_identity"`
+	BootstrapOwnerProof []byte      `json:"bootstrap_owner_proof"`
+	SlotAGeneration     uint64      `json:"slot_a_generation"`
+	SlotBGeneration     uint64      `json:"slot_b_generation"`
 }
 
 // Detached diagnostic read: original business sequence remains unresolved

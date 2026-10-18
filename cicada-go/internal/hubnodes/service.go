@@ -12,6 +12,7 @@ import (
 	"io"
 
 	"github.com/cicada-ai/cicada/internal/fabric"
+	wire "github.com/cicada-ai/cicada/internal/hubaccountwire"
 	"github.com/cicada-ai/cicada/internal/hubidentity"
 	"github.com/cicada-ai/cicada/internal/nodebinding"
 	"github.com/cicada-ai/cicada/internal/nodewire"
@@ -77,7 +78,8 @@ func nodeBinding(b *store.NodeControlKeyBinding) nodewire.Binding {
 	return nodewire.Binding{HubID: b.HubID, NodeID: b.NodeID, BindingID: b.OwnerBindingID, BindingVersion: b.BindingVersion, NodeKeyEpoch: b.NodeKeyEpoch, HubKeyVersion: b.HubKeyVersion, NodeKeyVersion: b.NodeKeyVersion, NodeKey: b.NodePublicIdentity, HubKey: b.HubPublicIdentity}
 }
 
-// RPC accepts only the existing side-effect-free node.binding.status operation.
+// RPC keeps the existing status operation and separately dispatches the closed
+// native-pair methods to their own atomic, retained-Node-authenticated service.
 // A read interrupted before durable response completion may be recomputed from
 // its exact authenticated original; no business effect is redispatched.
 func (s *Service) RPC(ctx context.Context, token string, raw []byte) ([]byte, error) {
@@ -85,7 +87,14 @@ func (s *Service) RPC(ctx context.Context, token string, raw []byte) ([]byte, er
 		return nil, ErrUnavailable
 	}
 	packet, err := nodewire.DecodePacket(raw)
-	if err != nil || packet.Route.Operation != "node.binding.status" || packet.Route.Direction != nodewire.DirectionRequest {
+	if err != nil || packet.Route.Direction != nodewire.DirectionRequest {
+		return nil, ErrUnavailable
+	}
+	switch packet.Route.Operation {
+	case wire.OperationNativePairNodeDescribe, wire.OperationNativePairNodeJoin, wire.OperationNativePairNodeReconcile:
+		return s.nativePairRPC(ctx, token, raw)
+	}
+	if packet.Route.Operation != "node.binding.status" {
 		return nil, ErrUnavailable
 	}
 	release, err := s.acquire(ctx)

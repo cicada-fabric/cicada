@@ -1132,7 +1132,7 @@ func pruneNodeControlRPCResponsesTx(tx *sql.Tx, now time.Time) error {
 	// per-epoch highwater is never removed, so expired sequence numbers remain
 	// permanently unusable even after their small inbox metadata is reclaimed.
 	if _, err := tx.Exec(`DELETE FROM node_control_rpc_inbox_v1
-WHERE operation IN ('node.binding.status','node.heartbeat','node.jobs.list','node.approvals.status',?)
+WHERE operation IN ('node.binding.status','node.heartbeat','node.jobs.list','node.approvals.status','node.native_pair.describe',?)
 	 AND created_at<?`, nodewire.SnapshotDownloadOperation, cutoff); err != nil {
 		return err
 	}

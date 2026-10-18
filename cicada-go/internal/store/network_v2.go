@@ -1082,6 +1082,9 @@ func (s *Store) AcceptNetworkJoin(input AcceptNetworkJoinInput) (*AcceptedNetwor
 		return nil, err
 	}
 	defer tx.Rollback()
+	if err = nativePairLegacyAllowed(tx, input.NetworkID, "", ""); err != nil {
+		return nil, err
+	}
 	var networkState, hubID string
 	if err := tx.QueryRow(`SELECT state,hub_id FROM networks_v2 WHERE id=?`, input.NetworkID).Scan(&networkState, &hubID); err != nil || networkState != NetworkStateActive {
 		return nil, ErrNetworkNotFound
@@ -1138,13 +1141,8 @@ func (s *Store) AcceptNetworkJoin(input AcceptNetworkJoinInput) (*AcceptedNetwor
 			return nil, ErrNetworkConsent
 		}
 	} else {
-		principalID = NewID("principal")
-		endpointID = NewID("ep")
-		timestamp := now()
-		if _, err := tx.Exec(`INSERT INTO principals(id,kind,owner_id,trust_domain_id,name,display_name,status,version,created_at,updated_at) VALUES(?,'agent',?,?,?,?,'active',1,?,?)`, principalID, input.OwnerID, input.TrustDomainID, input.EndpointName, input.EndpointName, timestamp, timestamp); err != nil {
-			return nil, err
-		}
-		if _, err := tx.Exec(`INSERT INTO fabric_endpoints(id,name,role,harness,native_session_id,machine_id,workspace,goal_id,status,capabilities_json,tags_json,owner,visibility,joined_at,last_seen,created_at,updated_at,principal_id,migration_state) VALUES(?,?,'thread',?,? ,?,'','','online','{}','[]',?,'private',?,?,?,?,?,'MIGRATION_PENDING_GROUP')`, endpointID, input.EndpointName, input.Harness, input.NativeSessionID, input.NodeID, input.OwnerID, timestamp, timestamp, timestamp, timestamp, principalID); err != nil {
+		endpointID, principalID, err = insertNetworkNativeEndpointTx(tx, input.OwnerID, input.TrustDomainID, input.EndpointName, input.Harness, input.NativeSessionID, input.NodeID, "", time.Now().UTC())
+		if err != nil {
 			return nil, err
 		}
 	}
@@ -1634,6 +1632,9 @@ func (s *Store) IssueNetworkInvitation(networkID, targetOwnerID, issuerID, token
 	encoded, _ := json.Marshal(grants)
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := nativePairLegacyAllowed(s.db, networkID, "", ""); err != nil {
+		return err
+	}
 	// This primitive requires its caller to authenticate issuerID; the Store
 	// still enforces that an Agent issuer has the narrow invite grant.
 	var ownerID string

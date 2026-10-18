@@ -172,6 +172,9 @@ func (s *Store) joinEndpointGroup(endpointID, groupID, requestID, ownerID string
 		_ = tx.Rollback()
 		return nil, cause
 	}
+	if err = nativePairLegacyAllowed(tx, "", groupID, ""); err != nil {
+		return rollback(err)
+	}
 	var actor trustedClientRequest
 	if requestID != "" {
 		actor, err = trustedClientTopologyMutationTx(tx, requestID, ownerID)
