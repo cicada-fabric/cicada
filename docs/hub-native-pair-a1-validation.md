@@ -690,3 +690,58 @@ consumer rerun remains pending on Root's synchronized source, and the earlier
 consumer failure is retained independently. No additional public availability,
 permissions, key/epoch changes, standard interop, deployment or Runtime claim is
 introduced by this checkpoint.
+
+## 2026-10-18 integrated candidate discovery readiness
+
+Root authorized this source-readiness change after integrating App checkpoint
+`5daa9f7fdb042513592a5ece94428d6849d14295` and reviewing its separately recorded
+component normal/race results and QA's scoped read-only review. Those consumer
+results retain their own source attribution; they are not new Hub test results
+and do not establish real native Runtime acceptance.
+
+On that clean baseline plus the six exact current-file changes, the production
+Hub Nodes pair discovery now advertises `Available: true`, the manifest records
+`public_available: true`, and implementation metadata is `INTEGRATED_CANDIDATE`.
+This phase describes an integrated source candidate, not deployment or real
+conversation acceptance. The shared decoder remains strict. The actual TCP Hub
+discovery response must pass that decoder and match the exact fixed HTTP/Node
+operation lists, loopback-test transport and peer policy; the existing decoder
+negative for `Available: false` is retained.
+
+No route, wire/contract identifier, purpose, identity, key, epoch, deadline,
+budget, byte bound or caller grant changes. The existing appNodeAuthority/setup
+checks, eight HTTP and three Node operations, independent Owner proofs, both
+consents and current data-plane Guards remain authoritative. Real Runtime
+conversation acceptance remains user-operated under the existing contract.
+
+Necessary discovery validation completed **2/0/0**, exit 0, with default Go test
+vet and clean gofmt checks. The exact selector covers
+`TestNativePairClosedDiscoveryAndKnownPairFence` and
+`TestNativePairPreparationRealTCPExactBootstrapAndRecovery`; the latter retains
+its historical test identifier while now decoding the real available discovery
+before its existing PQ bootstrap, exact retry and receipt recovery assertions.
+No broad package tests, race or interop gate was rerun for this small change.
+
+Evidence directory: `runtime/native-pair-readiness-20261018T021800Z/`.
+`summary.json` SHA-256 is
+`a3d200c03d75fea2f65d6ce5624794722eb18901dcf3013afd72ac0d2afa9c52`;
+`source.json` SHA-256 is
+`8c577c500423e4d12b354ba0837549b249b09f3afc64d18b95fac0658d23cbcc`.
+All **2,272** product input hashes match before/after. This append-only record
+is the sole excluded non-input file. The pinned offline image is
+`sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61`
+(Go 1.27.2), with source/module cache read-only and the task build cache locked.
+The test driver, exact Docker argv, JSON test log, gofmt result and actual test
+binary SHA-256 identities are retained beside the source manifest.
+
+The original summary's generic inspect did not establish container absence and
+is retained unchanged. A subsequent exact `docker container inspect` of the
+recorded owned container ID confirms `No such container`; `cleanup.json` SHA-256
+is `8b20eed849e6d37380251da18830233d2da6e19e909f9c6de68c8bc5fef986fa`.
+The updated native-pair contract checker and `git diff --check` pass.
+
+Root's final combined-source public/actual-App checks and fresh MCP consumer
+check remain separate gates. No resident deployment, model/provider, real
+native queue/SID, Windows/Android physical device, public HTTPS or strict PQTLS
+was operated by this checkpoint. Historical preparation/failed-run evidence
+above is preserved with its original source and result.

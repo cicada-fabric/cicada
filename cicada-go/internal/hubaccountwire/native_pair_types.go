@@ -4,7 +4,7 @@ import "github.com/cicada-ai/cicada/internal/e2ee"
 
 const (
 	NativePairContractRevision             = "native-pair-v1"
-	NativePairImplementationPhase          = "SERVER_PREPARATION"
+	NativePairImplementationPhase          = "INTEGRATED_CANDIDATE"
 	NativePairCapabilitiesPath             = "/v2/owner/native-pairs/capabilities"
 	NativePairFormat                       = "cicada.native-pair.v1"
 	OperationNativePairBootstrapPrepare    = "owner.native_pair.bootstrap_prepare"

@@ -10,9 +10,9 @@ import (
 	"github.com/cicada-ai/cicada/internal/store"
 )
 
-// The private Store/HTTP preparation checkpoint deliberately advertises no
-// availability until the Node Join, both consents and data-plane Guards close.
-// Public discovery is not a bypass for purpose-specific Owner authorization.
+// The integrated candidate advertises the fixed Hub Nodes pair profile.
+// Public discovery does not bypass purpose-specific Owner authorization,
+// both consents or the current data-plane Guards.
 func (s *Service) NativePairCapabilities() (wire.NativePairCapabilities, error) {
 	if s == nil || !s.appNodeAuthority {
 		return wire.NativePairCapabilities{}, ErrAuthentication
@@ -25,7 +25,7 @@ func (s *Service) NativePairCapabilities() (wire.NativePairCapabilities, error) 
 	if setup.AllowLoopbackHTTP {
 		policy = wire.AppNodeTransportLoopbackTest
 	}
-	return wire.NativePairCapabilities{Format: wire.NativePairFormat, ContractRevision: wire.NativePairContractRevision, Available: false, ServeMode: "--hub-nodes-only", TransportPolicy: policy, HTTPOperations: wire.NativePairHTTPOperations(), NodeOperations: wire.NativePairNodeOperations(), PeerTransport: "SEALED_RELAY", Policy: e2ee.NativePairFixedPeerPolicy()}, nil
+	return wire.NativePairCapabilities{Format: wire.NativePairFormat, ContractRevision: wire.NativePairContractRevision, Available: true, ServeMode: "--hub-nodes-only", TransportPolicy: policy, HTTPOperations: wire.NativePairHTTPOperations(), NodeOperations: wire.NativePairNodeOperations(), PeerTransport: "SEALED_RELAY", Policy: e2ee.NativePairFixedPeerPolicy()}, nil
 }
 
 func (s *Service) openNativePair(raw []byte, operation string, hub wire.HubIdentity, trusted e2ee.PublicIdentity) (store.HubNativePairInput, store.HubNativePairSeal, error) {

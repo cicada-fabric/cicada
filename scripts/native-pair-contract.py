@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate bounded native-pair preparation metadata; no acceptance claim."""
+"""Validate the bounded native-pair integrated candidate; no Runtime acceptance claim."""
 import ast
 import hashlib
 import json
@@ -32,10 +32,10 @@ def check():
     prose = (ROOT / "docs/hub-native-pair-contract.md").read_text()
     strings = go_string_values(types + claims)
     assert manifest["contract_revision"] == strings["NativePairContractRevision"] == "native-pair-v1"
-    assert manifest["implementation_phase"] == strings["NativePairImplementationPhase"] == "SERVER_PREPARATION"
-    assert manifest["public_available"] is False
+    assert manifest["implementation_phase"] == strings["NativePairImplementationPhase"] == "INTEGRATED_CANDIDATE"
+    assert manifest["public_available"] is True
     service = (ROOT / "cicada-go/internal/hubauth/native_pair.go").read_text()
-    assert re.search(r'Available:\s*false', service)
+    assert re.search(r'Available:\s*true', service)
     assert manifest["format"] == strings["NativePairFormat"]
     assert manifest["wire_version"] == manifest["account_route_epoch"] == manifest["account_packet_sequence"] == 1
     assert len(manifest["operations"]) == 8
@@ -114,7 +114,7 @@ def check():
     assert 'r.Operation == NativePairReconcileOperation' in limits
     assert 'bodyLimit <= 192*1024' in limits and 'packetLimit <= 384*1024' in limits
     assert 'return decodePacketWithLimit(raw, MaxPacketBytes)' in (WIRE / "packet.go").read_text()
-    print("native-pair-v1 preparation metadata PASS (public availability disabled)")
+    print("native-pair-v1 integrated candidate metadata PASS (fixed Hub Nodes profile available; Runtime acceptance separate)")
 
 
 if __name__ == "__main__":

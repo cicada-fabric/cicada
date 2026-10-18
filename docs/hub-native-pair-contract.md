@@ -1,11 +1,12 @@
-# N3 bounded native Thread pair: contract proposal
+# N3 bounded native Thread pair: native-pair-v1 contract
 
-**SERVER PREPARATION — guarded setup/recovery only; public availability remains false until the Node and peer Guards close.**
-Baseline: `0fbd09105e73e1e6e2488dafcb0b7b14e8264faa`, 2026-10-17.
-Proposed separate contract identifier: `native-pair-v1`. Names and limits below
-become implementation requirements only after review. This is the proposed
-public boundary, not another task/implementation-status ledger.
-Scoped preparation evidence is appended to the existing [A1/A2 validation record](hub-native-pair-a1-validation.md#a2-storehttp-preparation-available-false).
+**INTEGRATED_CANDIDATE — the fixed Hub Nodes profile advertises availability; explicit Owner proofs, both consents and current data-plane Guards remain required.**
+Original contract baseline: `0fbd09105e73e1e6e2488dafcb0b7b14e8264faa`, 2026-10-17.
+Separate contract identifier: `native-pair-v1`. Names and limits below define
+the reviewed public boundary. Source availability does not establish deployment
+or real native Runtime conversation acceptance; that acceptance remains user-operated.
+Scoped preparation and subsequent candidate evidence retain their source attribution
+in the existing [validation record](hub-native-pair-a1-validation.md).
 
 ## Result and fixed scope
 
@@ -401,9 +402,10 @@ closed without increasing legacy bounds or omitting evidence.
 Before enabling pair permissions, the authorization writer must preflight the
 exact complete peer-key/delivery carrier encoding before committing effects or
 admission. An oversized encoding rejects and rolls back, without truncation or
-partial publication. The preparation checkpoint adds the shared DTOs, validators
-and actual-carrier measurements; production peer activation/preflight remains
-unavailable with public capabilities false.
+partial publication. The integrated candidate implements the shared DTOs,
+validators, activation preflight and current carrier Guards. Its public
+availability describes this fixed source profile; actual authorization still
+requires both exact consents and every current Guard.
 
 The existing Group heartbeat is also the same-identity pair lease renewal path.
 Its writer transaction rechecks the current pair/slot, original Node tuple,
@@ -651,7 +653,7 @@ packet/pin/persistence techniques are reusable without new authority.
    exclude private peer plaintext; actual cost/provider use is bounded and
    attributed to that test's stated execution plan.
 
-This contract-only checkpoint runs no models. The authorized isolated verification
+The integrated candidate runs no models as part of its isolated verification. That verification
 does not authorize updating the resident Hub, installing Node code or copying
 credentials. The user path needs the
 reviewed Hub/Node composition plus App vault consent support before a separately

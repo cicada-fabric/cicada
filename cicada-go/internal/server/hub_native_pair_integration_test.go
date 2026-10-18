@@ -164,15 +164,12 @@ func (a *nativePairTCPActor) post(t *testing.T, op string, raw []byte) []byte {
 func TestNativePairPreparationRealTCPExactBootstrapAndRecovery(t *testing.T) {
 	a := nativePairTCP(t)
 	status, raw := n3HTTP(t, a.f, http.MethodGet, wire.NativePairCapabilitiesPath, "", nil)
-	var caps wire.NativePairCapabilities
-	if status != 200 || json.Unmarshal(raw, &caps) != nil || caps.Available || caps.ServeMode != "--hub-nodes-only" {
-		t.Fatal("preparation incorrectly advertises readiness")
+	caps, err := wire.DecodeNativePairCapabilities(raw)
+	if status != http.StatusOK || err != nil || !caps.Available || caps.ServeMode != "--hub-nodes-only" || caps.TransportPolicy != wire.AppNodeTransportLoopbackTest || caps.PeerTransport != "SEALED_RELAY" || !reflect.DeepEqual(caps.HTTPOperations, wire.NativePairHTTPOperations()) || !reflect.DeepEqual(caps.NodeOperations, wire.NativePairNodeOperations()) || caps.Policy != e2ee.NativePairFixedPeerPolicy() {
+		t.Fatal("integrated candidate discovery changed the fixed Hub Nodes profile")
 	}
-	if _, err := wire.DecodeNativePairCapabilities(raw); err == nil {
-		t.Fatal("supported App could create a pending action from unavailable discovery")
-	}
-	// This is an explicit development API probe, not the App discovery flow or
-	// a complete/native conversation acceptance. It exercises authenticated HTTP.
+	// Decode the actual production discovery before authenticated HTTP. This
+	// synthetic setup/recovery test does not establish native Runtime consumption.
 	q := a.preview(t)
 	original := a.seal(t, q)
 	reply := a.post(t, wire.OperationNativePairBootstrapPrepare, original)

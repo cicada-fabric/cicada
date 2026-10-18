@@ -1,6 +1,6 @@
 {
   "contract_revision": "native-pair-v1",
-  "implementation_phase": "SERVER_PREPARATION",
+  "implementation_phase": "INTEGRATED_CANDIDATE",
   "format": "cicada.native-pair.v1",
   "wire_version": 1,
   "account_route_epoch": 1,
@@ -177,7 +177,7 @@
     "pair_id",
     "expected_revision"
   ],
-  "public_available": false,
+  "public_available": true,
   "known_pair_unadmitted_response": "NativePairRejectionFence",
   "runtime_acceptance_operator": "USER_ONLY",
   "credential_commitment_encoding": "LOWERCASE_HEX_OF_EXISTING_SHA256",
