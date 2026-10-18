@@ -101,13 +101,11 @@ func (a *nativePairActor) requireDiscovery(t *testing.T) {
 	t.Helper()
 	before := len(a.f.proxy.snapshot())
 	response := must(a.f.proxy.client.Get(a.f.proxy.server.URL + wire.NativePairCapabilitiesPath))
-	raw := must(io.ReadAll(io.LimitReader(response.Body, 16*1024+1)))
+	raw := must(io.ReadAll(io.LimitReader(response.Body, wire.MaxNativePairCapabilitiesBytes+1)))
 	response.Body.Close()
 	defer clear(raw)
-	var caps wire.NativePairCapabilities
-	if response.StatusCode != 200 || len(raw) > 16*1024 || json.Unmarshal(raw, &caps) != nil ||
-		!caps.Available || caps.ContractRevision != wire.NativePairContractRevision ||
-		caps.PeerTransport != "SEALED_RELAY" || caps.Policy != e2ee.NativePairFixedPeerPolicy() {
+	caps, decodeErr := wire.DecodeNativePairCapabilities(raw)
+	if response.StatusCode != 200 || decodeErr != nil || caps.TransportPolicy != wire.AppNodeTransportLoopbackTest {
 		// Discovery is public availability only. Never bypass an unavailable or
 		// unknown profile by sending a new secret request to its guessed route.
 		for _, ex := range a.f.proxy.snapshot()[before:] {

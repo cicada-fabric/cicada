@@ -375,10 +375,12 @@ candidate's USER_REPORTED_FAIL and deferred Chinese display failure remain.
 Preparation baseline `a14ad28`, 2026-10-17. The user's next priority is an actual
 question/answer between two independent real Codex Threads on the same logical
 Node ID and physical gpu1 host, through the existing production Join/Fabric/MCP
-chain. New workspace/task contracts and task creation are paused. Root may
-prepare two owned acceptance Threads, with separate original native SIDs and
-context witnesses. Preparation has not executed paid turns, deployed changes,
-created a Group or granted authority.
+chain. New workspace/task contracts and task creation are paused. The user
+will personally execute the real gpu1 two-Thread acceptance. This supersedes
+the earlier Root-run Runtime proposal: Root/QA must not arm the WS adapter,
+create SIDs, seed/continue model turns or operate the native queue. Existing
+synthetic fixtures and archived WS work are retained separately. No real
+pair, model turn or new peer authority has been created by this preparation.
 
 This main lane targets the existing public Hub/account plus the actual gpu1
 Node. A disposable real-Runtime lane, deterministic protocol tests and recording
@@ -419,42 +421,87 @@ the conversation lane with its actual route recorded. It is not direct PASS.
 | N3-TT-13 | Privacy and bounded execution | Use owned synthetic question/answer markers, bounded turns/time/budget and private traces; publish hashes/counters only, omit credentials/keys/full native context, and distinguish turn counts from provider-request counts | NOT_RUN |
 | N3-TT-14 | Safe restoration and cleanup | Owned Group/Thread grants, helpers and artifacts have explicit cleanup; preserve the real Node/account/Owner keys/binding and unrelated Threads. Rejoining/recovery requires current authority and preserves original SID/context evidence | NOT_RUN |
 | N3-TT-15 | Separate authority lifetimes | Protected new App authorizations require its current account session. Account-session expiry does not itself revoke established peer grants; N3 status-access expiry/cancellation neither grants nor revokes peer authority. Native SessionBinding/lease, Group/member/grant and Node/Owner revocation remain independently authoritative | NOT_RUN; CONTRACT_REVIEW_PENDING |
-| N3-TT-16 | Crypto epochs, budget and replay | Separate App session epoch, native binding epoch, E2EE key/counter/replay state and message budgets. Root's proposed shared bound is four independent bidirectional ASK roots, at most one reply each/eight messages/eight native deliveries, 8 KiB plaintext and 128 KiB ciphertext per message, 1 MiB total ciphertext. Exact retries cannot reset/double-charge budget or revive permission | NOT_RUN; CONTRACT_REVIEW_PENDING |
+| N3-TT-16 | Crypto epochs, budget and replay | Separate App session epoch, native binding epoch, E2EE key/counter/replay state and message budgets. Approved `native-pair-v1` fixes four independent ASK roots in either direction, at most one outstanding ASK, one reply per ASK/four replies/eight messages/eight native deliveries, 8 KiB plaintext per message and 64 KiB total plaintext, 128 KiB ciphertext per message and 1 MiB total ciphertext. Exact retries cannot reset/double-charge budget or revive permission | CONTRACT_DEFINED; full real acceptance NOT_RUN |
 | N3-TT-17 | Lightweight, measured operation | Reuse existing Go/crypto/transport/persistence with no new coordination service/dependency. Record actual request/response JSON bytes, peer ciphertext bytes, latency, requests/retries/native submissions, owned-SID model calls and idle pair traffic separately; no extra authorization renewal, model loop or polling is inferred from availability | NOT_RUN |
 
-The minimal driver has the following phases. Missing production routes,
-authorization, native API evidence or runtime configuration stop before a model
-call, with **NOT_RUN**, not a synthetic substitute.
+The following is a **manual acceptance skeleton after delivery**, not a set of
+currently executable pair commands. At 2026-10-17 13:57 UTC, independent public
+HTTPS GETs still show clean Hub `e42640d`, old App/Node capabilities available,
+and new native-pair capabilities HTTP 404. The delivered Windows App remains
+`1980dce`, SHA-256
+`27aa167c847f278b26e7a2e908f7baab4e6eec7971b10b32f0b4f7a72ccb4b28`;
+it has no pair UI/Dispatch. The `84d7aee` profile fix and new pair WIP are not a
+new user-delivered package. Current executable manual scope remains normal
+account login and the original gpu1 Node status. Pair Join/authorization/dialogue
+steps below are **NOT_RUN / DELIVERY_PENDING**.
 
-1. Read-only preparation pins exact source/artifacts/topology and the actual
-   production Join/MCP/Owner-consent prerequisites, expected transport, bounded
-   model budget and owned resources. It supplies no password, key or provider
-   secret on an argv/log and starts no turn. Check the actual exposed tool set
-   without a model call; per-MCP allowlisting alone does not prove host code,
-   shell, apps or other tools are disabled. Use per-process/per-Thread config
-   and an owned cwd; do not modify global config or repurpose HOME/CODEX_HOME.
-2. With the reviewed execution boundary, prepare A/B's separate owned native
-   SIDs, private context witnesses and B-only answer. Probe unjoined isolation,
-   then explicitly Join and obtain only required peer/key permissions through
-   the production paths. Do not use the coordinator's TUI message API as peer
-   transport.
-3. Resume A only to issue the exact ASK; record its native tool and durable
-   acceptance. Resume B at a controlled safe point only to receive and REPLY
-   using its remembered answer. Resume A to receive that answer and report
-   its original witness. Never put the expected answer in A's continuation.
-4. Independently correlate original SIDs, Endpoint/binding/lease scope,
-   operation/request/message IDs, real native tool completion, context/answer
-   digests and actual route. Required MCP calls are insufficient if an
-   unobserved alternate tool can read B's answer; verify the allowed tool set
-   and complete trace, including file/shell/history access. Safe-point
-   consumption does not prove busy wake, exactly-once native execution or
-   every Runtime capability. A later reopen/second exchange must retain the
-   original SIDs and remaining pair budget; the first actual gate uses only
-   one ASK/REPLY, with budget exhaustion tested in the separate fault lane.
-5. Exercise owned-scope leave/revocation and current-authority recovery without
-   revoking the real Node or unrelated work. Put destructive loss/restart
-   injection in an explicitly isolated fault lane; public-process restarts
-   require their own scoped instruction and cannot be inferred from this plan.
+1. **Verify the delivered upgrade.** Root supplies actual reviewed Hub/Node/App
+   revisions, source/image fingerprints, Windows executable SHA-256 and real
+   entry names. The user checks the executable with PowerShell
+   `Get-FileHash -LiteralPath '<delivered EXE path>' -Algorithm SHA256` and
+   compares the release manifest. This is a checksum template, not a delivered
+   filename. Preserve the original account, vault, Owner/device keys, Node ID
+   and bindings. A cross-build alone is not Windows GUI/DPAPI/ACL acceptance.
+   Root's read-only installed Codex 0.163.0 `mcp list --json` currently returns
+   `[]`: Cicada MCP registration/loading is another delivery prerequisite.
+   Supply reviewed configuration limited to these two Thread launches, preserving
+   global tools/model/config. Check Cicada MCP actually loaded in **each** Thread;
+   a global listing or a present executable is not that proof. Do not run a
+   persistent global `codex mcp add` as an inferred setup action.
+2. **Prepare two empty slots in the App.** The user logs in normally, selects
+   the original gpu1 Node and uses the delivered new pair authorization entry.
+   Review the existing Owner/Node pins, private Group and bounded policy before
+   approving bootstrap. Login/status access alone supplies no Root/pair right.
+   No native SID or peer permission is inferred from the two empty slots.
+3. **Join the user's two actual Threads on the same Node.** The user personally
+   selects/opens A and B, retains both original SIDs and distinct private context
+   witnesses, and gives a fresh at-least-128-bit answer only to B. In each
+   original Thread, use the delivered reserved-slot Join entry for its own slot.
+   Both launches use the actual approved `CICADA_MACHINE_ID=gpu1-node` and the
+   original `CICADA_NODE_STATE_DIR`, not a fresh Node directory. Native SID is
+   injected by Codex and verified against its local session/workspace record;
+   never set a literal `CODEX_THREAD_ID`/`CODEX_SESSION_ID` to impersonate A/B.
+   Root supplies the exact Cicada executable/API origin, original Hub/Owner pins
+   and scoped MCP session-state location after the new Node entry is reviewed.
+   No default localhost API, manually supplied session token or guessed new
+   flags/tool fields can fill that gap. MCP session persistence remains private
+   and scoped by origin/harness/native SID/Node; registration grants no rights.
+   Root will add exact tool/CLI syntax after implementation; generic old Join,
+   a guessed command, a second Node or an operator DB grant is not a substitute.
+4. **Authorize the actual pair in the App.** Review both distinct actual SIDs,
+   the same Node/Network/Group, candidates and expiry; approve each slot's exact
+   consent. Empty slots and the first consent leave peer traffic denied. Only
+   the compatible second consent may activate both. The Owner key stays in the
+   original App vault. The App does not carry peer questions or answers.
+5. **A asks, B answers, A receives.** The user tells original A to make one
+   production `cicada_ask` to B. B receives it in its original context and uses
+   `cicada_reply` for that exact request ID, from the answer it already knows.
+   Both B and A receive through the guarded delivery path confirmed for the
+   delivered build, each in its original context; A reports the correlated
+   answer plus its own witness. The exact delivery/receipt entry point remains
+   DELIVERY_PENDING. This Pair tool contract is limited to ASK/Reply/status/cancel;
+   no receive-tool invocation is prescribed here. The ASK/Reply names are usable
+   only after the new chain is delivered and authorized. If the user must
+   explicitly continue B/A at a safe point, label USER_CONTROLLED_SAME_SID;
+   do not claim automatic loaded/cold
+   wake. Neither the user nor Root/scripts pastes the peer body/answer into the
+   other Thread. The first check uses one ASK/Reply, preserving remaining budget.
+6. **Record results and optional same-pair reopen.** Record exact executable,
+   Hub/Node versions, original SIDs, request/message IDs, actual tools, route,
+   answer/witness digests and completion levels. No keys/tokens/full private
+   context go into public evidence. Equal Node labels are insufficient; record
+   trusted Node/binding evidence. Sealed Relay is recorded as SEALED_RELAY.
+   Retain original SIDs/context for a later manual reopen/second exchange. User
+   observations are USER_REPORTED until independently backed by matching traces;
+   absent traces and unexecuted Windows checks remain NOT_RUN/NOT_PROVEN.
+
+The delivery gaps include per-Thread Cicada MCP configuration/loading, the guarded Hub setup/peer surface, trusted Node reserved
+Join/candidate/Owner-pin/policy enforcement, and the delivered Windows App's
+original-vault pair review/consent/reconcile flow. Missing routes, grants or UI
+stop the manual procedure; there is no raw SQL, broad Client grant or old Hub
+fallback. No deployment operation is authorized by this skeleton. Keep destructive
+loss/restart, budget exhaustion and revocation adversaries in the isolated
+protocol fixture. A revoke receipt cannot undo already consumed native work.
 
 Fault coverage includes pre-forward/post-commit loss, corrupt/unsigned reply,
 duplicate ASK/REPLY, delayed original after cancellation, binding/lease change,
@@ -482,3 +529,12 @@ will extend this lane when their typed production surfaces are available.
 The first execution reached real capabilities HTTP 404 after all five actual
 N2/N3 setups and returned exit 1, **EXPECTED_RED_SERVICE_UNAVAILABLE**. No new
 pair secret POST or business/fault assertion executed; see the validation record.
+
+Root's separate standard disposable Client compatibility gate on clean
+`209b208` passed, exit 0, with four actual TCP protocol/client/Owner-bootstrap/
+recovery cases. QA checked its source/artifact attribution and independently
+confirmed the five owned resources and scratch absent. This is clean-source
+compatibility evidence alongside the App producer's earlier dirty-`17da393`
+Core/UI results; it does not enable the false Pair capability, settle the new
+Hub read-cache defect or execute the user-only native/Windows/public lane.
+Full receipts and hashes are retained in the existing validation record.

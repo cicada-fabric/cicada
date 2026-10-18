@@ -2,13 +2,21 @@
 # Isolated real TCP/PQ/persistent-DB acceptance. No model or deployment actions.
 set -euo pipefail
 umask 077
-if [[ $# != 0 ]]; then printf 'Usage: scripts/test-native-pair.sh\n' >&2; exit 2; fi
+mode=protocol
+if [[ $# == 1 && "$1" == --store-regressions ]]; then mode=store
+elif [[ $# != 0 ]]; then printf 'Usage: scripts/test-native-pair.sh [--store-regressions]\n' >&2; exit 2; fi
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source_root="$repo_root"
+if [[ -n "${CICADA_NATIVE_PAIR_STORE_SOURCE_ROOT:-}" ]]; then
+ if [[ "$mode" != store ]]; then printf 'Alternate source is limited to isolated Store regressions.\n' >&2; exit 2; fi
+ source_root="$(cd "$CICADA_NATIVE_PAIR_STORE_SOURCE_ROOT" && pwd -P)"
+ if [[ ! -f "$source_root/cicada-go/go.mod" ]]; then printf 'Store source must be a Cicada worktree.\n' >&2; exit 2; fi
+fi
 common_dir="$(git -C "$repo_root" rev-parse --path-format=absolute --git-common-dir)"
 workspace_root="$(dirname "$(dirname "$common_dir")")"
 local_root="$workspace_root/.local"
 module_cache="$local_root/cache/n2-acceptance/gomod-go1.27.2-stable"
-build_cache="$local_root/cache/n3-acceptance/go-build"
+build_cache="$local_root/cache/native-pair-acceptance/go-build"
 image='sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61'
 if [[ "$(id -u)" != 1000 || ! -d "$module_cache" ]] || ! docker image inspect "$image" >/dev/null 2>&1; then
  printf 'Requires UID1000, pinned offline Go image and populated read-only module cache.\n' >&2; exit 2
@@ -30,7 +38,7 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
-python3 "$repo_root/scripts/native_pair_evidence.py" snapshot "$repo_root" "$evidence/source-before.json"
+python3 "$repo_root/scripts/native_pair_evidence.py" snapshot "$source_root" "$evidence/source-before.json" "$repo_root"
 common=(docker run --rm --name "$container" --label "cicada.native-pair.run=$run_id"
  --network none --read-only --cap-drop ALL --security-opt no-new-privileges
  --cpus=3 --memory=3g --pids-limit=256 --user "$(id -u):$(id -g)"
@@ -38,7 +46,8 @@ common=(docker run --rm --name "$container" --label "cicada.native-pair.run=$run
  -e GOMAXPROCS=2 -e GOTOOLCHAIN=local -e GOPROXY=off -e GOSUMDB=off
  -e GOCACHE=/gocache -e GOMODCACHE=/gomodcache -e TMPDIR=/state/tmp
  -e CICADA_N3_CICADA_BINARY=/out/cicada
- --mount "type=bind,src=$repo_root,dst=/repo,readonly"
+ --mount "type=bind,src=$source_root,dst=/repo,readonly"
+ --mount "type=bind,src=$repo_root,dst=/qa,readonly"
  --mount "type=bind,src=$module_cache,dst=/gomodcache,readonly"
  --mount "type=bind,src=$build_cache,dst=/gocache"
  --mount "type=bind,src=$state,dst=/state"
@@ -46,6 +55,7 @@ common=(docker run --rm --name "$container" --label "cicada.native-pair.run=$run
  --workdir /repo/cicada-go "$image")
 lane() {
  local name="$1"; shift
+ python3 -c 'import json,sys; open(sys.argv[1], "w").write(json.dumps(sys.argv[2:], indent=2) + "\n")' "$evidence/$name.command.json" "${common[@]}" "$@"
  set +e
  "${common[@]}" "$@" >"$evidence/$name.log" 2>&1
  local code="$?"
@@ -54,17 +64,35 @@ lane() {
  printf 'Native pair %s exit=%s\n' "$name" "$code"
 }
 lane version go version
-lane compile-cli env CGO_ENABLED=0 go build -mod=readonly -trimpath -o /out/cicada ./cmd/cicada
-lane compile-tests go test -mod=readonly -c -o /out/n3.test ./acceptance/n3
-if [[ "$(cat "$evidence/compile-cli.exit")" == 0 && "$(cat "$evidence/compile-tests.exit")" == 0 ]]; then
- lane harness go tool test2json -t /out/n3.test -test.v -test.count=1 -test.timeout=4m '-test.run=^TestN3NativePair(BootstrapAndExactReplay|WrongNodeScopeIsFenced|PrepareLossBeforeForward|CompleteLossAfterCommit|MissingOwnerProofCannotBootstrap)$'
+if [[ "$mode" == store ]]; then
+ lane compile-tests go test -mod=readonly -overlay /qa/scripts/fixtures/native-pair/overlay.json -c -o /out/nativepair-cache.test ./internal/store
+ lane compile-race go test -mod=readonly -race -overlay /qa/scripts/fixtures/native-pair/overlay.json -c -o /out/nativepair-cache-race.test ./internal/store
+ if [[ "$(cat "$evidence/compile-tests.exit")" == 0 && "$(cat "$evidence/compile-race.exit")" == 0 ]]; then
+  python3 "$repo_root/scripts/native_pair_evidence.py" binaries "$artifacts" "$evidence/binaries-before.json"
+  lane harness go tool test2json -t /out/nativepair-cache.test -test.v -test.count=1 -test.timeout=180s '-test.run=^TestQANativePair(ReadCacheKeepsHistoryAcrossRateWindows|FutureStatusCannotSettleOrChangeRate|JoinDeadlineIsIndependentOfLiveLeaseExpiry)$'
+  lane race go tool test2json -t /out/nativepair-cache-race.test -test.v -test.count=1 -test.timeout=180s '-test.run=^TestQANativePair(ReadCacheKeepsHistoryAcrossRateWindows|FutureStatusCannotSettleOrChangeRate|JoinDeadlineIsIndependentOfLiveLeaseExpiry)$'
+  python3 "$repo_root/scripts/native_pair_evidence.py" binaries "$artifacts" "$evidence/binaries-after.json"
+ else
+  printf 'Required compilation failed; Store regression NOT_RUN.\n' >"$evidence/harness.log"
+  printf '125\n' >"$evidence/harness.exit"
+  printf '125\n' >"$evidence/race.exit"
+ fi
+ lane vet go vet -mod=readonly -overlay /qa/scripts/fixtures/native-pair/overlay.json ./internal/store
 else
- printf 'Required compilation failed; runtime NOT_RUN.\n' >"$evidence/harness.log"
- printf '125\n' >"$evidence/harness.exit"
+ lane compile-cli env CGO_ENABLED=0 go build -mod=readonly -trimpath -o /out/cicada ./cmd/cicada
+ lane compile-tests go test -mod=readonly -c -o /out/n3.test ./acceptance/n3
+ if [[ "$(cat "$evidence/compile-cli.exit")" == 0 && "$(cat "$evidence/compile-tests.exit")" == 0 ]]; then
+  python3 "$repo_root/scripts/native_pair_evidence.py" binaries "$artifacts" "$evidence/binaries-before.json"
+  lane harness go tool test2json -t /out/n3.test -test.v -test.count=1 -test.timeout=4m '-test.run=^TestN3NativePair(BootstrapAndExactReplay|WrongNodeScopeIsFenced|PrepareLossBeforeForward|CompleteLossAfterCommit|MissingOwnerProofCannotBootstrap)$'
+  python3 "$repo_root/scripts/native_pair_evidence.py" binaries "$artifacts" "$evidence/binaries-after.json"
+ else
+  printf 'Required compilation failed; runtime NOT_RUN.\n' >"$evidence/harness.log"
+  printf '125\n' >"$evidence/harness.exit"
+ fi
+ lane vet go vet -mod=readonly ./acceptance/n3
 fi
-lane vet go vet -mod=readonly ./acceptance/n3
-python3 "$repo_root/scripts/native_pair_evidence.py" snapshot "$repo_root" "$evidence/source-after.json"
+python3 "$repo_root/scripts/native_pair_evidence.py" snapshot "$source_root" "$evidence/source-after.json" "$repo_root"
 cleanup
 owned=false
 if docker inspect "$container" >/dev/null 2>&1; then owned=true; fi
-python3 "$repo_root/scripts/native_pair_evidence.py" finish "$evidence" "$artifacts" "$image" "$owned"
+python3 "$repo_root/scripts/native_pair_evidence.py" finish "$evidence" "$artifacts" "$image" "$owned" "$mode"

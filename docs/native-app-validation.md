@@ -1695,6 +1695,11 @@ artifact hashes and historical Windows results are unchanged.
 `a14ad2885f094c884a35decae570a6deadaf82fb`; the delivered App is still clean
 `1980dced7c20da0be40ac8a03892a911d2ffab9b`, SHA-256
 `27aa167c847f278b26e7a2e908f7baab4e6eec7971b10b32f0b4f7a72ccb4b28`.
+The coordinator later relayed the user's Windows PowerShell SHA-256 output,
+`27AA167C847F278B26E7A2E908F7BAAB4E6EEC7971B10B32F0B4F7A72CCB4B28`:
+**USER_REPORTED_ARTIFACT_MATCH** for this same delivered file. Case is immaterial
+for hexadecimal comparison. This confirms file identity only; it is not a new
+business, process-inspection, GUI, DPAPI or ACL PASS.
 The user reported “全部正常，只有6第二App初始要求device code；7中文字体仍乱码，
 样式字体以后再说，继续开发验收”. The aggregate reply is mapped to the
 coordinator's eight numbered procedures; it is not independent native execution.
@@ -1949,3 +1954,553 @@ exist in this initial unavailable run. Runtime/MCP consumption, both reserved
 Joins, dual consent, real same-Node Relay and Windows DPAPI/ACL/GUI remain
 **NOT_RUN**. This lane does not update the earlier N3 production source pins or
 promote old 84+2/native/interop receipts to the new protocol.
+
+### User executes the real two-Thread acceptance
+
+2026-10-17. The user clarified that they will personally test two real Threads
+on the same physical gpu1 and logical Node. The earlier Root-run real-Runtime
+proposal is withdrawn. Root/QA do not arm the WS adapter, create SIDs, start or
+continue model turns, or operate the native queue. QA preserved its adapter
+work separately and stopped expansion. The executed tests below are synthetic
+TCP/WS tests of QA tooling; they did not connect to Codex or start any model.
+No real Runtime result, current Windows acceptance or pair permission is implied.
+
+The historical WIP command `bash scripts/test-native-pair.sh --ws-adapter`
+on dirty `96c07d8` passed 35
+selected tests in normal and race mode (35/0/0 each), with both compiled test
+binaries, execution, version and vet exits 0. It tests correlated ownership of
+at most two root Threads, default-disabled mutations, durable original intents,
+loss/reopen fencing, complete allowed-MCP lifecycle, alternate-tool refusal,
+separate observed/explicit turn counts, unfinished-turn restart fences and exact
+owned interrupt terminal evidence. The owned fixture container is independently
+absent. Real Codex/API exposure, native consumption, automatic wake, idle traffic
+and provider requests/cost are **NOT_RUN / NOT_OBSERVABLE**; a pure WS interrupt
+acknowledgement is not proof that a real provider stopped. The retained library
+is a transport/audit primitive, not an armed dialogue gate.
+
+The withdrawn source is excluded from this task's development/user-delivery
+change. Four complete Go files, the pre-split runner/evidence scripts, fixture
+snapshots and the full pre-split QA patch are reversibly retained under
+`/home/zyf/Cicada/.local/state/native-pair-acceptance/run-20261017T135547Z-I0Nc1a/withdrawn-ws-wip/`.
+Its `archive.json` SHA-256 is
+`71bdea7a3b84bce49423dbb14a4bb73170ce1ddffed0f00ccb524fd4d262e9be`.
+All eight source/snapshot hashes were checked before removing the untracked WS
+package from the worktree. The original 35/35 result and binaries below remain
+unchanged. Current `test-native-pair.sh` has only protocol and Store regression
+modes; it contains no reference to an omitted WS package. The historical WS
+command above is no longer an active entry. Deliberate reconstruction from the
+archive requires a separate review and does not authorize any real Runtime use.
+
+Evidence root:
+`/home/zyf/Cicada/.local/evidence/native-pair-acceptance/`.
+
+| Artifact | Scope | SHA-256 |
+| --- | --- | --- |
+| `run-20261017T135547Z-I0Nc1a/result.json` | Final synthetic WS scoped PASS, exit 0 | `12693f9d887eded08d2eddc4c59460bf0db18918192923724b979fbe01b3675f` |
+| Executed `nativepair.test` | 12391681 bytes | `7a49b6490e91636db030c39d5247c91b7c13c930503ca27ae989c6392e2a2e7c` |
+| Executed `nativepair-race.test` | 15872244 bytes | `be106f9ada782d63c3a6ca5bfe1d95e9a2f51f59892e584d321eb13eca5fabc2` |
+| `manual-preflight-20261017T135649Z-57c9a6/receipt.json` | Independent current public GETs only | `b9b2093c9e3ed05d642853853cbccd748f509aa10e28f18647da21221a3eb00a` |
+| Same preflight `health-source.json` | Current deployed Hub source projection | `a7f82055326c23f8ed95c46542ee5d3848f92c0849688a3fa61613b442d2d106` |
+| Same preflight `handoff.json` | User-manual correction, retained WIP, cleanup/source review | `69ff975ec0de6697b2c1ee5ce751cf80ec3cb4d2e84318be8d13d55c5b37e6be` |
+
+The final synthetic manifest covers 1213 inputs, aggregate SHA-256
+`4704a13e31304e18ec89f35cf717525cd2e32079a202d8582345b36f98ca2cc0`,
+stable before/after. The separate handoff compares the 1211 Go/module/asset and
+driver inputs after execution. Earlier synthetic receipts remain their own
+source candidates: `run-20261017T135138Z-WvyzgU` tested 33/33; the later
+`run-20261017T135314Z-asWhH0` and `run-20261017T135427Z-CIApHM` tested 34/34
+before the unfinished-turn fence was added. No synthetic receipt is native PASS.
+
+At 13:57 UTC the real public Hub reports version 0.0.5, clean revision
+`e42640d4521b1925f2d9e869aba88f70a96daacc`, source fingerprint
+`9e1e329b7c06285ac1e571596db689d9e9650a4b174e9badb10a47c811932695`.
+The old App/Node capabilities return HTTP 200/available in `--hub-nodes-only`;
+the new native-pair capabilities return HTTP 404. This is independent public
+read-only evidence, separate from the disposable five-case 404 lane. No auth
+headers, mutations, SID/turn/queue operations or full response payload retention
+were used. App's delivery owner separately confirms the user-delivered Windows
+EXE remains `1980dce`, SHA-256
+`27aa167c847f278b26e7a2e908f7baab4e6eec7971b10b32f0b4f7a72ccb4b28`;
+`84d7aee` is integrated development code, not a new recorded user delivery.
+The delivered App has no pair UI/Dispatch. Current manual scope is login and
+original gpu1 status; the full pair path is DELIVERY_PENDING, **NOT_RUN**.
+
+The [manual skeleton](native-app-plan.md#same-node-real-codex-thread-acceptance-preparation)
+starts with matching upgrade-package hashes, then the user's two same-Node Joins,
+App's two exact consents and A ASK/B Reply/A receive in their original contexts.
+Exact new Join/button commands await actual delivery. Windows DPAPI, ACL and GUI
+checks on a matching future package stay **NOT_RUN** until the user executes them.
+
+Root additionally reports the installed Codex 0.163.0 read-only
+`codex mcp list --json` returned `[]`. This is
+**ROOT_REPORTED_READONLY_MCP_DISCOVERY**, not QA execution of either user's
+Thread, a configuration change or a native model call. The manual procedure now
+requires reviewed Cicada MCP setup and actual loading in each selected Thread,
+preferably launch/Thread-scoped without changing global tools/model. No
+`codex mcp add` or other registration command was executed by QA.
+
+Baseline source review confirms `runMCP` accepts `--api-url`, while its default
+localhost URL is not evidence of a usable deployed origin. The trusted local
+Join derives native identity only from Codex's injected environment and checks
+the local session/workspace record. MCP state is privately scoped by normalized
+origin, harness, native SID and Node, and the Node state directory supplies the
+existing local bridge/key state. Both user Threads must use approved Node ID
+`gpu1-node` and that original state directory; neither hand-setting a native
+SID nor creating a second Node is acceptable. Exact new API origin, retained
+Hub/Owner pins, private MCP state path and reserved-slot entry remain pending
+the reviewed Hub/Node delivery. No guessed startup command is presented as
+ready. MCP registration/availability does not establish pair authorization.
+
+### Independent A2 preparation review: status-cache replay defect
+
+QA read-only review of `17da3936e87ca07222bb416f0cacec57df2e1daa` found that a
+still-fresh status request could be evicted by the 128-entry cache across a
+diagnostic rate-window boundary. Replaying its exact original PQ packet then
+returned newly observed `COMPLETED` data with `administrative_permission=true`,
+instead of the exact old receipt or `READ_EXPIRED`. The original packet was
+unchanged. This violates the read-ID/history contract; it does not demonstrate
+a bypass of fresh mutation authorization. Hub acknowledged the defect and owns
+the production fix. The preparation capability remains false, so this is not
+an enabled user path or a public deployment result.
+
+The isolated counterexample uses the production Store and real PQ envelopes,
+reusing its synthetic guard fixture through an external Go test overlay. It is
+**not** TCP/App/real-Runtime or N2 end-to-end acceptance. Open the rate window
+at t0, issue the target at t0+59 seconds, fill 126 more reads, then issue two
+new reads at t0+60 seconds. Both the cache eviction and an exact pre-eviction
+retry are checked. The exact post-eviction original, only about one second old,
+receives a changed observation. These are trusted synthetic Store timestamps,
+not claims of natural wall-clock expiry.
+
+Evidence:
+`/home/zyf/Cicada/.local/evidence/native-pair-review/run-20261017T145922Z-c93307/`.
+
+| Artifact | SHA-256 |
+| --- | --- |
+| `result.json` | `48e77fa4a1536d4b94112f2c9de255aee6478a22aaec6a33ff5f19142c452291` |
+| External Go test | `d9ef5946e939ccdb59fbb16cb001a7d965846067e1934b2395bd717d588a6f31` |
+| Executed `qa-cache.test` (26891406 bytes) | `b73a384b1e19c0d3661290fed9a70b6a7548b7db14a3963e8d2d4b02ddc4faf9` |
+| `source-review.json` | `be10aea4fb5e04cbb380564b21f1e59f5e0e24ad97b46e8a5b80cd0e3b4067d1` |
+| `reproduce-fresh.py` | `5267721ebca4451fff8a529b9336376674d9add697f35e3876af5454a300a536` |
+
+Compilation exited 0; the one selected test failed, exit 1, with
+`QA_FRESH_READ_REFRESHED_AFTER_EVICTION`. Result is SOURCE_DEFECT_REPRODUCED,
+not an acceptance PASS. Source was dirty `17da393` with unchanged complete
+before/after manifest
+`7ba37a427ceda459eb32d573f0494c442ab62cb3b17c58494e95423b932fe894`.
+The owned container is exactly absent. No production source, resident state,
+native queue or model was modified or invoked. Root/Hub were informed and the
+QA source freeze released after completion.
+
+The separate read-only source review compared all 27 changed Go/JSON/checker
+inputs with both producer final normal/race selected manifests: no mismatch or
+missing selected input. Their 73/0/0 receipts retain dirty `96c07d8` attribution;
+the earlier broad 1715/0/11 run and pre-final disposable interop remain their
+own sources. This comparison is selected-input evidence, not a full compilation
+dependency inventory, and none of those earlier passes covers this new case.
+
+Reproduce the frozen counterexample into a **fresh** owned run without
+overwriting its original evidence:
+
+```sh
+python3 /home/zyf/Cicada/.local/evidence/native-pair-review/run-20261017T145922Z-c93307/reproduce-fresh.py
+```
+
+On `17da393` this returns exit 1 for the demonstrated defect. It is not a
+readiness gate. The proposed Hub fix protects still-fresh read cache entries and
+uses bounded backpressure; it must also reject far-future status/original-status
+reconciliation without publishing a forgettable READ_EXPIRED outcome. That
+associated future-time case was code-reviewed and accepted by Hub, **not run**
+by this overlay. Fixed-source regression checks must allow legitimate bounded
+backpressure and record their own inputs/receipt; no GREEN is claimed yet.
+
+The independent regression is now retained as
+`scripts/fixtures/native-pair/read_cache_test.go`, inserted into the test-only
+Store package through its explicit overlay. Its reviewed-policy assertions keep
+the same cross-window arrangement, require two capacity backpressure outcomes
+at +60s, preserve the original exact receipt while protected, then allow
+eviction at +150s and require READ_EXPIRED for the stale original. It does not
+raise cache capacity or create permanent polling tombstones. The prepared
+target is legitimately issued 30 seconds ahead: at +119s one oldest entry may
+be replaced, but a second new read must still backpressure and preserve the
+target's exact receipt. Closing and reopening the same persistent Store must
+also retain that exact protected history; this is not a Hub/App process restart.
+This distinguishes the required full freshness guard
+from a shorter 60-second server-age hold. A second prepared
+case rejects a status issued 31 seconds ahead using trusted writer time despite
+an untrusted input timestamp. Its detached reconciliation must also reject and
+roll back both read-cache and rate rows. The same bytes must receive their first
+legitimate observation later and retain that exact history after clock rollback.
+Both cases were **NOT_RUN** at preparation; the frozen run is recorded under
+"Independent frozen Store cache and Join-deadline gate" below. Reproduce with:
+
+```sh
+bash scripts/test-native-pair.sh --store-regressions
+```
+
+For an independently frozen Hub worktree, set
+`CICADA_NATIVE_PAIR_STORE_SOURCE_ROOT=/home/zyf/Cicada/.worktrees/cicada/n2-hub`
+before that same command. This override is accepted only in Store mode; both
+the product source and QA harness mount read-only. The before/after manifest
+separately inventories the complete product Go/module tree and QA drivers,
+including the external test overlay, and records both worktree identities.
+
+This selects only the focused Store/PQ regressions in normal/race modes, with retained
+executed binaries, manifests and scoped vet. At preparation it was **NOT_RUN**
+pending the Hub fix checkpoint; formatting/syntax checks are not compilation or execution. The
+main TCP readiness case now consumes the shared strict capabilities decoder;
+it has not been rerun against the explicitly unavailable preparation service.
+
+The resumed Hub review added an independent JoinUntil regression to that same
+Store-only command. `lease_deadline_test.go` uses synthetic zero-Join row setup
+and real ordinary heartbeat transactions at +4/+8 minutes, proving both original
+native and access leases remain live beyond the Join deadline. Six cases cover
+one/two accepted slots at JoinUntil minus one nanosecond, exactly JoinUntil and
+plus one nanosecond. A single-slot WAITING_JOIN must deny self/renewal at and
+after the deadline, leave both leases unchanged, and report EXPIRED through a
+real PQ status packet. After that terminal state is persisted, an actual Store
+candidate-publication call with a real attestation must also reject without a
+candidate or lease effect. The precise time-boundary oracle uses the common
+self Guard's injected time; candidate publication's production wall clock is
+not replaced.
+
+Two accepted slots in WAITING_CONSENT may retain the original live identities,
+epochs, credentials and lease owners across JoinUntil; both leases must clamp
+to the absolute peer ceiling. ACTIVE acceptance remains **NOT_RUN** until the
+real dual-consent and original GroupKeyGrant transaction can create it; no SQL
+state change substitutes for that authority. The prepared Store suite now has
+three top-level cases plus six deadline subcases, which were **NOT_RUN** pending
+the new producer freeze and are now reported in the frozen run below. Earlier producer tests using a single-slot cross-deadline
+positive do not validate this corrected boundary and keep their original scope.
+Each prepared lane has a 180-second test timeout for this expanded required
+matrix. Exact Docker/Go argv and both actual normal/race test binaries are
+retained, with matching pre/post execution hashes required for PASS. Evidence
+JSON creation refuses to overwrite an existing receipt. The QA fixture DB lives
+under the run's private host-bound state directory; a separate producer tmpfs
+retry cannot replace it or prove physical-storage/abrupt-power-loss durability.
+
+App frozen `final-01` was independently reviewed without source mutation or
+duplicate tests. All 1196 Go/module inputs matched manifest
+`663db4df91ecea8d369ae95d722995343111ef07a2db4a75889a45701e3e0558`.
+No additional definite App blocker was found in the reviewed actions, original
+packet/receipt CAS flow, nested target-bound fence recovery, reopened/expired
+permission projection, private pre-login recovery, per-slot explicit consent or
+Owner-public-only export. The read-only review artifact under the same defect
+evidence directory is `app-readonly-source-review.json`, SHA-256
+`ecced23fdad3e8087cac6a3a1eba8ccc894fa3ad3af609eed1d04a14540aacfd`.
+It captured the producer's RUNNING state and remains unchanged.
+
+The later App producer `final-01/validation.json` under the earlier Root run has
+SHA-256 `13966e3441d3320a74185b06313e67197dd0e9f4d512844e79207736e4fddfda`:
+normal 319/0/0, scoped Core race 25/0/0, complete UI/native race 153/0/0,
+Linux/Windows vet, dependency check and Windows cross-build exit 0, stable dirty
+`17da393` inputs. Its scripted PQ actor is explicitly not the production
+Store/Guard/Runtime chain. This is producer-scoped evidence, not independent
+execution, a new user-delivered EXE or Windows physical DPAPI/ACL/GUI acceptance.
+The Hub read-cache defect is tracked separately and does not become an App
+consumer-checkpoint defect merely because the complete chain remains unavailable.
+
+After App committed `209b2081085d41dbccf0516f8379b9d40d98be2e`, QA independently
+read its Git archive and matched all 1196 frozen Go/module inputs without a
+missing or changed entry. Both commit identities match the server global
+identity. `app-209-archive-review.json` in the same independent review directory
+has SHA-256 `7ea822ee1539827677e1f81accb697f0f5aeee47085547d8a1ccbf888ebca5a8`.
+This is a post-execution comparison; it neither reruns a gate nor changes the
+producer's dirty-`17da393` attribution to a clean-`209b208` execution. Windows
+physical checks and the real user-operated pair remain NOT_RUN.
+
+### Clean App-consumer source: separate Client TCP compatibility
+
+Root executed the standard disposable Client interop gate on clean
+`209b2081085d41dbccf0516f8379b9d40d98be2e`: PASS, exit 0. The actual four
+top-level cases were `TestClientDockerHubSmoke`,
+`TestClientDockerHubHeadlessOperator`, `TestClientDockerHubOwnerBootstrap` and
+`TestClientDockerHubRecoveryFixture`; each runner exited 0. Scope is real TCP
+Hub/Go protocol client, bounded public SDK, initial Owner signer bootstrap and
+existing exact retry/recovery compatibility. It is **not** Pair Store/Guard,
+Pair activation, real native Runtime, Windows physical or public HTTPS PASS.
+The App producer `13966e…` receipt keeps its original dirty-`17da393` source;
+this clean-source gate is separate evidence, not its replacement or relabeling.
+
+Evidence under the earlier Root run:
+`app-consumer-client-interop/`.
+
+| Artifact | SHA-256 |
+| --- | --- |
+| `result.json` | `6cc89ee2c7a1c05d22a1bcbacfed59856aad5050d05453f967eb8872f0963a9f` |
+| `cleanup.json` | `d2db532fbaad6cbd99a2fc45653773498f2b2327a623b412e1dd2d75a9080787` |
+| QA `app-209-interop-cleanup-review.json` under the independent review directory above | `89875e7306ebf87444797a071e90c0d267d1f14ba6f7a7f06ff76871a04f7b40` |
+
+Source fingerprint:
+`960e82ad6563d512bfa2036579cacb8963861fec8cfa99ebd9b17105b4e1c86f`.
+Hub image:
+`sha256:c8ec6eb1a58f3cbd8a6d5b3880480ee0d3832aa6ea97ccda4731479625b58199`.
+Receipt source is `dirty=false`; wire/catalog remains separately identified by
+catalog SHA-256
+`a4ba36df0690e15dbaad36ea93d79586b25380bf31ebc5e0da5c3c1122e14db9`.
+
+Cleanup is CONFIRMED: three task-owned containers, two temporary image tags and
+private scratch EXACT_ABSENT. QA independently inspected those exact five
+references and confirmed scratch absence without repeating the gate or mutating
+resources. The four original resident IDs were retained according to Root's
+separate before/after check; QA did not access resident state to make an
+independent retention claim. No new models, native queue operations, deployments
+or user package delivery occurred. The false Pair capability and pending
+cache-regression check remain unchanged; no readiness gate was rerun.
+
+### Resumed Node-key/helper checkpoint review
+
+The coordinator resumed the existing `17da393`/`209b208` integration work and
+rejected a second Owner/App/Group authorization framework. The independent
+review here concerns only the App owner's frozen Node-key and unwired helper
+checkpoint, not the unfinished CURRENT carrier or actual Pair MCP dispatch.
+
+Producer evidence is under
+`/home/zyf/Cicada/.local/evidence/n3-same-node-dialogue/run-20261017T122249Z-cb9b7d/node/resume-01`.
+Its `producer-receipt.json` SHA-256 is
+`611d848576319b267205aa09ac93e95eadd96b488b19449c5243a23858bcb8e3`.
+The tested source is **dirty `209b208`**, full input manifest
+`10478416e0df121923e72ef8259397d0c3aa47901b64268a92e5e0aa3ce472cb`.
+QA independently matched all **1254/1254** listed inputs, including the complete
+1250-file product Go/module tree, with no unlisted product-tree files. This is
+a posthoc source comparison, not execution on clean `209b208`.
+
+QA separately rehashed and recounted the original Go JSON terminal events:
+NodeKeys normal **112/0/0**, scoped command tests **10/0/0**, and scoped race
+**15/0/0**, including subtests. Each exit is **0**, every selected package has
+a PASS terminal event, and the before/after source snapshots are identical.
+The earlier noexec environment failure remains a failure before test execution.
+QA did not rerun these component gates; their executed test binaries were not
+retained by the producer, so no binary SHA is asserted for them.
+
+| Independent receipt under `/home/zyf/Cicada/.local/evidence/native-pair-review/app-node-20261017T234757Z-ad4bviws` | SHA-256 |
+| --- | --- |
+| `app-source-review.json` | `de8e93e3c7d269c702a49503367c7758821353e6a21114723f2c3d2ca88eab0d` |
+| `producer-review.json` | `16d2fc47b8e6b5f7d6bea195d2d158a0442bd4eb854e09535a99d470d01bbf49` |
+| `cleanup-review.json` | `feaf1e2fe57ab0efc3aa93365eee1e1e8ff8190891df0162065eeece5dff02af` |
+
+The producer's separate `cleanup.json` SHA-256 is
+`90d41f1555e495396f5247a8989cf33fa59ff72bf0b736da004fc2287cdd2b92`.
+QA independently inspected its two exact container names and confirmed both
+absent without deleting resources or inspecting resident state. The original
+producer receipt remains unchanged. The prepared QA Store runner uses its own
+`native-pair-acceptance/go-build` cache and lock, with the shared module cache
+read-only, so it cannot concurrently write the App producer's build cache.
+
+The bounded result is **SCOPED_REVIEW_PASS** for independent recount/source
+review of NodeKeys and unwired helpers. Actual CURRENT verification, original
+Join receipt application, same-epoch native **and** access lease renewal,
+production Pair MCP dispatch, disposable Hub interop, real Runtime/queue/provider,
+public HTTPS and Windows DPAPI/ACL/GUI remain **NOT_RUN** by this checkpoint.
+An `existing=true` budget/submission lookup is historical recovery only and must
+not authorize a new invocation. Recovery after JoinUntil does not prove a live
+lease, and an expired accepted receipt must never revive authority. No readiness
+gate or previously completed user batch was rerun; no Git mutation or deployment
+was performed by QA.
+
+The coordinator subsequently requested retained executing-binary identities
+under the same three selectors. Additive producer receipts under the same
+Root run's `node/` directory are retained independently:
+
+| Supplement | Producer receipt SHA-256 | Result |
+| --- | --- | --- |
+| `binary-identity-01/producer-receipt.json` | `eb9b1b5a42014ca25ef0d588b1d758de2fd510ee1cd2815d371b5622e83d1f99` | FAIL: NodeKeys 109 PASS / 3 FAIL, exit 1; command 10 and race 15 PASS |
+| `binary-identity-02/producer-receipt.json` | `dd7994e53bbb1650515fadb51ad78c81ceda6bdaaec82d05ff6f036b1b2bf898` | SCOPED_PASS: 112/10/15 PASS, no FAIL/SKIP, all exits 0 |
+
+The first run-local retention wrapper imposed umask 0077 on execution, making
+two existing insecure-mode fixtures private at creation. Those two subtests
+and their parent failed; all failed logs and binaries remain retained. The
+corrected wrapper restores inherited umask 0022 before executing the original
+test binary. Both runs used identical four binaries and the original frozen
+1254 inputs. Their results do not replace the original `611d8485` receipt or
+retroactively supply its missing executed-binary identity.
+
+| Retained actual binary in supplement 02 | Bytes | SHA-256 |
+| --- | --- | --- |
+| `artifacts/nodekeys-normal/nodekeys.test` | 9941255 | `31496a77912e70b7d7b3967c27ccbe932cf77e8b477694138fe8f23e258decc0` |
+| `artifacts/cmd-scoped/cicada.test` | 30118151 | `2acbb6b787137d79f9716f92492f534b51713ab90ea43422be9a74031146e78c` |
+| `artifacts/pair-race/nodekeys.test` | 18624775 | `dd917858675eef8411f99240199e01ebad14386e07307dc9f60eda852eb5cfd4` |
+| `artifacts/pair-race/cicada.test` | 49201415 | `8f9c6a30560c59165c4079a556264098b2f8d5d59976ae7f6d59b7427f356284` |
+
+QA independently rehashed all retained files against captured original/copy
+hashes, verified NUL-delimited actual argv and test-name equality with the
+original selectors, recounted both runs, compared before/after source, and
+inspected the two exact supplement container names as absent. All 15 files in
+`node/commit-candidate.json` matched its hash inventory at review time; that
+candidate manifest SHA-256 is
+`aeedcb878d6978d76d00b9206965b6301ce81922fac98e3f20b50560d1015544`.
+The separate QA `binary-addendum-review.json` under the independent review
+directory above has SHA-256
+`a0a60e20132e601e7028eafd3c3877984f7e228fca7d19e50835d643913754ee`.
+This is **SCOPED_REVIEW_PASS** for incremental binary/log/source/cleanup review;
+QA performed no additional execution. The original failed run and all CURRENT,
+actual Pair MCP, live-lease and native Runtime limitations remain unchanged.
+
+Root subsequently integrated App commit
+`a451b9bb2bd57acebe248a9ab80310f214c8c040`, parent `209b208`. QA independently
+matched all **1254/1254** frozen inputs against that commit's Git objects and
+observed Author and Committer `DaiVernon <205618093@qq.com>`. The separate
+`commit-source-review.json` SHA-256 is
+`2d5e43474c7c24ce64e2b521db2ac5f2c486455cb509a0d6ab829c61dc5e09db`.
+This records source equivalence only; all actual helper executions above remain
+attributed to dirty `209b208`, not a clean execution of `a451b9b`.
+
+### Independent Windows prerequisite package review
+
+2026-10-18 UTC. Root froze a Windows update for existing-profile recovery and
+public-only Owner key export, without changing the deployed Hub/Node. Evidence
+is under
+`/home/zyf/Cicada/.local/evidence/n3-app-prerequisites/run-20261017T235433Z-06169a`;
+the corresponding artifacts directory contains
+`Cicada-App-N3-prerequisites-209b208.zip`.
+
+| Reviewed artifact | Bytes | SHA-256 |
+| --- | --- | --- |
+| ZIP | 5738771 | `2f1818677cb5f038e9d367b6788a199130071206ce78cdbb673b3269b645a86c` |
+| `cicada-app.exe` | 13781504 | `b93faa83ebb5ebaba9e6b082046994e7152a66e7418a207f29b23ffc96e61c69` |
+
+QA independently matched all 47 ZIP entries and 46 SHA256SUMS members, the
+retained EXE and PE header, and the before/after build snapshots. All **1241/1241**
+source-file contents match the **`209b208` Git objects**, including all tracked
+`cicada-go` files and root LICENSE. This comparison used the recorded revision,
+not later dev. The source-manifest **file SHA** is
+`e6409346def66d90b0a59aa4ec17a56d9f201a57a47956d1ecfc125ac4e61d78`;
+its **internal input-inventory digest** is
+`ebecab5234a170186c09c9f10c032e41c73941efe33ad65fd3b2a910e9d2443f`.
+They identify different byte inventories and are not interchangeable.
+
+The original build receipt incorrectly recorded a source filename as
+`container_name`. It remains retained with SHA-256
+`2d928850152b125327855113f2f7280af6a881f57c84b1ebc3477321cac2cff8`.
+The package's corrected `validation/build.json` explicitly cites that original
+and the exact Docker command; QA verified the corrected name and observed the
+exact build container absent. No rebuild or historical-result replacement was
+needed. All 11 compiled dependencies are covered by the 20-module notice
+superset, with every notice hash matched. The finite package-member and
+structured-JSON inspection found no private-state-like member or secret-like
+field candidate; this is not a general secret-eradication or binary-memory proof.
+
+QA's `windows-package-review.json` in the independent review directory above
+has SHA-256
+`7c8c6348fe6a688bfde3935ea11888b31dda6b77e6798d29122de576ab84a0a8`:
+**SCOPED_PACKAGE_REVIEW_PASS**, read-only, with no Windows binary execution.
+The package has no README; Root will provide the targeted update, second-instance
+retry and public-key-export procedures in its delivery message. No repeated N2
+activation or new device code is a prerequisite for this update.
+Root then issued those three targeted user procedures. Requested feedback is
+only the key ID and complete App NodeTrust fingerprint; no public-key JSON,
+vault or private key upload is requested.
+
+At this record the user has confirmed the **1980** file hash only. This **209**
+package has not yet received user physical execution evidence: second-instance
+recovery, export interaction, Windows DPAPI/ACL/GUI and the real same-Node dialogue
+remain **NOT_RUN** for it. Export writes only `owner.Public()` to a new file with
+O_EXCL; producing that file does not itself install Node trust or grant messaging.
+
+### Independent frozen Store cache and Join-deadline gate
+
+2026-10-18 UTC, **SCOPED_PASS**, driver exit **0**. The necessary independent
+Store overlay completed **9/0/0 normal and 9/0/0 race** (three top-level cases
+plus six subcases); version, both compilations, normal, race and scoped vet all
+exit **0**. The actual binaries were retained and their pre/post execution
+hashes match. No protocol readiness or real Runtime gate was rerun.
+
+Reproduce from this QA worktree against the frozen product worktree:
+
+```sh
+CICADA_NATIVE_PAIR_PRODUCT_FREEZE=/home/zyf/Cicada/.local/evidence/n3-hub/runtime/native-pair-node-checkpoint-product-freeze-20261018T002507Z.json \
+CICADA_NATIVE_PAIR_STORE_SOURCE_ROOT=/home/zyf/Cicada/.worktrees/cicada/n2-hub \
+  bash scripts/test-native-pair.sh --store-regressions
+```
+
+Each invocation allocates fresh task state, artifacts, logs and container names.
+The recorded product is **dirty `a451b9b`**, schema 65, not a clean commit build.
+The official product freeze SHA-256 is
+`7009a91f0e620faea4ba162ec9fd4b4230b8be3b8f8363dd68822bbba11b3252`,
+matching the original 125-case producer source manifest file SHA-256
+`dcf163287d7bdb186f27ea7bacfa8c8c007b4debb86b2b6686d70c3d96060a51`.
+QA checked every approved product input both before and after execution:
+**2242 product files plus five QA drivers/overlay files, 2247 total**. Their
+joint inventory digest is
+`192b33fc48ea97032a3b945aeabc9b9075445e5a982c6946ba53737b6e69d021`.
+The before/after snapshot file SHA-256 is identically
+`29130ed63032f08a60966694439c12484650bdc9df08d9de4aa900cd56d14d9b`.
+Only the producer's expressly excluded historical validation record was omitted
+from that product freeze; no Go, protocol JSON, contract or checker change was
+accepted during the run.
+
+All evidence below is under
+`/home/zyf/Cicada/.local/evidence/native-pair-acceptance/run-20261018T002713Z-UQRXnU`;
+the corresponding artifacts directory retains the two actual test executables.
+
+| Artifact | Bytes | SHA-256 |
+| --- | --- | --- |
+| `result.json` | See retained receipt | `856cdff87698bb2cb0f246bc65b163e673fa88b8c83e7504b3b89d10bf307a33` |
+| `nativepair-cache.test` | 27042765 | `203b1e0f0a4b6520f32749e302de777d9277f4fb172cbef91f1a7998fae84ab9` |
+| `nativepair-cache-race.test` | 42013758 | `91a77e6acd02cac1b6abf406f669fb26dc466889ebd2b180d041be3d4af16fc5` |
+
+Normal top-level elapsed times were 3.29 / 0.95 / 5.93 seconds; race was
+44.22 / 18.84 / 115.81 seconds. Exact Docker/Go argv, JSON events, exit files,
+source snapshots and pre/post binary inventories remain retained. The private
+database used the task's host-bound state directory; a successful Store
+close/reopen proves this bounded persisted-history check, not abrupt process
+death or power-loss durability. Shared modules mounted read-only; the writable
+build cache and lock were private to this QA task. The exact container
+`cicada-native-pair-run-20261018t002713z-uqrxnu` is absent.
+
+The original fresh-cache eviction defect is **verified fixed on this frozen
+source only**: full protected capacity backpressures, accepted +30-second skew
+retains exact history through the full freshness interval and Store reopen,
+and eviction later yields only READ_EXPIRED. Future status and detached
+reconciliation reject without cache/rate residue; the same original may receive
+its first legitimate observation later, and clock rollback preserves its exact
+history. The original failing receipt, overlay and source attribution remain
+unchanged.
+
+The six deadline cases prove ordinary lease expiry did not mask JoinUntil:
+both original leases were live before checking each boundary. One-slot
+WAITING_JOIN denies self/renewal exactly at and after the deadline, without
+partial lease changes; status persists EXPIRED and subsequent real-attestation
+publication leaves no candidate effect. Two-slot WAITING_CONSENT retains the
+original identities, credentials, lease owners, epochs and membership/join
+revisions across the boundary, with both lease expiries capped at PeerExpiresAt.
+ACTIVE still requires real dual-consent/GroupKeyGrant acceptance and is **NOT_RUN**.
+
+This is **synthetic Store/PQ cache and lease regression acceptance, not E2E**.
+It neither replaces the Hub producer's retained race TIMEOUT failures nor
+transfers those broader tests to PASS. Node reserved-slot RPC/real Join, actual
+App consent, real same-Node sealed Relay/Runtime, models/providers/queues,
+Windows DPAPI/ACL/GUI and public HTTPS remain **NOT_RUN** by this gate. Public
+Pair availability remains false; no deployment or Git mutation was performed.
+
+### Compile-only check after Root synchronized the QA branch
+
+Root preserved all eight QA WIP file hashes while fast-forwarding this task
+worktree from `209b208` to `13fdb911ac1c3541eaee8906c5cfae6fd3fcc92a`.
+The modified N3 discovery call site then passed its separately requested
+compile-only check, **compiler exit 0**, with **zero tests executed**:
+
+```sh
+go test -mod=readonly -buildvcs=false -trimpath -c -o /out/n3.test ./acceptance/n3
+```
+
+The exact offline Docker argv and source snapshots are retained under
+`/home/zyf/Cicada/.local/evidence/native-pair-compile-only/run-20261018T004355Z-60rkv_9s`.
+The source is **dirty `13fdb91`** including the QA call-site change; all 1276
+inventoried product/QA inputs were identical before/after compilation. Their
+joint inventory digest is
+`4e05bef157b473faf624776a12f27ba8f356ae9e2dae24e7e6913c206feff4af`;
+the identical snapshot file SHA-256 is
+`70d5a5dfce9d06663ce12a4911b64c134c2e7b4e04aeefb8e9d126da6cf90422`.
+The retained **compiled, unexecuted** `n3.test` is 22346173 bytes, SHA-256
+`d13d3acb482435dab41f465bb1f44e4d0063ef8a806a77d4c95058e098551f08`.
+The compile receipt SHA-256 is
+`39848c9fcfbefe1114b149f4bfc288e23c4501c219533bb67eadb28602813663`.
+The exact task container was observed absent; product and shared module mounts
+were read-only, with a locked task build cache and network disabled.
+
+This closes the compile-only pending item for the stricter shared capabilities
+decoder/8-KiB/loopback-policy check. The five known-RED protocol cases were not
+executed; no secret setup, Runtime, SID, queue/provider, Windows or public-HTTPS
+action occurred. The earlier Store 9+9 results retain their dirty `a451b9b`
+attribution and are not relabeled as a clean `13fdb91` execution.

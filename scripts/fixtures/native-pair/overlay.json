@@ -1,0 +1,6 @@
+{
+  "Replace": {
+    "/repo/cicada-go/internal/store/zz_qa_native_pair_cache_test.go": "/qa/scripts/fixtures/native-pair/read_cache_test.go",
+    "/repo/cicada-go/internal/store/zz_qa_native_pair_lease_test.go": "/qa/scripts/fixtures/native-pair/lease_deadline_test.go"
+  }
+}
