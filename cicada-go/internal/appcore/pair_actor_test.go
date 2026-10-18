@@ -167,8 +167,9 @@ func (f *pairActorFixture) Do(req *http.Request) (*http.Response, error) {
 				if proof.Consent.Slot == "B" {
 					manifest = f.plan.SlotBKeyManifest
 				}
-				if _, err := e2ee.VerifyOwnerLinkKeyGrant(q.GroupKeyProof, f.c.owner.Public(), f.c.state.OwnerID, "group-endpoint-key-grant:v1", manifest.Digest, manifest.CandidateBindingDigest, uint64(manifest.CandidateVersion), e2ee.OwnerLinkGrantSideSource, f.n.n2.now); err != nil {
-					f.t.Fatal(err)
+				grant, err := e2ee.VerifyOwnerLinkKeyGrant(q.GroupKeyProof, f.c.owner.Public(), f.c.state.OwnerID, "group-endpoint-key-grant:v1", manifest.Digest, manifest.CandidateBindingDigest, uint64(manifest.CandidateVersion), e2ee.OwnerLinkGrantSideSource, f.n.n2.now)
+				if err != nil || grant.IssuedAt != manifest.IssuedAt || grant.ExpiresAt != manifest.ExpiresAt {
+					f.t.Fatal("group key proof changed the reviewed manifest's exact lifetime", err)
 				}
 				f.consents = append(f.consents, proof.Consent.Slot)
 				f.result.State = wire.NativePairWaitingConsent
@@ -370,6 +371,36 @@ func TestPairControllerTwoExplicitConsentsAndProjectedActivation(t *testing.T) {
 	}
 	if err := f.dispatch(Action{Kind: ActionRevokePair, Pair: PairAction{PairID: s.Pair.PairID, ReviewID: s.Pair.StateReviewID, ConfirmRevoke: true}}); err != nil || f.c.Snapshot().Pair.State != "REVOKED" {
 		t.Fatal("explicit revoke failed", err)
+	}
+}
+
+func TestPairControllerDelayedClicksKeepManifestTimeAndFreshOwnerIntent(t *testing.T) {
+	f := newPairActorFixture(t)
+	f.prepareSlots()
+	for i, slot := range []string{"A", "B"} {
+		f.n.n2.now = f.n.n2.now.Add(time.Duration(i+2) * time.Second)
+		if err := f.approve(slot); err != nil {
+			t.Fatal(err)
+		}
+		raw := f.posts[wire.OperationNativePairConsentComplete][i]
+		packet, err := wire.DecodeNativePairPacket(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var q wire.NativePairConsentComplete
+		device := f.c.device.Public()
+		r := packet.Packet.Route
+		binding := clientwire.Binding{HubID: r.HubID, OwnerID: r.OwnerID, DeviceID: r.DeviceID, SessionEpoch: wire.HandshakeEpoch, HubKeyVersion: 1, DeviceKeyVersion: 1}
+		if err := wire.OpenRequestAt(f.n.n2.hubKey, &device, binding, r, raw, &q, time.Time{}); err != nil {
+			t.Fatal(err)
+		}
+		intent, err := e2ee.VerifyOwnerNativePair(f.c.owner.Public(), q.OwnerProof, e2ee.OwnerNativePairSlotConsent, f.n.n2.now)
+		if err != nil || intent.IssuedAt != f.n.stamp(f.n.n2.now) || intent.IssuedAt == f.plan.PreparedAt {
+			t.Fatal("click reused the old plan time for its fresh Owner intent", err)
+		}
+	}
+	if f.c.Snapshot().Pair.State != string(wire.NativePairActive) {
+		t.Fatal("delayed distinct clicks did not activate their exact reviewed plan")
 	}
 }
 

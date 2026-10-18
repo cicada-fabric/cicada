@@ -436,6 +436,20 @@ func (b *machineAgentJoinBridge) serveConnection(connection net.Conn) {
 		_ = json.NewEncoder(connection).Encode(localJoinResponse{Version: localJoinProtocolVersion, Error: "invalid local Node request"})
 		return
 	}
+	if header.Operation == "native_pair_join" {
+		var request localNativePairJoinRequest
+		if err := decodeLocalBridgeRequest(requestBytes, &request); err != nil {
+			_ = json.NewEncoder(connection).Encode(localJoinResponse{Version: localJoinProtocolVersion, Error: "invalid reserved Pair Join request"})
+			return
+		}
+		joined, scope, err := b.nativePairJoin(request)
+		if err != nil {
+			_ = json.NewEncoder(connection).Encode(localJoinErrorResponse(err))
+			return
+		}
+		_ = json.NewEncoder(connection).Encode(localJoinResponse{Version: localJoinProtocolVersion, Join: joined, NativeContextScope: scope})
+		return
+	}
 	if header.Operation == "network_join" {
 		var request localNetworkJoinRequest
 		if err := decodeLocalBridgeRequest(requestBytes, &request); err != nil {
@@ -674,6 +688,11 @@ func (b *machineAgentJoinBridge) joinWithScope(request localJoinRequest) (*fabri
 	}
 	if err := verifyCodexSessionRecord(request.NativeSessionID, request.Workspace); err != nil {
 		return nil, nil, err
+	}
+	if required, err := nativePairGroupRequired(b.ctx, b.stateDir, b.nodeID, strings.TrimSpace(request.GroupID)); err != nil {
+		return nil, nil, err
+	} else if required {
+		return nil, nil, errors.New("reserved Pair Group requires its exact Pair/slot Join")
 	}
 	input := struct {
 		GroupID         string         `json:"group_id"`

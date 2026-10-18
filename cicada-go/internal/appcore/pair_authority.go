@@ -204,7 +204,7 @@ func (c *nativeController) approvePairSlot(ctx context.Context, action PairActio
 		return err
 	}
 	groupProof, err := owner.SignOwnerLinkKeyGrant(c.state.OwnerID, "group-endpoint-key-grant:v1", manifest.Digest,
-		manifest.CandidateBindingDigest, uint64(manifest.CandidateVersion), e2ee.OwnerLinkGrantSideSource, c.cfg.Now().UTC(), parseExpiry(manifest.ExpiresAt))
+		manifest.CandidateBindingDigest, uint64(manifest.CandidateVersion), e2ee.OwnerLinkGrantSideSource, parseExpiry(manifest.IssuedAt), parseExpiry(manifest.ExpiresAt))
 	if err != nil {
 		return err
 	}

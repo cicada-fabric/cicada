@@ -211,3 +211,213 @@ access epoch and cannot substitute for the still-unaccepted same-identity Pair
 lease path. The endpoint helper is currently unwired; omitted receiver SID in
 the legacy peer-key projection must be checked through actual Current data,
 never copied from the signed plan.
+
+## Node/MCP consumer local validation, 2026-10-18
+
+This follow-up uses `f279093d9e8e09d6576ac319f18b9cedf1d670bf` plus
+uncommitted Node consumer changes. It does not change the attribution of the
+earlier App or Node-local checkpoints. The implementation and validation prose
+are outside the executable input manifest. No Windows package or deployment
+was produced by these checks.
+
+Evidence is under
+`/home/zyf/Cicada/.local/evidence/n3-same-node-dialogue/run-20261017T122249Z-cb9b7d/node/`.
+Both `consumer-local-01` and `consumer-local-02` retain complete 1,284-input
+before/after manifests, actual test executable copies made by `go test -exec`,
+their original/copy hashes, NUL-delimited executed argv and inherited umask
+`0022`. The wrapper restores that umask before executing the original binary.
+Each source manifest is unchanged across its run. All three named disposable
+containers were observed absent after each run. The pinned image remains
+`golang:1.27.2-bookworm@sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61`.
+These two local runs use `TMPDIR=/tmp` on container tmpfs. They establish local
+component persistence/reopen behavior, not persistence on a host-backed disk
+or recovery after power loss. The later cross-component disk gate must retain
+its separate mount and database attribution.
+
+### First frozen run: retain the fixture failure
+
+`consumer-local-01/producer-receipt.json` is **FAIL**, SHA-256
+`a75a70a6a4d04c28043b97555d9a92666bc4043383c7b442edf0bf8d5ff74ca8`.
+Its input manifest is
+`94cb1a1636e4b7bbaa7860085eba0a87168ae001147c5d25ec45d5600e16f32d`.
+Its 20 then-current changed source files are additionally retained in
+`source-changes.tar.gz`.
+
+| Executed lane | Pass/fail/skip | Exit |
+|---|---|---|
+| Full nodekeys | 112/1/0 | 1 |
+| Scoped cmd: Pair, MCP, native delivery, same-Node Relay, local Join, Node-Control | 92/0/0 | 0 |
+| Scoped race: nodekeys | 9/1/0 | 1 for combined race command |
+| Scoped race: cmd | 23/0/0 | Same combined command |
+
+The sole failure was the new local Current test constructing `State: ACTIVE`;
+the closed contract requires `CURRENT`. That fixture was rejected before its
+positive check. This run is not an overall pass.
+
+The cmd results include the actual production drain caller after a real
+synthetic queue subprocess produced ACCEPTED or UNCERTAIN. Six cases cover
+each outcome with an early HTTP 403, a fresh HTTP 403 after acquiring the
+writer, or independent Node-local Owner-pin revocation. Each retains the
+original writer ledger bytes, inbox and journal, queue count one and only the
+original Node-received receipt. No failure/cancellation or consumption success
+is fabricated. This uses the existing legacy Group fixture, not a fabricated
+Native Pair ACTIVE row. These six cases passed normally and with race on
+this run's source; their result is not relabeled as executed on the next source.
+
+### Corrected, scoped follow-up
+
+`consumer-local-02/producer-receipt.json` is **SCOPED_PASS**, SHA-256
+`f9ae27576490398eb01d31d866e7a986e66e87a4e53f1b9f2604576e28660c3e`.
+Its input manifest is
+`4063c78ddd2bf10c705557fe2ff613233431f499a366dc4d321b069756146522`.
+Exactly three executable inputs differ from the first run: the Current test
+fixture, the Node Join bridge's first/reused result labeling, and the matching
+consumer test assertions. Other executable input hashes are unchanged.
+
+| Executed lane | Pass/fail/skip | Exit |
+|---|---|---|
+| Full nodekeys | 117/0/0 | 0 |
+| Four Join consumer cases | 4/0/0 | 0 |
+| Scoped race: Current verifier plus four Join consumer cases | 9/0/0 | 0 |
+
+The four Join cases traverse actual MCP dispatch, the owner-only local socket
+and production encrypted Node-Control outbox code against a scripted PQ actor.
+They check durable exact packet/body before POST; two lost Join responses
+followed by detached reconciliation without another effect; recovery of a
+historical initial lease through current same-binding whoami/heartbeat; a
+lost candidate acknowledgement followed by client reopen using the same key
+and attestation; capability absence emitting no new business packet; and an
+unsigned diagnostic 403 preserving the original across reopen, including when
+availability subsequently becomes false. Full Node proofs and the internal
+session token do not cross the public MCP result.
+
+| Actual executed binary in corrected run | SHA-256 |
+|---|---|
+| Normal nodekeys | `7a7535520eefb90a0f1e9f475ea8ef5cd644de7edd0fb6b6434270dab8d14354` |
+| Scoped cmd | `cd79a948cc49786c159353014059661e7f6d55cbbf281b4506e3c71a33217739` |
+| Race nodekeys | `9c87f8ea81315d8a0edec182092c44e8ad0058a8f6618f352ee174e10b29c9a9` |
+| Race cmd | `d0bb2890444bb35736a7d305495e77b7bd8f73568b00ede89aee249b31764511` |
+
+Unfrozen development iterations remain in `consumer-dev-01`, including the
+initial synthetic Node-token precondition failure, an undefined test constant
+compile failure, and a capabilities fixture emitting a forbidden canonical-JSON
+newline. They are not promoted into frozen-source acceptance results or hidden
+by the corrected run.
+
+Actual Hub dual consent to production Node/MCP peer interoperability remains
+**NOT_RUN** here, as do real Codex Runtime/model/native consumption, Windows
+DPAPI/ACL/GUI, physical-device and public HTTPS/deployment acceptance. The
+scripted actor's zero-Join response is not proof of real Hub ACTIVE authority.
+No real SID, provider, queue, resident service or production key was touched.
+
+## Committed-Hub consumer integration, 2026-10-18
+
+The later final local integration source is
+`3814439bbbe68e7e7d2c881439420f2b9bf8b1aa` plus the 26-file App/Node consumer
+worktree change. Its complete 1,303-input manifest is
+`578637a985a91ba51d8141681fad4d7e9016e3b574527fa7f68328de47261bfa`.
+Before/after source files match exactly. This is a dirty-source validation,
+not a claim that its executables were built from clean HEAD alone.
+
+Under the same evidence parent, `consumer-integrated-01/producer-receipt.json`
+is **SCOPED_PASS**, SHA-256
+`25b029c1fa77ad4fa70cb4fd5cf324758b06106169105659c1bf0a783063a23c`.
+Normal and race execute the same test-name maps:
+
+| Required lane, including subtests | Normal pass/fail/skip | Race pass/fail/skip |
+|---|---|---|
+| Node/MCP consumer and real TCP cases | 21/0/0 | 21/0/0 |
+| App Pair controller cases, including delayed clicks | 17/0/0 | 17/0/0 |
+
+Both commands exit 0. `run.sh`, actual executed binaries, original/copy hashes,
+NUL-delimited argv and restored inherited umask `0022` are retained. No old broad
+suite is represented as rerun here. Earlier nodekeys, legacy writer and App
+checks retain their separate tested source and receipt.
+
+| Actual executable | SHA-256 |
+|---|---|
+| Normal cmd | `1d8913c4edaba36630099609fd198c2ca515ccc26da084f7a7bcb6fb90da55af` |
+| Normal appcore | `e34ded674b1249ef063025372ef2fc433b62056043f55ca8519e25aedffb8590` |
+| Race cmd | `3c1067941676385ae32bb031d17eb5b72ad71657988eb10e0cba1a9c619cc83a` |
+| Race appcore | `7a72e548ec56e16656eb7dddc51348c90628f3d6022eccdd6d77280b5cc260df` |
+
+The actual TCP fixture initializes an owned production Hub/SQLite composition
+without Control inference, completes real N2/N3 and explicit Owner proofs, and
+uses the reviewed development Node RPC probe to obtain original reserved-slot
+Join receipts. Production MCP dispatch and its private socket recover those
+receipts and publish the original local candidate attestations. Lost Join and
+candidate acknowledgements preserve the exact original operation, SID, binding,
+key and proof. The first consent retains zero peer permission; the compatible
+second consent activates the real Store grants atomically.
+
+Production MCP ASK and correlated REPLY then traverse the actual sealed Relay,
+inbox and physical writer, ending at two synthetic queue subprocesses. The
+highest recorded native completion is **CONSUMPTION_UNCONFIRMED**. The helper
+is the retained test executable, never installed Codex or a provider.
+
+Effective caller negatives separately cover missing evidence/Current and changed
+actual SID, access epoch, generation, attempt, Network/member revisions and
+lease owner; a matching existing reservation plus revoked independent local
+Owner pin sends no new ASK POST or native queue; and a changed final Current
+after writer wait denies before injection intent. An actual adapter subprocess
+is killed after synthetic queue acceptance while its original writer remains
+INJECTING. A new writer retains that historical operation as UNCERTAIN despite
+local Owner revocation, with queue count one and no fabricated FAILED/NO_EFFECT.
+
+The generation case has C occupy A's g1, the original A receive a permanent
+authenticated no-effect fence, and the Owner reject C. The first real MCP fence
+report persists its consumed marker without a new request; the next explicit
+call reaches discovery and is still blocked by capability=false. A separately
+identified fresh development probe sees actual g2 and joins the same original
+A. MCP recovers its unique Endpoint and original key; B's original binding and
+the late g1 packet's exact fence remain unchanged. Scripted immediate and
+pending/reopen cases separately prove the fresh positive MCP control flow.
+
+Actual TCP Hub databases, Node keys/state, inbox and writer use the owned host
+bind at `/s`, with `TMPDIR=/s`. Only compilation scratch uses tmpfs via
+`GOTMPDIR=/tmp`. `race-container.json` records the actual mounts, command,
+immutable image and user. The older scripted Node helper still uses `/tmp`
+tmpfs and keeps its component-only attribution. Both owned containers were
+observed absent and the host state directory empty after fixture cleanup.
+This is process recovery evidence, not a host power-loss test.
+
+### Failures and intermediate sources remain retained
+
+On `1c4a59d774c530a0cf5823bf81f585192650ea10` plus its then-current WIP,
+`consumer-tcp-dev-01` first failed because the new test used `body` instead of
+the existing `cicada_ask` argument `question`. Correcting that test exposed a
+real producer gap: Pair Join returned no existing `sealed_v1` Endpoint
+capability, so actual MCP correctly refused its first ASK. `consumer-tcp-dev-02`
+retains all three failures; `consumer-tcp-dev-03` confirms the safe diagnostic
+`source is missing the required sealed_v1 peer-delivery capability`.
+Each retains its own unchanged full source manifest, actual executable,
+argv, exit 1, source copies and cleanup. Receipt hashes are respectively:
+
+- `8f2bad8c4640a045ae975c23cb897438e2fa80052d78e2770d98732a364b394b`
+- `c228283a7f438a2de18ea7469c4452639b436a6c445482442d74daa84e346abb`
+- `87def7a4328176694663a52833d9c7a43c31ad3cb6f08effa94322d6d99d7703`
+
+The separate Hub producer correction is committed in `3814439`; this consumer
+does not fabricate the capability or change public availability.
+
+`consumer-fence-dev-01` first validated the scripted fence control flow and
+actual g1/g2 development probe on its earlier source, 4/0/0 normal only, exit 0;
+receipt `8de8e00729e80cc884cb265dd86d691394c4318bafcbd984d3354a7788a5c389`.
+That intermediate result is not attributed to the final source.
+
+`app-delay-red-01` is a retained new-test compile failure, not a product result.
+After fixing those two test types, `app-delay-red-02` reproduced the App defect:
+a delayed click signed its Group key proof with the click time instead of the
+reviewed manifest issue time. Its actual App controller/scripted PQ actor test
+failed, exit 1, with receipt
+`2edd5cb916d6b760c67181d6022f1960310d35d76856992cd32186cd119e51e1`.
+The final one-line production fix signs the exact manifest lifetime and keeps
+the new Owner intent's click time fresh; both delayed A/B clicks pass normally
+and with race. This does not establish an actual production App Pair actor or
+Windows GUI acceptance.
+
+Fresh positive public MCP/App discovery remains **UNAVAILABLE / NOT_ACCEPTED**
+because public capability is still false. No availability shim was used in
+the actual TCP fixture. Real native Runtime/model/consumption, native Windows
+GUI/DPAPI/ACL, physical-device, public HTTPS and deployment acceptance remain
+**NOT_RUN**. The tests did not touch resident services or real keys.

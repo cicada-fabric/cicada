@@ -23,6 +23,11 @@ func TestNativePairCurrentEndpointUsesProjectedMembershipAndExactOtherFields(t *
 	if err := matchNativePairEndpoint(a, s, p); err != nil {
 		t.Fatal("projected membership rejected", err)
 	}
+	redacted := a
+	redacted.NativeSessionID = ""
+	if err := matchNativePairEndpoint(redacted, s, p); err != nil {
+		t.Fatal("legacy receiver SID redaction rejected; Current verifies the actual SID separately", err)
+	}
 	for _, edit := range []func(*crossNodeGroupEndpointEvidence){func(a *crossNodeGroupEndpointEvidence) { a.MembershipRevision = 4 }, func(a *crossNodeGroupEndpointEvidence) { a.NativeSessionID = "synthetic-other" }, func(a *crossNodeGroupEndpointEvidence) { a.EndpointJoinRevision++ }, func(a *crossNodeGroupEndpointEvidence) { a.BindingEpoch++ }, func(a *crossNodeGroupEndpointEvidence) { a.Candidate.Version++ }, func(a *crossNodeGroupEndpointEvidence) { a.Grant = nil }} {
 		bad := a
 		edit(&bad)

@@ -53,6 +53,7 @@ type localNativePairJoinRequest struct {
 	Harness         string `json:"harness"`
 	NativeSessionID string `json:"native_session_id"`
 	Workspace       string `json:"workspace"`
+	APIOrigin       string `json:"api_origin"`
 }
 
 func nativePairLocalJoinRequest(s nativePairJoinSelection, current harness.SessionContext) (localNativePairJoinRequest, error) {

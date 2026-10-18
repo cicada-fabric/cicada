@@ -23,6 +23,52 @@ type machineNativeDeliveryLifecycle struct {
 
 type machineNativeDeliveryLifecycleKey struct{}
 
+// Internal admission callbacks may inspect this only after the physical writer
+// has checked and read its exact durable operation outcome.
+type machineNativeWriterOutcomeKey struct{}
+
+// Current permission cannot rewrite a matching writer's past execution. This
+// error deliberately does not unwrap into a fresh no-injection denial.
+type machineNativeHistoricalOutcomeError struct {
+	Outcome nodelock.NativeOutcomeState
+	Cause   error
+}
+
+func (e *machineNativeHistoricalOutcomeError) Error() string {
+	return fmt.Sprintf("original native writer outcome %s retained; current authorization cannot settle it as unexecuted: %v", e.Outcome, e.Cause)
+}
+
+func machineNativeHasHistoricalOutcome(state nodelock.NativeOutcomeState) bool {
+	return state == nodelock.NativeQueueAccepted || state == nodelock.NativeUncertain || state == nodelock.NativeInjecting
+}
+
+// Even a denial obtained before queue preparation must respect the original
+// writer ledger. Keep the writer held through the local rejection so another
+// caller cannot start the same operation between the check and that write.
+func rejectMachineNativeUnexecuted(ctx context.Context, nativeSessionID string, operation nodelock.NativeOperation, reject func(context.Context) error) (result error) {
+	hub, ok := machineHubFrom(ctx)
+	if !ok || hub.HubID == "" || operation.HubID != hub.HubID || operation.NodeID != hub.NodeID {
+		return errors.New("native rejection has no pinned original operation")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	writer, err := nodelock.AcquireNativeWriter(ctx, hub.WriterRoot, hub.WriterScope, "codex", nativeSessionID)
+	if err != nil {
+		return err
+	}
+	defer func() { result = errors.Join(result, writer.Close()) }()
+	previous, err := writer.NativeOperationOutcome(operation)
+	if err != nil && !errors.Is(err, nodelock.ErrNativeOperationConflict) {
+		return err
+	}
+	// A different immutable operation remains fenced by its own ledger row;
+	// rejecting this conflicting inbox body does not rewrite that prior row.
+	if machineNativeHasHistoricalOutcome(previous) {
+		return &machineNativeHistoricalOutcomeError{Outcome: previous, Cause: errors.New("current delivery authority was denied")}
+	}
+	return reject(ctx)
+}
+
 func machineNativeDeliveryDependencies(ctx context.Context) machineNativeDeliveryLifecycle {
 	dependencies, _ := ctx.Value(machineNativeDeliveryLifecycleKey{}).(machineNativeDeliveryLifecycle)
 	if dependencies.command == nil {
@@ -69,11 +115,23 @@ func runMachineNativeDelivery(parent context.Context, nativeSessionID string, op
 			dependencies.observed("accepted_writer_closed")
 		}
 	}()
-	prompt, scopes, err := prepare(ctx)
+	previous, err := writer.NativeOperationOutcome(operation)
 	if err != nil {
 		return err
 	}
-	return executeMachineNativeCodexHeld(ctx, writer, nativeSessionID, prompt, operation, scopes, admit, dependencies)
+	prompt, scopes, err := prepare(ctx)
+	if err != nil {
+		if machineNativeHasHistoricalOutcome(previous) {
+			return &machineNativeHistoricalOutcomeError{Outcome: previous, Cause: err}
+		}
+		return err
+	}
+	err = executeMachineNativeCodexHeld(ctx, writer, nativeSessionID, prompt, operation, scopes, admit, dependencies)
+	var uncertain *nativeInjectionUncertainError
+	if err != nil && machineNativeHasHistoricalOutcome(previous) && !errors.As(err, &uncertain) {
+		return &machineNativeHistoricalOutcomeError{Outcome: previous, Cause: err}
+	}
+	return err
 }
 
 func executeMachineNativeCodexHeld(ctx context.Context, writer *nodelock.NativeWriterLock,
@@ -107,6 +165,7 @@ func executeMachineNativeCodexHeld(ctx context.Context, writer *nodelock.NativeW
 	if err != nil {
 		return err
 	}
+	ctx = context.WithValue(ctx, machineNativeWriterOutcomeKey{}, previous)
 	if previous == nodelock.NativeQueueAccepted || previous == nodelock.NativeUncertain || previous == nodelock.NativeInjecting {
 		if admit != nil {
 			if err := admit(ctx); err != nil {

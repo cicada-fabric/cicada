@@ -19,7 +19,7 @@ func matchNativePairEndpoint(actual crossNodeGroupEndpointEvidence, slot wire.Na
 	} else if slot.Slot != "A" {
 		return errors.New("invalid Pair slot")
 	}
-	if actual.EndpointID != slot.EndpointID || actual.PrincipalID != slot.PrincipalID || actual.OwnerID != p.Scope.Actor.OwnerID || actual.NodeID != slot.NodeID || actual.GroupID != p.GroupID || actual.BindingID != slot.BindingID || actual.BindingEpoch != slot.BindingEpoch || actual.NativeSessionID != slot.NativeSessionID || actual.GroupRevision != int64(p.GroupRevision) || actual.MembershipRevision != int64(proofMembership) || actual.EndpointJoinRevision != int64(slot.EndpointJoinRevision) {
+	if actual.EndpointID != slot.EndpointID || actual.PrincipalID != slot.PrincipalID || actual.OwnerID != p.Scope.Actor.OwnerID || actual.NodeID != slot.NodeID || actual.GroupID != p.GroupID || actual.BindingID != slot.BindingID || actual.BindingEpoch != slot.BindingEpoch || (actual.NativeSessionID != "" && actual.NativeSessionID != slot.NativeSessionID) || actual.GroupRevision != int64(p.GroupRevision) || actual.MembershipRevision != int64(proofMembership) || actual.EndpointJoinRevision != int64(slot.EndpointJoinRevision) {
 		return errors.New("current Pair Endpoint differs from the reviewed slot")
 	}
 	c := actual.Candidate

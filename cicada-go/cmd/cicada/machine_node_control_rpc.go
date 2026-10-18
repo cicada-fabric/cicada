@@ -22,6 +22,7 @@ import (
 	"github.com/cicada-ai/cicada/internal/control"
 	"github.com/cicada-ai/cicada/internal/e2ee"
 	"github.com/cicada-ai/cicada/internal/fabric"
+	wire "github.com/cicada-ai/cicada/internal/hubaccountwire"
 	"github.com/cicada-ai/cicada/internal/nodewire"
 )
 
@@ -101,42 +102,45 @@ type machineNodeControlPairingInput struct {
 }
 
 type machineNodeControlState struct {
-	Version                 int                            `json:"version"`
-	NodeID                  string                         `json:"node_id"`
-	HubOrigin               string                         `json:"hub_origin"`
-	HubCandidateID          string                         `json:"hub_candidate_id,omitempty"`
-	HubCandidateFingerprint string                         `json:"hub_candidate_fingerprint,omitempty"`
-	HubCandidateVersion     uint64                         `json:"hub_candidate_version,omitempty"`
-	HubCandidateIdentity    e2ee.PublicIdentity            `json:"hub_candidate_identity,omitempty"`
-	PendingPairingUserCode  string                         `json:"pending_pairing_user_code,omitempty"`
-	PendingPairingURI       string                         `json:"pending_pairing_uri,omitempty"`
-	HubID                   string                         `json:"hub_id,omitempty"`
-	HubKeyID                string                         `json:"hub_key_id,omitempty"`
-	HubFingerprint          string                         `json:"hub_fingerprint,omitempty"`
-	HubKeyVersion           uint64                         `json:"hub_key_version,omitempty"`
-	HubPublicIdentity       e2ee.PublicIdentity            `json:"hub_public_identity,omitempty"`
-	NodeKeyID               string                         `json:"node_key_id,omitempty"`
-	NodeKeyFingerprint      string                         `json:"node_key_fingerprint,omitempty"`
-	NodeKeyVersion          uint64                         `json:"node_key_version,omitempty"`
-	BindingID               string                         `json:"binding_id,omitempty"`
-	BindingVersion          uint64                         `json:"binding_version,omitempty"`
-	NodeKeyEpoch            uint64                         `json:"node_key_epoch,omitempty"`
-	ApprovedRequestID       string                         `json:"approved_request_id,omitempty"`
-	ApprovedRequestVersion  int64                          `json:"approved_request_version,omitempty"`
-	ApprovedCandidateDigest string                         `json:"approved_candidate_digest,omitempty"`
-	PendingPairing          *machineNodeControlCandidate   `json:"pending_pairing,omitempty"`
-	Sequence                uint64                         `json:"sequence"`
-	PendingOperationID      string                         `json:"pending_operation_id,omitempty"`
-	PendingOperation        string                         `json:"pending_operation,omitempty"`
-	PendingSequence         uint64                         `json:"pending_sequence,omitempty"`
-	PendingPlaintextDigest  string                         `json:"pending_plaintext_digest,omitempty"`
-	PendingPacket           []byte                         `json:"pending_packet,omitempty"`
-	PendingResponsePacket   []byte                         `json:"pending_response_packet,omitempty"`
-	PendingWorkerID         string                         `json:"pending_worker_id,omitempty"`
-	PendingWorkerAttempt    int                            `json:"pending_worker_attempt,omitempty"`
-	PendingSnapshotPath     string                         `json:"pending_snapshot_path,omitempty"`
-	PendingSnapshotManifest *nodewire.SnapshotManifest     `json:"pending_snapshot_manifest,omitempty"`
-	ClaimTicket             *machineNodeControlClaimTicket `json:"claim_ticket,omitempty"`
+	Version                 int                                 `json:"version"`
+	NodeID                  string                              `json:"node_id"`
+	HubOrigin               string                              `json:"hub_origin"`
+	HubCandidateID          string                              `json:"hub_candidate_id,omitempty"`
+	HubCandidateFingerprint string                              `json:"hub_candidate_fingerprint,omitempty"`
+	HubCandidateVersion     uint64                              `json:"hub_candidate_version,omitempty"`
+	HubCandidateIdentity    e2ee.PublicIdentity                 `json:"hub_candidate_identity,omitempty"`
+	PendingPairingUserCode  string                              `json:"pending_pairing_user_code,omitempty"`
+	PendingPairingURI       string                              `json:"pending_pairing_uri,omitempty"`
+	HubID                   string                              `json:"hub_id,omitempty"`
+	HubKeyID                string                              `json:"hub_key_id,omitempty"`
+	HubFingerprint          string                              `json:"hub_fingerprint,omitempty"`
+	HubKeyVersion           uint64                              `json:"hub_key_version,omitempty"`
+	HubPublicIdentity       e2ee.PublicIdentity                 `json:"hub_public_identity,omitempty"`
+	NodeKeyID               string                              `json:"node_key_id,omitempty"`
+	NodeKeyFingerprint      string                              `json:"node_key_fingerprint,omitempty"`
+	NodeKeyVersion          uint64                              `json:"node_key_version,omitempty"`
+	BindingID               string                              `json:"binding_id,omitempty"`
+	BindingVersion          uint64                              `json:"binding_version,omitempty"`
+	NodeKeyEpoch            uint64                              `json:"node_key_epoch,omitempty"`
+	ApprovedRequestID       string                              `json:"approved_request_id,omitempty"`
+	ApprovedRequestVersion  int64                               `json:"approved_request_version,omitempty"`
+	ApprovedCandidateDigest string                              `json:"approved_candidate_digest,omitempty"`
+	PendingPairing          *machineNodeControlCandidate        `json:"pending_pairing,omitempty"`
+	Sequence                uint64                              `json:"sequence"`
+	PendingOperationID      string                              `json:"pending_operation_id,omitempty"`
+	PendingOperation        string                              `json:"pending_operation,omitempty"`
+	PendingSequence         uint64                              `json:"pending_sequence,omitempty"`
+	PendingPlaintextDigest  string                              `json:"pending_plaintext_digest,omitempty"`
+	PendingPacket           []byte                              `json:"pending_packet,omitempty"`
+	PendingResponsePacket   []byte                              `json:"pending_response_packet,omitempty"`
+	PendingNativePairBody   []byte                              `json:"pending_native_pair_body,omitempty"`
+	NativePairReceipts      map[string]machineNativePairReceipt `json:"native_pair_receipts,omitempty"`
+	NativePairDiagnostic    *machineNativePairDiagnostic        `json:"native_pair_diagnostic,omitempty"`
+	PendingWorkerID         string                              `json:"pending_worker_id,omitempty"`
+	PendingWorkerAttempt    int                                 `json:"pending_worker_attempt,omitempty"`
+	PendingSnapshotPath     string                              `json:"pending_snapshot_path,omitempty"`
+	PendingSnapshotManifest *nodewire.SnapshotManifest          `json:"pending_snapshot_manifest,omitempty"`
+	ClaimTicket             *machineNodeControlClaimTicket      `json:"claim_ticket,omitempty"`
 }
 
 // ClaimTicket retains only the Hub's sealed response. The plaintext job is
@@ -185,6 +189,10 @@ func machineNodeControlPaths(stateDir, nodeID string) (string, string) {
 }
 
 func openMachineNodeControlClient(stateDir, base, nodeID string) (*machineNodeControlClient, error) {
+	return openMachineNodeControlClientMode(stateDir, base, nodeID, false)
+}
+
+func openMachineNodeControlClientMode(stateDir, base, nodeID string, requireExisting bool) (*machineNodeControlClient, error) {
 	identityPath, statePath := machineNodeControlPaths(stateDir, nodeID)
 	if cached, ok := machineNodeControlClients.Load(statePath); ok {
 		client := cached.(*machineNodeControlClient)
@@ -210,6 +218,9 @@ func openMachineNodeControlClient(stateDir, base, nodeID string) (*machineNodeCo
 			return nil, fmt.Errorf("load Node-Control private identity: %w", err)
 		}
 	} else if errors.Is(err, os.ErrNotExist) {
+		if requireExisting {
+			return nil, errors.New("original Node-Control private key is unavailable; refusing replacement")
+		}
 		identity, err = e2ee.NewIdentity()
 		if err != nil {
 			return nil, err
@@ -251,8 +262,13 @@ func openMachineNodeControlClient(stateDir, base, nodeID string) (*machineNodeCo
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return nil, fmt.Errorf("read Node-Control local state: %w", err)
-	} else if err := client.persistLocked(); err != nil {
-		return nil, err
+	} else {
+		if requireExisting {
+			return nil, errors.New("original Node-Control state is unavailable; refusing new enrollment")
+		}
+		if err := client.persistLocked(); err != nil {
+			return nil, err
+		}
 	}
 	public := identity.Public()
 	if client.state.NodeKeyID != "" && (client.state.NodeKeyID != public.ID ||
@@ -365,6 +381,7 @@ func cloneMachineNodeControlState(state machineNodeControlState) machineNodeCont
 	state.HubPublicIdentity = clonePublicIdentity(state.HubPublicIdentity)
 	state.PendingPacket = cloneBytes(state.PendingPacket)
 	state.PendingResponsePacket = cloneBytes(state.PendingResponsePacket)
+	state = cloneMachineNativePairState(state)
 	if state.PendingSnapshotManifest != nil {
 		manifest := *state.PendingSnapshotManifest
 		state.PendingSnapshotManifest = &manifest
@@ -445,6 +462,11 @@ func (client *machineNodeControlClient) call(ctx context.Context, token, operati
 	if len(plain) == 0 || len(plain) > nodewire.MaxRequestPlaintextBytes {
 		return errors.New("Node-Control request exceeds the 64KiB management limit")
 	}
+	if nativePairNodeBusinessOperation(operation) {
+		if _, err := nativePairNodeBody(operation, plain); err != nil {
+			return err
+		}
+	}
 	plainSum := sha256.Sum256(plain)
 	plainDigest := hex.EncodeToString(plainSum[:])
 	client.mu.Lock()
@@ -482,6 +504,9 @@ func (client *machineNodeControlClient) call(ctx context.Context, token, operati
 		client.state.PendingOperation, client.state.PendingSequence = operation, sequence
 		client.state.PendingPlaintextDigest = plainDigest
 		client.state.PendingPacket = packet
+		if nativePairNodeBusinessOperation(operation) {
+			client.state.PendingNativePairBody = append([]byte(nil), plain...)
+		}
 		client.state.PendingResponsePacket = nil
 		client.state.PendingWorkerID, client.state.PendingWorkerAttempt = machineNodeControlPendingWorker(operation, requestBody)
 		if err := client.persistLocked(); err != nil {
@@ -541,7 +566,7 @@ func (client *machineNodeControlClient) call(ctx context.Context, token, operati
 	if err := decodeMachineNodeControlJSON(opened.Plaintext, &envelope); err != nil ||
 		envelope.OperationID != client.state.PendingOperationID || envelope.Sequence != client.state.PendingSequence ||
 		(envelope.OK && (len(envelope.Result) == 0 || envelope.ErrorCode != "")) ||
-		(!envelope.OK && (len(envelope.Result) != 0 || !machineNodeControlResponseCodeAllowed(envelope.ErrorCode))) {
+		(!envelope.OK && (len(envelope.Result) != 0 || !machineNodeControlResponseCodeAllowedFor(client.state.PendingOperation, envelope.ErrorCode))) {
 		if persistErr := invalidateCachedResponse(); persistErr != nil {
 			return persistErr
 		}
@@ -597,6 +622,10 @@ func (client *machineNodeControlClient) call(ctx context.Context, token, operati
 	}
 	previous := cloneMachineNodeControlState(client.state)
 	completedOperation := client.state.PendingOperation
+	if err := client.rememberNativePairReceiptLocked(responsePacket, envelope.Result, envelope.OK, envelope.ErrorCode); err != nil {
+		client.state = previous
+		return err
+	}
 	if completedOperation == "node.jobs.claim" {
 		requestPacket, packetErr := nodewire.DecodePacket(client.state.PendingPacket)
 		if packetErr != nil || requestPacket.Route.Operation != completedOperation ||
@@ -623,6 +652,9 @@ func (client *machineNodeControlClient) call(ctx context.Context, token, operati
 		return err
 	}
 	if !envelope.OK {
+		if nativePairNodeBusinessOperation(completedOperation) {
+			return errNativePairNodeRejected
+		}
 		switch envelope.ErrorCode {
 		case "RESULT_TOO_LARGE":
 			return errors.New("Node-Control rejected the queued Worker task because it exceeds the 2MiB response limit")
@@ -740,7 +772,7 @@ func (client *machineNodeControlClient) recoverPending(ctx context.Context, toke
 	if err := decodeMachineNodeControlJSON(opened.Plaintext, &envelope); err != nil ||
 		envelope.OperationID != client.state.PendingOperationID || envelope.Sequence != client.state.PendingSequence ||
 		(envelope.OK && (len(envelope.Result) == 0 || envelope.ErrorCode != "")) ||
-		(!envelope.OK && (len(envelope.Result) != 0 || !machineNodeControlResponseCodeAllowed(envelope.ErrorCode))) {
+		(!envelope.OK && (len(envelope.Result) != 0 || !machineNodeControlResponseCodeAllowedFor(client.state.PendingOperation, envelope.ErrorCode))) {
 		return errors.New("recovered Node-Control response body is invalid")
 	}
 	if !envelope.OK {
@@ -773,6 +805,10 @@ func (client *machineNodeControlClient) recoverPending(ctx context.Context, toke
 	}
 	previous := cloneMachineNodeControlState(client.state)
 	operation := client.state.PendingOperation
+	if err := client.rememberNativePairReceiptLocked(responsePacket, envelope.Result, envelope.OK, envelope.ErrorCode); err != nil {
+		client.state = previous
+		return err
+	}
 	workerID, attempt := client.state.PendingWorkerID, client.state.PendingWorkerAttempt
 	if operation == "node.jobs.claim" && envelope.OK {
 		requestPacket, packetErr := nodewire.DecodePacket(client.state.PendingPacket)
@@ -933,7 +969,7 @@ func recoverMachineNodeControlOutbox(ctx context.Context, base, nodeID, token st
 	if err != nil {
 		return err
 	}
-	return client.recoverPending(ctx, token)
+	return client.recoverNodeControlPending(ctx, token)
 }
 
 func (client *machineNodeControlClient) postPacket(ctx context.Context, token string, packet []byte) ([]byte, error) {
@@ -957,7 +993,17 @@ func (client *machineNodeControlClient) postPacket(ctx context.Context, token st
 		return nil, err
 	}
 	defer response.Body.Close()
-	data, err := io.ReadAll(io.LimitReader(response.Body, int64(nodewire.MaxPacketBytes)+1))
+	limit := nodewire.MaxPacketBytes
+	pairResponse := false
+	if original, decodeErr := nodewire.DecodePacket(packet); decodeErr == nil {
+		switch {
+		case nativePairNodeBusinessOperation(original.Route.Operation):
+			limit, pairResponse = wire.MaxNativePairNodeReceiptBytes, true
+		case original.Route.Operation == wire.OperationNativePairNodeReconcile:
+			limit, pairResponse = wire.MaxNativePairNodeReconcilePacketBytes, true
+		}
+	}
+	data, err := io.ReadAll(io.LimitReader(response.Body, int64(limit)+1))
 	if err != nil {
 		return nil, err
 	}
@@ -965,10 +1011,14 @@ func (client *machineNodeControlClient) postPacket(ctx context.Context, token st
 		return nil, &machineAPIError{StatusCode: response.StatusCode, Status: response.Status,
 			Body: strings.TrimSpace(string(truncateMachineAPIError(data)))}
 	}
-	if len(data) == 0 || len(data) > nodewire.MaxPacketBytes {
+	if len(data) == 0 || len(data) > limit {
 		return nil, errors.New("Hub returned an invalid Node-Control response packet size")
 	}
-	if _, err := nodewire.DecodePacket(data); err != nil {
+	if pairResponse {
+		if _, err := wire.DecodeNativePairNodePacket(data); err != nil {
+			return nil, errors.New("Hub returned an invalid native Pair Node-Control response packet")
+		}
+	} else if _, err := nodewire.DecodePacket(data); err != nil {
 		return nil, errors.New("Hub returned an invalid Node-Control response packet")
 	}
 	return data, nil
@@ -988,6 +1038,8 @@ func (client *machineNodeControlClient) clearPendingLocked() {
 	client.state.PendingPlaintextDigest = ""
 	client.state.PendingPacket = nil
 	client.state.PendingResponsePacket = nil
+	client.state.PendingNativePairBody = nil
+	client.state.NativePairDiagnostic = nil
 	client.state.PendingWorkerID = ""
 	client.state.PendingWorkerAttempt = 0
 	client.state.PendingSnapshotPath = ""
@@ -1298,7 +1350,7 @@ func awaitMachineNodeControlBinding(ctx context.Context, stateDir, base, nodeID,
 		return err
 	}
 	if client.bindingReady() {
-		if err := client.recoverPending(ctx, token); err != nil {
+		if err := client.recoverNodeControlPending(ctx, token); err != nil {
 			return fmt.Errorf("recover durable Node-Control outbox: %w", err)
 		}
 		if verifyRPC {

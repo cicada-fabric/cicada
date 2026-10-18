@@ -260,6 +260,13 @@ func machineAPIJSON(ctx context.Context, endpoint, method string, payload, targe
 		}
 	}
 	if target != nil && len(data) > 0 {
+		if raw, ok := target.(*machineNativePairRawJSON); ok {
+			if !json.Valid(data) {
+				return errors.New("invalid native Pair authorization JSON")
+			}
+			*raw = append((*raw)[:0], data...)
+			return nil
+		}
 		return json.Unmarshal(data, target)
 	}
 	return nil

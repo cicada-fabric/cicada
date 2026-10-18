@@ -340,6 +340,50 @@ func (s *CryptoState) VerifyNativePairGroupEvidence(ctx context.Context, groupID
 	return required, err
 }
 
+// VerifyNativePairGroupAuthorization adds the independent live Current carrier
+// to the retained Owner policy. The routed Group selects required, never a flag
+// or a Group copied out of the peer's bundle. Legacy Groups need both absent.
+func (s *CryptoState) VerifyNativePairGroupAuthorization(ctx context.Context, groupID string, evidence *wire.NativePairPeerEvidence, current *wire.NativePairPeerCurrent, sender, receiver string, now time.Time) (required bool, result error) {
+	if ctx == nil || now.IsZero() || validateCryptoToken("Group ID", groupID) != nil {
+		return false, ErrNativePairPolicy
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.checkOpen(); err != nil {
+		return false, err
+	}
+	err := s.writeTx(ctx, func(conn *sql.Conn) error {
+		var id string
+		err := conn.QueryRowContext(ctx, `SELECT pair_id FROM node_native_pair_policies WHERE group_id=?`, groupID).Scan(&id)
+		if errors.Is(err, sql.ErrNoRows) {
+			if evidence != nil || current != nil {
+				return ErrNativePairPolicy
+			}
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		required = true
+		if evidence == nil || current == nil || evidence.Plan.PairID != id {
+			return ErrNativePairPolicy
+		}
+		p, err := loadNativePairPolicy(ctx, conn, id)
+		if err != nil {
+			return err
+		}
+		if evidence.Plan.GroupID != groupID || evidence.Plan.NetworkID != p.NetworkID || evidence.Plan.BootstrapProofDigest != p.BootstrapDigest || !bytes.Equal(evidence.BootstrapOwnerProof, p.BootstrapProof) {
+			return ErrNativePairPolicy
+		}
+		trust, err := loadNodeOwnerKeyTrust(ctx, conn, evidence.Plan.Scope.Actor.OwnerID, evidence.Plan.Scope.Actor.OwnerPublic.ID)
+		if err != nil || trust.State != NodeOwnerKeyTrustActive || wire.VerifyNativePairPeerAuthorization(true, evidence, current, p.HubIdentity, trust.PublicIdentity, p.NodeTupleDigest, sender, receiver, now) != nil {
+			return ErrNativePairPolicy
+		}
+		return nil
+	})
+	return required, err
+}
+
 // ConfirmNativePairAdmission is called only after an authenticated matching Hub
 // receipt/current delivery authorization. A reserved reply alone cannot free an
 // outstanding ask. This does not refund any message or byte reservation.

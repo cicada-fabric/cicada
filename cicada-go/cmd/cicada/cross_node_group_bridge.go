@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"net/url"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -19,6 +18,7 @@ import (
 	"github.com/cicada-ai/cicada/internal/e2ee"
 	"github.com/cicada-ai/cicada/internal/fabric"
 	"github.com/cicada-ai/cicada/internal/harness"
+	wire "github.com/cicada-ai/cicada/internal/hubaccountwire"
 	"github.com/cicada-ai/cicada/internal/nodeinbox"
 	"github.com/cicada-ai/cicada/internal/nodekeys"
 	"github.com/cicada-ai/cicada/internal/nodelocal"
@@ -49,6 +49,8 @@ type crossNodeGroupPeerKey struct {
 	NativeContextScope store.NativeContextScopeMetadata `json:"native_context_scope"`
 	Sender             crossNodeGroupEndpointEvidence   `json:"sender"`
 	Receiver           crossNodeGroupEndpointEvidence   `json:"receiver"`
+	NativePairEvidence *wire.NativePairPeerEvidence     `json:"native_pair_evidence,omitempty"`
+	NativePairCurrent  *wire.NativePairPeerCurrent      `json:"native_pair_current,omitempty"`
 }
 
 type crossNodeGroupDeliveryAuthorization struct {
@@ -68,6 +70,8 @@ type crossNodeGroupDeliveryAuthorization struct {
 	Sender             crossNodeGroupEndpointEvidence                `json:"sender"`
 	Receiver           crossNodeGroupEndpointEvidence                `json:"receiver"`
 	TaskHandoff        *store.SealedTaskHandoffDeliveryAuthorization `json:"task_handoff,omitempty"`
+	NativePairEvidence *wire.NativePairPeerEvidence                  `json:"native_pair_evidence,omitempty"`
+	NativePairCurrent  *wire.NativePairPeerCurrent                   `json:"native_pair_current,omitempty"`
 }
 
 type crossNodeGroupSendReceipt struct {
@@ -106,6 +110,13 @@ func (b *machineAgentJoinBridge) crossNodeGroupWithBroadcastFence(request crossN
 	if err != nil {
 		return nil, err
 	}
+	required, err := nativePairGroupRequired(b.ctx, b.stateDir, b.nodeID, request.GroupID)
+	if err != nil {
+		return nil, err
+	}
+	if required && ((request.Operation != "cross_node_group_ask" && request.Operation != "cross_node_group_reply" && request.Operation != "cross_node_group_status" && request.Operation != "cross_node_group_cancel") || request.ParentRequestID != "" || len(request.Body) > 8192) {
+		return nil, nodekeys.ErrNativePairBudget
+	}
 	switch request.Operation {
 	case "cross_node_group_send", "cross_node_group_ask":
 		return b.crossNodeGroupSendAsk(request, card, fence)
@@ -115,6 +126,9 @@ func (b *machineAgentJoinBridge) crossNodeGroupWithBroadcastFence(request crossN
 		}
 		return b.crossNodeGroupTaskHandoff(request, card)
 	case "cross_node_group_reply":
+		if required {
+			return b.crossNodeGroupReply(request, card)
+		}
 		// Same-Node requests already have a durable local ledger. Only an exact
 		// not-found result permits looking up the independent Hub Group request.
 		localRequest := crossNodeGroupLocalRequest(request, "local_reply")
@@ -131,6 +145,9 @@ func (b *machineAgentJoinBridge) crossNodeGroupWithBroadcastFence(request crossN
 		}
 		return b.crossNodeGroupReply(request, card)
 	case "cross_node_group_status", "cross_node_group_cancel":
+		if required {
+			return b.crossNodeGroupRequestControl(request, card)
+		}
 		// Status and cancellation consult the Node-local ledger first, then the
 		// Hub's durable request record only when no local request exists.
 		localOperation := "local_status"
@@ -220,6 +237,9 @@ func (b *machineAgentJoinBridge) fetchCrossNodeGroupPeerKeyMode(groupID, sourceE
 	if err := decodeStrictBridgeJSON(data, &peerKey); err != nil {
 		return crossNodeGroupPeerKey{}, errors.New("Hub returned invalid current same-Group key evidence")
 	}
+	if err := validateNativePairCarrierBounds(data, peerKey, peerKey.NativePairEvidence, peerKey.NativePairCurrent); err != nil {
+		return crossNodeGroupPeerKey{}, err
+	}
 	if err := validateCrossNodeGroupPeerKeyMode(peerKey, groupID, sourceEndpointID, targetEndpointID, b.nodeID, allowSameNode); err != nil {
 		return crossNodeGroupPeerKey{}, err
 	}
@@ -304,6 +324,10 @@ func (b *machineAgentJoinBridge) crossNodeGroupTaskHandoff(request crossNodeGrou
 
 func (b *machineAgentJoinBridge) crossNodeGroupSendAsk(request crossNodeGroupRequest,
 	card fabric.NetworkCard, fence *groupBroadcastDeliveryFence) (*crossNodeGroupResult, error) {
+	pairRequired, err := nativePairGroupRequired(b.ctx, b.stateDir, b.nodeID, request.GroupID)
+	if err != nil {
+		return nil, err
+	}
 	messageID, derivedRequestID, err := localSealedRPCIDs(request.OperationID)
 	if err != nil {
 		return nil, err
@@ -312,7 +336,11 @@ func (b *machineAgentJoinBridge) crossNodeGroupSendAsk(request crossNodeGroupReq
 	if request.Operation == "cross_node_group_ask" {
 		localOperation = "local_ask"
 	}
-	legacy, legacyErr := b.replayLegacyLocalGroupMessage(crossNodeGroupLocalRequest(request, localOperation), fence)
+	var legacy *localGroupResult
+	legacyErr := nodelocal.ErrMessageNotFound
+	if !pairRequired {
+		legacy, legacyErr = b.replayLegacyLocalGroupMessage(crossNodeGroupLocalRequest(request, localOperation), fence)
+	}
 	if !errors.Is(legacyErr, nodelocal.ErrMessageNotFound) {
 		if legacyErr != nil {
 			return nil, legacyErr
@@ -354,6 +382,9 @@ func (b *machineAgentJoinBridge) sealAndSendCrossNodeGroup(request crossNodeGrou
 		return nil, err
 	}
 	defer state.Close()
+	if peerKey.NativePairEvidence != nil && ((kind != "REQUEST" && kind != "REPLY") || request.ParentRequestID != "" || len(request.Body) > 8192) {
+		return nil, nodekeys.ErrNativePairBudget
+	}
 	route.MessageID, route.RequestID, route.ReplyTo, route.Kind = messageID, requestID, replyTo, kind
 	if kind == "REQUEST" || kind == "REPLY" {
 		route.ParentRequestID = request.ParentRequestID
@@ -371,6 +402,16 @@ func (b *machineAgentJoinBridge) sealAndSendCrossNodeGroup(request crossNodeGrou
 		return nil, fmt.Errorf("seal durable same-Group Endpoint message: %w", err)
 	}
 	ciphertext := append([]byte(nil), outbound.Envelope...)
+	var pairMessage nodekeys.NativePairMessage
+	if peerKey.NativePairEvidence != nil {
+		pairMessage, err = nativePairMessage(kind, messageID, requestID, request.ParentRequestID, source.EndpointID, target.EndpointID, plaintext, ciphertext)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := state.ReserveNativePairMessage(b.ctx, *peerKey.NativePairEvidence, pairMessage, time.Now().UTC()); err != nil {
+			return nil, err
+		}
+	}
 	if kind == "SEND" {
 		input := fabric.NodeSameGroupSealedV1SendInput{
 			GroupID: request.GroupID, SourceEndpointID: source.EndpointID,
@@ -420,6 +461,14 @@ func (b *machineAgentJoinBridge) sealAndSendCrossNodeGroup(request crossNodeGrou
 			(accepted.State != store.FabricRequestReplied && accepted.State != store.FabricRequestLateResult) {
 			return nil, &localSealedSendError{message: "Hub returned an invalid same-Group REPLY receipt", retryable: true}
 		}
+		if peerKey.NativePairEvidence != nil {
+			if accepted.State != store.FabricRequestReplied {
+				return nil, nodekeys.ErrNativePairBudget
+			}
+			if err := state.ConfirmNativePairAdmission(b.ctx, peerKey.NativePairEvidence.Plan.PairID, pairMessage.MessageID, pairMessage.Digest); err != nil {
+				return nil, err
+			}
+		}
 		delivery := "RELAY_PERSISTED"
 		if accepted.State == store.FabricRequestLateResult {
 			delivery = "LATE_RESULT_RETAINED"
@@ -454,6 +503,11 @@ func (b *machineAgentJoinBridge) sealAndSendCrossNodeGroup(request crossNodeGrou
 		accepted.PayloadMode != store.RelayPayloadModeSealedV1 {
 		return nil, &localSealedSendError{message: "Hub returned an invalid same-Group ASK receipt", retryable: true}
 	}
+	if peerKey.NativePairEvidence != nil {
+		if err := state.ConfirmNativePairAdmission(b.ctx, peerKey.NativePairEvidence.Plan.PairID, pairMessage.MessageID, pairMessage.Digest); err != nil {
+			return nil, err
+		}
+	}
 	return &crossNodeGroupResult{
 		MessageID: messageID, RequestID: requestID, TargetEndpointID: target.EndpointID,
 		State: accepted.State, Delivery: "RELAY_PERSISTED", PayloadMode: accepted.PayloadMode,
@@ -473,7 +527,11 @@ func (b *machineAgentJoinBridge) pinCrossNodeGroupPeer(peerKey crossNodeGroupPee
 		_ = state.Close()
 		return nil, nil, e2ee.EndpointMessageContext{}, nodekeys.PeerPinIdentity{}, nodekeys.PeerPinScope{}, err
 	}
-	identity, err := nodekeys.LoadOrCreate(machineNodeStateDir(b.stateDir, b.nodeID), local.EndpointID)
+	required, err := verifyNativePairPeerTarget(b.ctx, state, peerKey.HubID, peerKey.GroupID, peerKey.NativePairEvidence, peerKey.NativePairCurrent, peerKey.Sender, peerKey.Receiver)
+	if err != nil {
+		return closeOnError(err)
+	}
+	identity, err := loadNativePairPeerIdentity(b.ctx, state, machineNodeStateDir(b.stateDir, b.nodeID), local.EndpointID, required)
 	if err != nil {
 		return closeOnError(err)
 	}
@@ -695,6 +753,25 @@ func (b *machineAgentJoinBridge) crossNodeGroupRequestControl(request crossNodeG
 		}
 		status = cancelled
 	}
+	if status.State == store.FabricRequestCancelled || status.State == store.FabricRequestExpired {
+		state, err := nodekeys.OpenCryptoState(machineNodeStateDir(b.stateDir, b.nodeID))
+		if err != nil {
+			return nil, err
+		}
+		required, requiredErr := state.NativePairPolicyRequired(b.ctx, request.GroupID)
+		if requiredErr == nil && required {
+			policy, policyErr := state.NativePairPolicyForGroup(b.ctx, request.GroupID)
+			if policyErr != nil {
+				requiredErr = policyErr
+			} else {
+				requiredErr = state.CloseNativePairRequest(b.ctx, policy.PairID, status.RequestID, status.SenderEndpointID, status.State)
+			}
+		}
+		closeErr := state.Close()
+		if requiredErr != nil || closeErr != nil {
+			return nil, errors.Join(requiredErr, closeErr)
+		}
+	}
 	return &crossNodeGroupResult{
 		MessageID: status.MessageID, RequestID: status.RequestID,
 		TargetEndpointID: status.ReceiverEndpointID, State: status.State,
@@ -707,8 +784,20 @@ func fetchCrossNodeGroupDeliveryAuthorization(ctx context.Context, base, nodeID,
 	messageID, attemptID string) (*crossNodeGroupDeliveryAuthorization, error) {
 	endpoint := strings.TrimRight(base, "/") + "/v2/relay/nodes/" + url.PathEscape(nodeID) +
 		"/group/sealed/deliveries/" + url.PathEscape(messageID) + "/authorization?attempt_id=" + url.QueryEscape(attemptID)
+	var raw machineNativePairRawJSON
+	if err := machineAPIJSON(ctx, endpoint, http.MethodGet, nil, &raw); err != nil {
+		return nil, err
+	}
 	var authorization crossNodeGroupDeliveryAuthorization
-	if err := machineAPIJSON(ctx, endpoint, http.MethodGet, nil, &authorization); err != nil {
+	if err := json.Unmarshal(raw, &authorization); err != nil {
+		return nil, errors.New("Hub returned invalid same-Group delivery authorization")
+	}
+	if authorization.NativePairEvidence != nil || authorization.NativePairCurrent != nil {
+		if err := decodeStrictBridgeJSON(raw, &authorization); err != nil {
+			return nil, errors.New("Hub returned invalid native Pair delivery fields")
+		}
+	}
+	if err := validateNativePairCarrierBounds(raw, authorization, authorization.NativePairEvidence, authorization.NativePairCurrent); err != nil {
 		return nil, err
 	}
 	return &authorization, nil
@@ -817,7 +906,11 @@ func openMachineCrossNodeGroupDelivery(ctx context.Context, stateDir, machineID 
 	if !crossNodeGroupDeliveryRouteContextMatches(envelope.Context, authorization) {
 		return machineSealedOpenResult{}, errors.New("same-Group envelope context does not match current Endpoint evidence")
 	}
-	localIdentity, err := nodekeys.LoadOrCreate(machineNodeStateDir(stateDir, machineID), authorization.Receiver.EndpointID)
+	required, err := verifyNativePairPeerTarget(ctx, state, expectedHubID, authorization.Receiver.GroupID, authorization.NativePairEvidence, authorization.NativePairCurrent, authorization.Sender, authorization.Receiver)
+	if err != nil {
+		return machineSealedOpenResult{}, err
+	}
+	localIdentity, err := loadNativePairPeerIdentity(ctx, state, machineNodeStateDir(stateDir, machineID), authorization.Receiver.EndpointID, required)
 	if err != nil {
 		return machineSealedOpenResult{}, err
 	}
@@ -868,6 +961,18 @@ func openMachineCrossNodeGroupDelivery(ctx context.Context, stateDir, machineID 
 	if err := validateSealedTaskHandoffPayload(authorization.TaskHandoff,
 		delivery.MessageID, delivery.Route, opened.Plaintext); err != nil {
 		return machineSealedOpenResult{}, err
+	}
+	if required {
+		message, err := nativePairMessage(delivery.Route.Kind, delivery.MessageID, delivery.Route.RequestID, authorization.ParentRequestID, authorization.Sender.EndpointID, authorization.Receiver.EndpointID, opened.Plaintext, delivery.Ciphertext)
+		if err != nil {
+			return machineSealedOpenResult{}, err
+		}
+		if _, err := state.ReserveNativePairMessage(ctx, *authorization.NativePairEvidence, message, time.Now().UTC()); err != nil {
+			return machineSealedOpenResult{}, err
+		}
+		if err := state.ConfirmNativePairAdmission(ctx, authorization.NativePairEvidence.Plan.PairID, message.MessageID, message.Digest); err != nil {
+			return machineSealedOpenResult{}, err
+		}
 	}
 	if _, _, err := decodeGroupSpaceMessagePayload(opened.Plaintext); err != nil {
 		return machineSealedOpenResult{}, fmt.Errorf("same-Group sealed GroupSpace reference payload is invalid: %w", err)
@@ -1001,9 +1106,20 @@ func drainMachineCrossNodeGroupRelayClaim(ctx context.Context, base, machineID, 
 			result = errors.Join(result, abandonMachineNativeClaim(ctx, inbox, claim))
 		}
 	}()
+	operation, err := machineRelayNativeOperation(ctx, claim, entry)
+	if err != nil {
+		return err
+	}
 	reject := func() error {
-		err := rejectMachineRelayClaimBeforeInjection(ctx, base, machineID, inbox, journal, claim, entry,
-			"current same-Group authorization or local trust verification failed")
+		err := rejectMachineNativeUnexecuted(ctx, claim.SessionID, operation, func(rejectCtx context.Context) error {
+			return rejectMachineRelayClaimBeforeInjection(rejectCtx, base, machineID, inbox, journal, claim, entry,
+				"current same-Group authorization or local trust verification failed")
+		})
+		var historical *machineNativeHistoricalOutcomeError
+		if errors.As(err, &historical) {
+			disposed = true // Retain the original local claim with its writer facts.
+			return err
+		}
 		// RejectBeforeInjection is durable even if its remote receipt fails. Never
 		// attempt to abandon a locally rejected row through the cleanup path.
 		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
@@ -1050,10 +1166,8 @@ func drainMachineCrossNodeGroupRelayClaim(ctx context.Context, base, machineID, 
 	if entry.Harness != "codex" {
 		return reject()
 	}
-	operation, err := machineRelayNativeOperation(ctx, claim, entry)
-	if err != nil {
-		return err
-	}
+	var pairQueueAuthorization *crossNodeGroupDeliveryAuthorization
+	var pairQueueMessage nodekeys.NativePairMessage
 	queueErr := runMachineNativeDelivery(ctx, claim.SessionID, operation,
 		func(queueCtx context.Context) (string, []nodeinbox.NativeContextScopeInput, error) {
 			// The physical writer is already held. Refresh the exact attempt's Hub
@@ -1068,8 +1182,19 @@ func drainMachineCrossNodeGroupRelayClaim(ctx context.Context, base, machineID, 
 				return "", nil, fmt.Errorf("current same-Group authorization after writer wait: %w", err)
 			}
 			if err := verifyCrossNodeGroupDeliveryAuthorization(machineID, delivery, *current); err != nil ||
-				!reflect.DeepEqual(*authorization, *current) {
+				!sameNativePairDeliveryAuthority(*authorization, *current) {
 				return "", nil, &machineNativeDeliveryDeniedError{cause: errors.New("same-Group authority changed before native admission")}
+			}
+			pairRequired, err := verifyNativePairDeliveryTarget(queueCtx, stateDir, machineID, *current)
+			if err != nil {
+				return "", nil, &machineNativeDeliveryDeniedError{cause: err}
+			}
+			if pairRequired {
+				pairQueueMessage, err = nativePairMessage(delivery.Route.Kind, delivery.MessageID, delivery.Route.RequestID, current.ParentRequestID, current.Sender.EndpointID, current.Receiver.EndpointID, claim.Payload, delivery.Ciphertext)
+				if err != nil {
+					return "", nil, &machineNativeDeliveryDeniedError{cause: err}
+				}
+				pairQueueAuthorization = current
 			}
 			if current.Sender.Grant == nil || current.Receiver.Grant == nil {
 				return "", nil, &machineNativeDeliveryDeniedError{cause: errors.New("missing same-Group Owner grant")}
@@ -1100,6 +1225,11 @@ func drainMachineCrossNodeGroupRelayClaim(ctx context.Context, base, machineID, 
 			}
 			return prompt, []nodeinbox.NativeContextScopeInput{scope}, nil
 		}, func(queueCtx context.Context) error {
+			if pairQueueAuthorization != nil {
+				if err := reserveNativePairQueueAdmission(queueCtx, stateDir, machineID, *pairQueueAuthorization, pairQueueMessage, claim.SessionID); err != nil {
+					return err
+				}
+			}
 			_, err := inbox.BeginInjection(queueCtx, claim.AttemptID)
 			if err == nil {
 				injectionBegan = true
@@ -1109,6 +1239,13 @@ func drainMachineCrossNodeGroupRelayClaim(ctx context.Context, base, machineID, 
 	// runMachineNativeDelivery has closed the writer here. Completion and
 	// recovery acquire it again to verify the durable outcome.
 	if queueErr != nil {
+		var historical *machineNativeHistoricalOutcomeError
+		if errors.As(queueErr, &historical) {
+			// Keep the original inbox/writer facts. Current revocation is not a
+			// no-effect fence or a cancellation of an already queued invocation.
+			disposed = true
+			return queueErr
+		}
 		var denied *machineNativeDeliveryDeniedError
 		if !injectionBegan {
 			if (errors.As(queueErr, &denied) || machineNativeDeliveryIdentityConflict(queueErr)) && ctx.Err() == nil {

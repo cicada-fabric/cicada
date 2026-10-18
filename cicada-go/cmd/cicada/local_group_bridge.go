@@ -484,6 +484,11 @@ func (b *machineAgentJoinBridge) localGroupWithBroadcastFence(request localGroup
 	if _, err := b.verifyLocalGroupSource(request); err != nil {
 		return nil, err
 	}
+	if required, err := nativePairGroupRequired(b.ctx, b.stateDir, b.nodeID, request.GroupID); err != nil {
+		return nil, err
+	} else if required {
+		return nil, errors.New("native Pair operations require the current sealed Relay path")
+	}
 	if request.Operation == "local_receive" {
 		return b.receiveLocalGroup(request)
 	}
@@ -771,6 +776,11 @@ func (b *machineAgentJoinBridge) revalidateLocalGroupRoute(
 // local ledgers did not persist the caller's unused IdempotencyKey; operation ID,
 // authenticated plaintext, deadline and the entire current route are checked.
 func (b *machineAgentJoinBridge) replayLegacyLocalGroupMessage(request localGroupRequest, fence *groupBroadcastDeliveryFence) (*localGroupResult, error) {
+	if required, err := nativePairGroupRequired(b.ctx, b.stateDir, b.nodeID, request.GroupID); err != nil {
+		return nil, err
+	} else if required {
+		return nil, errors.New("reserved Pair cannot replay a legacy local delivery")
+	}
 	messageID, requestID, err := localSealedRPCIDs(request.OperationID)
 	if err != nil {
 		return nil, err

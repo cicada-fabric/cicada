@@ -284,6 +284,7 @@ type nativeDeliveryRelayFixture struct {
 	receiptsMu       sync.Mutex
 	receipts         []string
 	guardUnavailable atomic.Bool
+	guardStatus      atomic.Int32
 	guardCalls       atomic.Int32
 }
 
@@ -300,6 +301,10 @@ func newNativeDeliveryRelayFixture(t *testing.T) *nativeDeliveryRelayFixture {
 	local.hub.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/authorization") {
 			f.guardCalls.Add(1)
+			if status := f.guardStatus.Load(); status != 0 {
+				http.Error(w, "synthetic current authority denial", int(status))
+				return
+			}
 			if f.guardUnavailable.Load() {
 				http.Error(w, "synthetic temporary authority outage", http.StatusServiceUnavailable)
 				return
