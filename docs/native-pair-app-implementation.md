@@ -7,9 +7,10 @@ This document describes the App consumer of
 [the Native Pair contract](hub-native-pair-contract.md). It does not establish
 Hub Guard, Store, real Codex Runtime, Windows desktop or deployment acceptance.
 The earlier delivered login executable does not contain this implementation.
-The A2 Hub preparation checkpoint keeps its public capability unavailable;
-this App therefore sends no new Owner proof against that checkpoint. Positive
-App actor tests exercise the frozen full contract, not an available deployment.
+The historical A2 preparation checkpoint kept its public capability unavailable;
+this App sends no new Owner proof against such a composition. The later
+`995126d` production composition advertises availability; the fresh MCP gate
+below exercises it in a disposable Hub, not an available deployment.
 
 ## App interactions
 
@@ -46,6 +47,17 @@ expiry/logout hides private Pair metadata and administrative actions while
 preserving the pair's independent peer lifetime. It never sends an implicit
 revocation. Expired reviews cannot enable signing; restarted observations are
 historical until a fresh authenticated operation confirms current eligibility.
+
+Occupied status slots may retain their original SID and binding tuple after
+the current candidate manifest disappears. The App validates all base fields,
+epochs, revisions and the peer lease ceiling. A wholly absent candidate is
+accepted only for JOINED_ZERO while waiting, or JOINED_ZERO/ACTIVE historical
+slots in REVOKED/EXPIRED with no administrative permission. Mixed or invalid
+candidate fields remain rejected; ACTIVE results, plans and consents retain
+their complete shared validation. This permits an authenticated completed
+revoke to settle its exact original without inventing a replacement candidate
+or treating the effect as NO_EFFECT. Revocation's observed membership revisions
+remain the actual incremented revisions.
 
 ## Local identity and independent Node pin
 
@@ -221,12 +233,17 @@ Current corruption, independent local Owner revocation, INJECTING plus process
 termination, and slot-generation recovery have their own effective caller
 assertions. Normal and race results retain their exact source/binary evidence.
 
-Public Pair capability remains unavailable. The actual TCP fixture explicitly
-uses the reviewed development probe to obtain the original Join receipts;
-the real MCP entry then recovers those receipts. A fresh MCP Join against
-capability=false sends no Describe/Join. A scripted actor separately exercises
-fresh positive dispatch. Neither result establishes a fresh public SDK/App
-workflow, real Codex consumption, Windows or public deployment acceptance.
+The historical `5daa9f7` TCP gate used a development probe for the initial Join
+because public availability was false. Its source and results remain separate.
+After `995126d`, the affected fresh gate starts both original sessions through
+actual production discovery and `cicada_join`, with no probe, availability shim
+or SQL state override. It covers lost Join/candidate responses, dual consent,
+sealed ASK/REPLY and the next explicit MCP Join after a permanent g1 fence and
+Owner rejection reserves g2. An actual unsupported account-only composition
+emits no Describe/Join. The fixture checks the exact Node request was durable
+before forwarding each POST. These tests use synthetic records and queue
+subprocesses; actual App/Hub Owner actions have their own QA gate. Real Codex
+consumption, Windows and public deployment acceptance remain separate.
 This work does not alter the delivered Windows executable or App UI.
 
 ## Verification scope

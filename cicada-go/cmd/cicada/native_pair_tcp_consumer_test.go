@@ -24,18 +24,10 @@ import (
 
 func (f *nativePairTCPConsumerFixture) admittedPair(t *testing.T, loss bool) {
 	t.Helper()
-	// Actual public discovery remains unavailable. This is not a discovery shim.
-	f.mu.Lock()
-	before := len(f.nodePackets[wire.OperationNativePairNodeDescribe]) + len(f.nodePackets[wire.OperationNativePairNodeJoin])
-	f.mu.Unlock()
-	if _, err := f.recoverMCP(t, 0); err == nil {
-		t.Fatal("actual unavailable Hub admitted a fresh MCP Pair Join")
-	}
-	f.mu.Lock()
-	after := len(f.nodePackets[wire.OperationNativePairNodeDescribe]) + len(f.nodePackets[wire.OperationNativePairNodeJoin])
-	f.mu.Unlock()
-	if before != after {
-		t.Fatal("fresh unavailable MCP emitted Describe/Join")
+	// Availability comes from the production Hub response, without a shim.
+	raw := f.http(t, http.MethodGet, wire.NativePairCapabilitiesPath, "", "", nil, http.StatusOK)
+	if _, err := wire.DecodeNativePairCapabilities(raw); err != nil {
+		t.Fatal("production Hub has not declared the reviewed Pair profile available", err)
 	}
 	for i := 0; i < 2; i++ {
 		if i == 0 && loss {
@@ -43,23 +35,43 @@ func (f *nativePairTCPConsumerFixture) admittedPair(t *testing.T, loss bool) {
 			f.dropJoin, f.dropCandidate = 2, 1
 			f.mu.Unlock()
 		}
-		f.explicitNodeJoinProbe(t, i)
 		if i == 0 && loss {
-			if _, err := f.recoverMCP(t, i); err == nil {
+			if _, err := f.joinMCP(t, i); err == nil {
 				t.Fatal("lost actual candidate acknowledgement reported ready")
 			}
+			f.joins[i] = f.originalJoin(t, i)
+			machineNodeControlClients.Delete(f.client.statePath)
 		}
-		machineNodeControlClients.Delete(f.client.statePath)
-		result, err := f.recoverMCP(t, i)
+		result, err := f.joinMCP(t, i)
 		if err != nil {
 			t.Fatal(err)
 		}
+		f.joins[i] = f.originalJoin(t, i)
 		public := result.(mcpPublicJoinResult)
-		if !public.Reused || public.Endpoint.NativeSessionID != f.native[i] || public.Endpoint.Workspace != f.workspace || public.BindingID != f.joins[i].BindingID || public.BindingEpoch != f.joins[i].BindingEpoch {
-			t.Fatal("actual MCP recovery replaced original context/binding")
+		if public.Reused != (i == 0 && loss) || public.Endpoint.NativeSessionID != f.native[i] || public.Endpoint.Workspace != f.workspace || public.BindingID != f.joins[i].BindingID || public.BindingEpoch != f.joins[i].BindingEpoch {
+			t.Fatal("fresh MCP Join changed the original context/binding or reuse state")
 		}
 		if raw, _ := json.Marshal(public); bytes.Contains(raw, []byte(f.joins[i].SessionToken)) || bytes.Contains(raw, []byte("bootstrap_owner_proof")) {
 			t.Fatal("private transport material entered actual public Join result")
+		}
+		f.mu.Lock()
+		beforeDescribe := len(f.nodePackets[wire.OperationNativePairNodeDescribe])
+		beforeJoin := len(f.nodePackets[wire.OperationNativePairNodeJoin])
+		f.mu.Unlock()
+		machineNodeControlClients.Delete(f.client.statePath)
+		result, err = f.joinMCP(t, i)
+		if err != nil {
+			t.Fatal(err)
+		}
+		public = result.(mcpPublicJoinResult)
+		if !public.Reused || public.BindingID != f.joins[i].BindingID || public.BindingEpoch != f.joins[i].BindingEpoch {
+			t.Fatal("reopened MCP replaced its original accepted Join")
+		}
+		f.mu.Lock()
+		changed := len(f.nodePackets[wire.OperationNativePairNodeDescribe]) != beforeDescribe || len(f.nodePackets[wire.OperationNativePairNodeJoin]) != beforeJoin
+		f.mu.Unlock()
+		if changed {
+			t.Fatal("reopened accepted Join emitted a fresh Describe/Join")
 		}
 	}
 	if loss {
@@ -206,7 +218,7 @@ func TestNativePairConsumerRealTCPRecoveryDualConsentAndRelay(t *testing.T) {
 	if err != nil || stored.State != nodeinbox.CONSUMPTION_UNCONFIRMED || nativeDeliveryCount(t, process.CounterPath) != 1 {
 		t.Fatal("actual REPLY lost exact synthetic queue outcome")
 	}
-	t.Log("real Hub PQ Node receipt recovery + actual dual consent + production MCP/IPC/Relay/inbox/writer; two synthetic queue subprocesses; Runtime consumption NOT_RUN")
+	t.Log("production discovery + fresh MCP reserved Joins and exact recovery + actual dual consent + MCP/IPC/Relay/inbox/writer; two synthetic queue subprocesses; Runtime consumption NOT_RUN")
 }
 
 func TestNativePairConsumerRealTCPCurrentAndExistingReservationCannotResendAfterLocalRevoke(t *testing.T) {
@@ -375,32 +387,39 @@ func TestNativePairConsumerRealTCPInjectingHistoryCannotBecomeUnexecuted(t *test
 	t.Log("real A3 caller: accepted synthetic queue then adapter SIGKILL while INJECTING; new writer retains UNCERTAIN, independent Owner revoke cannot emit FAILED/NO_EFFECT or requeue")
 }
 
-func TestNativePairConsumerRealTCPFencedGenerationAllowsExplicitNewProbe(t *testing.T) {
+func TestNativePairConsumerRealTCPFencedGenerationAllowsExplicitNewMCPJoin(t *testing.T) {
 	f := newNativePairTCPConsumerFixture(t)
-	f.explicitNodeJoinProbe(t, 1)
-	if _, err := f.recoverMCP(t, 1); err != nil {
+	if _, err := f.joinMCP(t, 1); err != nil {
 		t.Fatal(err)
 	}
+	f.joins[1] = f.originalJoin(t, 1)
 	originalB := f.joins[1]
 	const wrongSID = "synthetic-tcp-consumer-wrong-c"
 	writeCodexSessionRecord(t, os.Getenv("CODEX_HOME"), wrongSID, f.workspace)
-	if err := verifyCodexSessionRecord(wrongSID, f.workspace); err != nil {
+	wrongMCP := newMCPServer(f.server.URL, "", filepath.Join(f.root, "mcp", wrongSID+".json"))
+	wrongMCP.hubStateDir = f.nodeRoot
+	t.Cleanup(func() { close(wrongMCP.stop) })
+	t.Setenv("CODEX_THREAD_ID", wrongSID)
+	if _, err := wrongMCP.callTool("cicada_join", map[string]any{"pair_id": f.bootstrap.Bootstrap.PairID, "slot": "A"}); err != nil {
+		t.Fatal("wrong synthetic SID did not occupy g1 through actual MCP", err)
+	}
+	f.mu.Lock()
+	beforeDescribe := len(f.nodePackets[wire.OperationNativePairNodeDescribe])
+	beforeJoin := len(f.nodePackets[wire.OperationNativePairNodeJoin])
+	f.mu.Unlock()
+	if _, err := f.joinMCP(t, 0); err == nil || !strings.Contains(err.Error(), "authenticated terminal refusal") {
+		t.Fatalf("original A did not receive its g1 no-effect fence through actual MCP: %v", err)
+	}
+	f.mu.Lock()
+	singleIntent := len(f.nodePackets[wire.OperationNativePairNodeDescribe]) == beforeDescribe+1 && len(f.nodePackets[wire.OperationNativePairNodeJoin]) == beforeJoin+1
+	f.mu.Unlock()
+	if !singleIntent {
+		t.Fatal("same failed MCP invocation emitted a replacement intent")
+	}
+	var err error
+	f.client, err = openMachineNodeControlClientMode(f.nodeRoot, f.server.URL, f.nodeID, true)
+	if err != nil {
 		t.Fatal(err)
-	}
-	join := wire.NativePairNodeJoin{ContractRevision: wire.NativePairContractRevision, PairID: f.bootstrap.Bootstrap.PairID, Slot: "A", ExpectedGeneration: f.description.SlotAGeneration, BootstrapProofDigest: wire.NativePairProofDigest(f.description.BootstrapOwnerProof), Runtime: "codex", NativeSessionID: wrongSID, Workspace: f.workspace}
-	if err := f.client.call(f.ctx, f.token, wire.OperationNativePairNodeJoin, join, nil); err != nil {
-		t.Fatal(err)
-	}
-	wrong, err := f.client.retainedNativePairJoin(localNativePairJoinRequest{PairID: join.PairID, Slot: join.Slot, NativeSessionID: wrongSID, Workspace: f.workspace})
-	if err != nil || wrong == nil {
-		t.Fatal("wrong synthetic SID did not occupy reserved g1", err)
-	}
-	if _, _, err := f.bridge.completeNativePairJoin(localNativePairJoinRequest{PairID: join.PairID, Slot: "A", Harness: "codex", NativeSessionID: wrongSID, Workspace: f.workspace}, wrong); err != nil {
-		t.Fatal(err)
-	}
-	join.NativeSessionID = f.native[0]
-	if err := f.client.call(f.ctx, f.token, wire.OperationNativePairNodeJoin, join, nil); !errors.Is(err, errNativePairNodeRejected) {
-		t.Fatalf("original A did not receive exact g1 no-effect fence: %v", err)
 	}
 	var old machineNativePairReceipt
 	var oldID string
@@ -415,28 +434,11 @@ func TestNativePairConsumerRealTCPFencedGenerationAllowsExplicitNewProbe(t *test
 	if oldID == "" {
 		t.Fatal("actual g1 fence not journaled")
 	}
-	f.mu.Lock()
-	before := len(f.nodePackets[wire.OperationNativePairNodeDescribe]) + len(f.nodePackets[wire.OperationNativePairNodeJoin])
-	f.mu.Unlock()
-	machineNodeControlClients.Delete(f.client.statePath)
-	if _, err := f.recoverMCP(t, 0); err == nil || !strings.Contains(err.Error(), "authenticated terminal refusal") {
-		t.Fatalf("first g1 fence was not reported to actual MCP: %v", err)
-	}
-	f.mu.Lock()
-	after := len(f.nodePackets[wire.OperationNativePairNodeDescribe]) + len(f.nodePackets[wire.OperationNativePairNodeJoin])
-	f.mu.Unlock()
-	if before != after {
-		t.Fatal("reporting the original fence sent a fresh intent")
-	}
-	f.client, err = openMachineNodeControlClientMode(f.nodeRoot, f.server.URL, f.nodeID, true)
-	if err != nil {
-		t.Fatal(err)
-	}
 	f.client.mu.Lock()
 	consumed := f.client.state.NativePairReceipts[oldID].Consumed
 	f.client.mu.Unlock()
 	if !consumed {
-		t.Fatal("actual first fence report was not durable")
+		t.Fatal("actual first MCP fence report was not durable")
 	}
 	status := f.status(t)
 	if status.SlotA == nil || status.SlotB == nil || status.SlotA.NativeSessionID != wrongSID || status.SlotB.NativeSessionID != f.native[1] {
@@ -457,18 +459,16 @@ func TestNativePairConsumerRealTCPFencedGenerationAllowsExplicitNewProbe(t *test
 	if rejected.State != wire.NativePairWaitingJoin || rejected.SlotA != nil || rejected.SlotB == nil || rejected.SlotB.NativeSessionID != f.native[1] {
 		t.Fatal("Owner rejection did not reserve a fresh A generation while retaining B")
 	}
-	// The next explicit MCP invocation must advance beyond the reported fence,
-	// but actual capability=false still prevents fresh public discovery.
-	if _, err := f.recoverMCP(t, 0); err == nil || !strings.Contains(err.Error(), "service is unavailable") {
-		t.Fatalf("next explicit invocation stayed on old fence or bypassed unavailable discovery: %v", err)
+	// A separate explicit MCP invocation reads actual g2 and owns the fresh
+	// operation. It must not inherit the old g1 refusal as a permanent blocker.
+	result, err := f.joinMCP(t, 0)
+	if err != nil {
+		t.Fatal("next explicit MCP intent stayed permanently fenced", err)
 	}
-	f.explicitNodeJoinProbe(t, 0)
-	if f.description.SlotAGeneration != 2 || f.description.SlotBGeneration != 1 {
-		t.Fatal("fresh authenticated Describe did not see Owner's actual generations")
+	if result.(mcpPublicJoinResult).Reused {
+		t.Fatal("first g2 success was incorrectly labeled cached")
 	}
-	if _, err := f.recoverMCP(t, 0); err != nil {
-		t.Fatal(err)
-	}
+	f.joins[0] = f.originalJoin(t, 0)
 	state, err := nodekeys.OpenCryptoState(machineNodeStateDir(f.nodeRoot, f.nodeID))
 	if err != nil {
 		t.Fatal(err)
@@ -478,7 +478,7 @@ func TestNativePairConsumerRealTCPFencedGenerationAllowsExplicitNewProbe(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.recoverMCP(t, 0); err != nil {
+	if _, err := f.joinMCP(t, 0); err != nil {
 		t.Fatal(err)
 	}
 	state, err = nodekeys.OpenCryptoState(machineNodeStateDir(f.nodeRoot, f.nodeID))
@@ -520,7 +520,7 @@ func TestNativePairConsumerRealTCPFencedGenerationAllowsExplicitNewProbe(t *test
 	if !retained.Fenced || !retained.Consumed || !bytes.Equal(retained.RequestPacket, old.RequestPacket) || !bytes.Equal(retained.ResponsePacket, old.ResponsePacket) {
 		t.Fatal("fresh g2 intent discarded g1 history")
 	}
-	t.Log("actual PQ dev probe: C occupied g1, original A was fenced, Owner rejected C, explicit same-A g2 probe succeeded; B/key/old fence retained; fresh public MCP discovery remains unavailable")
+	t.Log("actual fresh MCP: C occupied g1, original A was fenced, Owner rejected C, next explicit same-A MCP Join owned g2; B/key/old fence retained")
 }
 
 func TestNativePairConsumerRealTCPRefreshesCurrentAfterWriterWait(t *testing.T) {
@@ -559,4 +559,26 @@ func TestNativePairConsumerRealTCPRefreshesCurrentAfterWriterWait(t *testing.T) 
 		t.Fatal("receiver reused initial Current after writer wait or persisted an injection intent")
 	}
 	t.Log("actual initial Current verified, physical-writer preparation fetched changed access epoch and denied before synthetic queue/injection intent")
+}
+
+func TestNativePairConsumerRealTCPUnsupportedCompositionSendsNoJoin(t *testing.T) {
+	f := newNativePairTCPConsumerFixture(t)
+	// This is the real account-only production composition, which has no Pair
+	// capability/Node service. No capability document is fabricated or changed.
+	f.mu.Lock()
+	f.handler = f.unsupportedHandler
+	beforeDescribe := len(f.nodePackets[wire.OperationNativePairNodeDescribe])
+	beforeJoin := len(f.nodePackets[wire.OperationNativePairNodeJoin])
+	f.mu.Unlock()
+	f.http(t, http.MethodGet, wire.NativePairCapabilitiesPath, "", "", nil, http.StatusServiceUnavailable)
+	if _, err := f.joinMCP(t, 0); err == nil {
+		t.Fatal("unsupported production composition admitted fresh MCP Join")
+	}
+	f.mu.Lock()
+	afterDescribe := len(f.nodePackets[wire.OperationNativePairNodeDescribe])
+	afterJoin := len(f.nodePackets[wire.OperationNativePairNodeJoin])
+	f.mu.Unlock()
+	if beforeDescribe != afterDescribe || beforeJoin != afterJoin {
+		t.Fatal("unsupported composition received a new Describe/Join")
+	}
 }

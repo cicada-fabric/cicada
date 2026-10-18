@@ -191,6 +191,14 @@ func (f *pairActorFixture) Do(req *http.Request) (*http.Response, error) {
 				open(&q)
 				f.result.State = wire.NativePairRevoked
 				f.result.ControlRevision++
+				f.result.AdministrativePermission = false
+				for _, slot := range []*wire.NativePairSlot{f.result.SlotA, f.result.SlotB} {
+					if slot != nil {
+						slot.MembershipRevision++
+						slot.NetworkMembershipRevision++
+						clearPairActorCandidate(slot)
+					}
+				}
 				body = f.forRequest(r, digest)
 			case wire.OperationNativePairSlotReject:
 				var q wire.NativePairSlotReject
@@ -243,6 +251,11 @@ func (f *pairActorFixture) forRequest(r clientwire.Route, digest string) wire.Na
 	v.Operation, v.RequestID, v.RequestPacketDigest = r.Operation, r.OperationID, digest
 	v.ObservedAt = f.n.stamp(f.n.n2.now)
 	return v
+}
+
+func clearPairActorCandidate(slot *wire.NativePairSlot) {
+	slot.CandidateVersion, slot.CandidatePublic = 0, e2ee.PublicIdentity{}
+	slot.CandidateFingerprint, slot.CandidateProofDigest, slot.CandidateAttestation = "", "", nil
 }
 
 func (f *pairActorFixture) joinSyntheticSlots() {

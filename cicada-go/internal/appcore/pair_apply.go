@@ -156,10 +156,8 @@ func (c *nativeController) applyPairReceipt(receipt pairReceipt, fresh bool) err
 			result.SlotA.NativeSessionID == result.SlotB.NativeSessionID) {
 			return wire.ErrInvalid
 		}
-		for _, slot := range []*wire.NativePairSlot{result.SlotA, result.SlotB} {
-			if slot != nil && slot.NativeSessionID != "" && wire.ValidateNativePairSlot(*slot, r.Target.Scope, result.PeerExpiresAt) != nil {
-				return wire.ErrInvalid
-			}
+		if err := validatePairResultSlots(*result, r.Target.Scope); err != nil {
+			return err
 		}
 		if r.Route.Operation == wire.OperationNativePairBootstrapComplete {
 			var q wire.NativePairBootstrapComplete

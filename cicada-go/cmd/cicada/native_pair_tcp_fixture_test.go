@@ -29,9 +29,8 @@ import (
 )
 
 // Real production Hub/SQLite/PQ and consumer code. Only native context records
-// and queue subprocesses are synthetic. Capability stays false: fresh discovery
-// is tested as unavailable; an explicit development probe obtains the original
-// Node receipts that MCP is subsequently allowed to recover.
+// and queue subprocesses are synthetic. Fresh Join must use real production
+// discovery and MCP dispatch; this fixture does not override availability.
 type nativePairTCPConsumerFixture struct {
 	t                                        *testing.T
 	mu                                       sync.Mutex
@@ -42,11 +41,12 @@ type nativePairTCPConsumerFixture struct {
 	hub                                      wire.HubIdentity
 	server                                   *httptest.Server
 	handler                                  http.Handler
+	unsupportedHandler                       http.Handler
 	owner, device                            *e2ee.Identity
 	session                                  wire.AppNodeSession
 	scope                                    e2ee.OwnerNativePairScope
 	bootstrap                                wire.NativePairBootstrapChallenge
-	description                              wire.NativePairNodeDescription
+	bootstrapOwnerProof                      []byte
 	plan                                     wire.NativePairPlanChallenge
 	ctx                                      context.Context
 	cancel                                   context.CancelFunc
@@ -124,6 +124,7 @@ func newNativePairTCPConsumerFixture(t *testing.T) *nativePairTCPConsumerFixture
 		t.Fatal(err)
 	}
 	f.handler = serverpkg.NewHubNodesHandler(ownerService, auth, nodes)
+	f.unsupportedHandler = serverpkg.NewHubHandlerWithAccount(ownerService, auth)
 	f.server.Start()
 	f.owner, err = e2ee.NewIdentity()
 	if err != nil {
@@ -285,6 +286,24 @@ func (f *nativePairTCPConsumerFixture) serve(w http.ResponseWriter, r *http.Requ
 	drop := false
 	if r.URL.Path == "/v2/node/control/rpc" {
 		if packet, err := wire.DecodeNativePairNodePacket(raw); err == nil {
+			if nativePairNodeBusinessOperation(packet.Route.Operation) {
+				_, path := machineNodeControlPaths(f.nodeRoot, f.nodeID)
+				data, err := os.ReadFile(path)
+				var durable machineNodeControlState
+				retained := false
+				if err == nil && json.Unmarshal(data, &durable) == nil {
+					retained = bytes.Equal(durable.PendingPacket, raw)
+					for _, receipt := range durable.NativePairReceipts {
+						retained = retained || bytes.Equal(receipt.RequestPacket, raw)
+					}
+				}
+				if !retained {
+					f.mu.Unlock()
+					f.t.Error("actual Node business POST preceded exact durable original")
+					w.WriteHeader(http.StatusInternalServerError)
+					return
+				}
+			}
 			f.nodePackets[packet.Route.Operation] = append(f.nodePackets[packet.Route.Operation], bytes.Clone(raw))
 			if packet.Route.Operation == wire.OperationNativePairNodeJoin && f.dropJoin > 0 {
 				f.dropJoin--
@@ -297,10 +316,11 @@ func (f *nativePairTCPConsumerFixture) serve(w http.ResponseWriter, r *http.Requ
 		drop = true
 	}
 	edit := f.carrierEdit
+	handler := f.handler
 	f.mu.Unlock()
 	if drop || edit != nil && (r.URL.Path == "/v2/relay/nodes/"+f.nodeID+"/group/sealed/peer-key" || strings.HasSuffix(r.URL.Path, "/authorization")) {
 		buffer := httptest.NewRecorder()
-		f.handler.ServeHTTP(buffer, r)
+		handler.ServeHTTP(buffer, r)
 		if drop {
 			if buffer.Code != http.StatusOK {
 				f.t.Errorf("actual commit before synthetic ACK loss returned %d", buffer.Code)
@@ -323,7 +343,7 @@ func (f *nativePairTCPConsumerFixture) serve(w http.ResponseWriter, r *http.Requ
 		_, _ = w.Write(body)
 		return
 	}
-	f.handler.ServeHTTP(w, r)
+	handler.ServeHTTP(w, r)
 }
 
 func (f *nativePairTCPConsumerFixture) http(t *testing.T, method, path, authorization, group string, body []byte, want int) []byte {
@@ -437,6 +457,7 @@ func (f *nativePairTCPConsumerFixture) bootstrapPair(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	f.bootstrapOwnerProof = bytes.Clone(proof)
 	var result wire.NativePairResult
 	f.app(t, wire.NativePairBootstrapComplete{Format: wire.NativePairFormat, Context: c, SessionToken: f.session.Token, OwnerProof: proof}, &result)
 	if result.State != wire.NativePairWaitingJoin {
@@ -468,7 +489,7 @@ func (f *nativePairTCPConsumerFixture) prepareConsent(t *testing.T) {
 	}
 	q := wire.NativePairConsentPrepare{Format: wire.NativePairFormat, Context: c, SessionToken: f.session.Token, OwnerProof: proof}
 	original := f.app(t, q, &f.plan)
-	if err := wire.ValidateNativePairPlanTarget(q, original, f.plan, f.description.BootstrapOwnerProof, f.hub, time.Now().UTC()); err != nil {
+	if err := wire.ValidateNativePairPlanTarget(q, original, f.plan, f.bootstrapOwnerProof, f.hub, time.Now().UTC()); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -499,43 +520,26 @@ func (f *nativePairTCPConsumerFixture) consent(t *testing.T, index int) wire.Nat
 	return result
 }
 
-func (f *nativePairTCPConsumerFixture) explicitNodeJoinProbe(t *testing.T, index int) {
+func (f *nativePairTCPConsumerFixture) originalJoin(t *testing.T, index int) fabric.JoinResult {
 	t.Helper()
-	if index == 0 || f.description.ContractRevision == "" {
-		if err := f.client.call(f.ctx, f.token, wire.OperationNativePairNodeDescribe, wire.NativePairNodeDescribe{ContractRevision: wire.NativePairContractRevision, PairID: f.bootstrap.Bootstrap.PairID}, nil); err != nil {
-			t.Fatal(err)
-		}
-		description, err := f.client.takeNativePairDescription(f.bootstrap.Bootstrap.PairID)
-		if err != nil || description == nil {
-			t.Fatalf("actual authenticated Describe: %v", err)
-		}
-		f.description = *description
-		if err := f.client.acceptNativePairDescription(f.ctx, f.token, *description, f.bootstrap.Bootstrap.PairID); err != nil {
-			t.Fatal(err)
-		}
-	}
-	slot, generation := "A", f.description.SlotAGeneration
-	if index == 1 {
-		slot, generation = "B", f.description.SlotBGeneration
-	}
-	if err := verifyCodexSessionRecord(f.native[index], f.workspace); err != nil {
+	var err error
+	f.client, err = openMachineNodeControlClientMode(f.nodeRoot, f.server.URL, f.nodeID, true)
+	if err != nil {
 		t.Fatal(err)
 	}
-	q := wire.NativePairNodeJoin{ContractRevision: wire.NativePairContractRevision, PairID: f.bootstrap.Bootstrap.PairID, Slot: slot, ExpectedGeneration: generation, BootstrapProofDigest: wire.NativePairProofDigest(f.description.BootstrapOwnerProof), Runtime: "codex", NativeSessionID: f.native[index], Workspace: f.workspace}
-	if err := f.client.call(f.ctx, f.token, wire.OperationNativePairNodeJoin, q, nil); err != nil {
-		if err := f.client.recoverNativePairOriginal(f.ctx, f.token); err != nil {
-			t.Fatal(err)
-		}
+	slot := "A"
+	if index == 1 {
+		slot = "B"
 	}
-	request := localNativePairJoinRequest{PairID: q.PairID, Slot: slot, NativeSessionID: q.NativeSessionID, Workspace: q.Workspace}
+	request := localNativePairJoinRequest{PairID: f.bootstrap.Bootstrap.PairID, Slot: slot, NativeSessionID: f.native[index], Workspace: f.workspace}
 	joined, err := f.client.retainedNativePairJoin(request)
 	if err != nil || joined == nil {
 		t.Fatalf("actual retained Node receipt: %v", err)
 	}
-	f.joins[index] = *joined
+	return *joined
 }
 
-func (f *nativePairTCPConsumerFixture) recoverMCP(t *testing.T, index int) (any, error) {
+func (f *nativePairTCPConsumerFixture) joinMCP(t *testing.T, index int) (any, error) {
 	t.Helper()
 	t.Setenv("CODEX_THREAD_ID", f.native[index])
 	slot := "A"

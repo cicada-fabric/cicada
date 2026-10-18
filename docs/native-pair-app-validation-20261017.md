@@ -416,8 +416,112 @@ the new Owner intent's click time fresh; both delayed A/B clicks pass normally
 and with race. This does not establish an actual production App Pair actor or
 Windows GUI acceptance.
 
-Fresh positive public MCP/App discovery remains **UNAVAILABLE / NOT_ACCEPTED**
-because public capability is still false. No availability shim was used in
-the actual TCP fixture. Real native Runtime/model/consumption, native Windows
-GUI/DPAPI/ACL, physical-device, public HTTPS and deployment acceptance remain
-**NOT_RUN**. The tests did not touch resident services or real keys.
+At that tested source, fresh positive public MCP/App discovery remained
+**UNAVAILABLE / NOT_ACCEPTED** because public capability was false. No
+availability shim was used. The later affected fresh MCP checks below retain
+their separate source and binaries. Real native Runtime/model/consumption,
+native Windows GUI/DPAPI/ACL, physical-device, public HTTPS and deployment
+acceptance remain **NOT_RUN**. The tests did not touch resident services or
+real keys.
+
+## Production discovery and fresh MCP gate — 2026-10-18
+
+The production readiness checkpoint `995126d716bf25f078a4cc500121ed578434b491`
+was tested with the two uncommitted TCP test changes, not as a clean-HEAD build.
+The complete 1,303-input manifest was unchanged before/after:
+`cb86bb853388c9c00cc2e19054d41f05b24e565a8d322e330ba2e32264fac8fd`.
+Evidence is under the existing `node/fresh-mcp-02` directory; its receipt SHA is
+`e141b966b6a830f6d4149958802dd47dae64706ba9f931a445572480f22d894e`.
+
+Only these three affected roots were rerun, normally and with race:
+
+- `TestNativePairConsumerRealTCPRecoveryDualConsentAndRelay`
+- `TestNativePairConsumerRealTCPFencedGenerationAllowsExplicitNewMCPJoin`
+- `TestNativePairConsumerRealTCPUnsupportedCompositionSendsNoJoin`
+
+Both lanes pass **3/0/0**, exit 0, with identical test maps. Actual production
+availability is decoded without substitution; initial Join, accepted recovery
+and g1-fence/g2 progression all use actual MCP dispatch. There is no lower-level
+Join probe. Dual consent and real sealed Relay/inbox/writer end at the same
+synthetic queue helpers, **CONSUMPTION_UNCONFIRMED**. Every actual Describe/Join
+POST independently checks its exact private request is already durable. The
+negative uses the production account-only handler, whose capability route is
+503, and confirms zero Describe/Join calls. These are Node/MCP checks, not the
+actual App actor or Windows GUI lane.
+
+| Actual executable | SHA-256 |
+|---|---|
+| Normal cmd | `8614fc957691585930180668b81533c4ed94058ba02bd05f6db04697b3ff8b17` |
+| Race cmd | `3aa41195a791922b0fcad6ae8f47d0a0a362e105665a5e6a65e52ba14a6dc316` |
+
+Pinned Go 1.27.2/image and offline, read-only source/module mounts are unchanged.
+Both actual executables, original/copy hashes, argv and inherited `0022` umask
+are retained. Actual TCP state uses its owned host bind, `TMPDIR=/s`, with
+compiler scratch under `GOTMPDIR=/tmp`. Both owned containers are absent and
+host state is empty. Prior broad Current/writer/App checks were not repeated
+for the readiness metadata change.
+
+`fresh-mcp-01` retains a fixture-only mismatch: the positive roots passed,
+then the negative expected 404 but the real unsupported composition returned
+503. The race container was deliberately stopped before test events; exit 143
+and retained compile binaries do not constitute race acceptance. Its failure
+receipt is `1b88b3ee0927b10f1b04cd20fbd3b9d30a799245e40818138d2c4b403013ec53`.
+Interrupted synthetic state was inventoried and removed only from that run's
+owned directory after its containers were absent; the separate cleanup receipt
+is `e39ad8c16dbc21d95c105bbc3552d35e02dcc9e6e88463288e8fa99c930a5d67`.
+The corrected 503 expectation is the only source change between those runs.
+
+## App completed-revoke projection regression — 2026-10-18
+
+QA's independent actual App-child/production-Hub scenario first passed real
+bootstrap, status, dual consent and CURRENT grants, then failed the explicit
+revoke with `APP_PAIR_RESPONSE_INVALID`. Its retained failure result is
+`6e38e613fe51959bb254506bd6215963317f55cde30531ef9d983e1dc7415fe1`
+under `native-pair-acceptance/run-20261018T022252Z-nACGtZ`. It is not a
+server no-effect result. Revocation removed current candidate authority, so
+the real Hub returned historical occupied tuples with empty candidate fields;
+the App had incorrectly required a complete candidate for every occupied slot.
+
+The private App receipt validator now accepts only the Hub-confirmed bounded
+historical/JOINED_ZERO projection described in the implementation record.
+It checks the exact slot position, generation/attempt, runtime, SID and IDs,
+Node scope, positive bounded epochs/revisions and original peer lease ceiling.
+Mixed candidate data, incomplete ACTIVE, invalid full candidates and terminal
+administrative permission are rejected. Shared wire, Hub, plan and consent
+validators are unchanged. The scripted actor now models actual revoke shape,
+including membership and Network-membership revision increments.
+
+The necessary three roots are the historical-projection boundary table,
+the original two-consent/direct-revoke flow, and lost-revoke exact-original
+recovery. The latter tests unsigned 403 after lost acknowledgement, detached
+reconcile, unchanged SID/binding/epochs/keys, actual revision increments,
+durable request closure and restart without renewed authority.
+On `995126d` plus six uncommitted Go files, the unchanged 1,305-input manifest is
+`da8ad6d800b0fe18af492f92638e20b3b03443d87ad704939c5be0276891251d`.
+
+Normal `app-revoke-03` and race `app-revoke-02` pass **42/0/0** each, exit 0,
+with identical root/subtest maps and all four source snapshots equal. The
+aggregate receipt is
+`446a98f4064459a4935e32da6ff882090bd6b207ca372ce35f7d5aa25cde03a5`.
+It explicitly references the prior race run; it does not relabel that run's
+overall failure as a pass. These tests use real App actions, PQ packets and
+encrypted vaults with a scripted HTTP actor. Actual App/production-Hub QA is
+separately attributed; this lane does not establish its result.
+
+| Actual executable | SHA-256 |
+|---|---|
+| Normal appcore, run 03 | `fbbd09fd2d68ec1a2710c081c1a3ef54d59a39077c7b7804434eca3944249be3` |
+| Race appcore, run 02 | `71d592dbd010aa51ba366ec31f0922b1e7410a254e649ee460d3bf6fffd3f822` |
+
+The actual binaries, exact argv and `0022` umask are retained, with original
+and retained hashes equal; owned containers are absent and state directories
+empty. No green broad suite or fresh MCP check was rerun for this private fix.
+
+Failures remain: `app-revoke-01` had an unused test import, so compilation
+failed and no test executable ran (receipt
+`14f073b51828c53a6f7db9e493f7464ed194ce3368e8af6f3155fa2cab4c0d6e`).
+Run 02's normal wrapper rejected its new lane name before execution, while its
+actual race tests passed; its overall FAIL receipt is
+`0b276cc7d0e103c1865b0bb27620db0915086004eaaf83cb7899634276f3867e`.
+Only the normal lane was retried in run 03 with the corrected wrapper. No
+production input changed between runs 02 and 03.
