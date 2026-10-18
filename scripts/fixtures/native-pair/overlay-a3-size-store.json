@@ -1,0 +1,5 @@
+{
+  "Replace": {
+    "/repo/cicada-go/internal/store/zz_qa_native_pair_a3_size_test.go": "/qa/scripts/fixtures/native-pair/a3_size_store_test.go"
+  }
+}

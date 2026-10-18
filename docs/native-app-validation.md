@@ -2504,3 +2504,215 @@ decoder/8-KiB/loopback-policy check. The five known-RED protocol cases were not
 executed; no secret setup, Runtime, SID, queue/provider, Windows or public-HTTPS
 action occurred. The earlier Store 9+9 results retain their dirty `a451b9b`
 attribution and are not relabeled as a clean `13fdb91` execution.
+
+### Independent A3 dual-consent and Current core gate
+
+2026-10-18 UTC, **SCOPED_PASS**, driver exit **0**. The opt-in private server
+overlay completed **4/0/0 normal and 4/0/0 race**; version, both compilations,
+normal, race and scoped vet all exit **0**. This is real PQ/TCP/persistent-DB
+producer-core evidence, with synthetic native SIDs and no native Runtime.
+Public Pair availability remains false. The fixture deliberately addresses the
+typed private producer surface and does not assert public SDK availability.
+
+Reproduce from the QA worktree against the approved product freeze (the product
+worktree must still match every listed input):
+
+```sh
+CICADA_NATIVE_PAIR_PRODUCT_FREEZE=/home/zyf/Cicada/.local/evidence/n3-hub/runtime/native-pair-a3-producer-final-20261018T010602Z-product-freeze.json \
+CICADA_NATIVE_PAIR_SOURCE_ROOT=/home/zyf/Cicada/.worktrees/cicada/n2-hub \
+  bash scripts/test-native-pair.sh --a3-core
+```
+
+The recorded source is **dirty `f279093d9e8e09d6576ac319f18b9cedf1d670bf`**
+for both producer and QA harness, never a clean commit execution. Approved
+product freeze SHA-256 is
+`e98268ae5ea5068f00e27b0e54536b3d80e176a6c7dc763b4b6f0a4702b408f9`,
+whose original producer source-manifest file SHA-256 is
+`87b1fa97574d98d2bd2c6bba974338febc424ec28524fd02b48ba88f63856ccf`.
+All **2253 product files plus eight QA script/fixture files, 2261 total**, match
+before and after execution. The joint inventory digest is
+`45bf79c4eef2349abd9f5680514513d617188deefdb0de866dfc5a442f8ea0dc`;
+both snapshot files have SHA-256
+`a7cc9b41c35bb125b2bcf36e2f5fc4c84a5facd8e96bf260a8c105ca005978c4`.
+The formal freeze excludes only append-only
+`docs/hub-native-pair-a1-validation.md`; all code, JSON, contract and checker
+inputs stayed fixed. The receipt's `excluded_noninput` field is null because
+the producer used `excluded_noninput_files`; the original hashed freeze retains
+the actual exclusion list. No excluded file supplies this gate's test input.
+
+Evidence is under
+`/home/zyf/Cicada/.local/evidence/native-pair-acceptance/run-20261018T011118Z-XANwqI`;
+the matching artifacts directory retains the actual executed binaries.
+
+| Artifact | Bytes | SHA-256 |
+| --- | --- | --- |
+| `result.json` | 5471 | `b5cb3980e7996723f73072770256413a6f666df66ab80c64c2beb97398712d95` |
+| `nativepair-a3.test` | 37517246 | `380872bd34831a69e92d6323dbb165d863098fe5006263709598e9b799924641` |
+| `nativepair-a3-race.test` | 55459749 | `543c513d75a6a73f38b924bcd5f119d36e79b0ce783879abae8026b5fb6eb37b` |
+
+Pre/post binary inventory SHA-256 is identically
+`743dd02e6e5c699ea3b968e0ba44f852fc67f1b0e598afe91ac16d7c222bb75f`.
+Normal took 10.818 seconds; race took 152.688 seconds within its 300-second
+bound. Exact Docker argv, JSON events and each exit file are retained. Product,
+QA and shared module cache mounted read-only; the build cache/lock were task
+private. The fixture database lived in host-bound task state. Exact container
+`cicada-native-pair-run-20261018t011118z-xanwqi` was observed absent after the
+bookend completed. No shared development Hub or public deployment was touched.
+
+The four cases prove only these boundaries:
+
+- Actual N2/N3 approval, Node PQ reserved-slot Joins and real candidate
+  attestations establish two distinct synthetic original SIDs on one synthetic
+  Node. First consent and exact replay leave both memberships and effective
+  legacy key grants absent; second consent creates both original CURRENT
+  GroupKeyGrants, advances control revision once and spends no message budget.
+- A test-only SQLite trigger rejects the second legacy grant insertion.
+  Public Store reads and actual peer resolve confirm no partial membership/key
+  authority. The authenticated original no-effect fence survives removal of the
+  trigger; only a fresh explicit second consent activates. No SQL creates ACTIVE
+  or any positive grant.
+- A real TCP proxy discards the ACK after one upstream committed activation.
+  The original packet is saved privately before the POST; reconciliation and
+  late exact retry return the identical authenticated receipt, without a second
+  activation or budget reset. This is a lost-ACK check, not a process-crash test.
+- The actual peer-key carrier verifies against the independent original Owner
+  pin. Pair-required missing evidence/Current, and one-at-a-time substitutions
+  of SID, access ID/epoch, generation, attempt, network/member revisions and
+  lease owner fail shared verification. Actual sender/writer enforcement is
+  still NOT_RUN by this case.
+
+Root separately reported an uncovered size defect during this run: the public
+wire helper uses `json.Marshal`, whereas actual `writeJSON` uses
+`Encoder.Encode` and adds LF. At the raw 320-KiB boundary, the complete HTTP
+body can exceed the helper's count by one byte. This four-case PASS does not
+resolve that defect. The next precise-source increment must cover actual HTTP
+exact-limit/+1 behavior and zero partial effect. A peer-key that fits while the
+future full delivery exceeds its bound must also leave both memberships and
+effective key grants absent; no fake route/attempt may be published as actual
+evidence. These size cases and actual caller/writer revocation/history checks
+remain **PREPARED / NOT_RUN** here.
+
+Production App pair UI, public SDK readiness, real same-Node sealed Relay/native
+consumption, models/providers/queues, process-crash/power-loss durability and
+Windows DPAPI/ACL/GUI remain **NOT_RUN**. No real SID/model turn was created.
+The old Store 9+9 and five known-RED public cases were not rerun. Standard
+disposable compatibility interop is reserved for Root's final integrated source;
+this gate does not replace it. Later size fixes or commits do not inherit this
+execution's attribution.
+
+### Independent A3 HTTP-byte and complete-delivery size increment
+
+2026-10-18 UTC, two separate **SCOPED_PASS** gates, each **1/0/0 normal and
+1/0/0 race**, driver exit **0**, all six stage exits **0**. The first covers
+actual HTTP encoding of both genuine typed carrier snapshots; the second
+independently proves activation transaction rollback when peer-key fits but a
+complete delivery does not. Neither result substitutes for the other.
+
+Both use the later **2255-file** product freeze
+`/home/zyf/Cicada/.local/evidence/n3-hub/runtime/native-pair-a3-http-final-20261018T011834Z-product-freeze.json`,
+SHA-256 `1ec7c8fafb2728e554900bb9c02b7e48e9214d033dc5a3cfbcf72de2f0bf5cb0`;
+its original producer source-manifest file SHA-256 is
+`db08af393a5d0a6134766d739f5a9c8bd2aea544d4799e25a13a2834159cab80`.
+Independent comparison with the earlier e982 freeze found only two added files
+(private HTTP writer and its test), three changed files (the existing route
+handler, its TCP test and the Hub contract), no removals,
+and no Store/shared-wire/limit change. Both product and harness remain
+**dirty `f279093`**. Old four-case results retain the earlier 2253-file source.
+
+Run each command separately from the QA worktree, with the product worktree
+matching that exact freeze:
+
+```sh
+CICADA_NATIVE_PAIR_PRODUCT_FREEZE=/home/zyf/Cicada/.local/evidence/n3-hub/runtime/native-pair-a3-http-final-20261018T011834Z-product-freeze.json \
+CICADA_NATIVE_PAIR_SOURCE_ROOT=/home/zyf/Cicada/.worktrees/cicada/n2-hub \
+  bash scripts/test-native-pair.sh --a3-http
+CICADA_NATIVE_PAIR_PRODUCT_FREEZE=/home/zyf/Cicada/.local/evidence/n3-hub/runtime/native-pair-a3-http-final-20261018T011834Z-product-freeze.json \
+CICADA_NATIVE_PAIR_SOURCE_ROOT=/home/zyf/Cicada/.worktrees/cicada/n2-hub \
+  bash scripts/test-native-pair.sh --a3-size-store
+```
+
+Receipts below are under
+`/home/zyf/Cicada/.local/evidence/native-pair-acceptance/`; actual binaries are
+retained under the same run names in `.local/artifacts/native-pair-acceptance`.
+
+| Run/result | Outcome | SHA-256 |
+| --- | --- | --- |
+| `run-20261018T012227Z-4y3LNS/result.json` | HTTP normal/race 1+1 PASS, exit 0 | `6b4419ee320713e8ed1c01a123f36629d5a64fd61ad4cf8f8c14628b327f2353` |
+| `run-20261018T012416Z-qDszCh/result.json` | First Store fixture compile FAIL, exit 1; zero assertions, no executable | `dfe38319218db9be7622ff5692dfeb65ffdb130b00dce34ae40a55f55fdfc7ee` |
+| `run-20261018T012506Z-ISf9cq/result.json` | Corrected Store normal/race 1+1 PASS, exit 0 | `28b034d7fc1e94065c4a5bbf6d8501f361b7c2ff5c4bdaec34bba36dded6f19e` |
+
+The first Store attempt used a wrong argument list/error constant/state type
+in QA code; both compilers and vet exited 1, normal/race were NOT_RUN (125).
+Its original fixture is preserved under
+`/home/zyf/Cicada/.local/evidence/native-pair-review/qa-a3-size-compile-failure-5nxt8bmh/`,
+SHA-256 `38e9876cb2dfcfaeb2f65de9a61aeb53d8aa52d43e7252a8f3b4dd734dff2887`;
+the failure receipt there hashes to
+`4c9f407394fed3e5c44bbf5b02ab84ca68a084070460ac43533d884a64f46b5f`.
+Only that fixture was corrected; its new hash is
+`df20ee974afb48296d688b97c334171abdae4fd8bbd6caf89721078bc79c9100`.
+The original FAIL is unchanged and is not a product defect or assertion result.
+
+Each run checks **2255 product plus twelve QA inputs, 2267 total**, before/after.
+HTTP and the first compile attempt share joint inventory digest
+`908a9dd8369db4b9ca6b74e2f1457ea563cf4f9f43a7a296f65e48e5b12acf58`,
+snapshot file SHA-256
+`a0408bda12992236d60d1e5979df1d9455afde8c3d85675014ae17ff5ed2283c`.
+The corrected Store run has joint digest
+`580efdf6d77a4b539a19f9bb25261d0bd7dec55dddcd4363ea76f03d6148475e`,
+snapshot file SHA-256
+`15b076abd00e050f02b9630dde02fecd15fe0600591e4b5e776b9f216e5163b0`.
+Within each run the snapshots are identical. The changed Store fixture is not
+compiled or read by the HTTP overlay; HTTP was not rerun or reattributed to it.
+The formatter evidence therefore retains its own original complete inventory.
+The snapshot metadata now records the producer's actual exclusion-list field;
+this does not backfill the earlier four-case receipt's null field.
+
+| Actual executed binary | Bytes | SHA-256 |
+| --- | --- | --- |
+| HTTP `nativepair-a3-http.test` | 37515447 | `015a2989171c3544b7f571f4d2bae346e76f9a9ef25d02369bcf6f2492ff7e71` |
+| HTTP `nativepair-a3-http-race.test` | 55457582 | `0982c8594923f959804a800c838e37f16ddcf20137b721fe7e244944fa6f2c7e` |
+| Store `nativepair-a3-size.test` | 27299995 | `68b7ce80491ca463db2ec0a633a2fc2cafceee57276485680b04aede4e29699e` |
+| Store `nativepair-a3-size-race.test` | 42421188 | `c672cfde7147bbe091cb16f4b76f5db3422ffb8bf091e0d0178cf19b5ff386c3` |
+
+Both gates retain matching pre/post executed-binary hashes, exact Docker argv,
+JSON events, exits and source snapshots. HTTP normal/race took 2.947/41.248
+seconds; Store took 1.86/33.687 seconds, each bounded at 180 seconds. SQLite
+files were on host-bound `/state/tmp`, **not tmpfs**; no crash/power-loss claim
+follows. Shared modules/product/QA mounted read-only, and task build-cache
+locking serialized the gates. The three exact run-derived containers above
+were observed absent, including the failed compile attempt.
+
+The HTTP case uses its own actual N2/N3/PQ/TCP dual-consent ceremony, encrypted
+synthetic ASK, claim and actual final authorization. It confirms both real route
+responses equal their complete Marshal bytes. Only a private in-memory copy's
+unsigned grant ID is then padded, including JSON escaping; signed tuple/proofs,
+message/attempt and original SID are retained. Each typed response at **327680
+bytes** is usable over actual TCP without the old extra LF; **327681 bytes**
+and either single missing evidence/Current field return 404 without a partial
+success body. Both fields nil retain ordinary Group's legacy Encoder/LF.
+Rendering does not change pair revision or budget. This is formatter evidence,
+not a transaction oversize check or actual native caller/writer acceptance.
+
+The separate Store case reuses only the producer's synthetic setup/internal
+zero-Join fixture and makes real signed Owner intents/candidate publication.
+An unpublished production activation transaction measures the actual peer/full
+typed shapes and rolls back. A private AFTER INSERT size-fault trigger pads
+the actual second legacy grant ID; it never creates ACTIVE or grants. The
+original second consent through `ProcessHubNativePair` commits an authenticated
+no-effect fence, leaves both memberships at their original zero grants/revision,
+leaves both legacy grants absent and retains only first-consent history.
+An independent unpublished production retry proves the typed size error:
+genuine signed peer **327648 bytes fits**, complete typed delivery reservation
+**335783 bytes exceeds** the 327680-byte bound. Legal maximum future
+route/attempt placeholders stay internal to sizing and are never published as
+actual authorization evidence. Rollback preserves zero authority, and removing
+the fault does not revive the fenced original.
+
+The reported LF defect is verified fixed only for these Pair HTTP paths on the
+new freeze. Public capability remains false. Actual sender/writer revocation
+and historical-outcome enforcement, production App pair UI/public SDK readiness,
+real same-Node native consumption, models/providers/queues, Windows DPAPI/ACL/GUI
+and public deployment remain **NOT_RUN** by these gates. Root owns final
+integrated compatibility interop. No older four-case/cache/public-RED suite was
+rerun, no production implementation was edited by QA, and no Git mutation or
+deployment was performed during these gates.

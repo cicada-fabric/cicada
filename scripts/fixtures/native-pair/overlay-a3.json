@@ -1,0 +1,6 @@
+{
+  "Replace": {
+    "/repo/cicada-go/internal/server/zz_qa_native_pair_a3_fixture_test.go": "/qa/scripts/fixtures/native-pair/a3_fixture_test.go",
+    "/repo/cicada-go/internal/server/zz_qa_native_pair_a3_core_test.go": "/qa/scripts/fixtures/native-pair/a3_core_test.go"
+  }
+}

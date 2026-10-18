@@ -538,3 +538,35 @@ compatibility evidence alongside the App producer's earlier dirty-`17da393`
 Core/UI results; it does not enable the false Pair capability, settle the new
 Hub read-cache defect or execute the user-only native/Windows/public lane.
 Full receipts and hashes are retained in the existing validation record.
+
+The opt-in `bash scripts/test-native-pair.sh --a3-core` lane independently
+exercises the frozen producer through a private server test overlay. Real PQ,
+TCP, N2/N3 approval, reserved zero-permission Joins, candidate publication and
+both original Owner consents create its ACTIVE state; SQL never creates a
+positive authorization. Its SIDs, keys, account and Node are synthetic. Public
+Pair availability remains false, so this lane does not establish public SDK,
+App pair UI, actual caller/writer or native Runtime readiness. On 2026-10-18,
+four normal and four race cases passed against the exact 2253-file A3 freeze;
+see [the scoped receipt](native-app-validation.md#independent-a3-dual-consent-and-current-core-gate).
+
+| A3 boundary | Independent oracle | State |
+| --- | --- | --- |
+| Partial consent and replay | First consent and its exact retry leave both memberships and legacy key grants ineffective; compatible second consent creates both original CURRENT grants in one revision without spending message budget | SCOPED_PASS on the recorded A3 freeze |
+| Transaction failure | A private DB trigger fails the second legacy key-grant insert; both memberships/grants roll back, the exact original remains permanently fenced, and only a fresh explicit consent may activate after fault removal | SCOPED_PASS on the recorded A3 freeze |
+| Committed activation, lost ACK | Close an actual proxy TCP connection after upstream commits; reconcile returns the identical original authenticated receipt and late replay neither activates twice nor resets budget | SCOPED_PASS on the recorded A3 freeze |
+| Current is mandatory | Verify the actual carrier and independent Owner pin; missing evidence/Current and substituted SID, access, epoch, generation, attempt, membership/network revision or lease owner fail the shared verifier | SCOPED_PASS for shared verification only; actual caller/writer NOT_RUN |
+| Complete encoded size | Real proof/tuple with peer-key fitting but full delivery exceeding 320 KiB cannot activate either membership/grant. Count actual HTTP bytes, including any encoder LF: exact limit usable, +1 byte rejected with no partial effect | SCOPED_PASS: independent HTTP 1+1 and separate Store/PQ transaction 1+1 on the later 2255-file freeze; actual caller/writer NOT_RUN |
+| Revocation at use | Existing local reservation/history cannot authorize a new HTTP/queue write after revocation. Re-fetch final authorization at the actual caller/writer; preserve ACCEPTED/UNCERTAIN/INJECTING history without inventing NO_EFFECT | PREPARED; actual caller/writer NOT_RUN |
+
+These additional threats refine N3-TT-04/10/11/16/17; they do not change the
+user-only real two-Thread matrix above. A peer-key preflight alone does not
+prove that a later complete delivery fits its bound. The necessary size increment
+is reproducible with `bash scripts/test-native-pair.sh --a3-http` and separately
+`bash scripts/test-native-pair.sh --a3-size-store`, against its approved freeze.
+The first obtains real synthetic sealed Relay peer/final-authorization carriers,
+then observes private typed rendering; the second checks genuine original
+consent admission and rollback in persistent Store transactions, with an internal
+zero-Join fixture rather than Node RPC. The Pair-only HTTP writer now emits
+exactly the preflight's Marshal bytes without LF; ordinary Group encoding is
+unchanged. The initial size fix retains separate source attribution. The earlier
+four A3 cases, Store 9+9 and five known-RED public protocol cases were not rerun.

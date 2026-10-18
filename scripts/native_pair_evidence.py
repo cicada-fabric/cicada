@@ -15,6 +15,11 @@ STORE_EXPECTED = {'TestQANativePairReadCacheKeepsHistoryAcrossRateWindows',
                   'TestQANativePairJoinDeadlineIsIndependentOfLiveLeaseExpiry'}
 STORE_EXPECTED.update('TestQANativePairJoinDeadlineIsIndependentOfLiveLeaseExpiry/' + state + '_' + edge
                       for state in ('one_slot', 'two_slots') for edge in ('before', 'at', 'after'))
+A3_EXPECTED = {'TestQANativePairA3' + name for name in (
+    'FirstConsentZeroSecondUsesOriginalGrants', 'SecondGrantFailureRollsBackBothMemberships',
+    'LostActivationAckRecoversAcceptedHistory', 'CurrentRequiredAndExactCoordinates')}
+A3_HTTP_EXPECTED = {'TestQANativePairA3HTTPExactBodyAndAtomicRejection'}
+A3_SIZE_EXPECTED = {'TestQANativePairA3DeliveryOverflowCannotPublishAuthority'}
 
 
 def sha(path):
@@ -54,7 +59,7 @@ def snapshot(repo, dest, harness=None):
         if actual_go != frozen_go:
             raise ValueError('The complete product Go tree differs from the approved freeze inventory.')
         formal = {'path': str(freeze_path), 'sha256': sha(freeze_path), 'file_count': len(freeze['files']),
-                  'excluded_noninput': freeze.get('excluded_noninput_validation_record')}
+                  'excluded_noninput': freeze.get('excluded_noninput_files', freeze.get('excluded_noninput_validation_record'))}
     drivers = [harness / 'scripts' / name for name in ('test-native-pair.sh', 'native_pair_evidence.py')]
     drivers += [p for p in (harness / 'scripts/fixtures/native-pair').rglob('*') if p.is_file()]
     files.update({'harness/' + str(p.relative_to(harness)): sha(p) for p in sorted(drivers)})
@@ -85,8 +90,8 @@ def terminal_events(path):
 
 
 def finish(run, artifacts, image, owned, mode='protocol'):
-    if mode not in ('protocol', 'store'):
-        raise ValueError('Only protocol and isolated Store regression modes are active.')
+    if mode not in ('protocol', 'store', 'a3', 'a3-http', 'a3-size-store'):
+        raise ValueError('Only protocol and isolated core regression modes are active.')
     before, after = [json.loads((run / f'source-{side}.json').read_text()) for side in ('before', 'after')]
     results, diagnostics, metrics = {}, [], []
     rank = {'pass': 0, 'skip': 1, 'fail': 2}
@@ -105,13 +110,19 @@ def finish(run, artifacts, image, owned, mode='protocol'):
             metrics.append({'test': test, 'measurement': output.split('NATIVE_PAIR_HTTP ', 1)[1]})
     exits = {p.stem: int(p.read_text().strip()) for p in run.glob('*.exit')}
     matched = before == after
-    expected = STORE_EXPECTED if mode == 'store' else EXPECTED
-    stages = ('version', 'compile-tests', 'compile-race', 'harness', 'race', 'vet') if mode == 'store' else ('version', 'compile-cli', 'compile-tests', 'harness', 'vet')
-    race = terminal_events(run / 'race.log') if mode == 'store' else None
-    race_passed = mode != 'store' or (set(race) == expected and all(v == 'pass' for v in race.values()))
+    expected = {'store': STORE_EXPECTED, 'a3': A3_EXPECTED, 'a3-http': A3_HTTP_EXPECTED,
+                'a3-size-store': A3_SIZE_EXPECTED, 'protocol': EXPECTED}[mode]
+    core = mode != 'protocol'
+    stages = ('version', 'compile-tests', 'compile-race', 'harness', 'race', 'vet') if core else ('version', 'compile-cli', 'compile-tests', 'harness', 'vet')
+    race = terminal_events(run / 'race.log') if core else None
+    race_passed = not core or (set(race) == expected and all(v == 'pass' for v in race.values()))
     binary_records = [json.loads((run / f'binaries-{side}.json').read_text())
                       if (run / f'binaries-{side}.json').exists() else {} for side in ('before', 'after')]
-    expected_binaries = {'nativepair-cache.test', 'nativepair-cache-race.test'} if mode == 'store' else {'cicada', 'n3.test'}
+    expected_binaries = {'store': {'nativepair-cache.test', 'nativepair-cache-race.test'},
+                         'a3': {'nativepair-a3.test', 'nativepair-a3-race.test'},
+                         'a3-http': {'nativepair-a3-http.test', 'nativepair-a3-http-race.test'},
+                         'a3-size-store': {'nativepair-a3-size.test', 'nativepair-a3-size-race.test'},
+                         'protocol': {'cicada', 'n3.test'}}[mode]
     binaries_stable = set(binary_records[0]) == expected_binaries and binary_records[0] == binary_records[1]
     passed = (all(exits.get(n) == 0 for n in stages)
               and set(results) == expected and all(v == 'pass' for v in results.values())
@@ -124,7 +135,11 @@ def finish(run, artifacts, image, owned, mode='protocol'):
                     and all(exits.get(n) == 0 for n in ('version', 'compile-cli', 'compile-tests', 'vet'))
                     and exits.get('harness') == 1 and binaries_stable and matched and owned == 'false')
     code = 0 if passed else 1
-    scope = 'FOCUSED_SYNTHETIC_STORE_PQ_CACHE_AND_LEASE_REGRESSIONS_NOT_E2E' if mode == 'store' else 'REAL_TCP_PQ_BOOTSTRAP_AND_RECOVERY_ONLY'
+    scope = {'store': 'FOCUSED_SYNTHETIC_STORE_PQ_CACHE_AND_LEASE_REGRESSIONS_NOT_E2E',
+             'a3': 'DISPOSABLE_PRODUCER_CORE_REAL_PQ_TCP_N2_N3_AND_A3_NOT_PUBLIC_SDK_APP_UI_OR_RUNTIME',
+             'a3-http': 'REAL_PQ_TCP_SYNTHETIC_RELAY_DERIVED_TYPED_HTTP_BYTE_BOUNDARIES_NOT_RUNTIME',
+             'a3-size-store': 'SYNTHETIC_STORE_PQ_ORIGINAL_CONSENT_ACTIVATION_SIZE_ATOMICITY_NOT_TCP_OR_RUNTIME',
+             'protocol': 'REAL_TCP_PQ_BOOTSTRAP_AND_RECOVERY_ONLY'}[mode]
     summary = {'scope': scope,
                'status': 'SCOPED_PASS' if passed else ('EXPECTED_RED_SERVICE_UNAVAILABLE' if expected_red else 'FAIL'),
                'exit_code': code, 'exit_codes': exits, 'docker_image_digest': image,
@@ -141,9 +156,11 @@ def finish(run, artifacts, image, owned, mode='protocol'):
                'diagnostics': diagnostics, 'http_measurements': metrics,
                'artifacts': {p.name: {'sha256': sha(p), 'bytes': p.stat().st_size} for p in artifacts.iterdir() if p.is_file()},
                'evidence_sha256': {p.name: sha(p) for p in run.iterdir() if p.is_file() and p.name != 'result.json'},
-               'not_run': ['production_App_native_pair', 'Node_reserved_slot_Join', 'dual_Owner_consent',
-                           'actual_Codex_dialogue', 'same_Node_sealed_Relay', 'native_queue_consumption',
-                           'Windows_DPAPI', 'Windows_ACL', 'Windows_GUI'],
+               'not_run': ['production_App_native_pair', 'actual_Codex_dialogue', 'real_native_same_Node_sealed_Relay_consumption',
+                           'native_queue_consumption', 'Windows_DPAPI', 'Windows_ACL', 'Windows_GUI'] +
+                          (['full_public_availability_gate', 'actual_sender_writer_current_enforcement'] if mode in ('a3', 'a3-http') else
+                           ['Node_reserved_slot_RPC', 'public_TCP_dual_consent_surface', 'actual_sender_writer_current_enforcement'] if mode == 'a3-size-store' else
+                           ['Node_reserved_slot_Join', 'dual_Owner_consent']),
                'private_payloads_exported': False, 'model_turns_started': 0,
                'native_daemon_touched': False, 'public_deployment_touched': False}
     save(run / 'result.json', summary)

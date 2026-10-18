@@ -4,12 +4,16 @@ set -euo pipefail
 umask 077
 mode=protocol
 if [[ $# == 1 && "$1" == --store-regressions ]]; then mode=store
-elif [[ $# != 0 ]]; then printf 'Usage: scripts/test-native-pair.sh [--store-regressions]\n' >&2; exit 2; fi
+elif [[ $# == 1 && "$1" == --a3-core ]]; then mode=a3
+elif [[ $# == 1 && "$1" == --a3-http ]]; then mode=a3-http
+elif [[ $# == 1 && "$1" == --a3-size-store ]]; then mode=a3-size-store
+elif [[ $# != 0 ]]; then printf 'Usage: scripts/test-native-pair.sh [--store-regressions|--a3-core|--a3-http|--a3-size-store]\n' >&2; exit 2; fi
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source_root="$repo_root"
-if [[ -n "${CICADA_NATIVE_PAIR_STORE_SOURCE_ROOT:-}" ]]; then
- if [[ "$mode" != store ]]; then printf 'Alternate source is limited to isolated Store regressions.\n' >&2; exit 2; fi
- source_root="$(cd "$CICADA_NATIVE_PAIR_STORE_SOURCE_ROOT" && pwd -P)"
+alternate_source="${CICADA_NATIVE_PAIR_SOURCE_ROOT:-${CICADA_NATIVE_PAIR_STORE_SOURCE_ROOT:-}}"
+if [[ -n "$alternate_source" ]]; then
+ if [[ "$mode" == protocol ]]; then printf 'Alternate source is limited to isolated core regressions.\n' >&2; exit 2; fi
+ source_root="$(cd "$alternate_source" && pwd -P)"
  if [[ ! -f "$source_root/cicada-go/go.mod" ]]; then printf 'Store source must be a Cicada worktree.\n' >&2; exit 2; fi
 fi
 common_dir="$(git -C "$repo_root" rev-parse --path-format=absolute --git-common-dir)"
@@ -64,20 +68,45 @@ lane() {
  printf 'Native pair %s exit=%s\n' "$name" "$code"
 }
 lane version go version
-if [[ "$mode" == store ]]; then
- lane compile-tests go test -mod=readonly -overlay /qa/scripts/fixtures/native-pair/overlay.json -c -o /out/nativepair-cache.test ./internal/store
- lane compile-race go test -mod=readonly -race -overlay /qa/scripts/fixtures/native-pair/overlay.json -c -o /out/nativepair-cache-race.test ./internal/store
+if [[ "$mode" != protocol ]]; then
+ if [[ "$mode" == store ]]; then
+  overlay=/qa/scripts/fixtures/native-pair/overlay.json
+  package=./internal/store
+  binary=nativepair-cache
+  test_timeout=180s
+  selector='^TestQANativePair(ReadCacheKeepsHistoryAcrossRateWindows|FutureStatusCannotSettleOrChangeRate|JoinDeadlineIsIndependentOfLiveLeaseExpiry)$'
+ elif [[ "$mode" == a3 ]]; then
+  overlay=/qa/scripts/fixtures/native-pair/overlay-a3.json
+  package=./internal/server
+  binary=nativepair-a3
+  test_timeout=300s
+  selector='^TestQANativePairA3(FirstConsentZeroSecondUsesOriginalGrants|SecondGrantFailureRollsBackBothMemberships|LostActivationAckRecoversAcceptedHistory|CurrentRequiredAndExactCoordinates)$'
+ elif [[ "$mode" == a3-http ]]; then
+  overlay=/qa/scripts/fixtures/native-pair/overlay-a3-http.json
+  package=./internal/server
+  binary=nativepair-a3-http
+  test_timeout=180s
+  selector='^TestQANativePairA3HTTPExactBodyAndAtomicRejection$'
+ else
+  overlay=/qa/scripts/fixtures/native-pair/overlay-a3-size-store.json
+  package=./internal/store
+  binary=nativepair-a3-size
+  test_timeout=180s
+  selector='^TestQANativePairA3DeliveryOverflowCannotPublishAuthority$'
+ fi
+ lane compile-tests go test -mod=readonly -overlay "$overlay" -c -o "/out/$binary.test" "$package"
+ lane compile-race go test -mod=readonly -race -overlay "$overlay" -c -o "/out/$binary-race.test" "$package"
  if [[ "$(cat "$evidence/compile-tests.exit")" == 0 && "$(cat "$evidence/compile-race.exit")" == 0 ]]; then
   python3 "$repo_root/scripts/native_pair_evidence.py" binaries "$artifacts" "$evidence/binaries-before.json"
-  lane harness go tool test2json -t /out/nativepair-cache.test -test.v -test.count=1 -test.timeout=180s '-test.run=^TestQANativePair(ReadCacheKeepsHistoryAcrossRateWindows|FutureStatusCannotSettleOrChangeRate|JoinDeadlineIsIndependentOfLiveLeaseExpiry)$'
-  lane race go tool test2json -t /out/nativepair-cache-race.test -test.v -test.count=1 -test.timeout=180s '-test.run=^TestQANativePair(ReadCacheKeepsHistoryAcrossRateWindows|FutureStatusCannotSettleOrChangeRate|JoinDeadlineIsIndependentOfLiveLeaseExpiry)$'
+  lane harness go tool test2json -t "/out/$binary.test" -test.v -test.count=1 "-test.timeout=$test_timeout" "-test.run=$selector"
+  lane race go tool test2json -t "/out/$binary-race.test" -test.v -test.count=1 "-test.timeout=$test_timeout" "-test.run=$selector"
   python3 "$repo_root/scripts/native_pair_evidence.py" binaries "$artifacts" "$evidence/binaries-after.json"
  else
   printf 'Required compilation failed; Store regression NOT_RUN.\n' >"$evidence/harness.log"
   printf '125\n' >"$evidence/harness.exit"
   printf '125\n' >"$evidence/race.exit"
  fi
- lane vet go vet -mod=readonly -overlay /qa/scripts/fixtures/native-pair/overlay.json ./internal/store
+ lane vet go vet -mod=readonly -overlay "$overlay" "$package"
 else
  lane compile-cli env CGO_ENABLED=0 go build -mod=readonly -trimpath -o /out/cicada ./cmd/cicada
  lane compile-tests go test -mod=readonly -c -o /out/n3.test ./acceptance/n3
