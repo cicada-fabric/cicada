@@ -193,6 +193,30 @@ func (s *Store) PreviewGroupEndpointKeyGrant(ownerID, groupID, endpointID, owner
 // owner or a model approval claim never supplies authority.
 func (s *Store) AcceptGroupEndpointKeyGrant(authenticatedOwnerID, groupID, endpointID,
 	ownerKeyID string, signedProof []byte) (*OwnerGroupEndpointKeyGrant, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	if err = nativePairLegacyAllowed(tx, "", groupID, ""); err != nil {
+		return nil, err
+	}
+	record, err := acceptGroupEndpointKeyGrantTx(tx, authenticatedOwnerID, groupID, endpointID, ownerKeyID, signedProof, time.Now().UTC())
+	if err != nil {
+		return nil, err
+	}
+	if err = tx.Commit(); err != nil {
+		return nil, err
+	}
+	return record, nil
+}
+
+// Shared verifier/nonce consumer. Callers establish admission policy and commit
+// all related membership changes in this same transaction.
+func acceptGroupEndpointKeyGrantTx(tx *sql.Tx, authenticatedOwnerID, groupID, endpointID,
+	ownerKeyID string, signedProof []byte, nowAt time.Time) (*OwnerGroupEndpointKeyGrant, error) {
 	if err := validateGroupEndpointKeyGrantRequest(authenticatedOwnerID, groupID, endpointID, ownerKeyID); err != nil ||
 		len(signedProof) == 0 || len(signedProof) > 16*1024 {
 		return nil, errors.New("Group Endpoint key grant request is invalid")
@@ -210,40 +234,26 @@ func (s *Store) AcceptGroupEndpointKeyGrant(authenticatedOwnerID, groupID, endpo
 		return nil, errors.New("Group Endpoint key grant expiry is invalid")
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	tx, err := s.db.Begin()
-	if err != nil {
-		return nil, err
-	}
-	rollback := func(cause error) (*OwnerGroupEndpointKeyGrant, error) {
-		_ = tx.Rollback()
-		return nil, cause
-	}
-	if err = nativePairLegacyAllowed(tx, "", groupID, ""); err != nil {
-		return rollback(err)
-	}
-	nowAt := time.Now().UTC()
 	manifest, err := readGroupEndpointKeyGrantManifest(tx, authenticatedOwnerID, groupID,
 		endpointID, ownerKeyID, submitted.IssuedAt, submitted.ExpiresAt, nowAt)
 	if err != nil {
-		return rollback(err)
+		return nil, err
 	}
 	ownerKey, err := scanOwnerApprovalKey(tx.QueryRow(`SELECT owner_id, key_id, public_identity_json,
 state, version, created_at, updated_at, revoked_at FROM owner_approval_keys_v2
 WHERE owner_id = ? AND key_id = ?`, authenticatedOwnerID, ownerKeyID))
 	if err != nil {
-		return rollback(err)
+		return nil, err
 	}
 	if ownerKey.State != OwnerApprovalKeyActive {
-		return rollback(ErrOwnerApprovalKeyConflict)
+		return nil, ErrOwnerApprovalKeyConflict
 	}
 	verified, err := e2ee.VerifyOwnerLinkKeyGrant(signedProof, ownerKey.Public,
 		authenticatedOwnerID, GroupEndpointKeyGrantOperation, manifest.Digest,
 		manifest.CandidateBindingDigest, uint64(manifest.CandidateVersion),
 		e2ee.OwnerLinkGrantSideSource, nowAt)
 	if err != nil {
-		return rollback(fmt.Errorf("verify Group Endpoint key grant signature: %w", err))
+		return nil, fmt.Errorf("verify Group Endpoint key grant signature: %w", err)
 	}
 	var existingID, existingManifestDigest string
 	var existingProof []byte
@@ -252,32 +262,29 @@ FROM group_endpoint_key_grants_v2 WHERE owner_id = ? AND owner_key_id = ? AND no
 		authenticatedOwnerID, ownerKeyID, verified.Nonce).Scan(&existingID, &existingManifestDigest, &existingProof)
 	if err == nil {
 		if existingManifestDigest != manifest.Digest || string(existingProof) != string(signedProof) {
-			return rollback(ErrGroupEndpointKeyGrantReplay)
+			return nil, ErrGroupEndpointKeyGrantReplay
 		}
 		record, err := scanGroupEndpointKeyGrant(tx.QueryRow(`SELECT id, owner_id, group_id,
 endpoint_id, owner_key_id, manifest_json, signed_proof, accepted_at
 FROM group_endpoint_key_grants_v2 WHERE id = ?`, existingID))
 		if err != nil {
-			return rollback(err)
+			return nil, err
 		}
 		if record.OwnerID != authenticatedOwnerID || record.GroupID != groupID ||
 			record.EndpointID != endpointID || record.OwnerKeyID != ownerKeyID ||
 			groupEndpointKeyManifestDigest(record.Manifest) != manifest.Digest {
-			return rollback(ErrGroupEndpointKeyGrantConflict)
+			return nil, ErrGroupEndpointKeyGrantConflict
 		}
 		record.Manifest = *manifest
 		record.CurrentStatus = GroupEndpointKeyGrantCurrent
-		if err := tx.Commit(); err != nil {
-			return nil, err
-		}
 		return record, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
-		return rollback(err)
+		return nil, err
 	}
 	manifestJSON, err := json.Marshal(manifest)
 	if err != nil {
-		return rollback(err)
+		return nil, err
 	}
 	acceptedAt := nowAt.Format(time.RFC3339Nano)
 	id := NewID("gkg")
@@ -289,11 +296,8 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, manifest.HubID, authenticatedOwne
 		verified.Nonce, append([]byte(nil), signedProof...), acceptedAt)
 	if err != nil {
 		if isSQLiteConstraint(err) {
-			return rollback(ErrGroupEndpointKeyGrantReplay)
+			return nil, ErrGroupEndpointKeyGrantReplay
 		}
-		return rollback(err)
-	}
-	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 	return &OwnerGroupEndpointKeyGrant{ID: id, OwnerID: authenticatedOwnerID,

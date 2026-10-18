@@ -234,6 +234,10 @@ allowed. Limits are 8 KiB plaintext/message, 64 KiB total plaintext,
 128 KiB ciphertext/message, 1 MiB total accepted ciphertext and eight distinct
 receiver native submissions. Both Hub and Node enforce this signed policy;
 Node checks plaintext after opening, Hub counts actual ciphertext bytes.
+The Hub also bounds authenticated inner AEAD ciphertext length minus the fixed
+16-byte AES-GCM tag, without decrypting content; padding consumes the same
+plaintext budget. Its total is derived from the immutable admitted ciphertexts,
+so cancellation, expiry, UNKNOWN and restart do not refund it.
 These ceilings do not instruct the gate to exhaust all four exchanges.
 
 Hub charges admission and its exact receipt atomically. Same pair/message ID/
@@ -278,6 +282,10 @@ limits, not provider HTTP call, model turn, token or cost limits.
 
 Existing key manifests bind membership revisions. Signing manifests at revision
 1 and then changing membership to revision 2 would immediately stale them.
+Plan preparation and consent collection retain the reviewed control revision;
+PlanID selects the exact immutable prepared target. Explicitly replacing a
+prepared plan invalidates its old consents without changing either Thread.
+
 Consequently the preview must derive the exact projected final manifests under
 Store Guard; activation first checks the unchanged source revisions and then
 rebuilds/verifies those manifests against the final transaction rows. No external
@@ -344,6 +352,24 @@ Existing GroupKeyManifest alone does not bind pair ID or budgets. Missing,
 swapped, oversized or invalid evidence fails closed even if legacy Group grants
 would allow the message. Ciphertext format is unchanged. Evidence JSON is bounded
 to 256 KiB and the complete new authorization carrier to 320 KiB.
+
+Before the second consent can publish ACTIVE, its writer transaction preflights
+both directions of the complete peer-key and delivery-authorization types. It
+uses the real endpoint/key/proof/current tuples and reserves only unknown future
+route/attempt fields: the unchanged 256-byte Relay token bound with maximum JSON
+escaping, a 64-character hexadecimal digest, and a maximum 30-byte RFC3339Nano
+observation. Both ASK and Reply shapes are checked; the fixed depth-zero policy
+keeps parent request empty and excludes Task/SEND additions. These size-only
+values are internal and are never published as actual authorization evidence.
+The two Pair-specific HTTP responses write exactly the complete `json.Marshal`
+bytes measured by Store, with no extra Encoder newline. Thus the 320 KiB bound
+also holds for the actual HTTP body consumed by Node. Legacy Group responses
+retain their existing JSON Encoder behavior.
+A peer-key fitting by itself is insufficient. Overflow rolls the second consent
+back to zero effective peer grants. Message admission repeats the complete check
+with the actual route; claim and final authorization encode the exact actual
+attempt/route before their writer commits. Overflow rolls back, without partial
+message/attempt publication, truncation, or a spurious terminal delivery failure.
 
 The two existing typed carriers, `SameGroupSealedV1PeerKey` and
 `SameGroupSealedV1DeliveryAuthorization`, carry separate optional top-level

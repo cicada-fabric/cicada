@@ -137,7 +137,7 @@ func (h *hubNodesHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.base.ServeHTTP(w, r)
 		return
 	}
-	if path == "/v2/fabric/whoami" || path == "/v2/fabric/endpoint-keys" || path == "/v2/fabric/heartbeat" {
+	if path == "/v2/fabric/whoami" || path == "/v2/fabric/endpoint-keys" || path == "/v2/fabric/heartbeat" || path == "/v2/fabric/resolve" {
 		h.nativePairSelf(w, r)
 		return
 	}
@@ -169,7 +169,23 @@ func hubNodesRelayPath(path string) bool {
 			return true
 		}
 	}
-	return len(parts) == 3 && parts[1] == "sealed" && parts[2] == "claim" || len(parts) == 4 && parts[1] == "group" && parts[2] == "sealed" && parts[3] == "claim"
+	if len(parts) == 3 && parts[1] == "sealed" && parts[2] == "claim" {
+		return true
+	}
+	if len(parts) < 4 || parts[1] != "group" || parts[2] != "sealed" {
+		return false
+	}
+	if len(parts) == 4 {
+		switch parts[3] {
+		case "claim", "peer-key", "ask", "reply":
+			return true
+		}
+		return false
+	}
+	if len(parts) == 5 {
+		return parts[3] == "requests" && parts[4] != ""
+	}
+	return len(parts) == 6 && parts[4] != "" && ((parts[3] == "requests" && parts[5] == "cancel") || (parts[3] == "deliveries" && parts[5] == "authorization"))
 }
 
 func (h *hubNodesHandler) client(w http.ResponseWriter, r *http.Request) {

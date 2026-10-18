@@ -379,3 +379,253 @@ publication rejection. It does not fabricate ACTIVE permission through SQL.
 QA's source/overlay/binary evidence is separate from producer evidence. This
 focused synthetic result changes neither recorded TIMEOUT into a pass and
 does not establish E2E, ACTIVE peer permissions or real native conversation.
+
+## 2026-10-18 A3: atomic consent and bounded existing Relay (candidate)
+
+This section records the next Hub checkpoint on `task/n2-hub`, based on
+`f279093d9e8e09d6576ac319f18b9cedf1d670bf` plus the frozen dirty inputs. It
+implements the reviewed `native-pair-v1` server path; public availability remains
+false. It does not add a protocol, change the 55-operation `client-hub-v1.6.5`
+catalog, change N2/N3 purposes/identities/epochs, or authorize real Runtime work.
+The earlier 13f and A2 validation remains attributed to its recorded source.
+
+The server now derives a real two-candidate Plan, retains the first consent with
+zero effective peer grants, and activates both projected memberships and both
+existing Owner Group Endpoint key grants in one writer transaction. The shared
+private Grant Tx helper preserves the old signature and nonce checks. Fresh
+Owner intent can replace an unpublished Plan; stale candidate/member/Plan,
+expired Plan, rejected generation and conflicting intent cannot adopt a changed
+tuple. Slot rejection preserves its old SID/history and the other slot, revokes
+the rejected attempt, and advances only its reserved generation. Exact sealed
+responses/fences and first-consent history survive reopen.
+
+Existing same-Group ASK/Reply, claim and final authorization now require actual
+ACTIVE pair tuples. Actual rows supply Current independently of the signed
+Plan; Owner evidence, projected old manifests and original access/native epochs
+must match. The ordinary peer locator redactions remain. Immutable admitted
+message rows enforce four root ASK, four replies, one outstanding ASK, no
+child/SEND, and the fixed byte/message/native-submission budgets. An exact
+ciphertext retry does not charge again; cancellation/revocation cannot authorize
+subsequent injection or a new late reply. Administrative login revocation does
+not erase the independently signed peer deadline. Same-identity ACTIVE heartbeat
+can renew both live leases beyond JoinUntil without changing either SID/epoch.
+The bounded Hub Nodes composition exposes only the existing reviewed peer route
+shapes and resolve, with no Control construction/start or inference dependency.
+
+Activation preflights complete actual peer carriers and both ASK/Reply delivery
+shapes in both directions. Only unknown future route/attempt/observation fields
+use internal size reservations at the unchanged old bounds (maximum JSON
+escaping for 256-byte tokens, 64-byte hexadecimal digest, 30-byte observation,
+empty causal parent/no Task under the fixed policy). Placeholders are never
+published as authorization. Message admission checks its actual route; claim
+allocates its real attempt ID and uses the same complete typed carrier builder
+as final authorization before committing. Oversize rolls back without truncation,
+partial membership/key/message/attempt publication, or a spurious FAILED attempt.
+
+The effective input freeze contains 2,253 repository files:
+`runtime/native-pair-a3-producer-final-20261018T010602Z-product-freeze.json`, SHA-256
+`e98268ae5ea5068f00e27b0e54536b3d80e176a6c7dc763b4b6f0a4702b408f9`.
+Only this append-only validation record is excluded as a non-input; selected Go
+packages/checkers do not read it. Product edits stop throughout producer/QA checks.
+The offline producer toolchain image remains
+`sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61`
+(Go 1.27.2), distinct from any built Hub image. Source/root and the pinned module
+cache are read-only; the task build cache is separate and locked. Containers use
+network isolation and synthetic keys; no shared Hub is a disposable fixture.
+
+| Producer check | Source manifest SHA-256 | Result |
+| --- | --- | --- |
+| Initial consent/old Grant | `0959a23aa41ab97ee6dcbaf47ee37c9e384318d78220d66e3097f0cff50cc3ec` | 15/0/0, exit 0, inputs unchanged; intermediate dirty 13f source |
+| Initial peer/old sealed | `9765eda9fd340b147bb99ead90b151eded75278abba14b664028a05d434dcefe` | 15/0/0, exit 0, inputs unchanged; intermediate dirty 13f source |
+| Stale/replaced Plan, concurrent Consent, reject and real TCP | `e2292a68239b2d9172a264a0afbc2971a630c8e54f836d3524eba0227849c727` | 10/0/0, exit 0, inputs unchanged; intermediate dirty 13f source |
+| Initial near-size test | `4e593107273559d172a590e3d5f702df845a8c3f6dbe496a7048d4ca5d305f12` | **14 pass / 1 fail**, exit 1, inputs unchanged; dirty f279 source |
+| Complete activation/admission/claim/final carrier boundaries | `7f10d075cbfbdc941bf3c24f0fbea8aaa00d9a5a7d49cbeeb693ece16452abd4` | 3/0/0, exit 0, inputs unchanged; intermediate dirty f279 source |
+| Final necessary normal group | `87b1fa97574d98d2bd2c6bba974338febc424ec28524fd02b48ba88f63856ccf` | **52/0/0**, exit 0, inputs unchanged; disk-backed disposable container tmp |
+
+The failed near-size test assumed two RFC3339Nano observations always encode to
+the same number of bytes: actual size was 327663 rather than the target 327664.
+It failed before reaching its negative preflight assertions. It is retained as
+FAIL, not a product pass. The corrected fixture leaves margin for observation
+length and tests real production writers. In the later three-case run the actual
+peer carriers were 327616/327617 bytes (limit 327680), while the complete delivery
+reservation/actual delivery did not fit. Real signed activation in an unpublished
+transaction establishes the fixture; SQL never fabricates ACTIVE permission.
+A synthetic stored Grant-ID fault expands only public carrier metadata. The
+public second-consent call then rejects and retains two zero memberships, zero
+effective key grants and only the first consent. A separate fault after genuine
+activation proves rejected message admission leaves no message, rejected claim
+leaves no attempt, and final size rejection retains the original CLAIMED state.
+
+The final normal selector is recorded verbatim in its source manifest and runs
+Consent/Peer/reject/carrier boundaries, old same-Group Relay and old Group Grant,
+heartbeat, N3 real TCP and new pair TCP tests. The latter uses actual N2/N3 PQ
+ceremonies and Node zero-Join, two self candidates, both explicit consents,
+resolve, ASK/claim/current final authorization and revoke denial, over disposable
+TCP. SIDs and ciphertext content are visibly synthetic and never executed.
+All four contract checkers pass; catalog SHA remains
+`a4ba36df0690e15dbaad36ea93d79586b25380bf31ebc5e0da5c3c1122e14db9`.
+
+At this record point split necessary producer race groups, the standard disposable
+Client interop compatibility gate and independent QA A3 gate are in progress.
+Their terminal receipts will be appended separately; no pending check is a pass.
+Real native Runtime/Windows execution, original physical Thread conversation,
+Android, physical devices, public HTTPS and strict PQTLS remain NOT RUN. Earlier
+race TIMEOUTs remain failed and are not reattributed to this source.
+
+Producer race group A (atomic consent/rollback, concurrent Store handles,
+first-proof history, slot rejection and full activation carrier preflight)
+completed **6/0/0**, exit 0, inputs unchanged:
+`runtime/native-pair-a3-consent-race-20261018T010737Z-summary.json`, source SHA
+`76e3b3a0ada0444d68241e5408f347907746198415b9538b6085a521d02ab9d0`.
+This group used isolated `/tmp` tmpfs, not disk/power-loss recovery. Its actual
+running Store binary was read via container `/proc/191/exe`, target
+`/tmp/go-build2981932088/b268/store.test`, SHA-256
+`f6d6d5ccbf222c06cfacc5e259d9c5262c01c57a8589c3f865188619a2fdb9fb`.
+The invocation-specific receipt is `runtime/native-pair-a3-consent-race-20261018T010737Z-store-binary-identity.json`.
+The earlier host `/proc` capture attempt captured no binary; this later in-container
+live-process capture is the actual measurement. Neither hash is transferred to
+other normal/race invocations.
+
+The locally started standard Client interop gate was **interrupted on Root's
+coordination instruction**, exit 143; its terminal result is **FAIL**, not PASS.
+Root owns the single standard interop run after Hub and Node/MCP integration on
+the final combined frozen source. Interrupted receipt:
+`native-pair-a3-client-interop-20261018T0108Z/result.json`, SHA-256
+`5989b9ac1601233326d2eba12d9dfe7445ffc98c4658652a6ce93cd7dda87218`.
+Its Hub image was `sha256:44fa21a1206c77f51e8cc500e90b41042f7a580042e839ef6ca4639128d2eaa7`,
+source fingerprint `932aa4de5a4a1f7ab5a7dde49ea04bff4984eacf38c7ae32f14075dd27c18f95`,
+dirty f279 source. That build/image is not a gate pass. Cleanup is **CONFIRMED**:
+`native-pair-a3-client-interop-20261018T0108Z/cleanup.json`, SHA-256
+`44aae12eae52cdb067b48c329127fd2921bbe7b8c066ad87b15ead6d84012a19`.
+All three owned containers, two fresh image references and private scratch are
+verified EXACT_ABSENT. No resident deployment was replaced or removed; private
+failure diagnostics are retained locally and are not upload evidence.
+
+Producer race group B (candidate/member mutation, exclusive Plan expiry and
+replaced-Plan fencing) completed **5/0/0**, exit 0, inputs unchanged:
+`runtime/native-pair-a3-stale-race-20261018T011123Z-summary.json`, source SHA
+`e17893da2a19bad2190d55694d84bd16891ff58183771bb1068a9468fdf3962e`.
+It uses the same frozen product inputs and isolated tmpfs. No actual binary hash
+was captured for this invocation; none is borrowed from group A or a failed run.
+
+Producer race group C (Peer guards, cancellation, actual carrier rollback,
+ACTIVE heartbeat and disposable real TCP) completed **6/0/0**, exit 0, inputs
+unchanged: `runtime/native-pair-a3-peer-race-20261018T011329Z-summary.json`, source
+SHA `e420e37722742b83c3a2f9443161616575af1300eb0681ca49d02348be01c3fd`.
+Like A/B it uses tmpfs and does not establish disk/power-loss recovery. No binary
+hash was captured for this invocation or borrowed from another one.
+
+Independent QA core gate on the original e982 freeze completed **SCOPED_PASS**,
+normal **4/0/0**, race **4/0/0**, six lanes exit 0, product 2253 plus eight QA
+inputs unchanged and actual executed binaries unchanged; its container is absent.
+Receipt: `.local/evidence/native-pair-acceptance/run-20261018T011118Z-XANwqI/result.json`,
+SHA-256 `b5cb3980e7996723f73072770256413a6f666df66ab80c64c2beb97398712d95`.
+It proves the real dual consent/old Grant atomic core and retained response
+history in its documented scope, not public availability or native Runtime.
+
+Root identified an additional HTTP byte boundary after that source was frozen:
+`json.Marshal` preflight measured the object, while the existing `writeJSON`
+Encoder adds one LF byte. A Marshal object exactly at the ceiling could therefore
+produce an oversized HTTP body for the Node consumer. All old 52 normal, 6+5+6
+race and QA 4+4 results above remain at their original sources. They are not
+relabelled as validation of the subsequent HTTP correction. Public availability
+remains false. The bounded follow-up changes only pair-specific HTTP rendering;
+legacy Group rendering, wire DTOs and the 320 KiB ceiling stay unchanged.
+
+## 2026-10-18 A3 HTTP byte correction (next exact source)
+
+The Pair-specific peer-key and final-authorization HTTP handlers now call
+`writeSameGroupSealedV1Carrier` with their actual typed Store result. For a pair,
+it writes exactly the already measured `json.Marshal` bytes, without an extra
+Encoder LF. It rejects an incomplete or oversized Pair carrier before writing
+its success status/body. Legacy carriers with both Pair fields absent still use
+the unchanged `writeJSON` Encoder including LF. Store/wire DTOs, transaction
+preflight, the old Group writer and the 320 KiB ceiling are unchanged. Thus the
+existing activation/admission/claim/final preflight now measures the actual Pair
+HTTP body; the boundary no longer differs by a newline.
+
+New freeze: 2,255 product inputs, only this validation record excluded as a
+non-input: `runtime/native-pair-a3-http-final-20261018T011834Z-product-freeze.json`,
+SHA-256 `1ec7c8fafb2728e554900bb9c02b7e48e9214d033dc5a3cfbcf72de2f0bf5cb0`.
+The necessary incremental normal selector (complete typed HTTP rendering,
+real Pair TCP, real activation peer-fit/delivery-overflow and actual writer
+rollback) completed **6/0/0**, exit 0, inputs unchanged:
+`runtime/native-pair-a3-http-final-20261018T011834Z-summary.json`, source SHA
+`db08af393a5d0a6134766d739f5a9c8bd2aea544d4799e25a13a2834159cab80`.
+It uses the same pinned offline toolchain with disk-backed disposable container
+tmp. The old 52 normal/17 race results above remain on their own frozen inputs;
+they are not relabelled as this new source's test counts.
+
+The real N2/N3/dual-consent TCP ceremony supplies actual signed peer-key and
+final-authorization snapshots. Separate private HTTP fixtures exercise the
+production typed writer with those snapshots: both complete actual TCP bodies
+at **327680 bytes are accepted byte-for-byte**, and **327681 bytes are rejected
+before any partial success carrier**. The public Grant-ID padding is a visibly
+synthetic rendering fault fixture; it does not create Store authority or mutate
+an Owner signature. These HTTP fixture requests do not execute a native SID.
+Legacy Encoder LF and missing-one-Pair-field rejection are checked separately.
+The existing genuine production-transaction activation/zero-grant negative and
+actual admission/claim/final rollback cases run in this same increment.
+
+The matching incremental producer race and independent QA HTTP gate remain
+pending at this record point. Caps remain false; integrated standard Client
+interop is Root's later combined-source gate, and real Runtime, physical devices,
+Windows native/Android, public HTTPS and strict PQTLS remain NOT RUN here.
+
+The matching necessary HTTP increment race completed **6/0/0**, exit 0, inputs
+unchanged: `runtime/native-pair-a3-http-race-20261018T012009Z-summary.json`, source
+SHA `6c8ff467e6e74cc71311780f85eeab4ce03a278e3d51e6ed81dad3acf406cb54`.
+All 2,255 frozen product hashes still match. This race uses isolated tmpfs and
+has no separately captured binary hash; it is not disk/power-loss evidence and
+borrows no binary identity from another invocation. The independent QA HTTP
+increment is still pending; no pending gate is a pass.
+
+Independent QA HTTP increment completed **SCOPED_PASS**, normal **1/0/0**, race
+**1/0/0**, exit 0: `.local/evidence/native-pair-acceptance/run-20261018T012227Z-4y3LNS/result.json`,
+SHA-256 `6b4419ee320713e8ed1c01a123f36629d5a64fd61ad4cf8f8c14628b327f2353`.
+Its 2,255 approved product inputs plus QA inputs total 2,267; before/after source
+hash is `a0408bda12992236d60d1e5979df1d9455afde8c3d85675014ae17ff5ed2283c`.
+Actual executed binary hashes match before/after and its container is absent.
+The scope is the independent real-TCP typed HTTP byte boundary, including both
+exact-limit/+1 carriers, missing evidence/current and legacy Encoder behavior;
+no Runtime/model/daemon or deployment is touched. The separate independent
+actual-transaction overflow gate is still pending on the same frozen product.
+
+Independent QA actual-transaction size increment first failed to compile its
+own new Store overlay (missing OwnerID argument, wrong private error name and
+state type): **FAIL, zero assertions**, receipt
+`.local/evidence/native-pair-acceptance/run-20261018T012416Z-qDszCh/result.json`, SHA
+`dfe38319218db9be7622ff5692dfeb65ffdb130b00dce34ae40a55f55fdfc7ee`.
+Compile-tests/compile-race/vet exit 1, harness/race not executed (125), version
+exit 0. Its original overlay, logs and source are retained. That failed run's
+source before/after was `a0408bda12992236d60d1e5979df1d9455afde8c3d85675014ae17ff5ed2283c`;
+no assertion or executed-binary pass is inferred from it.
+
+After changing only its own overlay, QA's new independent Store increment
+completed **SCOPED_PASS**, normal **1/0/0**, race **1/0/0**, all six lanes exit 0:
+`.local/evidence/native-pair-acceptance/run-20261018T012506Z-ISf9cq/result.json`, SHA
+`28b034d7fc1e94065c4a5bbf6d8501f361b7c2ff5c4bdaec34bba36dded6f19e`.
+Its 2,267 product/QA inputs match before/after; its distinct source hash is
+`15b076abd00e050f02b9630dde02fecd15fe0600591e4b5e776b9f216e5163b0`.
+Executed binary hashes match before/after, the owned container is absent, and
+SQLite resides on host-bound `/state/tmp`, not tmpfs. This does not establish
+power-loss recovery. The fixture uses real production Tx/PQ consent and keys,
+without SQL-made ACTIVE permissions or a Node RPC/TCP claim. It measures actual
+peer **327648** and full delivery reservation **335783** bytes: the original
+second consent rejects, both memberships stay zero, no effective key grant
+publishes, the exact typed size cause is verified and its original rejection
+fence remains permanent. The normal/race scope is
+`SYNTHETIC_STORE_PQ_ORIGINAL_CONSENT_ACTIVATION_SIZE_ATOMICITY_NOT_TCP_OR_RUNTIME`.
+
+All producer/independent checks are terminal. The 2,255 final product hashes
+still match the approved 1ec7 HTTP freeze; only this excluded record was appended.
+Final-source necessary validation is producer normal **6/0/0** and race **6/0/0**,
+independent HTTP **1+1**, and independent transaction-size **1+1**. The original
+A3 core normal **52**, race **6+5+6** and QA **4+4** remain on the preceding e982
+source. No tests are repeated or counts transferred merely for document/Git
+metadata changes. This checkpoint remains server preparation with public
+capabilities false. App/Node/MCP integration, Root's unified standard Client
+interop, real original-SID native Runtime/Windows, physical devices/Android,
+public HTTPS and strict PQTLS remain separate pending/NOT RUN gates. Nothing in
+these synthetic scoped results authorizes model/queue/provider use, deployment,
+real key rotation or public availability.

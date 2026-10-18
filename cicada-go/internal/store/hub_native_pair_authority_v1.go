@@ -285,6 +285,17 @@ func nativePairProcessTx(tx *sql.Tx, a *hubAppNodeActor, in HubNativePairInput, 
 		body, pair, err = nativePairPrepareTx(tx, a, current, claims, c, digest, in.At, in.Hub)
 	case wire.OperationNativePairBootstrapComplete:
 		body, err = nativePairCompleteTx(tx, a, claims, raw, c, digest, in.At)
+	case wire.OperationNativePairConsentPrepare:
+		body, err = nativePairConsentPrepareTx(tx, a, claims, c, digest, in.At)
+	case wire.OperationNativePairConsentComplete:
+		q, ok := in.Body.(wire.NativePairConsentComplete)
+		if !ok {
+			err = ErrHubAccountRejected
+		} else {
+			body, err = nativePairConsentCompleteTx(tx, a, claims, raw, q.GroupKeyProof, c, digest, in.At)
+		}
+	case wire.OperationNativePairSlotReject:
+		body, err = nativePairSlotRejectTx(tx, a, claims, c, digest, in.At)
 	case wire.OperationNativePairRevoke:
 		body, err = nativePairRevokeTx(tx, a, claims, c, digest, in.At)
 	default:

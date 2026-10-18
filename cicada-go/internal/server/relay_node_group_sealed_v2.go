@@ -126,7 +126,7 @@ func (h *Handler) relayNodeGroupSealedV2(response http.ResponseWriter,
 			return
 		}
 		response.Header().Set("Cache-Control", "no-store")
-		writeJSON(response, http.StatusOK, authorization)
+		writeSameGroupSealedV1Carrier(response, http.StatusOK, authorization)
 		return
 	}
 	writeError(response, http.StatusNotFound, errors.New("same-Group sealed Node route not found"))
@@ -250,7 +250,7 @@ func (h *Handler) relayNodeGroupSealedPeerKey(response http.ResponseWriter,
 		return
 	}
 	response.Header().Set("Cache-Control", "no-store")
-	writeJSON(response, http.StatusOK, evidence)
+	writeSameGroupSealedV1Carrier(response, http.StatusOK, evidence)
 }
 
 func relayNodeSameGroupSealedWriteError(response http.ResponseWriter, err error) {

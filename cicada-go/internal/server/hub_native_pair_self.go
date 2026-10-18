@@ -9,7 +9,7 @@ import (
 
 func (h *hubNodesHandler) nativePairSelf(w http.ResponseWriter, r *http.Request) {
 	want := http.MethodGet
-	if r.URL.Path == "/v2/fabric/endpoint-keys" || r.URL.Path == "/v2/fabric/heartbeat" {
+	if r.URL.Path == "/v2/fabric/endpoint-keys" || r.URL.Path == "/v2/fabric/heartbeat" || r.URL.Path == "/v2/fabric/resolve" {
 		want = http.MethodPost
 	}
 	if r.Method != want {
@@ -24,6 +24,20 @@ func (h *hubNodesHandler) nativePairSelf(w http.ResponseWriter, r *http.Request)
 	actor, err := h.nodes.Fabric().AuthenticateForGroup(token, r.Header.Get("Cicada-Group-Scope"))
 	if err != nil || h.nodes.Fabric().RequireNativePairSelf(actor) != nil {
 		writeError(w, http.StatusForbidden, fabric.ErrPermissionDenied)
+		return
+	}
+	if r.URL.Path == "/v2/fabric/resolve" {
+		var input fabric.ResolveInput
+		if decodeStrictClientJSON(r.Body, 4096, &input) != nil {
+			writeError(w, http.StatusBadRequest, errors.New("invalid peer query"))
+			return
+		}
+		card, err := h.nodes.Fabric().Resolve(actor, input)
+		if err != nil {
+			fabricV2Error(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, card)
 		return
 	}
 	if r.URL.Path == "/v2/fabric/endpoint-keys" {

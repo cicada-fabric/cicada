@@ -13,6 +13,7 @@ import (
 
 const (
 	SameGroupSealedV1DataScope           = "same-group.endpoint-message.v1"
+	sameGroupSealedV1MaxTokenBytes       = 256
 	sameGroupSealedV1AuthorizationPrefix = "same-group-sealed.v2:"
 )
 
@@ -110,14 +111,16 @@ type SameGroupSealedV1DeliveryAuthorization struct {
 }
 
 type sameGroupEndpointPair struct {
-	hubID    string
-	groupID  string
-	sender   SameGroupSealedV1EndpointEvidence
-	receiver SameGroupSealedV1EndpointEvidence
+	nativeEvidence *wire.NativePairPeerEvidence
+	nativeCurrent  *wire.NativePairPeerCurrent
+	hubID          string
+	groupID        string
+	sender         SameGroupSealedV1EndpointEvidence
+	receiver       SameGroupSealedV1EndpointEvidence
 }
 
 func validSameGroupSealedV1Token(value string) bool {
-	return value != "" && len(value) <= 256 && strings.TrimSpace(value) == value &&
+	return value != "" && len(value) <= sameGroupSealedV1MaxTokenBytes && strings.TrimSpace(value) == value &&
 		!strings.ContainsAny(value, " \t\n\r/\\")
 }
 
@@ -225,8 +228,20 @@ func readSameGroupSealedV1PairTx(tx *sql.Tx, groupID, senderEndpointID,
 			return sameGroupEndpointPair{}, ErrSameGroupSealedV1Denied
 		}
 	}
-	return sameGroupEndpointPair{hubID: hubID, groupID: groupID,
-		sender: sender, receiver: receiver}, nil
+	evidence, current, err := nativePairPeerTx(tx, groupID, senderEndpointID, receiverEndpointID, at)
+	if err != nil {
+		return sameGroupEndpointPair{}, err
+	}
+	pair := sameGroupEndpointPair{hubID: hubID, groupID: groupID, sender: sender, receiver: receiver, nativeEvidence: evidence, nativeCurrent: current}
+	if err = nativePairMatchEndpointEvidence(pair); err != nil {
+		return sameGroupEndpointPair{}, err
+	}
+	if pair.nativeEvidence != nil {
+		if _, err = sameGroupSealedV1PeerCarrierTx(tx, pair); err != nil {
+			return sameGroupEndpointPair{}, err
+		}
+	}
+	return pair, nil
 }
 
 func sameGroupSealedV1AuthorizationRef(groupID string) string {
@@ -278,7 +293,7 @@ func sameGroupSealedV1PairForRecordTx(tx *sql.Tx, record *RelaySealedV1Record,
 	if err != nil {
 		return sameGroupEndpointPair{}, err
 	}
-	if !sameGroupSealedV1SecurityMatchesPair(record.Security, pair) {
+	if !sameGroupSealedV1SecurityMatchesPair(record.Security, pair) || nativePairQueuedMessageTx(tx, pair, record) != nil {
 		return sameGroupEndpointPair{}, ErrSameGroupSealedV1Denied
 	}
 	return pair, nil
@@ -379,24 +394,22 @@ func (s *Store) GetSameGroupSealedV1PeerKey(credentialDigest, groupID,
 		return nil, err
 	}
 	defer tx.Rollback()
+	if err := relayAcquireAdmissionGuardTx(tx); err != nil {
+		return nil, err
+	}
 	pair, err := readSameGroupSealedV1PairTx(tx, groupID, sourceEndpointID,
 		targetEndpointID, time.Now().UTC())
 	if err != nil || requireSameGroupSealedV1SourceTx(tx, credentialDigest, pair) != nil {
 		return nil, ErrSameGroupSealedV1Denied
 	}
-	scope, err := readNativeContextScopeForEndpointTx(tx, sourceEndpointID, groupID)
+	result, err := sameGroupSealedV1PeerCarrierTx(tx, pair)
 	if err != nil {
-		return nil, ErrSameGroupSealedV1Denied
-	}
-	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
-	// The source can verify and encrypt to the target's public key without
-	// learning or storing the target's current native Session ID.
-	pair.receiver.NativeSessionID = ""
-	return &SameGroupSealedV1PeerKey{HubID: pair.hubID, GroupID: pair.groupID,
-		NativeContextScope: scope,
-		Sender:             pair.sender, Receiver: pair.receiver}, nil
+	if err = tx.Commit(); err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 // EnqueueSameGroupSealedV1Send derives every route identity from current
@@ -420,7 +433,7 @@ func (s *Store) EnqueueSameGroupSealedV1Send(input SameGroupSealedV1Send) (*Rela
 	}
 	pair, err := readSameGroupSealedV1PairTx(tx, input.GroupID,
 		input.SourceEndpointID, input.TargetEndpointID, time.Now().UTC())
-	if err != nil || requireSameGroupSealedV1SourceTx(tx, input.NodeCredentialDigest, pair) != nil {
+	if pair.nativeEvidence != nil || err != nil || requireSameGroupSealedV1SourceTx(tx, input.NodeCredentialDigest, pair) != nil {
 		return nil, ErrSameGroupSealedV1Denied
 	}
 	context := sameGroupSealedV1Context(pair, input.MessageID, "SEND", "", "")
@@ -544,6 +557,12 @@ func (s *Store) EnqueueSameGroupSealedV1Ask(input SameGroupSealedV1Ask) (*Fabric
 		record.Security.IdempotencyKey != input.IdempotencyKey || record.Route.RequestID != input.RequestID {
 		return nil, ErrRelayIdempotencyConflict
 	}
+	if err = nativePairAdmissionPreflightTx(tx, pair, record); err != nil {
+		return nil, err
+	}
+	if err = nativePairReserveMessageTx(tx, pair, record, input.ParentRequestID, nowTime); err != nil {
+		return nil, err
+	}
 	if reused {
 		previous, err := relayLoadRequestByMessageTx(tx, accepted.Message.ID)
 		if err != nil {
@@ -628,8 +647,13 @@ VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'','','','','','','',?,?,?,?,?)`,
 }
 
 func reverseSameGroupSealedV1Pair(pair sameGroupEndpointPair) sameGroupEndpointPair {
-	return sameGroupEndpointPair{hubID: pair.hubID, groupID: pair.groupID,
-		sender: pair.receiver, receiver: pair.sender}
+	reverse := sameGroupEndpointPair{hubID: pair.hubID, groupID: pair.groupID, sender: pair.receiver, receiver: pair.sender, nativeEvidence: pair.nativeEvidence}
+	if pair.nativeCurrent != nil {
+		current := *pair.nativeCurrent
+		current.Sender, current.Receiver = current.Receiver, current.Sender
+		reverse.nativeCurrent = &current
+	}
+	return reverse
 }
 
 func validateSameGroupSealedV1ReplyEnvelope(ciphertext []byte, messageID string,
@@ -722,6 +746,9 @@ func (s *Store) EnqueueSameGroupSealedV1Reply(input SameGroupSealedV1Reply) (*Fa
 			previous.Route.MessageID, request, ask, pair); err != nil {
 			return nil, ErrSameGroupSealedV1Denied
 		}
+		if nativePairQueuedMessageTx(tx, reverse, previous) != nil {
+			return nil, ErrSameGroupSealedV1Denied
+		}
 		if err := tx.Commit(); err != nil {
 			return nil, err
 		}
@@ -768,6 +795,12 @@ func (s *Store) EnqueueSameGroupSealedV1Reply(input SameGroupSealedV1Reply) (*Fa
 		record.Route.ReplyTo != request.MessageID ||
 		!sameGroupSealedV1SecurityMatchesPair(record.Security, reverse) {
 		return nil, ErrRelayMessageConflict
+	}
+	if err = nativePairAdmissionPreflightTx(tx, reverse, record); err != nil {
+		return nil, err
+	}
+	if err = nativePairReserveMessageTx(tx, reverse, record, "", nowTime); err != nil {
+		return nil, err
 	}
 	late := request.State != FabricRequestOpen
 	timestamp := nowTime.Format(time.RFC3339Nano)
@@ -886,6 +919,9 @@ func validateQueuedSameGroupSealedV1Tx(tx *sql.Tx, record *RelaySealedV1Record,
 		}
 		if err := validateSameGroupSealedV1ReplyEnvelope(record.Ciphertext,
 			record.Route.MessageID, request, ask, pair); err != nil {
+			return sameGroupEndpointPair{}, nil, ErrSameGroupSealedV1Denied
+		}
+		if nativePairQueuedMessageTx(tx, reverse, record) != nil {
 			return sameGroupEndpointPair{}, nil, ErrSameGroupSealedV1Denied
 		}
 		return reverse, request, nil
@@ -1068,6 +1104,9 @@ func (s *Store) ClaimSameGroupSealedV1Inbox(credentialDigest string,
 		return nil, err
 	}
 	defer tx.Rollback()
+	if err := relayAcquireAdmissionGuardTx(tx); err != nil {
+		return nil, err
+	}
 	bindingCurrent, err := readSameGroupSealedV1ClaimNodeTx(tx, credentialDigest, input, time.Now().UTC())
 	if err != nil {
 		return nil, err
@@ -1142,6 +1181,9 @@ ORDER BY i.sequence LIMIT ?`, input.RecipientEndpointID, RelayInboxReady,
 			return nil, err
 		}
 		pair, request, authErr := validateQueuedSameGroupSealedV1Tx(tx, record, nowTime)
+		if errors.Is(authErr, errNativePairCarrierTooLarge) {
+			return nil, authErr
+		}
 		if authErr != nil {
 			if !errors.Is(authErr, ErrSameGroupSealedV1Denied) {
 				return nil, authErr
@@ -1206,7 +1248,15 @@ ORDER BY i.sequence LIMIT ?`, input.RecipientEndpointID, RelayInboxReady,
 				continue
 			}
 		}
+		if err = nativePairClaimBudgetTx(tx, pair, item.MessageID); err != nil {
+			return nil, err
+		}
 		attemptID := NewID("attempt")
+		if pair.nativeEvidence != nil {
+			if _, err = sameGroupSealedV1DeliveryCarrierTx(tx, pair, record, attemptID, nil); err != nil {
+				return nil, err
+			}
+		}
 		timestamp := nowTime.Format(time.RFC3339Nano)
 		updated, err := tx.Exec(`UPDATE relay_v2_inbox SET state=?,attempt_id=?,updated_at=?
 WHERE recipient_endpoint_id=? AND sequence=? AND state=?`, RelayInboxClaimed,
@@ -1262,6 +1312,10 @@ func (s *Store) AuthorizeClaimedSameGroupSealedV1Delivery(credentialDigest,
 		return nil, err
 	}
 	defer tx.Rollback()
+	if err := relayAcquireAdmissionGuardTx(tx); err != nil {
+		return nil, err
+	}
+	at := time.Now().UTC()
 	nodeID, ownerID, _, err := readActiveOwnerBoundNodeTx(tx, credentialDigest)
 	if err != nil {
 		return nil, ErrSameGroupSealedV1Denied
@@ -1303,7 +1357,10 @@ WHERE attempt_id=? AND layer NOT IN (?,?))`, attemptID,
 		record.Route.ReceiverEndpointID != item.RecipientEndpointID || record.Security.Digest != item.Digest {
 		return nil, ErrSameGroupSealedV1Denied
 	}
-	pair, _, authErr := validateQueuedSameGroupSealedV1Tx(tx, record, time.Now().UTC())
+	pair, _, authErr := validateQueuedSameGroupSealedV1Tx(tx, record, at)
+	if errors.Is(authErr, errNativePairCarrierTooLarge) {
+		return nil, authErr
+	}
 	if authErr != nil || pair.receiver.EndpointID != item.RecipientEndpointID ||
 		pair.receiver.NodeID != nodeID || pair.receiver.OwnerID != ownerID ||
 		pair.receiver.BindingID != item.BindingID || pair.receiver.BindingEpoch != item.BindingEpoch {
@@ -1312,7 +1369,7 @@ WHERE attempt_id=? AND layer NOT IN (?,?))`, attemptID,
 		}
 		if authErr == nil || errors.Is(authErr, ErrSameGroupSealedV1Denied) {
 			if err := failClaimedSameGroupSealedV1Tx(tx, item, attempt,
-				time.Now().UTC(), "same-Group grant or binding was revoked before injection"); err != nil {
+				at, "same-Group grant or binding was revoked before injection"); err != nil {
 				return nil, err
 			}
 			if err := tx.Commit(); err != nil {
@@ -1331,7 +1388,7 @@ WHERE attempt_id=? AND layer NOT IN (?,?))`, attemptID,
 			handoffErr = ErrSealedTaskHandoffConflict
 		}
 		if handoffErr == nil {
-			handoffErr = sealedTaskHandoffTaskMatchesTx(tx, handoff, time.Now().UTC())
+			handoffErr = sealedTaskHandoffTaskMatchesTx(tx, handoff, at)
 		}
 		if handoffErr != nil {
 			if handoff != nil && handoff.Status == SealedTaskHandoffProposed {
@@ -1340,12 +1397,12 @@ WHERE attempt_id=? AND layer NOT IN (?,?))`, attemptID,
 					status = SealedTaskHandoffExpired
 				}
 				if err := markSealedTaskHandoffTerminalTx(tx, handoff, status,
-					sealedTaskHandoffFailureReason(handoffErr), time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+					sealedTaskHandoffFailureReason(handoffErr), at.Format(time.RFC3339Nano)); err != nil {
 					return nil, err
 				}
 			}
 			if err := failClaimedSameGroupSealedV1Tx(tx, item, attempt,
-				time.Now().UTC(), sealedTaskHandoffFailureReason(handoffErr)); err != nil {
+				at, sealedTaskHandoffFailureReason(handoffErr)); err != nil {
 				return nil, err
 			}
 			if err := tx.Commit(); err != nil {
@@ -1355,28 +1412,10 @@ WHERE attempt_id=? AND layer NOT IN (?,?))`, attemptID,
 		}
 		taskHandoff = sealedTaskHandoffDeliveryAuthorization(handoff)
 	}
-	parentRequestID, err := relayParentRequestForSealedRouteTx(tx, record.Route)
+	result, err := sameGroupSealedV1DeliveryCarrierTx(tx, pair, record, attemptID, taskHandoff)
 	if err != nil {
-		return nil, ErrSameGroupSealedV1Denied
+		return nil, err
 	}
-	scope, err := readNativeContextScopeForEndpointTx(tx, item.RecipientEndpointID,
-		record.Security.ReceiverGroupID)
-	if err != nil {
-		return nil, ErrSameGroupSealedV1Denied
-	}
-	result := &SameGroupSealedV1DeliveryAuthorization{
-		AttemptID: attemptID, MessageID: messageID, Digest: item.Digest,
-		EndpointID: item.RecipientEndpointID, NodeID: pair.receiver.NodeID,
-		OwnerID: pair.receiver.OwnerID, BindingID: pair.receiver.BindingID,
-		BindingEpoch:    pair.receiver.BindingEpoch,
-		NativeSessionID: pair.receiver.NativeSessionID,
-		DataScope:       record.Security.VisibilityPolicyRef, Route: record.Route,
-		ParentRequestID: parentRequestID, NativeContextScope: scope,
-		Sender: pair.sender, Receiver: pair.receiver, TaskHandoff: taskHandoff,
-	}
-	// A receiver Node needs its own injection target, never the peer's local
-	// Session ID.
-	result.Sender.NativeSessionID = ""
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}

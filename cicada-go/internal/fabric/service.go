@@ -551,6 +551,15 @@ func (s *Service) Resolve(actor Actor, input ResolveInput) (*NetworkCard, error)
 	if err := s.Authorize(actor, "directory.read"); err != nil {
 		return nil, err
 	}
+	if peer, binding, err := s.store.GetHubNativePairResolvePeerForActor(nativeActorScope(actor)); err != nil {
+		return nil, ErrNotFoundOrNotAuthorized
+	} else if peer != nil {
+		card := s.networkCard(*peer, binding, actor.GroupID)
+		if (input.NodeID != "" && input.NodeID != card.NodeID) || !(query == card.EndpointID || strings.EqualFold(query, card.Address) || strings.EqualFold(query, card.Name+"@"+card.NodeID) || strings.EqualFold(query, card.GroupID+"/"+card.Name) || strings.ToLower(query) == strings.ToLower(card.Name)) {
+			return nil, ErrNotFoundOrNotAuthorized
+		}
+		return &card, nil
+	}
 	if endpoint, err := s.store.GetEndpointV2(query); err == nil {
 		joined, joinedErr := s.store.IsEndpointGroupActive(endpoint.ID, actor.GroupID)
 		if joinedErr != nil || !joined ||

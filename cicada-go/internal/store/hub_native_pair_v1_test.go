@@ -15,9 +15,10 @@ import (
 )
 
 type nativePairStoreFixture struct {
-	f     *n3StoreFixture
-	scope e2ee.OwnerNativePairScope
-	at    time.Time
+	f        *n3StoreFixture
+	scope    e2ee.OwnerNativePairScope
+	at       time.Time
+	pairKeys map[string]*e2ee.Identity
 }
 
 func nativePairStore(t *testing.T) *nativePairStoreFixture {
@@ -73,6 +74,12 @@ func (f *nativePairStoreFixture) input(t *testing.T, body any, at time.Time) (Hu
 		out = &wire.NativePairBootstrapPrepare{}
 	case wire.NativePairBootstrapComplete:
 		out = &wire.NativePairBootstrapComplete{}
+	case wire.NativePairConsentPrepare:
+		out = &wire.NativePairConsentPrepare{}
+	case wire.NativePairConsentComplete:
+		out = &wire.NativePairConsentComplete{}
+	case wire.NativePairSlotReject:
+		out = &wire.NativePairSlotReject{}
 	case wire.NativePairStatusRequest:
 		out = &wire.NativePairStatusRequest{}
 	case wire.NativePairReconcileRequest:
