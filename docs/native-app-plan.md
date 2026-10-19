@@ -433,12 +433,27 @@ The integrated candidate is now packaged as `Cicada-N3-4ca29df.zip` from clean
 `4ca29dfc76f3eec9143676d554b3a26c1a178f1b`; see the
 [final delivery record](native-app-validation.md#final-clean-4ca-delivery-and-independent-artifact-review).
 Its `delivery.json` and `SHA256SUMS` identify `cicada-app.exe`, Linux `cicada`,
-protocol revisions and dependency notices. This is a reviewed local delivery
-candidate, not a release or deployment. Windows physical GUI/DPAPI/ACL, matching
-public Hub/Node operation and the real original-SID A/B/A dialogue remain
-**NOT_RUN / USER_VALIDATION_PENDING**. QA/Root have not upgraded resident services
-or executed native turns/queues. Later documentation commits do not change the
-package's clean-4ca build attribution.
+protocol revisions and dependency notices. This is a reviewed delivery
+candidate, not a release. On 2026-10-19, Root relayed the user's deployment,
+login, export and Node setup feedback as **USER_REPORTED_PASS**; see the
+[prerequisite feedback](native-app-validation.md#clean-4ca-user-reported-deployment-prerequisites).
+The posted Linux checksum, Codex version, Owner-pin command status and active
+Node service are recorded separately from the overall procedural feedback.
+Independent Windows GUI/DPAPI/ACL checks, protected public pair operations and
+the real original-SID A/B/A dialogue remain **NOT_RUN / USER_VALIDATION_PENDING**.
+QA/Root did not operate real turns/queues for this record. Later documentation
+commits do not change the package's clean-4ca build attribution.
+
+Two onboarding UX improvements remain pending:
+
+- Add Copy buttons and selectable text for the key fields users must transfer
+  or verify, including public identity/fingerprint fields.
+- Complete trusted Owner-pin establishment within the Node device-code/App
+  approval flow. Current manual public-key/fingerprint export/import is an
+  interim procedure, not the final onboarding UX. Preserve original identities,
+  authenticated proofs and exact pin verification; account login alone still
+  grants no Root authority. This is a UX target, not an accepted protocol or
+  implementation change.
 
 1. **Verify the delivered upgrade.** Root supplies actual reviewed Hub/Node/App
    revisions, source/image fingerprints, Windows executable SHA-256 and real

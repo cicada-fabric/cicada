@@ -3044,3 +3044,41 @@ and real keys/state were untouched; `main` remains
 `0a33932ba2abdc0462ee993ba5acc07078098a2b`. The existing manual skeleton still
 requires user-operated matching upgrades, the original account/Node/binding,
 reviewed per-launch MCP loading and the service's absolute `CICADA_CODEX_BIN`.
+
+### Clean-4ca user-reported deployment prerequisites
+
+Feedback recorded 2026-10-19 UTC, relayed by Root from the user's deployment
+of the final `Cicada-N3-4ca29df.zip` candidate. The user reports that this round's
+deployment, login, export and Node steps all behaved as expected:
+**USER_REPORTED_PASS for the overall prerequisite procedure**. QA did not
+repeat these actions or inspect the real deployment. This updates the user's
+prerequisite status; it does not replace the independently scoped build and
+fixture results above.
+
+| Explicit user output relayed by Root | Accepted observation and limit |
+| --- | --- |
+| Linux executable SHA-256 `5ffad8db514a79bafe93e607a894d19a8cf2e029432bd7fc1938accac12a1bfb` | USER_REPORTED_ARTIFACT_MATCH with the delivered Linux executable. A checksum does not prove which binary a running Hub/Node process loaded. |
+| Codex `0.163.0` | USER_REPORTED_VERSION_OUTPUT. This does not establish the Node service's effective executable environment, original account/session context, per-Thread MCP loading or model execution. |
+| `trust-owner-key` reports `ACTIVE`, version `1` | USER_REPORTED_PASS for the command's reported local Owner-pin state. Real Owner key IDs/fingerprints are deliberately omitted. This is not an independent proof of the pinned identity or an adversarial key-substitution test. |
+| Node service is `active` | USER_REPORTED_PASS for service status at observation time. No continuous heartbeat, reboot/restart recovery, queue consumption or exact native binding trace is supplied by that status. |
+
+Login/export and the remaining deployment steps are covered by the overall
+user feedback, without separate per-case command/UI traces. No unreported
+negative, expiry, duplicate/recovery, logout, font or security case is promoted
+to PASS. A fresh Windows EXE hash was not separately supplied in this feedback;
+the retained build hash remains the delivery's artifact identity. Dedicated
+Windows GUI/DPAPI/ACL acceptance and physical font checks remain **NOT_RUN** on
+this package; earlier source-specific display failures remain historical.
+Real original-SID A/B/A dialogue, actual Join/dual consent on the deployed pair,
+MCP loading in both original Threads, queue/model/Runtime consumption and
+protected public HTTPS pair acceptance remain **NOT_RUN / USER_ONLY** where
+applicable. No fresh independent deployed source/image or Guard claim is made.
+
+Two user-facing improvements are now recorded in the existing plan: Copy
+buttons plus selectable key-field text, and trusted Owner-pin establishment
+within the Node device-code/App approval flow. Manual public-key/fingerprint
+export/import is an interim onboarding step. The UX improvement must retain
+original identity, authenticated proof and exact pin verification; login is
+still not Root. No protocol design, implementation, real pin/key/state change,
+service operation, new test/build or deployment was performed by this record.
+The package's source remains clean `4ca29df`; no rebuild or relabel is required.
