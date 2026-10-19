@@ -26,6 +26,26 @@ HTTPS is required by default, and HTTP is permitted only when a user/operator
 explicitly enables a loopback fixture. A native strict-PQTLS transport is not
 implemented or accepted by this plan.
 
+## Composable installation and shared-state acceptance target
+
+2026-10-19 product target; see the [authority and custody model](native-app-architecture.md#composable-installation-and-shared-authority-target).
+These future observations are all **NOT_RUN**, not extensions of N2/N3 PASS or
+a frozen protocol. No schema, wire change, global master key or daemon is added.
+
+1. Fresh installation proves its identity/registers; necessary own-status works, but Owner management, Node execution and peer operations deny without business grants.
+2. Installing optional Hub/Node/App roles on one host does not expand existing Hub/Owner grants; a new Hub's bootstrap conveys no authority on an old Hub.
+3. Actual Hub restart with the same database preserves IDs/keys, shared state, grants/tasks/audit, revocations and original pending/replay receipts, without extending deadlines.
+4. Close/logout App1, then uninstall its component; preserve identities/outbox and other components/state. Authorized Node/peer work continues at original limits; expiry or explicit revocation, including original App-device dependencies, still denies.
+5. Independently register/authorize App2 with empty profile/own keys before App1 loss. Deny access to App1 files; read matching Hub objects and fresh changes after App1 exits.
+6. Lose all copies of the sole Owner signing key: new App/password cannot self-approve or reopen Root. Recovery is NOT_IMPLEMENTED; negative denial is not recovery PASS.
+7. A registered attacker self-grants, impersonates Owner, crosses Hub/Owner scope, submits an unknown role or substitutes public keys: reject with no unauthorized state change.
+
+Future execution uses owned real-crypto/TCP/persistent-state Docker fixtures,
+records source/artifact identity, before/after authority, original deadlines,
+requests/receipts, exits and cleanup. App2 needs qualified signer approval or
+separately implemented recovery. Distinguish transport, queue and real native
+consumption; Windows uninstall/security remains NOT_RUN until actually executed.
+
 ## Checkpoints
 
 | Checkpoint | Scope | State |

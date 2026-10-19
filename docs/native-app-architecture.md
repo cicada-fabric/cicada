@@ -30,6 +30,50 @@ development. See the [migration record](repository-migration.md). This layout
 change does not complete N1, N2/N3, Android interoperability or native Windows
 acceptance; historical results retain their original source attribution.
 
+## Composable installation and shared authority target
+
+2026-10-19 product direction: a target, not an accepted wire protocol, schema,
+implementation or completed acceptance result.
+
+Hub, Node and App are optional components that may coexist on one host. A
+device is the UI entry point; authentication identifies a controlled installation
+and its persistent component keys, not unique physical hardware. Component
+actors keep independent keys; co-installation grants no authority or shared
+Owner private key, and introduces no global master key or new daemon.
+
+Registration and business authorization are separate. Pending/registered
+installations gain only minimum self-authentication/own-status from registration
+and may separately hold zero or more exact business grants. An Owner panel
+prepares authorization; Hub verifies and durably records it, while Node-local
+Guards enforce current signatures, scope, epochs and bindings. Network/Group/
+Thread membership, peer and execution rights need their own grants. Installing
+another role does not expand grants. A human device code locates one request;
+proofs, approval and secret credentials remain separate. First-Hub Root retains
+independent controlled bootstrap; registration cannot claim or reopen Root.
+
+Hub is authoritative for Hub-scoped shared configuration, device/component
+registrations, permissions, task orchestration state and shared audit, durable
+across restart. Node retains private credentials, crypto/replay state and its
+execution ledger; peer plaintext stays at authorized Endpoints. App provides UI,
+local authentication/signing and protected profiles plus a durable original-packet
+pending/outbox record; this record is not disposable cache. App is not the
+resident business controller.
+
+Closing App1 sends no network revocation; logout ends only its account session.
+Uninstall defaults to retaining protected identity and unresolved original-request
+material, with unrelated Hub/Node programs, services and state; it does not revoke
+the Hub's App-device registration. Deleting retained data and explicitly revoking
+a Hub device are separate actions. Existing authorized Node/peer work retains its
+original limits. Expiry and explicit device/epoch/grant revocation still apply,
+including dependencies on the original App-device identity. App2 registers
+independently, receives exact authorization and reads Hub's shared state without
+copying App1's local data or private identities.
+
+Owner's long-lived identity is independent of any one App installation. Signing
+keys stay in controlled local custody, never uploaded to Hub. If all copies of
+the sole Owner signing key are lost, recovery remains **NOT_IMPLEMENTED**;
+a new App/password cannot restore Root. See the [future acceptance targets](native-app-plan.md#composable-installation-and-shared-state-acceptance-target).
+
 ## Authority and cryptographic boundaries
 
 An account password authenticates an account login only when combined with a
