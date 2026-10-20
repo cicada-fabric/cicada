@@ -377,6 +377,8 @@ def read_contract(root):
             "x-topology-snapshot-schema: '#/components/schemas/ClientTopologySnapshot'",
             "x-topology-network-projection-schema: '#/components/schemas/ClientTopologyNetwork'",
             "network_endpoints_truncated:",
+            "endpoints_truncated:",
+            "workspace: {type: string, maxLength: 4096}",
             "can_create_group:",
             "network_ids:"):
         if marker not in openapi:

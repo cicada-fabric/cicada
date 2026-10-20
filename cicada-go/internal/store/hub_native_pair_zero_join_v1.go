@@ -17,14 +17,33 @@ func nativePairZeroJoinTx(tx *sql.Tx, p *hubNativePair, q wire.NativePairNodeJoi
 	if err != nil || state != "RESERVED" || generation != q.ExpectedGeneration {
 		return nil, ErrHubAccountRejected
 	}
-	// A terminal/unrelated SID is retained. This first version cannot move it,
-	// rotate its epoch or create a replacement Endpoint to bypass old scope.
-	var existing int
-	if err = tx.QueryRow(`SELECT count(*) FROM fabric_endpoints WHERE harness=? AND native_session_id=?`, q.Runtime, q.NativeSessionID).Scan(&existing); err != nil {
-		return nil, err
-	}
-	if existing != 0 {
+	// A pure private zero-rights registration may be reused. Any previous
+	// admission, key candidate or revoked history remains a conflict.
+	registered, lookupErr := nodeEndpointForSessionTx(tx, p.owner, p.node, q.Runtime, q.NativeSessionID)
+	if lookupErr != nil && lookupErr != sql.ErrNoRows {
 		return nil, ErrSessionBindingConflict
+	}
+	if registered != nil {
+		if registered.Workspace != q.Workspace || registered.Status != "offline" || registered.MigrationState != EndpointMigrationPendingGroup ||
+			registered.GroupID != "" || registered.BindingID != "" || registered.Visibility != "private" {
+			return nil, ErrSessionBindingConflict
+		}
+		var history int
+		if err = tx.QueryRow(`SELECT
+		 (SELECT count(*) FROM memberships WHERE principal_id=?) +
+		 (SELECT count(*) FROM network_memberships_v2 WHERE principal_id=?) +
+		 (SELECT count(*) FROM endpoint_group_memberships WHERE endpoint_id=?) +
+		 (SELECT count(*) FROM endpoint_network_memberships_v2 WHERE endpoint_id=?) +
+		 (SELECT count(*) FROM session_bindings WHERE endpoint_id=?) +
+		 (SELECT count(*) FROM network_access_sessions_v2 WHERE endpoint_id=?) +
+		 (SELECT count(*) FROM endpoint_key_candidates_v2 WHERE endpoint_id=?) +
+		 (SELECT count(*) FROM hub_native_pair_slots_v1 WHERE endpoint_id=?)`,
+			registered.PrincipalID, registered.PrincipalID, registered.ID, registered.ID, registered.ID, registered.ID, registered.ID, registered.ID).Scan(&history); err != nil {
+			return nil, err
+		}
+		if history != 0 {
+			return nil, ErrSessionBindingConflict
+		}
 	}
 	group, err := scanGroup(tx.QueryRow(`SELECT `+groupColumns+` FROM groups WHERE id=?`, p.group))
 	if err != nil || group == nil || group.NetworkID != p.network || group.OwnerPrincipalID != p.owner || group.State != GroupStateActive || group.Version != 1 || group.Revision != 1 || group.ContextPolicy != "group_scoped" {
@@ -46,9 +65,14 @@ func nativePairZeroJoinTx(tx *sql.Tx, p *hubNativePair, q wire.NativePairNodeJoi
 	if name == "" {
 		name = "Thread " + q.Slot
 	}
-	endpoint, principal, err := insertNetworkNativeEndpointTx(tx, p.owner, group.TrustDomainID, name, q.Runtime, q.NativeSessionID, p.node, q.Workspace, at)
-	if err != nil {
-		return nil, err
+	var endpoint, principal string
+	if registered != nil {
+		endpoint, principal, name = registered.ID, registered.PrincipalID, registered.Name
+	} else {
+		endpoint, principal, err = insertNetworkNativeEndpointTx(tx, p.owner, group.TrustDomainID, name, q.Runtime, q.NativeSessionID, p.node, q.Workspace, at)
+		if err != nil {
+			return nil, err
+		}
 	}
 	stamp := at.UTC().Format(time.RFC3339)
 	if _, err = tx.Exec(`INSERT INTO network_memberships_v2(id,network_id,principal_id,grants_json,status,expires_at,revision,created_at,updated_at) VALUES(?,?,?,'[]','active',?,1,?,?)`, NewID("netmem"), p.network, principal, p.peerExpires, stamp, stamp); err != nil {
@@ -87,7 +111,7 @@ func nativePairZeroJoinTx(tx *sql.Tx, p *hubNativePair, q wire.NativePairNodeJoi
 	// The fixed Pair uses the existing sealed Relay transport. This describes
 	// implementation availability only; both memberships still have no grants
 	// and every peer operation waits for the two explicit Owner consents.
-	endpointUpdate, err := tx.Exec(`UPDATE fabric_endpoints SET group_id=?,binding_id=?,migration_state='READY',capabilities_json='{"local_peer_delivery":"sealed_v1"}',updated_at=? WHERE id=? AND principal_id=? AND migration_state='MIGRATION_PENDING_GROUP'`, p.group, binding.ID, stamp, endpoint, principal)
+	endpointUpdate, err := tx.Exec(`UPDATE fabric_endpoints SET group_id=?,binding_id=?,status='online',migration_state='READY',capabilities_json='{"local_peer_delivery":"sealed_v1"}',updated_at=? WHERE id=? AND principal_id=? AND migration_state='MIGRATION_PENDING_GROUP'`, p.group, binding.ID, stamp, endpoint, principal)
 	if err != nil {
 		return nil, err
 	}

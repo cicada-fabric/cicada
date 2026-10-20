@@ -120,24 +120,36 @@ func appNodeSaveRead(tx *sql.Tx, c wire.AppNodeRequestContext, op, digest, state
 	if len(packet) == 0 || len(packet) > wire.MaxPacketBytes {
 		return ErrHubAccountRejected
 	}
-	// Parse dates in Go rather than compare variable-precision RFC3339 strings.
-	rows, err := tx.Query(`SELECT operation_id,created_at FROM hub_app_node_reads_v1 WHERE owner_id=? AND device_id=? ORDER BY rowid DESC`, c.OwnerID, c.DeviceID)
+	// Keep directory receipts while their original one-request Owner proof
+	// could still authorize a fresh read (60 seconds plus 30 seconds skew).
+	// A bounded cache must not evict such an exact result and then redispatch
+	// it. At capacity, apply temporary backpressure; there is no lifetime quota.
+	rows, err := tx.Query(`SELECT operation_id,created_at,operation,state FROM hub_app_node_reads_v1 WHERE owner_id=? AND device_id=? ORDER BY rowid DESC`, c.OwnerID, c.DeviceID)
 	if err != nil {
 		return err
 	}
+	type readEntry struct {
+		id        string
+		protected bool
+	}
+	var candidates []readEntry
 	var drop []string
-	kept := 0
+	protected := 0
 	for rows.Next() {
-		var id, stamp string
-		if err = rows.Scan(&id, &stamp); err != nil {
+		var id, stamp, operation, readState string
+		if err = rows.Scan(&id, &stamp, &operation, &readState); err != nil {
 			break
 		}
 		t, e := time.Parse(time.RFC3339Nano, stamp)
-		if e != nil || !at.Before(t.Add(wire.AppNodeReadCacheLifetime)) || kept >= wire.MaxAppNodeReadCacheEntriesPerDevice-1 || id == c.RequestID {
+		if e != nil || !at.Before(t.Add(wire.AppNodeReadCacheLifetime)) || id == c.RequestID {
 			drop = append(drop, id)
-		} else {
-			kept++
+			continue
 		}
+		protect := operation == wire.OperationOwnerEndpointRead && readState == wire.AppNodeCompleted && at.Before(t.Add(90*time.Second))
+		if protect {
+			protected++
+		}
+		candidates = append(candidates, readEntry{id, protect})
 	}
 	re := rows.Err()
 	rows.Close()
@@ -146,6 +158,20 @@ func appNodeSaveRead(tx *sql.Tx, c wire.AppNodeRequestContext, op, digest, state
 	}
 	if re != nil {
 		return re
+	}
+	if protected >= wire.MaxAppNodeReadCacheEntriesPerDevice {
+		return ErrHubOwnerDiagnosticsFull
+	}
+	remaining := wire.MaxAppNodeReadCacheEntriesPerDevice - 1 - protected
+	for _, entry := range candidates {
+		if entry.protected {
+			continue
+		}
+		if remaining > 0 {
+			remaining--
+		} else {
+			drop = append(drop, entry.id)
+		}
 	}
 	for _, id := range drop {
 		if _, err = tx.Exec(`DELETE FROM hub_app_node_reads_v1 WHERE owner_id=? AND device_id=? AND operation_id=?`, c.OwnerID, c.DeviceID, id); err != nil {

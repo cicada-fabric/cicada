@@ -557,7 +557,9 @@ Group 可以在同一 Network 内嵌套，形成供 App 展示和管理的有向
 
 ### 7.1 显式加入是不可退让的边界
 
-安装 Integration、启动 Machine Agent、能读取进程列表，都不代表原生 Thread 加入网络。未经 Join 不创建 Endpoint，不对 Directory 公布会话路径或标题，不允许远端 wake。
+安装 Integration、启动 Machine Agent、能读取进程列表，都不代表原生 Thread 加入网络。未经当前 Thread 的明确加入动作，不创建 Endpoint，不对 Directory 公布会话路径或标题，不允许远端 wake。
+
+当前 Thread 可以先作零业务权的私有登记：复用其真实 SID、Node、Owner 与 Principal/Endpoint，只向本方 Owner 的明确授权目录展示名称与工作区。登记不要求逐端批准，但不创建 Network/Group 成员、原生 writer、租约、消息或密钥授权；旧授权和撤销历史不得由重复登记复活。Owner 可按当前身份和独立有限目的明确批准读取本方 Node 的线程目录；账户登录、旧用途签名和目录可见性都不能代替通信或端点密钥批准。零权登记进入既有通信批准链时必须保留原身份、核对当前会话和工作区，不得用重建 Endpoint 绕过旧状态。
 
 默认流程：
 

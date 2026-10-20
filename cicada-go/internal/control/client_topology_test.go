@@ -2,10 +2,12 @@ package control
 
 import (
 	"crypto/sha256"
+	"database/sql"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"path/filepath"
 	"reflect"
 	"slices"
 	"strings"
@@ -46,7 +48,7 @@ func createClientTopologyEndpoint(t *testing.T, c *Control, groupID, principalID
 	}
 	endpoint, err := c.store.UpsertEndpoint(store.Endpoint{
 		ID: endpointID, Name: endpointID, Harness: "codex", NativeSessionID: "native-" + endpointID,
-		MachineID: nodeID, Status: "online", Capabilities: map[string]any{"secret": "do-not-project"},
+		MachineID: nodeID, Owner: ownerID, Workspace: "/synthetic/" + endpointID, Status: "online", Capabilities: map[string]any{"secret": "do-not-project"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -145,6 +147,39 @@ func TestClientTopologySnapshotScopesMetadataAndOmitsSecrets(t *testing.T) {
 	}
 	if _, err := c.store.GetGroup(foreignGroup.ID); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestClientTopologySnapshotIncludesPrivateZeroRightsEndpoints(t *testing.T) {
+	c := newClientStatusControl(t, time.Minute)
+	owner := c.Identity().ID
+	principal, err := c.store.CreatePrincipal(store.Principal{Kind: store.PrincipalKindAgent, OwnerID: owner, TrustDomainID: owner, Name: "synthetic registered", Status: "active"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ep, err := c.store.CreateEndpointV2(store.Endpoint{Owner: owner, PrincipalID: principal.ID, Name: "原线程", Harness: "codex", NativeSessionID: "synthetic-unjoined", MachineID: "synthetic-node", Workspace: "C:\\synthetic\\private", Status: "offline", Visibility: "private"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Synthetic zero-rights fixture. Production registration inserts both rows atomically.
+	db, err := sql.Open("sqlite", filepath.Join(c.config.StateDir, "cicada.sqlite3"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err = db.Exec(`UPDATE fabric_endpoints SET principal_id=? WHERE id=?`, principal.ID, ep.ID); err != nil {
+		t.Fatal(err)
+	}
+	view, err := c.BuildClientTopologySnapshot(owner)
+	if err != nil || view.EndpointsTruncated || len(view.Endpoints) != 1 {
+		t.Fatal("zero Endpoint inventory", err)
+	}
+	card := view.Endpoints[0]
+	if card.EndpointID != ep.ID || card.Workspace != ep.Workspace || card.Name != ep.Name || card.Presence != "offline" || len(card.GroupIDs) != 0 || len(card.NetworkIDs) != 0 || card.BindingID != "" || card.BindingEpoch != 0 {
+		t.Fatal("zero registration became communication authority")
+	}
+	if _, err = c.BuildClientTopologySnapshotForRequest(owner, ""); err == nil {
+		t.Fatal("external private projection bypassed request guard")
 	}
 }
 

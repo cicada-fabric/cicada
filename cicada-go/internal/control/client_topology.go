@@ -15,6 +15,7 @@ const ClientTopologyContractVersion = 2
 // Client. It intentionally excludes credentials, capabilities, message bodies,
 // prompts, key material, and link contract digests.
 type ClientTopologySnapshot struct {
+	EndpointsTruncated        bool                     `json:"endpoints_truncated"`
 	ContractVersion           int                      `json:"contract_version"`
 	OwnerPrincipalID          string                   `json:"owner_principal_id"`
 	CapturedAt                string                   `json:"captured_at"`
@@ -64,6 +65,7 @@ type ClientTopologyMember struct {
 type ClientTopologyEndpoint struct {
 	EndpointID      string   `json:"endpoint_id"`
 	Name            string   `json:"name"`
+	Workspace       string   `json:"workspace"`
 	PrincipalID     string   `json:"principal_id"`
 	GroupIDs        []string `json:"group_ids"`
 	NetworkIDs      []string `json:"network_ids"`
@@ -204,6 +206,19 @@ type ClientTopologyChangeResult struct {
 // owner must be supplied by the transport after verifying the Client device;
 // this method rechecks the current self-owned Client owner boundary.
 func (c *Control) BuildClientTopologySnapshot(authenticatedOwnerID string) (*ClientTopologySnapshot, error) {
+	return c.buildClientTopologySnapshot(authenticatedOwnerID, "")
+}
+
+// The external carrier passes only its Server-accepted request ID. Account,
+// device, Owner key and operation guards are repeated around this best-effort view.
+func (c *Control) BuildClientTopologySnapshotForRequest(owner, requestID string) (*ClientTopologySnapshot, error) {
+	if strings.TrimSpace(requestID) == "" {
+		return nil, ErrPermissionDenied
+	}
+	return c.buildClientTopologySnapshot(owner, requestID)
+}
+
+func (c *Control) buildClientTopologySnapshot(authenticatedOwnerID, requestID string) (*ClientTopologySnapshot, error) {
 	if err := c.ValidateClientSessionOwner(authenticatedOwnerID); err != nil {
 		return nil, err
 	}
@@ -230,6 +245,28 @@ func (c *Control) BuildClientTopologySnapshot(authenticatedOwnerID string) (*Cli
 		Memberships: make([]ClientTopologyMember, 0),
 		Endpoints:   make([]ClientTopologyEndpoint, 0),
 		Links:       make([]ClientTopologyLink, 0),
+	}
+	var privateEndpoints []store.Endpoint
+	if requestID == "" {
+		privateEndpoints, view.EndpointsTruncated, err = c.store.ListOwnerEndpointMetadata(ownerID, store.OwnerEndpointDirectoryLimit)
+	} else {
+		privateEndpoints, view.EndpointsTruncated, err = c.store.ListClientOwnerEndpointMetadata(ownerID, requestID, store.OwnerEndpointDirectoryLimit)
+	}
+	if err != nil {
+		return nil, err
+	}
+	endpointIndex := make(map[string]int, len(privateEndpoints))
+	for _, endpoint := range privateEndpoints {
+		entry := ClientTopologyEndpoint{EndpointID: endpoint.ID, Name: endpoint.Name, Workspace: endpoint.Workspace,
+			PrincipalID: endpoint.PrincipalID, GroupIDs: []string{}, NetworkIDs: []string{},
+			NodeID: endpoint.MachineID, Harness: endpoint.Harness, NativeSessionID: endpoint.NativeSessionID, Presence: endpoint.Status}
+		if binding, bindingErr := c.store.GetActiveSessionBinding(endpoint.ID); bindingErr == nil {
+			entry.BindingID, entry.BindingEpoch, entry.BindingStatus = binding.ID, binding.Epoch, binding.Status
+		} else if !errors.Is(bindingErr, store.ErrSessionBindingNotFound) {
+			return nil, bindingErr
+		}
+		endpointIndex[endpoint.ID] = len(view.Endpoints)
+		view.Endpoints = append(view.Endpoints, entry)
 	}
 	for _, network := range networks {
 		view.Networks = append(view.Networks, ClientTopologyNetwork{
@@ -295,46 +332,17 @@ func (c *Control) BuildClientTopologySnapshot(authenticatedOwnerID string) (*Cli
 			if principal.OwnerID != ownerID {
 				continue
 			}
-			entryIndex := -1
-			for i := range view.Endpoints {
-				if view.Endpoints[i].EndpointID == endpoint.ID {
-					entryIndex = i
-					break
-				}
-			}
-			if entryIndex < 0 {
-				entry := ClientTopologyEndpoint{
-					EndpointID: endpoint.ID, Name: endpoint.Name, PrincipalID: principal.ID,
-					GroupIDs: []string{}, NetworkIDs: []string{}, NodeID: endpoint.MachineID, Harness: endpoint.Harness,
-					NativeSessionID: endpoint.NativeSessionID, Presence: endpoint.Status,
-				}
-				if binding, bindingErr := c.store.GetActiveSessionBinding(endpoint.ID); bindingErr == nil {
-					entry.BindingID, entry.BindingEpoch, entry.BindingStatus = binding.ID, binding.Epoch, binding.Status
-				} else if !errors.Is(bindingErr, store.ErrSessionBindingNotFound) {
-					return nil, bindingErr
-				}
-				view.Endpoints = append(view.Endpoints, entry)
-				entryIndex = len(view.Endpoints) - 1
+			entryIndex, ok := endpointIndex[endpoint.ID]
+			if !ok {
+				continue
 			}
 			view.Endpoints[entryIndex].GroupIDs = append(view.Endpoints[entryIndex].GroupIDs, group.ID)
 		}
 	}
 	for _, enrollment := range enrollments {
-		entryIndex := -1
-		for i := range view.Endpoints {
-			if view.Endpoints[i].EndpointID == enrollment.EndpointID {
-				entryIndex = i
-				break
-			}
-		}
-		if entryIndex < 0 {
-			view.Endpoints = append(view.Endpoints, ClientTopologyEndpoint{
-				EndpointID: enrollment.EndpointID, Name: enrollment.Name, PrincipalID: enrollment.PrincipalID,
-				GroupIDs: []string{}, NetworkIDs: []string{}, NodeID: enrollment.NodeID,
-				Harness: enrollment.Harness, NativeSessionID: enrollment.NativeSessionID,
-				Presence: enrollment.Status,
-			})
-			entryIndex = len(view.Endpoints) - 1
+		entryIndex, ok := endpointIndex[enrollment.EndpointID]
+		if !ok {
+			continue
 		}
 		view.Endpoints[entryIndex].NetworkIDs = append(view.Endpoints[entryIndex].NetworkIDs, enrollment.NetworkID)
 	}
@@ -363,6 +371,11 @@ func (c *Control) BuildClientTopologySnapshot(authenticatedOwnerID string) (*Cli
 	sort.Slice(view.Links, func(i, j int) bool { return view.Links[i].LinkID < view.Links[j].LinkID })
 	if err := c.ValidateClientSessionOwner(ownerID); err != nil {
 		return nil, err
+	}
+	if requestID != "" {
+		if err := c.store.CheckClientOwnerEndpointDirectory(ownerID, requestID); err != nil {
+			return nil, err
+		}
 	}
 	return view, nil
 }

@@ -205,7 +205,8 @@ func validateNodeControlOperation(operation string) bool {
 	switch operation {
 	case "node.binding.status", "node.heartbeat", "node.jobs.list", "node.jobs.claim",
 		"node.jobs.result", "node.approvals.create", "node.approvals.status",
-		nodewire.SnapshotUploadOperation, nodewire.SnapshotDownloadOperation:
+		nodewire.SnapshotUploadOperation, nodewire.SnapshotDownloadOperation,
+		nodewire.EndpointRegisterOperation, nodewire.EndpointLeaveOperation, nodewire.NativePairAvailableOperation:
 		return true
 	default:
 		return false
@@ -216,7 +217,7 @@ func nodeControlActionOperation(operation string) bool {
 	switch operation {
 	case "node.jobs.claim", "node.jobs.result", "node.approvals.create":
 		return true
-	case nodewire.SnapshotUploadOperation:
+	case nodewire.SnapshotUploadOperation, nodewire.EndpointLeaveOperation:
 		return true
 	default:
 		return false
@@ -811,8 +812,8 @@ WHERE owner_binding_id=? AND node_key_epoch=? AND operation_id=?`,
 		var actionCount int
 		if err := tx.QueryRow(`SELECT count(*) FROM node_control_rpc_inbox_v1
 WHERE owner_binding_id=? AND node_key_epoch=?
-	 AND operation IN ('node.jobs.claim','node.jobs.result','node.approvals.create',?)`,
-			input.BindingID, input.NodeKeyEpoch, nodewire.SnapshotUploadOperation).Scan(&actionCount); err != nil {
+	 AND operation IN ('node.jobs.claim','node.jobs.result','node.approvals.create',?,?)`,
+			input.BindingID, input.NodeKeyEpoch, nodewire.SnapshotUploadOperation, nodewire.EndpointLeaveOperation).Scan(&actionCount); err != nil {
 			return nil, false, err
 		}
 		if actionCount >= nodeControlActionTombstoneLimit {
@@ -1132,8 +1133,8 @@ func pruneNodeControlRPCResponsesTx(tx *sql.Tx, now time.Time) error {
 	// per-epoch highwater is never removed, so expired sequence numbers remain
 	// permanently unusable even after their small inbox metadata is reclaimed.
 	if _, err := tx.Exec(`DELETE FROM node_control_rpc_inbox_v1
-WHERE operation IN ('node.binding.status','node.heartbeat','node.jobs.list','node.approvals.status','node.native_pair.describe',?)
-	 AND created_at<?`, nodewire.SnapshotDownloadOperation, cutoff); err != nil {
+WHERE operation IN ('node.binding.status','node.heartbeat','node.jobs.list','node.approvals.status','node.native_pair.describe',?,?,?)
+	 AND created_at<?`, nodewire.SnapshotDownloadOperation, nodewire.NativePairAvailableOperation, nodewire.EndpointRegisterOperation, cutoff); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(`UPDATE node_control_rpc_inbox_v1 SET response_packet=X''

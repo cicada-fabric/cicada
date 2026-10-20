@@ -510,6 +510,10 @@ func (s *Service) List(actor Actor, status, nodeID, harnessName string, limit in
 	if err := s.Authorize(actor, "directory.read"); err != nil {
 		return nil, err
 	}
+	owner, err := s.directoryActorOwner(actor)
+	if err != nil {
+		return nil, err
+	}
 	endpoints, err := s.store.ListEndpointsV2(store.EndpointV2Filter{
 		GroupID: actor.GroupID, Status: strings.TrimSpace(status), NodeID: strings.TrimSpace(nodeID),
 		Harness: strings.TrimSpace(harnessName), MigrationState: store.EndpointMigrationReady, Limit: limit,
@@ -538,7 +542,10 @@ func (s *Service) List(actor Actor, status, nodeID, harnessName string, limit in
 		if binding == nil {
 			continue
 		}
-		cards = append(cards, s.networkCard(endpoint, binding, actor.GroupID))
+		if endpoint.Owner != owner && (strings.TrimSpace(nodeID) != "" || strings.TrimSpace(harnessName) != "") {
+			continue
+		}
+		cards = append(cards, s.directoryCard(owner, endpoint, binding, actor.GroupID))
 	}
 	return cards, nil
 }
@@ -551,16 +558,24 @@ func (s *Service) Resolve(actor Actor, input ResolveInput) (*NetworkCard, error)
 	if err := s.Authorize(actor, "directory.read"); err != nil {
 		return nil, err
 	}
+	owner, err := s.directoryActorOwner(actor)
+	if err != nil {
+		return nil, err
+	}
 	if peer, binding, err := s.store.GetHubNativePairResolvePeerForActor(nativeActorScope(actor)); err != nil {
 		return nil, ErrNotFoundOrNotAuthorized
 	} else if peer != nil {
-		card := s.networkCard(*peer, binding, actor.GroupID)
-		if (input.NodeID != "" && input.NodeID != card.NodeID) || !(query == card.EndpointID || strings.EqualFold(query, card.Address) || strings.EqualFold(query, card.Name+"@"+card.NodeID) || strings.EqualFold(query, card.GroupID+"/"+card.Name) || strings.ToLower(query) == strings.ToLower(card.Name)) {
+		card := s.directoryCard(owner, *peer, binding, actor.GroupID)
+		if !directoryCardMatchesScope(card, input) || !(query == card.EndpointID || strings.EqualFold(query, card.Address) || strings.EqualFold(query, card.Name+"@"+card.NodeID) || strings.EqualFold(query, card.GroupID+"/"+card.Name) || strings.ToLower(query) == strings.ToLower(card.Name)) {
 			return nil, ErrNotFoundOrNotAuthorized
 		}
 		return &card, nil
 	}
-	if endpoint, err := s.store.GetEndpointV2(query); err == nil {
+	directQuery := query
+	if strings.HasPrefix(query, actor.GroupID+"/") {
+		directQuery = strings.TrimPrefix(query, actor.GroupID+"/")
+	}
+	if endpoint, err := s.store.GetEndpointV2(directQuery); err == nil {
 		joined, joinedErr := s.store.IsEndpointGroupActive(endpoint.ID, actor.GroupID)
 		if joinedErr != nil || !joined ||
 			endpoint.MigrationState != store.EndpointMigrationReady || endpoint.Status == "left" {
@@ -570,14 +585,17 @@ func (s *Service) Resolve(actor Actor, input ResolveInput) (*NetworkCard, error)
 		if bindErr != nil {
 			return nil, ErrNotFoundOrNotAuthorized
 		}
-		card := s.networkCard(*endpoint, binding, actor.GroupID)
+		card := s.directoryCard(owner, *endpoint, binding, actor.GroupID)
+		if !directoryCardMatchesScope(card, input) {
+			return nil, ErrNotFoundOrNotAuthorized
+		}
 		return &card, nil
 	}
 	nameCandidates, machineCandidate := endpointResolveCandidates(query)
 	var exact, aliases []NetworkCard
 	lower := strings.ToLower(query)
 	simpleAlias := !strings.ContainsAny(query, "/@")
-	err := s.store.ForEachEndpointV2ResolveCandidatePage(actor.GroupID, input.NodeID,
+	err = s.store.ForEachEndpointV2ResolveCandidatePage(actor.GroupID, input.NodeID,
 		nameCandidates, machineCandidate, query, func(endpoints []store.Endpoint, bindings map[string]*store.SessionBinding,
 			_ map[string]string) (bool, error) {
 			for _, endpoint := range endpoints {
@@ -587,7 +605,10 @@ func (s *Service) Resolve(actor Actor, input ResolveInput) (*NetworkCard, error)
 					// be decoded. Continue across the stable read snapshot.
 					continue
 				}
-				card := s.networkCard(endpoint, binding, actor.GroupID)
+				card := s.directoryCard(owner, endpoint, binding, actor.GroupID)
+				if !directoryCardMatchesScope(card, input) {
+					continue
+				}
 				switch {
 				case strings.EqualFold(card.Address, query):
 					appendResolveSample(&exact, card)
@@ -697,4 +718,32 @@ func cleanWorkspace(value string) string {
 	// Hub's home. Rewriting it to "~" when both happen to share a home prefix
 	// breaks the exact native SessionBinding check on subsequent requests.
 	return value
+}
+
+func (s *Service) directoryActorOwner(actor Actor) (string, error) {
+	principal, err := s.store.GetPrincipal(actor.PrincipalID)
+	if err != nil || principal == nil || principal.OwnerID == "" {
+		return "", ErrNotFoundOrNotAuthorized
+	}
+	return principal.OwnerID, nil
+}
+
+func directoryCardMatchesScope(card NetworkCard, in ResolveInput) bool {
+	return (in.NodeID == "" || in.NodeID == card.NodeID) && (in.Workspace == "" || in.Workspace == card.Workspace)
+}
+
+func (s *Service) directoryCard(owner string, endpoint store.Endpoint, binding *store.SessionBinding, group string) NetworkCard {
+	card := s.networkCard(endpoint, binding, group)
+	if endpoint.Owner != owner {
+		// A Group membership is not consent to expose a foreign Owner's local
+		// Thread name, paths, Node locator, capabilities, tags or binding data.
+		// Group has no separately approved alias field. Use the already visible
+		// opaque Endpoint ID; scoped Network aliases retain their own directory.
+		card.Name, card.Address = endpoint.ID, group+"/"+endpoint.ID
+		card.Harness, card.NodeID, card.Workspace = "", "", ""
+		card.Capabilities, card.Tags = nil, nil
+		card.BindingID, card.BindingStatus, card.ContextContinuity = "", "", ""
+		card.BindingEpoch = 0
+	}
+	return card
 }

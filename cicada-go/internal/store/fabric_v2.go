@@ -1229,11 +1229,12 @@ func (s *Store) UpdateClientTopologyMembershipAuthorizationForClientRequest(requ
 		return nil, err
 	}
 	defer tx.Rollback()
-	if err = nativePairLegacyAllowed(tx, "", groupID, ""); err != nil {
-		return nil, err
-	}
 	actor, err := trustedClientTopologyMutationTx(tx, requestID, ownerID)
 	if err != nil {
+		return nil, err
+	}
+	// Keep every authority/schema read after the current Client writer fence.
+	if err = nativePairLegacyAllowed(tx, "", groupID, ""); err != nil {
 		return nil, err
 	}
 	if err := guardClientTopologyGroupTx(tx, actor, groupID); err != nil {

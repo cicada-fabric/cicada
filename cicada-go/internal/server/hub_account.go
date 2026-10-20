@@ -34,6 +34,8 @@ func accountOperation(path string) string {
 		}
 	}
 	switch path {
+	case wire.OwnerEndpointReadPath:
+		return wire.OperationOwnerEndpointRead
 	case "/v2/owner/account/claim/prepare":
 		return wire.OperationClaimPrepare
 	case "/v2/owner/account/claim/complete":
@@ -50,6 +52,23 @@ func accountOperation(path string) string {
 	return ""
 }
 func (h *Handler) hubAccount(response http.ResponseWriter, request *http.Request, operation string) {
+	if operation == wire.OperationOwnerEndpointRead && request.Method == http.MethodGet {
+		provider, ok := h.accountAuth.(interface {
+			OwnerEndpointReadCapabilities() (wire.OwnerEndpointReadCapabilities, error)
+		})
+		if !ok {
+			writeError(response, http.StatusNotFound, errors.New("Owner Endpoint directory unavailable"))
+			return
+		}
+		caps, err := provider.OwnerEndpointReadCapabilities()
+		if err != nil {
+			writeError(response, http.StatusServiceUnavailable, errors.New("Owner Endpoint directory unavailable"))
+			return
+		}
+		response.Header().Set("Cache-Control", "no-store")
+		writeJSON(response, http.StatusOK, caps)
+		return
+	}
 	if request.Method != http.MethodPost {
 		writeError(response, http.StatusMethodNotAllowed, errors.New("method not allowed"))
 		return

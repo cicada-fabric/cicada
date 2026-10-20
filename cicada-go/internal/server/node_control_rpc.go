@@ -26,6 +26,8 @@ type nodeControlRPCJobList struct {
 	TooLarge bool
 }
 
+type nodeEndpointRefusal struct{ Code string }
+
 func (h *Handler) nodeControlIdentity(response http.ResponseWriter, request *http.Request) {
 	if request.Method != http.MethodGet {
 		writeError(response, http.StatusMethodNotAllowed, errors.New("method not allowed"))
@@ -306,6 +308,9 @@ func nodeControlRPCResponseBody(rpc store.NodeControlRPCInput, result any) ([]by
 		}
 		return json.Marshal(body)
 	}
+	if refusal, ok := result.(nodeEndpointRefusal); ok {
+		return marshal(false, nil, refusal.Code)
+	}
 	if rpc.Operation != "node.jobs.list" {
 		return marshal(true, result, "")
 	}
@@ -361,7 +366,8 @@ func nodeControlRPCResponseBody(rpc store.NodeControlRPCInput, result any) ([]by
 func nodeControlOperationAllowed(operation string) bool {
 	switch operation {
 	case "node.binding.status", "node.heartbeat", "node.jobs.list", "node.jobs.claim",
-		"node.jobs.result", "node.approvals.create", "node.approvals.status":
+		"node.jobs.result", "node.approvals.create", "node.approvals.status",
+		nodewire.EndpointRegisterOperation, nodewire.EndpointLeaveOperation, nodewire.NativePairAvailableOperation:
 		return true
 	default:
 		return false
@@ -375,6 +381,34 @@ func (h *Handler) dispatchNodeControlRPC(token string, rpc store.NodeControlRPCI
 		return decodeStrictClientJSON(bytes.NewReader(plaintext), nodewire.MaxRequestPlaintextBytes, target)
 	}
 	switch operation {
+	case nodewire.NativePairAvailableOperation:
+		var input struct{}
+		if decode(&input) != nil {
+			return nodeEndpointRefusal{nodewire.ErrEndpointContext.Error()}, nil
+		}
+		return h.fabricService.AvailableNodeNativePairs(rpc, keyBinding.HubPublicIdentity)
+	case nodewire.EndpointRegisterOperation, nodewire.EndpointLeaveOperation:
+		var result *nodewire.EndpointRegistrationResult
+		var err error
+		if operation == nodewire.EndpointRegisterOperation {
+			var input nodewire.EndpointRegistration
+			if decode(&input) != nil {
+				return nodeEndpointRefusal{nodewire.ErrEndpointContext.Error()}, nil
+			}
+			result, err = h.fabricService.RegisterNodeEndpoint(rpc, input)
+		} else {
+			var input nodewire.EndpointLeave
+			if decode(&input) != nil {
+				return nodeEndpointRefusal{nodewire.ErrEndpointContext.Error()}, nil
+			}
+			result, err = h.fabricService.LeaveNodeEndpoint(rpc, input)
+		}
+		for _, known := range []error{nodewire.ErrEndpointContext, nodewire.ErrEndpointConflict, nodewire.ErrEndpointUnavailable} {
+			if errors.Is(err, known) {
+				return nodeEndpointRefusal{known.Error()}, nil
+			}
+		}
+		return result, err
 	case "node.binding.status":
 		var input struct{}
 		if err := decode(&input); err != nil {

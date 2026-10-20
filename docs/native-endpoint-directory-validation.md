@@ -1,0 +1,119 @@
+# Native Endpoint / Owner directory checkpoint validation
+
+This record covers `native-endpoint-directory-v1`, not the frozen installation
+H1 proposal, a deployment or actual native Runtime consumption. The implementation
+and [contract](native-endpoint-directory-contract.md) share one task checkpoint.
+The producer is `task/n2-hub`, based on `bb0644b68627579af470ead52035d42618372c75`
+plus the recorded dirty sources. A dirty build is not attributed solely to HEAD.
+
+## Source and environment
+
+Evidence is outside Git at
+`/home/zyf/Cicada/.local/evidence/node-endpoint-registration/`. Each run has
+`source-manifest.json`, `receipt.json`, `stdout.jsonl` and `stderr.log`, retaining
+its exact base, file hashes, immutable image, command, test counts and exit.
+
+The fixed builder is
+`sha256:5c3e9b43cfd3bb95c7937462e29d87ada57b481a96fa23ad0eb61778d7a00110`,
+Go 1.27.3, UID/GID 1000, network disabled, read-only source/module cache and a
+task-owned build cache, `GOTOOLCHAIN=local`, `GOPROXY=off`, `GOSUMDB=off`,
+`GOMAXPROCS=4`. All account/Owner/Node/Thread fixtures and keys are synthetic.
+No resident Hub, actual Thread/SID, provider credentials or model is used.
+
+The Docker image disappeared from the daemon during this work. The attempted
+`focused-current-20261020T145323Z` could not start: exit 125, zero tests, source
+manifest `0ab0be7a66e77f7baf96a4f0eb388db2ed5e47bbf31ebc5e0da5c3c1122e14db9`.
+This is an environment failure, not a pass. The official builder tag was pulled
+back to the same fixed image ID; no resident deployment was recreated or replaced.
+
+A read-only copy of the image's Go toolchain was extracted into the task cache
+for the App/QA collaborators. Its `image-toolchain-receipt.json` records origin
+and executable hashes: Go `5f5eb6d0b2fb6aa0bb5d5f8c5f1c944e0de955c925f0111af92a9d8f79680b5b`,
+gofmt `fd464d1c9098a6714d06bd3fcd2a1fedcdd291e710241160ebb663bf99adf2f8`.
+A parallel slow upstream tar transfer was cancelled and retained as an unverified
+partial file; it is not claimed as a checksum-verified toolchain or test input.
+
+## Checks
+
+The scoped results below retain their separate input manifests. The original
+aggregate FAIL is not rewritten as an aggregate pass. All four originally failing
+cases pass their corrected affected selectors; unchanged passing cases are not
+added twice. There is no claim of a fresh full-repository aggregate pass.
+
+| Run | Recorded result | Attribution |
+|---|---|---|
+| `final-focused-20261020T150858Z` | FAIL: 220 pass / 4 fail / 0 skip; 81 passing and 2 failing top-level tests | Manifest `4732ef2bdb32c32ff1eaa93af9d2008c3416105d36cb2233b8daf3f89d0fd1b0`. One new capabilities newline parse failure; old external-writer topology revocation join/authorization tests returned SQLITE_BUSY. These failures are not erased by later checks. |
+| `availability-correction-20261020T151210Z` | PASS: 4 / 0 / 0, exit 0 | Manifest `0ed204ce6755743b43d76c06c6a256888a2e9e6cd3ddb7c5e6b6ec99d4bc45fa`. Corrected the bounded public parser to accept the HTTP encoder's final newline; wire and actual encrypted TCP Owner-read checks pass. |
+| `scoped-vet-20261020T151252Z` | PASS, exit 0 | Same `0ed204ce...` source; Store, Fabric, Control, Server, wire, crypto, authorization, Hub Nodes, catalog and CLI packages. |
+| `targeted-race-20261020T151251Z` | PASS: 23 / 0 / 0; 17 top-level, exit 0 | Same `0ed204ce...` source. New Endpoint/Owner read, concurrent same-SID, current revocation, Pair discovery and directory privacy cases. |
+| `mutation-guard-correction-20261020T151916Z` | PASS: 63 / 0 / 0; 7 top-level, exit 0 | Manifest `580255f276470a0986b5f98861ccd27165cf5130266682d465b973612e531cb5`. Complete topology mutation-guard selector, including all external-writer revocation subcases and unchanged denial expectations. |
+| `disposable-tcp-interop-20261020T151917Z` | PASS: 3 / 0 / 0, exit 0 | Same `580255f2...` source. Actual Hub Nodes/account/PQ HTTP services in a disposable network-disabled Docker container: register→reuse original Pair identity→withdraw actual Group/Network leases; strict terminal errors/exact retries; availability→Owner-proof private read→current revocation. No Control inference or model. |
+| `mutation-store-vet-20261020T151918Z` | PASS, exit 0 | Same `580255f2...` source; final Store writer-order correction. |
+| `final-client-catalog-20261020T152135Z` | PASS: 4 / 0 / 0, exit 0 | Same `580255f2...` source; the complete Go catalog/authoritative-contract checks. |
+
+The integration owner independently reproduced the same old external-writer
+join/authorization failures on clean `bb0644b`: 2 pass / 3 fail / 0 skip,
+including the failing parent. Its separate evidence is
+`/home/zyf/Cicada/.local/evidence/native-ux-root/baseline-guard-20261020T151234Z-a8cebc/`.
+The approved repair is limited to taking the trusted SQLite writer before the
+native-Pair legacy-scope schema read in those two mutators. It changes no
+permission or denial expectation. The affected-selector correction passes separately as recorded above; the original
+failures and clean-baseline reproduction remain attributed to their tested sources.
+
+Earlier development attempts remain under their own source manifests and
+receipts: `initial-focused-20261020T135124Z`,
+`owner-read-compile-20261020T140147Z`,
+`owner-read-focused-20261020T140456Z`,
+`owner-read-focused-v2-20261020T140616Z`, and
+`owner-read-focused-v3-20261020T140820Z`. They retain the nil-scanner/carrier
+scaffolding, invalid synthetic immutable-epoch mutation, test compile errors,
+and old-N2-TTL mismatch found during development. The TTL correction follows the
+reviewed N3 semantics: a new genuine Owner read proof has an independent finite
+purpose; the expired old N2 operation scope stays expired.
+
+The contract checks are `python3 scripts/endpoint-directory-contract.py`,
+`python3 scripts/client-contract.py check` and
+`python3 scripts/native-pair-contract.py`. They retain wire 1, Client catalog 55
+and old activation operations. The Client contract Python suite passed 18 tests.
+No Android frozen copy or Android business code is changed.
+
+## Covered behavior and limits
+
+The targeted cases check zero rights, immutable repeated metadata, cwd/Owner/Node
+fences, concurrent same-SID claims through independent Store connections,
+current Node/Owner/key/device revocation, exact sealed-response retry/restart,
+Group and Network-only Leave CAS, actual lease/edge withdrawal, no `left` revival,
+Pair reuse without replacement identities, and pre-LIMIT candidate filtering.
+
+The Owner read cases use actual Owner signatures and App/Node PQ packets. They
+cover old N2 TTL expiry with a new distinct proof while the old operation remains
+denied; no device/account-only substitution; finite UTC windows including time
+sampled after the writer lock; stable cursor checks; long-path byte-limited pages;
+exact cached snapshots; temporary bounded-cache backpressure; current Node
+revocation denying cached private paths; same-Owner metadata; and foreign-card,
+direct-ID/Node/workspace resolution and ambiguity privacy.
+
+Registration is not an active native writer. Generic Node RPC can still report
+an uncertain result between the business commit and response sealing; the
+retained identity is reconciled instead of creating another Thread/Endpoint.
+This checkpoint does not implement rename/CAS updates, re-enable a left Pair SID,
+delegate Owner endpoint-key signing, preassign an App-selected Endpoint to a Pair
+slot, or run a model. The live Thread must explicitly select the human Pair label
+and A/B slot; the App reviews actual joined Endpoints and original consents.
+
+Node local-bridge wiring and the per-call current-Thread Hook are subsequent
+scopes. Actual Codex Runtime, current Windows App UI/DPAPI/ACL/uninstall, Android,
+physical devices, public HTTPS, real keys and deployment upgrade are **NOT_RUN**
+for this checkpoint. The user's earlier successful two-Thread Pair behavior
+remains user-reported evidence for its original source, not a pass for this patch.
+
+
+The authoritative Client contract export is retained at
+`/home/zyf/Cicada/.local/artifacts/node-endpoint-registration/client-contract/`,
+bundle SHA-256 `c6ded1351c0f9efdbe1b64d52c45235b6c45a235558e82b0b7fef3f71a8418ed`.
+It explicitly records base `bb0644b...` plus dirty contract content, not a clean
+build attributed solely to that base. Catalog SHA-256 remains
+`a4ba36df0690e15dbaad36ea93d79586b25380bf31ebc5e0da5c3c1122e14db9`.
+The final candidate/commit receipt links the exact tested source hashes and
+post-test documentation hashes; adding this evidence record does not change the
+Go code tested by the final correction/TCP/vet gates.

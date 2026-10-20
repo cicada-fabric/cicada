@@ -2056,7 +2056,7 @@ components:
     ClientTopologySnapshot:
       type: object
       additionalProperties: false
-      required: [contract_version, owner_principal_id, captured_at, read_consistency, networks_truncated, network_endpoints_truncated, networks, groups, memberships, endpoints, links]
+      required: [contract_version, owner_principal_id, captured_at, read_consistency, networks_truncated, network_endpoints_truncated, endpoints_truncated, networks, groups, memberships, endpoints, links]
       properties:
         contract_version: {const: 2}
         owner_principal_id: {type: string}
@@ -2064,6 +2064,7 @@ components:
         read_consistency: {const: best_effort}
         networks_truncated: {type: boolean}
         network_endpoints_truncated: {type: boolean}
+        endpoints_truncated: {type: boolean}
         networks:
           type: array
           items: {$ref: '#/components/schemas/ClientTopologyNetwork'}
@@ -2110,10 +2111,11 @@ components:
     ClientTopologyEndpoint:
       type: object
       additionalProperties: false
-      required: [endpoint_id, name, principal_id, group_ids, network_ids, presence]
+      required: [endpoint_id, name, workspace, principal_id, group_ids, network_ids, presence]
       properties:
         endpoint_id: {type: string}
         name: {type: string}
+        workspace: {type: string, maxLength: 4096}
         principal_id: {type: string}
         group_ids: {type: array, items: {type: string}}
         network_ids: {type: array, items: {type: string}}
@@ -2124,7 +2126,7 @@ components:
         binding_id: {type: string}
         binding_epoch: {type: integer, minimum: 1}
         binding_status: {type: string}
-      description: Only this Owner's Endpoints; Network-only Endpoints may have empty group_ids and no Group binding.
+      description: Only the actual Endpoint and Principal Owner may read private workspace. SQL Owner filtering precedes the 1000-Endpoint bound; endpoints_truncated reports cutoff. Zero-rights and Network-only Endpoints may have empty group_ids/network_ids and no Group binding. Existing current encrypted request/device/key/account lease Guards remain mandatory; finite N2 activation does not authorize topology.snapshot.
 
     NetworkDirectoryRequest:
       type: object

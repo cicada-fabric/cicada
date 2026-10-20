@@ -172,9 +172,6 @@ func (s *Store) joinEndpointGroup(endpointID, groupID, requestID, ownerID string
 		_ = tx.Rollback()
 		return nil, cause
 	}
-	if err = nativePairLegacyAllowed(tx, "", groupID, ""); err != nil {
-		return rollback(err)
-	}
 	var actor trustedClientRequest
 	if requestID != "" {
 		actor, err = trustedClientTopologyMutationTx(tx, requestID, ownerID)
@@ -187,6 +184,11 @@ func (s *Store) joinEndpointGroup(endpointID, groupID, requestID, ownerID string
 		if err := guardClientTopologyEndpointOwnerTx(tx, actor, endpointID); err != nil {
 			return rollback(err)
 		}
+	}
+	// For Client mutations the trusted guard above must take the writer before
+	// nativePairLegacyAllowed reads schema/scope, avoiding a stale read upgrade.
+	if err = nativePairLegacyAllowed(tx, "", groupID, ""); err != nil {
+		return rollback(err)
 	}
 	var principalID, migrationState, endpointStatus, bindingID, nativeSessionID string
 	if err := tx.QueryRow(`SELECT principal_id, migration_state, status, binding_id, native_session_id FROM fabric_endpoints WHERE id = ?`, endpointID).
@@ -368,10 +370,25 @@ WHERE id = ? AND endpoint_id = ? AND epoch = ?
 		}
 		return rollback(ErrSessionBindingStaleEpoch)
 	}
+	if err := withdrawEndpointAllScopesTx(tx, endpointID, reason, timestamp); err != nil {
+		return rollback(err)
+	}
+	return tx.Commit()
+}
+
+// withdrawEndpointAllScopesTx is shared by native Fabric Leave and the
+// current-PQ-Node self path. Callers establish their exact current authority
+// and CAS fence before invoking it, in the same writer transaction.
+func withdrawEndpointAllScopesTx(tx *sql.Tx, endpointID, reason, timestamp string) error {
+	if _, err := tx.Exec(`UPDATE session_bindings
+SET status='revoked',epoch=epoch+1,version=version+1,lease_owner='',lease_expires_at='',revocation_reason=?,updated_at=?
+WHERE endpoint_id=? AND status IN ('active','leased','online','ready','acquired')`, reason, timestamp, endpointID); err != nil {
+		return err
+	}
 	if _, err := tx.Exec(`UPDATE endpoint_group_memberships
 SET status = 'revoked', revision = revision + 1, updated_at = ?
 WHERE endpoint_id = ? AND status = 'active'`, timestamp, endpointID); err != nil {
-		return rollback(err)
+		return err
 	}
 	// A global Endpoint leave is also a final withdrawal from every Network
 	// registration on this native Endpoint. Preserve Principal-level Network
@@ -381,16 +398,16 @@ WHERE endpoint_id = ? AND status = 'active'`, timestamp, endpointID); err != nil
 	if _, err := tx.Exec(`UPDATE endpoint_network_memberships_v2
 SET status = 'revoked', revision = revision + 1, updated_at = ?
 WHERE endpoint_id = ? AND status = 'active'`, timestamp, endpointID); err != nil {
-		return rollback(err)
+		return err
 	}
 	if _, err := tx.Exec(`UPDATE network_access_sessions_v2
 SET status = 'revoked', epoch = epoch + 1, lease_owner = '', lease_expires_at = '', updated_at = ?
 WHERE endpoint_id = ? AND status = 'active'`, timestamp, endpointID); err != nil {
-		return rollback(err)
+		return err
 	}
 	if _, err := tx.Exec(`UPDATE fabric_endpoints SET status = 'left', updated_at = ?
-WHERE id = ? AND binding_id = ?`, timestamp, endpointID, bindingID); err != nil {
-		return rollback(err)
+WHERE id = ?`, timestamp, endpointID); err != nil {
+		return err
 	}
-	return tx.Commit()
+	return nil
 }

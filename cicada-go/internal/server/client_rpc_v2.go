@@ -532,7 +532,7 @@ func (h *Handler) dispatchClientRPC(ownerID, callerDeviceID, clientRequestID, op
 		if err := decodeStrictClientJSON(bytes.NewReader(plaintext), 64*1024, &input); err != nil {
 			return nil, errors.New("invalid topology snapshot request")
 		}
-		return h.control.BuildClientTopologySnapshot(ownerID)
+		return h.control.BuildClientTopologySnapshotForRequest(ownerID, clientRequestID)
 	case "topology.apply":
 		var input control.ClientTopologyAction
 		if err := decodeStrictClientJSON(bytes.NewReader(plaintext), 64*1024, &input); err != nil {

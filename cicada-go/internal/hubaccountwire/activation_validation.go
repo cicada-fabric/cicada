@@ -11,6 +11,8 @@ import (
 
 func extensionMetadata(body any) (operation, id, owner, device string, epoch uint64, err error) {
 	switch v := dereference(body).(type) {
+	case OwnerEndpointReadRequest:
+		return OperationOwnerEndpointRead, v.Context.RequestID, v.Context.OwnerID, v.Context.DeviceID, HandshakeEpoch, nil
 	case ActivationPrepare:
 		return OperationActivationPrepare, v.RequestID, v.Material.OwnerID, v.DeviceID, HandshakeEpoch, nil
 	case ActivationComplete:
@@ -26,7 +28,7 @@ func extensionMetadata(body any) (operation, id, owner, device string, epoch uin
 	return appNodeMetadata(body)
 }
 func extensionOperation(op string) bool {
-	return op == OperationActivationPrepare || op == OperationActivationComplete || op == OperationActivationStatus || op == OperationAccountReconcile || appNodeOperation(op) || nativePairOperation(op)
+	return op == OperationOwnerEndpointRead || op == OperationActivationPrepare || op == OperationActivationComplete || op == OperationActivationStatus || op == OperationAccountReconcile || appNodeOperation(op) || nativePairOperation(op)
 }
 func validateActivationBinding(b ActivationBinding) error {
 	if b.Format != ActivationFormat || (b.Purpose != PurposeInitialActivation && b.Purpose != PurposeLegacyContinuation) || validateOrigin(b.Origin) != nil || !validID(b.HubID) || !validID(b.AccountID) || !validID(b.OwnerID) || !isHex(b.HubFingerprint, 32) || !isHex(b.ActivationID, 16) || b.SetupEpoch == 0 || b.AccountEpoch == 0 || b.DeviceEpoch == 0 || e2ee.ValidatePublicIdentity(b.OwnerPublic) != nil || e2ee.ValidatePublicIdentity(b.DevicePublic) != nil || b.OwnerPublic.ID == b.DevicePublic.ID || !validDeviceID(b.DeviceID) || !isHex(b.PrepareRequestID, 16) || !isHex(b.PreparePacketDigest, 32) || !isHex(b.GrantDigest, 32) || !reflect.DeepEqual(b.AllowedOperations, ActivationAllowedOperations()) || validateCanonicalTime(b.LeaseExpiresAt) != nil {
@@ -35,6 +37,9 @@ func validateActivationBinding(b ActivationBinding) error {
 	return nil
 }
 func validateExtensionRequest(body any, hub HubIdentity, now time.Time) error {
+	if q, ok := dereference(body).(OwnerEndpointReadRequest); ok {
+		return validateOwnerEndpointReadRequest(q, hub, now)
+	}
 	if op, _, _, _, _, err := nativePairMetadata(body); err == nil && nativePairOperation(op) {
 		return validateNativePairRequest(body, hub, now)
 	}
@@ -76,6 +81,9 @@ func validateExtensionRequest(body any, hub HubIdentity, now time.Time) error {
 	return nil
 }
 func validateExtensionResponse(body any, r clientwire.Route) error {
+	if r.Operation == OperationOwnerEndpointRead {
+		return validateOwnerEndpointReadResponse(body, r)
+	}
 	if nativePairOperation(r.Operation) {
 		return validateNativePairResponse(body, r)
 	}
