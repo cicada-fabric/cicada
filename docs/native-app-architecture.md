@@ -115,8 +115,15 @@ Repeat registration is read-only; changed cwd conflicts and `left` is not revive
 Leave uses the original authorization-state digest and current Node fence.
 The independent finite `owner.endpoints.read` proof leaves the old N2 two-operation
 allowlist unchanged. Its result is a private bounded snapshot, never communication
-authority. Actual Node local-bridge/Hook and App Core read integration remain
-pending, with [source-bound evidence](native-app-validation.md#2026-10-20-independent-endpoint-and-hook-checkpoint).
+authority. Node local-bridge source `97d8a1d22643ddf911c8842ac9f95802928189df`
+and actual App Core read source `07bd265c69d99119d87bdfa6204c27d0273ef14c`
+are integrated. The actual App signs its own bounded reads, retains uncertain
+original packets across child/Hub restarts and displays authenticated
+`SNAPSHOT_ONLY` cards. Public capability availability can be false after restart
+while the original authenticated snapshot remains valid; recovery must not require
+a new GET or Owner signature. These have [source-bound independent scopes](native-app-validation.md#2026-10-20-actual-app-owner-directory-integration),
+with no general management/canvas or communication authority. Product Hook/MCP,
+native Runtime, extended expiry/privacy and physical Windows remain pending.
 This does not activate
 the frozen broader C0 installation-registration family. Zero-right registration
 does not require an existing Pair; reserved-Pair communication retains its
@@ -139,7 +146,8 @@ the mock sink's rejection does not establish a product Guard. The production
 adapter must independently validate its short-lived, per-call original context
 and refuse missing, stale, replayed or cross-Thread tickets. Subagent hooks can
 carry the parent's session ID; it must not be used as a child native identity.
-Product ticket/bridge, clear/subagent behavior and PQ integration remain NOT_RUN.
+The product Hook call through the Node bridge, ticket enforcement and
+clear/subagent behavior remain NOT_RUN.
 
 Cicada-owned installed user files default to `~/.cicada`, with an installation-
 selected custom root. Existing platform vault and Node locations are not

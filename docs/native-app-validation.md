@@ -3956,3 +3956,162 @@ old plan matrix sections. A full-document link scan found an existing historical
 it is not reported as a full link-check PASS and historical evidence is unchanged.
 Only links introduced by this checkpoint are checked against current repository
 files. Go formatting, shell syntax, Python AST and whitespace checks pass.
+
+## 2026-10-20 standard Hub interop with an explicit verified module proxy
+
+Root's standard disposable client gate is separate from the actual App/Node
+Endpoint and future Owner-read scopes. Three stages retain their original
+sources, exit codes and evidence under
+`/home/zyf/Cicada/.local/evidence/native-ux-root/`:
+
+| Stage | Recorded outcome | Receipt SHA-256 |
+| --- | --- | --- |
+| `client-interop-d3-20261020T1546/result.json` | Root-reported clean d3acd4b attempt reached only build; public dependency download hit the bounded timeout. Inner receipt exit 143, aggregate FAIL, all four product checks NOT_RUN, zero product tests, cleanup CONFIRMED | `25428a50ae4174f80e4a05903a530b147d3eaa58e13ac0ee01f1076567d20bc3` |
+| `module-network-probe-20261020T1603/cached-result.json` | Download-closure probe only, exit 0, zero product tests. Pinned Go 1.27.3 bookworm image, owned cache, read-only public module source via loopback proxy, `GOSUMDB=sum.golang.org`; owned probe container absent | `45fbf8b30d058c15a91c4a514827981faf971a6edef4cfc47924453545042761` |
+| `client-interop-cached-20261020T1614/result.json` | Clean `794de08590c015ed68ad641eac01f695b3bf34ec`, standard client suite PASS, exit 0, 7/0/0 terminal events (four top-level and three recovery subtests), cleanup CONFIRMED | `5ed15fb4bda45d65a948556784d3f120bfcddd4a7fe1cb5f7697e6b29536d1b0` |
+
+The closure probe retains original `go.mod` and `go.sum` hashes
+`e51f926fafef510ab423829c7a499bbbf3e5d938cdbc95f379fc1c033dc9b869` and
+`ea71a53ecf239d8c23d299033298d43afa3cb27ef1938170b68300804315890d`.
+The shared module cache is served read-only; no checksum verification is disabled
+and no dependency/version is changed. The failed build and successful download
+probe are not relabelled as product tests.
+
+The standard gate runs `TestClientDockerHubSmoke`,
+`TestClientDockerHubRecoveryFixture`, `TestClientDockerHubHeadlessOperator` and
+`TestClientDockerHubOwnerBootstrap`. Its source fingerprint is
+`9ce116e6b717867b080e477be02c5eaab7c064d2d66940e8d933a9635c2ceb6d`;
+catalog SHA-256 remains
+`a4ba36df0690e15dbaad36ea93d79586b25380bf31ebc5e0da5c3c1122e14db9`.
+Root independently matches the post-run revision, clean flag and fingerprint in
+`source-after.json` to the build. The separate `root-review.json` SHA-256 is
+`fe1be1bd2e47fd8aeb2348a1cdf237cc04291b82fd9e3ac5f2e408af81e24583`.
+
+Executed Hub image ID is
+`sha256:a3cf8c13fbc997ee6d5491d90642966525a1b408102d2a60e22ce96abaa1c8a7`;
+interop test image ID is
+`sha256:b29b800f3e74312eb32ef6858711b2b4c27e86914cae833fb8b6ac284512758c`.
+The receipt proves exact absence of its three containers, two image tags and
+private scratch directory after cleanup. Root's separate temporary loopback
+module proxy was still retained for later owned builds at the 16:19 UTC review;
+this does not claim that proxy had stopped.
+
+Reproduction uses a task-owned read-only module proxy and fresh output:
+
+```sh
+CICADA_BUILD_GOPROXY=http://127.0.0.1:PORT \
+  CICADA_INTEROP_OUTPUT=/ABSOLUTE/FRESH_EVIDENCE \
+  scripts/test-client-hub-interop.sh --suite client
+```
+
+Use the task's allocated port rather than assuming the old proxy is live.
+The explicit proxy build option is in `794de08590c015ed68ad641eac01f695b3bf34ec`,
+parent `4215ddce83443673d9b3f4c70a3db7ba02fcc434`. Its separate 13 script test
+methods, four proxy-argument subcases and real source-only capture passed on
+dirty `2f1d08b`; that metadata/argument check is not a Docker product gate.
+The build-fix receipt is
+`native-pair-acceptance/build-goproxy-20261020T160750Z-z_6zaofo/result.json`
+under the workspace evidence root, SHA-256
+`6b4f7e4b87cb8a760a30d3dd69f737b1804ea77b0e48241007a248e63b8c2b30`.
+Commit verification SHA-256 is
+`0e68a561e397caeb7fb7cbea08644ff2bf476caf4104ab8c4593838c7059a129`;
+all three blobs match the reviewed candidate and both Git identities inherit
+the global server identity. Parent transfer does not reattribute the old checks.
+
+This standard gate is real TCP Hub/client protocol evidence. Actual new App
+Owner-directory actions, Node local Hook/MCP adapter, native queue/model
+consumption, Windows DPAPI/ACL/GUI, Android, physical devices, public HTTPS and
+strict PQTLS remain separately **NOT_RUN** for this gate. No shared development
+Hub, public deployment, real identity or model/provider was operated.
+
+## 2026-10-20 actual App Owner-directory integration
+
+Root integrated Node local-bridge source
+`97d8a1d22643ddf911c8842ac9f95802928189df` and App Core/UI source
+`07bd265c69d99119d87bdfa6204c27d0273ef14c`. The App's
+[producer record](../cicada-go/cmd/cicada-app/README.md) retains its separate
+dirty-source normal/race, Windows cross-build and local UNKNOWN-retention checks.
+The independent gate below does not inherit those unit results or accept the
+product Hook/MCP chain, physical UI or expired-read parking.
+
+Reproduce all six selected terminal tests with
+`scripts/test-native-pair.sh --endpoint-security-owner-directory`.
+The driver reuses the actual N3 App child, production Controller and original
+encrypted vault plus an actual disposable Hub Nodes CLI. The approved synthetic
+Node registers original SIDs through real PQ/TCP; the **actual App** then performs
+its Owner-signed read. The parent never opens an Owner private key, signs an
+Owner intent, injects SQL authority or restores the child's pending state.
+Names/workspaces remain visibly synthetic. Control inference is disabled.
+
+| Source-bound run | Result | Source manifest | `result.json` SHA-256 |
+| --- | --- | --- | --- |
+| `native-pair-acceptance/run-20261020T164433Z-T1QnCl` | FAIL, exit 1: 2 pass / 4 fail / 0 skip, including recovery parent. CLI/tests compilation and vet exit 0 | `a8ec2e746325594d8cf776ee61cf8b2bc68121c5f59bb8a7ad4a0280b183e826` | `4df2dbb16120d2092f7f6c6538d30b8a7bf06f7a65a457ea2584de637e128d9b` |
+| `native-pair-acceptance/run-20261020T164746Z-HrZ9tC` | Recovery-only SCOPED_PASS, 4/0/0, all compilation/harness/vet/driver exits 0 | `6fd022f23f02a0ef1a61080857529e5169a6f9bf3b9e7331a97cc1ed3432961f` | `a05237952d9d428e231baf1718494ad42f5e4901ed55a1642be544c9ad8ea56d` |
+
+Both use `07bd265` plus their exact dirty QA inputs, fixed Go 1.27.3 Docker,
+network none, read-only source/modules and the locked task build cache. Source
+and executed-binary bookends match, and each exact owned container is absent.
+The CLI hash is unchanged between these two runs:
+`6f9cc4bc800e0e82a882e2a5a634fa27a3aea9c4509d2df672a84bb443a485eb`.
+Initial test executable SHA-256 is
+`141e902d30af2627afb6b23b1fec514bf6b908a747a913c04329f37a2e8e372b`;
+corrected recovery executable is
+`4c140dbec46ed260a70b512f11f560d2de7cab2fca16b6a44fd45e36cb892c04`.
+Exact recovery container
+`cicada-native-pair-run-20261020t164746z-hrz9tc` is independently rechecked absent.
+
+The first run's two passed cases establish:
+
+* Actual App approval and actual Owner signatures read two original zero-right
+  Endpoints, retaining equal names, distinct IDs, Windows-style Unicode workspaces,
+  harness, offline presence and the selected Node. The result is `SNAPSHOT_ONLY`,
+  with capture time and no management/canvas or communication authority.
+* An actual discovery GET returning 404 creates no new pending request and sends
+  no secret POST. Original Owner/App/Hub identities remain unchanged.
+
+All three recovery subcases initially failed the **driver's** common card
+assertion because it required public `Available=true` after App restart.
+Capability discovery is transient and recovery intentionally sends no new GET.
+Root approved retaining the initial FAIL and moving this requirement to the
+successful **new** read case only. No product implementation, cryptographic
+verification, identity, card, original-packet or cached-ciphertext expectation
+was relaxed. Recovery explicitly records `Available=false` while its verified
+`SNAPSHOT_ONLY` result, Node, capture time and cards remain present.
+
+The corrected selector is
+`scripts/test-native-pair.sh --endpoint-security-owner-directory-recovery`.
+Its three subcases lose a POST before forwarding, lose the authenticated response
+after commit, or replace delivery with unsigned HTTP 403. Each observes actual
+GET-before-POST ordering, retains the original App pending packet, refuses a new
+read while pending, closes the actual App child and restarts the actual Hub with
+its persistent database/keys. The new child resumes only its original profile,
+without installer material or parent restoration. Recovery resends the exact
+original ciphertext; after-forward cases receive the exact original cached
+response ciphertext. Read-only DB checks find only the original zero-right
+Endpoint and no fabricated SessionBinding, membership, access session or key grant.
+
+The recovery GET is armed as unavailable and is never called: this proves original
+recovery does not depend on a fresh capability GET, not that the App actually
+received another 404 while pending. Unsigned 403 remains an uncertain transport
+outcome until the original authenticated receipt is recovered. Local UNKNOWN
+parking is not exercised or called Hub settlement. The two earlier passing cases
+were not repeated; **there is no fresh six-event aggregate PASS**. All failures
+and corrected results keep their own source and executable hashes.
+
+Root separately checks clean `07bd265`'s existing shared Node RPC:
+`native-ux-root/shared-rpc-regression-20261020T1646/result.json`, SHA-256
+`67fd9c59edd8c9abe1b10543a127820f98ffa392fb52f26dbe448411c92403c0`.
+It passes 6/0/0 (three top-level and three subtests), compile/test exits 0,
+network none and unchanged source/test binary. The binary SHA-256 is
+`d93412f78477a9b1a62a58eb81f7d783a692969477138a22600bdeac49169e20`.
+Both exact owned compile/run containers are absent. Scope is existing exact
+packet/IN_PROGRESS recovery, claim-ticket restart without redispatch and three
+quarantine regressions; it is separate from actual native Runtime or Windows.
+
+Extended independent Owner-directory privacy/foreign Owner or Node, paging,
+cache/proof expiry, old N2 TTL, logout/revocation, wrong-Hub capability and local
+UNKNOWN-retention budget cases remain **NOT_RUN** here. Product Hook/MCP context,
+native model/queue consumption, Windows GUI/DPAPI/ACL/CJK/DPI, Android, physical
+devices, public HTTPS and strict PQTLS remain separate **NOT_RUN** scopes. No
+C0/App2 or second-approved-Node matrix is resumed. Final status documents are
+post-test edits; tested Go inputs remain unchanged.

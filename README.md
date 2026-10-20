@@ -52,8 +52,11 @@ business/Owner authorization are separate. The bounded Hub backend at
 [zero-right Endpoint registration and private Owner directory reads](docs/native-endpoint-directory-contract.md).
 Its [producer checks](docs/native-endpoint-directory-validation.md) and
 [independent fault checks](docs/native-app-validation.md#2026-10-20-independent-endpoint-and-hook-checkpoint)
-have separate source attribution. Actual Node local-bridge/Hook integration and
-the App Owner-directory action remain pending. Native navigation/CJK source at
+have separate source attribution. Node local-bridge source at `97d8a1d` and
+actual App Owner-read source at `07bd265` are integrated; the
+[App signed-read/recovery checks](docs/native-app-validation.md#2026-10-20-actual-app-owner-directory-integration)
+remain separate from product Hook/MCP and native Runtime acceptance, which are
+pending. Native navigation/CJK source at
 `bb0644b68627579af470ead52035d42618372c75` is integrated; physical Windows review
 remains NOT_RUN. App/Node/MCP storage-default source at
 `73d6f9ad13c26ad7cf203e2924adcc7a46104213` is a partial installed-root change;

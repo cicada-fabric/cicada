@@ -30,6 +30,12 @@ ENDPOINT_SECURITY_EXPECTED.update('TestN3EndpointSecurityRegistrationFaultRecove
 ENDPOINT_BOUNDARIES_EXPECTED = {'TestN3EndpointSecurityZeroAuthorityAndIdentityRetention',
                                 'TestN3EndpointSecurityConcurrentOriginalRequest'}
 ENDPOINT_APP_FIXTURE_EXPECTED = {'TestN3EndpointSecurityZeroAuthorityAndIdentityRetention'}
+OWNER_DIRECTORY_EXPECTED = {'TestN3OwnerDirectory' + suffix for suffix in (
+    'ActualAppReadsZeroRightsSnapshot', 'OldHubCannotStartRead', 'OriginalPendingRecovers')}
+OWNER_DIRECTORY_EXPECTED.update('TestN3OwnerDirectoryOriginalPendingRecovers/' + mode for mode in (
+    'before-forward', 'drop-after-response', 'unsigned-403'))
+OWNER_DIRECTORY_RECOVERY_EXPECTED = {name for name in OWNER_DIRECTORY_EXPECTED
+                                     if name.startswith('TestN3OwnerDirectoryOriginalPendingRecovers')}
 
 
 def sha(path):
@@ -103,7 +109,7 @@ def terminal_events(path):
 
 
 def finish(run, artifacts, image, owned, mode='protocol'):
-    if mode not in ('protocol', 'store', 'a3', 'a3-http', 'a3-size-store', 'app-owner', 'endpoint-security', 'endpoint-security-boundaries', 'endpoint-security-app-fixture'):
+    if mode not in ('protocol', 'store', 'a3', 'a3-http', 'a3-size-store', 'app-owner', 'endpoint-security', 'endpoint-security-boundaries', 'endpoint-security-app-fixture', 'endpoint-security-owner-directory', 'endpoint-security-owner-directory-recovery'):
         raise ValueError('Only protocol and isolated core regression modes are active.')
     before, after = [json.loads((run / f'source-{side}.json').read_text()) for side in ('before', 'after')]
     results, diagnostics, metrics = {}, [], []
@@ -127,8 +133,11 @@ def finish(run, artifacts, image, owned, mode='protocol'):
                 'a3-size-store': A3_SIZE_EXPECTED, 'app-owner': APP_OWNER_EXPECTED,
                 'endpoint-security': ENDPOINT_SECURITY_EXPECTED, 'endpoint-security-boundaries': ENDPOINT_BOUNDARIES_EXPECTED,
                 'endpoint-security-app-fixture': ENDPOINT_APP_FIXTURE_EXPECTED,
+                'endpoint-security-owner-directory': OWNER_DIRECTORY_EXPECTED,
+                'endpoint-security-owner-directory-recovery': OWNER_DIRECTORY_RECOVERY_EXPECTED,
                 'protocol': EXPECTED}[mode]
-    core = mode not in ('protocol', 'app-owner', 'endpoint-security', 'endpoint-security-boundaries', 'endpoint-security-app-fixture')
+    core = mode not in ('protocol', 'app-owner', 'endpoint-security', 'endpoint-security-boundaries', 'endpoint-security-app-fixture', 'endpoint-security-owner-directory', 'endpoint-security-owner-directory-recovery')
+    owner_directory = mode.startswith('endpoint-security-owner-directory')
     stages = ('version', 'compile-tests', 'compile-race', 'harness', 'race', 'vet') if core else ('version', 'compile-cli', 'compile-tests', 'harness', 'vet')
     race = terminal_events(run / 'race.log') if core else None
     race_passed = not core or (set(race) == expected and all(v == 'pass' for v in race.values()))
@@ -142,6 +151,8 @@ def finish(run, artifacts, image, owned, mode='protocol'):
                          'endpoint-security': {'cicada', 'n3.test'},
                          'endpoint-security-boundaries': {'cicada', 'n3.test'},
                          'endpoint-security-app-fixture': {'cicada', 'n3.test'},
+                         'endpoint-security-owner-directory': {'cicada', 'n3.test'},
+                         'endpoint-security-owner-directory-recovery': {'cicada', 'n3.test'},
                          'protocol': {'cicada', 'n3.test'}}[mode]
     binaries_stable = set(binary_records[0]) == expected_binaries and binary_records[0] == binary_records[1]
     passed = (all(exits.get(n) == 0 for n in stages)
@@ -163,6 +174,8 @@ def finish(run, artifacts, image, owned, mode='protocol'):
              'endpoint-security': 'ACTUAL_APP_CORE_NODE_APPROVAL_SYNTHETIC_NODE_PQ_TCP_ZERO_RIGHTS_ENDPOINT_CAS_EXACT_REPLAY_NOT_NATIVE_ADAPTER_OR_OWNER_DIRECTORY',
              'endpoint-security-boundaries': 'TARGETED_ACTUAL_APP_NODE_APPROVAL_ZERO_RIGHTS_AUTH_AND_CONCURRENT_EXACT_RETRY_CORRECTION_NOT_FULL_AGGREGATE',
              'endpoint-security-app-fixture': 'AFFECTED_ACTUAL_APP_CORE_NODE_APPROVAL_AND_ZERO_RIGHTS_FIXTURE_AFTER_STORAGE_CHECKPOINT_NOT_FULL_AGGREGATE',
+             'endpoint-security-owner-directory': 'ACTUAL_APP_CORE_OWNER_SIGNED_ZERO_RIGHTS_DIRECTORY_AND_DURABLE_ORIGINAL_READ_RECOVERY_NOT_GUI_OR_RUNTIME',
+             'endpoint-security-owner-directory-recovery': 'TARGETED_ACTUAL_APP_CORE_ORIGINAL_OWNER_READ_RECOVERY_AFTER_RESTART_NOT_FRESH_FULL_AGGREGATE',
              'protocol': 'REAL_TCP_PQ_BOOTSTRAP_AND_RECOVERY_ONLY'}[mode]
     summary = {'scope': scope,
                'status': 'SCOPED_PASS' if passed else ('EXPECTED_RED_SERVICE_UNAVAILABLE' if expected_red else 'FAIL'),
@@ -181,7 +194,11 @@ def finish(run, artifacts, image, owned, mode='protocol'):
                'diagnostics': diagnostics, 'http_measurements': metrics,
                'artifacts': {p.name: {'sha256': sha(p), 'bytes': p.stat().st_size} for p in artifacts.iterdir() if p.is_file()},
                'evidence_sha256': {p.name: sha(p) for p in run.iterdir() if p.is_file() and p.name != 'result.json'},
-               'not_run': ((['actual_App_Owner_endpoint_directory', 'production_Node_registration_adapter',
+               'not_run': (([] if owner_directory else ['actual_App_Owner_endpoint_directory']) +
+                           (['Owner_directory_foreign_scope_paging_cache_expiry_and_N2_TTL',
+                             'Owner_directory_logout_revocation_wrong_Hub_capability',
+                             'Owner_directory_expired_read_parking_budget'] if owner_directory else []) +
+                           (['production_Node_registration_adapter',
                              'product_Hook_context_ticket_guard', 'Group_Network_scope_leave',
                              'changed_authorization_state_leave_CAS', 'distinct_Node_operation_concurrency']
                             + ['second_approved_Node_same_SID_adoption']

@@ -20,8 +20,11 @@ implements the [Endpoint/directory contract](native-endpoint-directory-contract.
 including zero rights, exact Leave CAS, private Owner proofs and foreign-card
 redaction. [Producer validation](native-endpoint-directory-validation.md) and
 [independent fault evidence](native-app-validation.md#2026-10-20-independent-endpoint-and-hook-checkpoint)
-remain distinct. Actual Node local-bridge/Hook integration and the App read action
-are pending. `bb0644b68627579af470ead52035d42618372c75` integrates native navigation
+remain distinct. Node local-bridge source `97d8a1d` and App Owner-read source
+`07bd265` are integrated. Actual App signed reads, old-Hub denial and original
+read recovery have [independent scoped evidence](native-app-validation.md#2026-10-20-actual-app-owner-directory-integration);
+product Hook/MCP and real native Runtime acceptance remain pending.
+`bb0644b68627579af470ead52035d42618372c75` integrates native navigation
 and CJK font source; physical Windows review remains NOT_RUN. Broader C0 work is frozen.
 Partial storage-default source `73d6f9ad13c26ad7cf203e2924adcc7a46104213`
 covers App/Node/MCP/custom-root and installer file prefix; Hub/workspace/cache
@@ -59,7 +62,7 @@ guide's v0.1.x denotes the planned first release line.
 | Hub Owner bootstrap checkpoint | [Operator guide](hub-owner-bootstrap.md), [first-signer contract](hub-owner-bootstrap-contract.md), [validation](hub-owner-bootstrap-validation.md), and [historical UI and retained security-design notes](owner-onboarding-design.md) — historical bounded Hub/account SCOPED PASS; original aggregate failures/timeouts retained. N2 adds [finite activation and exact pending-Owner continuation](hub-owner-activation-contract.md). Lost/revoked Root recovery is not implemented by N2 |
 | Native App | [Architecture](native-app-architecture.md), [plan and matrix](native-app-plan.md), [integration evidence and Windows procedure](native-app-validation.md#n2-hubapp-integration) — earlier N2/N3 Linux scopes and later Core/UI/installer/cross-build records remain source-specific. Dedicated Windows DPAPI/ACL/GUI/uninstall and physical visual review remain unaccepted. Unencrypted existing Owner identities can be vaulted and proved; encrypted PKCS#8 input unsupported |
 | Controlled installation registration | [C0.1 contract](hub-installation-registration-contract.md), [native plan](native-app-plan.md#composable-installation-and-shared-state-acceptance-target), [validation](native-app-validation.md) — v1.1 crypto/wire checkpoint committed; default public availability false and actual INST integration NOT_RUN |
-| Explicit native Endpoint and private Owner directory | [Contract](native-endpoint-directory-contract.md), [producer validation](native-endpoint-directory-validation.md), [independent evidence](native-app-validation.md#2026-10-20-independent-endpoint-and-hook-checkpoint) — bounded backend integrated; production Node adapter/Hook and actual App read remain separate gates |
+| Explicit native Endpoint and private Owner directory | [Contract](native-endpoint-directory-contract.md), [producer validation](native-endpoint-directory-validation.md), [actual App read/recovery](native-app-validation.md#2026-10-20-actual-app-owner-directory-integration) — backend, local-bridge and App read sources integrated; product Hook/MCP/Runtime and extended privacy/expiry remain separate gates |
 | Identity/Node-only Hub | [Operator guide](hub-nodes-only.md), [N3 contract](hub-app-node-authority-contract.md), [Hub validation](hub-app-node-authority-validation.md) — standard HTTPS plus application PQ envelopes; strict PQTLS, native Runtime and physical deployment acceptance remain separate |
 | Deployment and platform interfaces | [CLI, legacy Web UI and local components](deployment-interface-design.md) — official-product research and platform delivery plan; the native App is the current user-interface target, and platform build/runtime evidence stays separate |
 | Install and operate | [Distribution](distribution.md), [development setup](../DEVELOPMENT.md), [Hub build provenance](hub-build-input-provenance.md) |

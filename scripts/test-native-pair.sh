@@ -11,7 +11,9 @@ elif [[ $# == 1 && "$1" == --app-owner ]]; then mode=app-owner
 elif [[ $# == 1 && "$1" == --endpoint-security ]]; then mode=endpoint-security
 elif [[ $# == 1 && "$1" == --endpoint-security-boundaries ]]; then mode=endpoint-security-boundaries
 elif [[ $# == 1 && "$1" == --endpoint-security-app-fixture ]]; then mode=endpoint-security-app-fixture
-elif [[ $# != 0 ]]; then printf 'Usage: scripts/test-native-pair.sh [--store-regressions|--a3-core|--a3-http|--a3-size-store|--app-owner|--endpoint-security|--endpoint-security-boundaries|--endpoint-security-app-fixture]\n' >&2; exit 2; fi
+elif [[ $# == 1 && "$1" == --endpoint-security-owner-directory ]]; then mode=endpoint-security-owner-directory
+elif [[ $# == 1 && "$1" == --endpoint-security-owner-directory-recovery ]]; then mode=endpoint-security-owner-directory-recovery
+elif [[ $# != 0 ]]; then printf 'Usage: scripts/test-native-pair.sh [--store-regressions|--a3-core|--a3-http|--a3-size-store|--app-owner|--endpoint-security|--endpoint-security-boundaries|--endpoint-security-app-fixture|--endpoint-security-owner-directory|--endpoint-security-owner-directory-recovery]\n' >&2; exit 2; fi
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source_root="$repo_root"
 if [[ "$mode" == endpoint-security* && ! -f "$source_root/docs/native-endpoint-directory-contract.md" ]]; then
@@ -127,6 +129,10 @@ else
    selector='^TestN3EndpointSecurity(ZeroAuthorityAndIdentityRetention|ConcurrentOriginalRequest)$'
   elif [[ "$mode" == endpoint-security-app-fixture ]]; then
    selector='^TestN3EndpointSecurityZeroAuthorityAndIdentityRetention$'
+  elif [[ "$mode" == endpoint-security-owner-directory ]]; then
+   selector='^TestN3OwnerDirectory(ActualAppReadsZeroRightsSnapshot|OldHubCannotStartRead|OriginalPendingRecovers)$'
+  elif [[ "$mode" == endpoint-security-owner-directory-recovery ]]; then
+   selector='^TestN3OwnerDirectoryOriginalPendingRecovers$'
   else
    selector='^TestN3NativePair(BootstrapAndExactReplay|WrongNodeScopeIsFenced|PrepareLossBeforeForward|CompleteLossAfterCommit|MissingOwnerProofCannotBootstrap)$'
   fi

@@ -24,6 +24,7 @@ type endpointSecurityFixture struct {
 	app      *appProcess
 	node     *appPairNodeFixture
 	original appcore.Snapshot
+	sequence int
 	do       func(appcore.Action) appcore.Snapshot
 }
 
@@ -36,11 +37,9 @@ func newEndpointSecurityFixture(t *testing.T) *endpointSecurityFixture {
 	var initial appActorCheckpoint
 	readJSON(t, marker, &initial)
 	v := &endpointSecurityFixture{f: f, app: app, original: initial.Current}
-	sequence := 0
 	v.do = func(action appcore.Action) appcore.Snapshot {
 		t.Helper()
-		sequence++
-		reply := commandApp(t, f, app, sequence, appActorCommand{Action: &action})
+		reply := v.command(t, appActorCommand{Action: &action})
 		s := reply.Current
 		if reply.ActionFailed || reply.ClockMode != "WALL_CLOCK" ||
 			s.Account.OwnerID != v.original.Account.OwnerID || s.Account.DeviceID != v.original.Account.DeviceID ||
@@ -52,6 +51,18 @@ func newEndpointSecurityFixture(t *testing.T) *endpointSecurityFixture {
 	}
 	v.node = newAppPairNodeFixtureID(t, f, v.do, "synthetic-n3-endpoint-security-primary")
 	return v
+}
+
+// The same actual child also exposes failed-action evidence and a side-effect-
+// free Snapshot (nil Action). No parent-side protocol/signing shim is involved.
+func (v *endpointSecurityFixture) command(t *testing.T, command appActorCommand) appActorReply {
+	t.Helper()
+	v.sequence++
+	reply := commandApp(t, v.f, v.app, v.sequence, command)
+	if reply.ClockMode != "WALL_CLOCK" {
+		t.Fatal("Endpoint integration requires actual wall-clock App evidence")
+	}
+	return reply
 }
 
 func endpointSecurityRegistration(sid string) nodewire.EndpointRegistration {
