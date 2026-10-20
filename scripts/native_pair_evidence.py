@@ -36,6 +36,11 @@ OWNER_DIRECTORY_EXPECTED.update('TestN3OwnerDirectoryOriginalPendingRecovers/' +
     'before-forward', 'drop-after-response', 'unsigned-403'))
 OWNER_DIRECTORY_RECOVERY_EXPECTED = {name for name in OWNER_DIRECTORY_EXPECTED
                                      if name.startswith('TestN3OwnerDirectoryOriginalPendingRecovers')}
+CODEX_PRODUCT_GUARD_EXPECTED = {'TestN3CodexProductContextRefusesMissingAndForged',
+                              'TestN3CodexProductMCPRestartRotatesConnectionNonce'}
+CODEX_PRODUCT_GUARD_EXPECTED.update('TestN3CodexProductContextRefusesMissingAndForged/' + case
+                                  for case in ('missing', 'nonce-only', 'wrong-nonce', 'forged-ticket', 'extra-SID'))
+CODEX_PRODUCT_CLI_EXPECTED = {'TestN3CodexProductInstalledPluginLiteralTUI'}
 
 
 def sha(path):
@@ -64,6 +69,12 @@ def snapshot(repo, dest, harness=None):
         paths.append(endpoint_contract)
     paths += [repo / 'scripts/native-pair-contract.py']
     files = {'source/' + str(p.relative_to(repo)): sha(p) for p in sorted(paths)}
+    files.update({'source/' + str(p.relative_to(repo)): sha(p)
+                  for p in sorted((repo / '.agents/plugins').rglob('*')) if p.is_file()})
+    runtime_tools = {}
+    if os.environ.get('CICADA_NATIVE_PAIR_CODEX_BINARY'):
+        codex = Path(os.environ['CICADA_NATIVE_PAIR_CODEX_BINARY'])
+        runtime_tools['codex'] = {'path': str(codex), 'sha256': sha(codex), 'bytes': codex.stat().st_size}
     formal = None
     if os.environ.get('CICADA_NATIVE_PAIR_PRODUCT_FREEZE'):
         freeze_path = Path(os.environ['CICADA_NATIVE_PAIR_PRODUCT_FREEZE'])
@@ -88,6 +99,7 @@ def snapshot(repo, dest, harness=None):
                 'harness_head': subprocess.check_output(['git', '-C', str(harness), 'rev-parse', 'HEAD'], text=True).strip(),
                 'harness_dirty': bool(subprocess.check_output(['git', '--no-optional-locks', '-C', str(harness), 'status', '--porcelain', '--untracked-files=all'])),
                 'approved_product_freeze': formal,
+                'external_runtime_tools': runtime_tools,
                 'manifest_sha256': hashlib.sha256(json.dumps(files, sort_keys=True, separators=(',', ':')).encode()).hexdigest(),
                 'files': files})
 
@@ -109,7 +121,7 @@ def terminal_events(path):
 
 
 def finish(run, artifacts, image, owned, mode='protocol'):
-    if mode not in ('protocol', 'store', 'a3', 'a3-http', 'a3-size-store', 'app-owner', 'endpoint-security', 'endpoint-security-boundaries', 'endpoint-security-app-fixture', 'endpoint-security-owner-directory', 'endpoint-security-owner-directory-recovery'):
+    if mode not in ('protocol', 'store', 'a3', 'a3-http', 'a3-size-store', 'app-owner', 'endpoint-security', 'endpoint-security-boundaries', 'endpoint-security-app-fixture', 'endpoint-security-owner-directory', 'endpoint-security-owner-directory-recovery', 'codex-product-guards', 'codex-product-cli'):
         raise ValueError('Only protocol and isolated core regression modes are active.')
     before, after = [json.loads((run / f'source-{side}.json').read_text()) for side in ('before', 'after')]
     results, diagnostics, metrics = {}, [], []
@@ -135,8 +147,10 @@ def finish(run, artifacts, image, owned, mode='protocol'):
                 'endpoint-security-app-fixture': ENDPOINT_APP_FIXTURE_EXPECTED,
                 'endpoint-security-owner-directory': OWNER_DIRECTORY_EXPECTED,
                 'endpoint-security-owner-directory-recovery': OWNER_DIRECTORY_RECOVERY_EXPECTED,
+                'codex-product-guards': CODEX_PRODUCT_GUARD_EXPECTED,
+                'codex-product-cli': CODEX_PRODUCT_CLI_EXPECTED,
                 'protocol': EXPECTED}[mode]
-    core = mode not in ('protocol', 'app-owner', 'endpoint-security', 'endpoint-security-boundaries', 'endpoint-security-app-fixture', 'endpoint-security-owner-directory', 'endpoint-security-owner-directory-recovery')
+    core = mode not in ('protocol', 'app-owner', 'endpoint-security', 'endpoint-security-boundaries', 'endpoint-security-app-fixture', 'endpoint-security-owner-directory', 'endpoint-security-owner-directory-recovery', 'codex-product-guards', 'codex-product-cli')
     owner_directory = mode.startswith('endpoint-security-owner-directory')
     stages = ('version', 'compile-tests', 'compile-race', 'harness', 'race', 'vet') if core else ('version', 'compile-cli', 'compile-tests', 'harness', 'vet')
     race = terminal_events(run / 'race.log') if core else None
@@ -153,11 +167,17 @@ def finish(run, artifacts, image, owned, mode='protocol'):
                          'endpoint-security-app-fixture': {'cicada', 'n3.test'},
                          'endpoint-security-owner-directory': {'cicada', 'n3.test'},
                          'endpoint-security-owner-directory-recovery': {'cicada', 'n3.test'},
+                         'codex-product-guards': {'cicada', 'n3.test'},
+                         'codex-product-cli': {'cicada', 'n3.test'},
                          'protocol': {'cicada', 'n3.test'}}[mode]
     binaries_stable = set(binary_records[0]) == expected_binaries and binary_records[0] == binary_records[1]
+    runtime_tools = before.get('external_runtime_tools', {})
+    runtime_tools_valid = (mode != 'codex-product-cli' or
+                           (set(runtime_tools) == {'codex'} and runtime_tools['codex']['sha256'] ==
+                            '399ff69c431c066e40de318fba45c2b07f45a76b19939d247ee4828fc70c4215'))
     passed = (all(exits.get(n) == 0 for n in stages)
               and set(results) == expected and all(v == 'pass' for v in results.values())
-              and race_passed and binaries_stable and matched and owned == 'false')
+              and race_passed and binaries_stable and runtime_tools_valid and matched and owned == 'false')
     # WIRE_ONLY + actual 404 is retained as expected RED, with nonzero exit. It
     # cannot turn a missing service, absent scenario, skip, or compiler error green.
     expected_red = (mode == 'protocol' and not passed and set(results) == EXPECTED and all(v == 'fail' for v in results.values())
@@ -176,6 +196,8 @@ def finish(run, artifacts, image, owned, mode='protocol'):
              'endpoint-security-app-fixture': 'AFFECTED_ACTUAL_APP_CORE_NODE_APPROVAL_AND_ZERO_RIGHTS_FIXTURE_AFTER_STORAGE_CHECKPOINT_NOT_FULL_AGGREGATE',
              'endpoint-security-owner-directory': 'ACTUAL_APP_CORE_OWNER_SIGNED_ZERO_RIGHTS_DIRECTORY_AND_DURABLE_ORIGINAL_READ_RECOVERY_NOT_GUI_OR_RUNTIME',
              'endpoint-security-owner-directory-recovery': 'TARGETED_ACTUAL_APP_CORE_ORIGINAL_OWNER_READ_RECOVERY_AFTER_RESTART_NOT_FRESH_FULL_AGGREGATE',
+             'codex-product-guards': 'ACTUAL_APP_APPROVED_REAL_NODE_AND_STDIO_MCP_CONTEXT_REFUSALS_NOT_INSTALLED_PLUGIN_OR_NATIVE_CLI',
+             'codex-product-cli': 'ACTUAL_INSTALLED_PLUGIN_LITERAL_PTY_AND_HOST_MCP_WHOAMI_VERIFIED_CONTEXT_NOT_JOINED_NO_REAL_MODEL',
              'protocol': 'REAL_TCP_PQ_BOOTSTRAP_AND_RECOVERY_ONLY'}[mode]
     summary = {'scope': scope,
                'status': 'SCOPED_PASS' if passed else ('EXPECTED_RED_SERVICE_UNAVAILABLE' if expected_red else 'FAIL'),
@@ -191,6 +213,7 @@ def finish(run, artifacts, image, owned, mode='protocol'):
                'container_absent': owned == 'false', 'tests': results, 'race_tests': race, 'missing': sorted(expected - set(results)),
                'executed_binary_hashes_before_after_match': binaries_stable,
                'executed_binaries': binary_records,
+               'external_runtime_tools': runtime_tools,
                'diagnostics': diagnostics, 'http_measurements': metrics,
                'artifacts': {p.name: {'sha256': sha(p), 'bytes': p.stat().st_size} for p in artifacts.iterdir() if p.is_file()},
                'evidence_sha256': {p.name: sha(p) for p in run.iterdir() if p.is_file() and p.name != 'result.json'},
@@ -212,6 +235,20 @@ def finish(run, artifacts, image, owned, mode='protocol'):
                            ['Node_reserved_slot_Join', 'dual_Owner_consent']),
                'private_payloads_exported': False, 'model_turns_started': 0,
                'native_daemon_touched': False, 'public_deployment_touched': False}
+    if mode == 'codex-product-guards':
+        summary['not_run'] = ['actual_installed_Codex_plugin', 'actual_Codex_literal_join_peers_leave_PTY',
+                              'valid_ticket_replay_cross_context_and_fork', 'real_Node_endpoint_registration_and_leave',
+                              'original_operator_intent_response_loss_recovery', 'A_B_frozen_scope_heartbeat_cancellation',
+                              'Node_owned_Endpoint_lease_before_first_MCP_tool', 'reserved_Pair_join_and_dual_Owner_consent',
+                              'native_queue_consumption', 'real_model_provider',
+                              'Windows_DPAPI', 'Windows_ACL', 'Windows_GUI', 'Android', 'public_HTTPS']
+    elif mode == 'codex-product-cli':
+        summary['not_run'] = ['literal_leave_same_SID_reregister_left_retention',
+                              'valid_ticket_replay_cross_context_and_fork', 'direct_MCP_context_refusal_matrix',
+                              'original_operator_intent_response_loss_recovery', 'A_B_frozen_scope_heartbeat_cancellation',
+                              'Node_owned_Endpoint_lease_before_first_MCP_tool', 'reserved_Pair_join_and_dual_Owner_consent',
+                              'ordinary_prompt_skill_plugin_passthrough', 'native_queue_consumption', 'real_model_provider',
+                              'Windows_DPAPI', 'Windows_ACL', 'Windows_GUI', 'Android', 'public_HTTPS']
     save(run / 'result.json', summary)
     print(f"Native pair {summary['status']} exit={code} evidence={run / 'result.json'}")
     raise SystemExit(code)

@@ -30,7 +30,21 @@ type endpointSecurityFixture struct {
 
 func newEndpointSecurityFixture(t *testing.T) *endpointSecurityFixture {
 	t.Helper()
-	f := newNodeHubFixture(t)
+	v := newEndpointSecurityApp(t)
+	v.node = newAppPairNodeFixtureID(t, v.f, v.do, "synthetic-n3-endpoint-security-primary")
+	return v
+}
+
+// Product Node fixtures must approve their own original pending code. Keeping
+// bootstrap separate prevents accidentally approving a second INITIAL Node on
+// an App already bound to the wire-test actor.
+func newEndpointSecurityApp(t *testing.T) *endpointSecurityFixture {
+	t.Helper()
+	return newEndpointSecurityAppAt(t, newNodeHubFixture(t))
+}
+
+func newEndpointSecurityAppAt(t *testing.T, f *hubFixture) *endpointSecurityFixture {
+	t.Helper()
 	marker := filepath.Join(f.dir, "endpoint-security-actual-app.json")
 	app := startAppProcess(t, f, "bootstrap", marker)
 	awaitMarker(t, app.process, marker)
@@ -49,7 +63,6 @@ func newEndpointSecurityFixture(t *testing.T) *endpointSecurityFixture {
 		}
 		return s
 	}
-	v.node = newAppPairNodeFixtureID(t, f, v.do, "synthetic-n3-endpoint-security-primary")
 	return v
 }
 

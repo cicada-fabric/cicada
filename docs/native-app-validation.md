@@ -4115,3 +4115,322 @@ native model/queue consumption, Windows GUI/DPAPI/ACL/CJK/DPI, Android, physical
 devices, public HTTPS and strict PQTLS remain separate **NOT_RUN** scopes. No
 C0/App2 or second-approved-Node matrix is resumed. Final status documents are
 post-test edits; tested Go inputs remain unchanged.
+
+## 2026-10-20 product Codex consumer acceptance preparation
+
+The next independent integration gate is being prepared on `task/n2-acceptance`
+from `4cf544e8d3ad60c341581480aa09e45e7eed2bb5`, with dirty acceptance-only
+changes. This entry records a plan and unexecuted driver, **NOT_RUN**. It does
+not extend any preceding protocol, synthetic Hook or Owner-directory PASS.
+App's `codex-hook`/`mcp --codex-context` consumer and existing single-plugin
+assets are still WIP; Root must integrate their frozen checkpoint before the
+new product gate is compiled or executed. The Node-owned original-lease
+maintenance requested by Root is also pending delivery.
+
+The parent fixture now separates actual App bootstrap from synthetic wire-Node
+approval. The new fixture instead starts a real resident `machine agent
+--relay-only`, reads its original private pending code, asks the actual App
+Controller child to preview/approve that exact Node fingerprint/epoch, then
+restarts the original Node against its persisted state. It never opens the
+App's Owner signer or inserts SQL authority. A private canonical loopback
+origin fronts the real Hub through the existing fault proxy; Relay SSE is
+forwarded without fabricated events. The approved binding and an actual Relay
+response establish fixture readiness only, never Endpoint lease readiness.
+
+All child HOME, CODEX_HOME, workspace, Node and MCP state belong to the fresh
+fixture. Child environments omit inherited SID, Endpoint, Group, provider and
+account credentials. Docker remains network-none with a read-only module
+cache and task-locked build cache. The real user Codex installation, resident
+development Hub and public deployment remain outside this gate.
+
+| Threat/boundary | Required independent observation | Preparation/result |
+| --- | --- | --- |
+| Missing context; nonce without ticket; forged ticket; extra caller SID | Actual MCP returns a context refusal, no identity/structured result, no non-liveness Hub request and no MCP session-state change; actual App signed original-Node directory stays empty | `TestN3CodexProductContextRefusesMissingAndForged`, five subcases; **NOT_RUN** |
+| MCP restart and old connection nonce | New actual process advertises a fresh nonce; old nonce cannot establish context or change the Owner directory | `TestN3CodexProductMCPRestartRotatesConnectionNonce`; **NOT_RUN**, does not prove replay of a valid ticket |
+| Fake or untrusted plugin installation | Actual local marketplace/add commands and actual app-server plugin/list plus hooks/list must identify the installed existing plugin, source, exact enabled hashes and normal trust | `codex_product_cli.py` prepared against the delivered WIP assets, **NOT_RUN**; user config hooks are not a substitute |
+| Literal join/peers/leave and ordinary prompts | Actual CLI creates its own native records; one actual PTY/TUI visibly renders human name, cwd and presence; ordinary text, `$skill` and `@plugin` pass through | `TestN3CodexProductInstalledPluginLiteralTUI` and private stdlib driver prepare join/peers only, **NOT_RUN**; leave and ordinary prompts remain separate pending cases. CLI exit 0 or zero static-provider requests alone cannot prove visible success |
+| Leave followed by the same SID registering again | The same durable Endpoint is returned as COMPLETED/reused/left; original native record and workspace canary remain; no revival, renewal or switching to another reserved Pair/slot | **NOT_RUN**; compare original native metadata and workspace, not the hash of a legitimately appended transcript |
+| Valid ticket replay, changed tool/arguments, cross-context use, fork and process restart | Actual Node issuer/consumer, current connection nonce and original native record govern each call; no parent/last SID fallback or identity from provider arguments | **NOT_RUN**; the new missing/forged guard tests cannot qualify these cases |
+| Lost reply, crash and unknown original intent | Retain original operator intent, Node ciphertext/outbox and authenticated result; kill/restart real children; neither unsigned error nor discovery GET settles uncertainty | Existing fault placements reusable; product consumer **NOT_RUN** |
+| Late A heartbeat after switching to B | Delay actual A request/reply; freeze its original scope/SID/token/Group/Binding; validate B ticket, cancel and join A worker before installing B, then release A; B and original A files remain exact | Independent real-service fault case **NOT_RUN**; no producer mock or mutable last-SID oracle |
+| Named connect before the first MCP tool | Actual resident Node maintains the original Endpoint lease while App approval waits; no model/tool startup is needed and no implicit new Join occurs | Awaiting Hub delivery; **NOT_RUN**; Node/Relay liveness is not this lease |
+
+After the consumer checkpoint is frozen and integrated, the first reproducible
+command will be:
+
+```sh
+scripts/test-native-pair.sh --codex-product-guards
+scripts/test-native-pair.sh --codex-product-cli
+```
+
+The driver refuses an unintegrated consumer with exit 2. This mode requires
+exactly seven terminal test events (two parent tests and five refusal
+subcases), zero skips/failures, all required stage exit codes 0, stable complete
+source/binary inventories and confirmed owned-container cleanup. Its result
+scope explicitly excludes installed-plugin/CLI acceptance. The separate CLI
+mode requires exactly one actual installed-plugin/TUI test event, the reviewed
+read-only Codex binary hash, complete plugin-source inventory, actual normal
+Hook trust and a matching actual App-signed directory card. It does not qualify
+leave, a valid context ticket, Pair Join or heartbeat fault recovery. Its static
+provider can return harmless text if a literal leaks through; any such POST
+fails the literal gate even when the CLI exits 0. No run directory,
+product exit code or artifact hash exists for this preparation yet. Only Go
+formatting and diff whitespace inspection have occurred. Windows DPAPI, ACL,
+GUI/CJK/DPI, Android, public HTTPS and real model/queue execution stay
+**NOT_RUN** pending their own actual execution receipts.
+
+## 2026-10-20 independent consumer guards and marketplace failure
+
+Root integrated App consumer `18868bade057d5da97afe3e8139cc3cafb104afe` and
+authorized QA's branch-only fast-forward plus the two disposable gates. QA's
+eight uncommitted acceptance files survived that fast-forward byte for byte:
+`codex-product-preparation-20261020T173544Z-houn4xuk/ff-app-18868ba.json`,
+SHA-256 `945c82b0e11afebdddbda5cf4ea28602e12763dc872d1fb3c904ac44cf9feb71`.
+The following runs belong to **dirty `18868ba` plus their individually captured
+QA inputs**, not to clean `18868ba`, a future asset fix, or Hub's pending
+managed-lease implementation. Evidence prefixes below are under
+`/home/zyf/Cicada/.local/evidence/native-pair-acceptance/`.
+
+| Run / result SHA-256 | Result and boundary |
+| --- | --- |
+| `run-20261020T174654Z-9XuRJy` / `6f9963c43c40bb3ee6964ab8b2c6bc83bfecca183338aed625c19310c6b06461` | Guard FAIL before five refusal subcases: QA compared binding-time fields with unpopulated pre-binding top-level fields. |
+| `run-20261020T174732Z-whjAvb` / `5878a7af75d06eb3085dee1f13d5f0e6e5b41d4b0acd3fe4092b4d660f2505a3` | First CLI FAIL at the same preparation assertion; no plugin installation or Host result. |
+| `run-20261020T174758Z-VGPrlg` / `ed1fb160aba59a8e6743fed6d35f9c5a09995519e04194f16b038b0bd622b27c` | Guard FAIL after original candidate comparison was fixed: QA incorrectly expected Relay HTTP 200. |
+| `run-20261020T174946Z-r2eO5p` / `f27c5cf9af9322aea4ddf1c1e5a0ec709d917487fc4b286d00c5f69a71cf31aa` | Diagnostic FAIL retained actual successful Relay HTTP 204 and subsequent empty claim responses. No product change was needed. |
+| `run-20261020T175308Z-VeajCX` / `ffd7af39491e6cde8d8015560721cc6a29f42fbd40e680291e8da9dffcc21e17` | Guards **SCOPED_PASS**, 7/0/0 events, all five required stage exits 0. |
+| `run-20261020T175434Z-vLi2LF` / `169ab6d51e84145c47df71bd453564e3e4a0ccd7b1495e83c7110019641c032d` | CLI FAIL: actual 0.163 plugin management rejects `--strict-config`. QA removed runtime-only flags from plugin-management commands; runtime commands retain them. |
+| `run-20261020T175547Z-NTuwzB` / `19edf71b00977c2720b24b69ebb67eec6ae764c22bc767c6eed4e49b9810ae0c` | CLI FAIL: QA passed the manifest's directory instead of the repository root. This was a driver path error. |
+| `run-20261020T175718Z-eBSGNY` / `d7e21d89b81033656cb29b08e20e52902cfa4faa02132427e215e04ef054b1d6` | CLI **FAIL, product marketplace defect**: adding `/repo` succeeds; installing `cicada@cicada-repo` fails because its source resolves to nonexistent `/repo/cicada`. |
+
+All table runs compiled the actual CLI and acceptance executable and passed
+vet. Failed runs have harness exit 1; the guard PASS has harness exit 0. Every
+run's complete before/after input and binary inventories match and its exact
+owned container is confirmed absent. Historical failures remain unchanged.
+
+The guard PASS source manifest is
+`64b596e90cd5ebd590c608db42f694999fdc20cad999ca5034ae7b177875a7a9`.
+Its actual CLI SHA-256 is
+`a70e692c8b831d5c29e098576309d5a114be63ce8040a7bc9af9a0022ce56b15`;
+test executable SHA-256 is
+`b69c0aa00d8ba4c9ec346e7eba3d69ccf67e7bd3ebab4e2e0e3bce0ab7a0f868`.
+The actual App approves the actual Node's original cryptographic candidate;
+actual Owner-signed directory reads before/after contain no Endpoint cards.
+Each refused MCP call returns no identity or structured result and changes no
+durable MCP session state. A new actual MCP process advertises a new nonce
+and rejects the previous connection's nonce. The real resident Node uses a
+one-hour empty-queue reconciliation interval in this refusal-only scope so
+independent inbox polls cannot be confused with call-triggered HTTP. The CLI
+fixture uses one second. Neither establishes an Endpoint heartbeat result.
+The later CLI-only diagnostic/dispatch edits are not a fresh full guard run.
+
+Defect **AC-CODEX-01** is assigned to the App/plugin owner and reported to
+Root: `.agents/plugins/marketplace.json` uses local source `./cicada`, while
+the actual CLI resolves local sources from the repository root and the
+existing plugin lives under `.agents/plugins/cicada`. The exact actual
+commands are `codex plugin marketplace add /repo` (exit 0) and
+`codex plugin add cicada@cicada-repo` (exit 1). QA has not modified the product
+manifest, made a substitute directory or installed a user-config Hook/MCP
+replacement. The raw owned CLI command/exit/stderr logs are retained only in
+the run's private state, separate from public evidence; no App vault, Node
+credential or raw environment is exported.
+
+The installed-plugin gate now also prepares a separate actual Host
+`cicada_whoami` stage. Its local static provider reads the actual advertised
+namespace and nonce, requests that exact tool, and requires a business
+not-joined refusal after context verification. A context-required error
+cannot pass. Literal join/peers must still make zero provider POSTs; the
+Host tool stage expects two static POSTs and no real model. Only selected
+configuration equality booleans are observed from actual owned MCP children.
+**This stage, actual literal PTY results and environment forwarding are still
+NOT_RUN**, because installation has not succeeded. Source review or the
+direct-process seven-event guard PASS cannot substitute for Host execution.
+Pair cold-connect/lease maintenance, original-intent response-loss recovery,
+A/B late heartbeat cancellation, valid ticket replay/fork, leave/re-register
+retention and native queue/model execution also remain **NOT_RUN** here.
+Windows DPAPI/ACL/GUI/CJK/DPI, Android and public HTTPS require separate actual
+receipts and remain **NOT_RUN**.
+
+## 2026-10-20 installed plugin has no actual Hook definitions
+
+Root integrated the formal marketplace/environment asset correction
+`c3a1517c7b47864a5d9d9a20c6de9ee444799622`. QA fast-forwarded only its own
+branch during Root's exclusive window, preserving all eight candidate files
+from `9060b781b040f28595789e5058c2ed1ae6b9d26774f9ccb96333e4657fb724f1`
+byte for byte. The verification receipt is `ff-assets-c3a1517.json` in that
+candidate's directory, SHA-256
+`7e17113a9e15d5d85124f1058c98d4b6159e107d2900b893db0b15d034c3473b`.
+Root explicitly retained the earlier seven-event guard PASS without repeating
+it for JSON asset changes.
+
+```sh
+scripts/test-native-pair.sh --codex-product-cli
+```
+
+This actual run is **FAIL**, exit 1:
+`run-20261020T180658Z-HsgwHR/result.json`, SHA-256
+`6faa7704b61d22a074181dd7510e33a70ebbca5c80701fa8ee35643d5f2028fc`.
+It belongs to dirty `c3a1517` with its complete captured QA input inventory.
+Version, CLI/test compilation and vet exit 0; harness exits 1. Source and
+binary before/after inventories match; the exact owned container is absent.
+The reviewed read-only Codex binary remains
+`399ff69c431c066e40de318fba45c2b07f45a76b19939d247ee4828fc70c4215`.
+
+The actual marketplace-add and plugin-add commands now both exit 0. Actual
+`plugin/list` reports `cicada@cicada-repo`, installed/enabled true, local
+version `0.0.5`, source `/repo/.agents/plugins/cicada`. Actual `hooks/list`
+for the owned workspace returns **zero hooks, zero errors and zero warnings**.
+The gate stops at `UNEXPECTED_HOOK_DEFINITIONS`. It has not reached normal
+Hook trust, the literal PTY flow or a Host MCP tool call. No provider POST or
+real model turn occurs. These observations confirm installation, not a usable
+identity entry or communication authorization.
+
+Defect **AC-CODEX-02** is assigned to the App/plugin owner and reported to
+Root. Read-only official Codex tag source at commit
+`83086188ae0614bd882818ff1aa23f3194962012`, `codex-rs/core-plugins/src/loader.rs`
+lines 966–978, explicitly returns empty Hook sources/warnings for the portable
+AgentPlugin manifest format, while the legacy branch loads plugin hooks.
+This agrees with the actual empty Hook inventory: the existing root portable
+manifest wins discovery, despite Hook declarations in the compatibility
+manifest. QA has not removed a product manifest, created another plugin or
+used a user-config Hook to bypass it. The official source is a diagnosis;
+only another actual installed-plugin run can qualify the product correction.
+
+Full owned CLI/RPC logs remain in private run state under
+`private-codex-diagnostics/001/cli-literal-tui/`, copied before TempDir cleanup.
+No App vault, Node credential or raw environment is included. The previous
+marketplace product RED is retained. Host environment forwarding is still
+**NOT_RUN**; Root requires no invented old-environment negative control.
+Normal trust, visible literal output, Host nonce/context/not-joined behavior,
+Pair lifecycle faults, native model/queues and Windows physical security/UI
+remain **NOT_RUN** pending their respective actual executions.
+
+## 2026-10-20 actual installed plugin PTY and Host MCP context
+
+The actual installed-plugin gate now has **SCOPED_PASS**, one required event,
+0 failures and 0 skips. It is separate from the earlier seven-event direct
+process guard PASS; these are not a fresh eight-event aggregate. The actual
+CLI run tests dirty `1ca85b5cb5d3f0a091210a9bc8ce97f0da39c3b8` plus its captured
+QA files. Neither the later Hub checkpoint nor a later QA/document commit
+inherits this result without its source qualification.
+
+```sh
+scripts/test-native-pair.sh --codex-product-guards
+scripts/test-native-pair.sh --codex-product-cli
+```
+
+The first command's seven-event result remains
+`run-20261020T175308Z-VeajCX/result.json`, SHA-256
+`ffd7af39491e6cde8d8015560721cc6a29f42fbd40e680291e8da9dffcc21e17`.
+The second command's actual plugin result is
+`run-20261020T185125Z-5X7deH/result.json`, SHA-256
+`9bc3b9c3b81ca72601889c78f95e6f89dca00825ebcef344ef7167c6836ff669`.
+Version, CLI compilation, test compilation, harness and vet all exit 0. The
+before/after source and binary inventories match, and the exact owned
+container is absent. Source manifest:
+`2831bd8bcfbef75dd2866be0a24127e06fea16699f268e9a0c3fa16a9ad40915`.
+Executed CLI SHA-256:
+`a70e692c8b831d5c29e098576309d5a114be63ce8040a7bc9af9a0022ce56b15`;
+test executable:
+`22d40ddc3734f8f80dcf8c68b9946ca6e1bd33b20950a41b43ac1c4c501c3817`.
+The read-only actual Codex 0.163.0 binary remains
+`399ff69c431c066e40de318fba45c2b07f45a76b19939d247ee4828fc70c4215`.
+All execution is inside network-none disposable Docker, with real TCP,
+production cryptography, persisted Hub SQLite and a real App Controller child
+approving the original real Node. No Control inference runs.
+
+Actual `plugin marketplace add /repo` and `plugin add cicada@cicada-repo`
+succeed using the existing single legacy bundle. The actual inventory has
+exactly two enabled Hook definitions, source `plugin`, plugin ID
+`cicada@cicada-repo`, commands `cicada codex-hook`, and the exact installed
+Hook asset hash. The real PTY receives a controlling terminal, executes the
+normal visible `2. Trust all and continue` action, and a separate actual
+app-server inventory subsequently reports both definitions trusted with
+unchanged current hashes. No test writes prepared trusted hashes, uses a
+bypass flag or installs a user-config Hook/MCP replacement.
+
+Actual `cicada join` and `cicada peers` then render the human name, complete
+original cwd and `Offline at snapshot` in the current terminal viewport.
+The literal phase makes **zero provider POSTs**, and TUI exits 0 normally.
+The original actual CLI native record and workspace canary survive. The
+actual App separately obtains an Owner-signed bounded directory card with
+the same name, cwd and offline presence. **This scope does not independently
+compare the database SID/Endpoint/BindingEpoch tuple**; that belongs to the
+next actual Pair group. It does not assert current communication authority.
+
+The Host stage is separate: a local static Responses provider makes exactly
+two POSTs, advertises no real model, and asks the actual installed MCP tool
+`mcp__cicada.cicada_whoami` once using the actual advertised unique nonce.
+Codex converts the MCP schema's `const` into a single-value `enum`; the driver
+reads that exact value. The actual PreToolUse Hook, real Node ticket issuer/
+consumer and actual managed MCP reach the business not-joined refusal.
+`CODEX_CALL_CONTEXT_REQUIRED`, a Host approval error or missing tool dispatch
+cannot pass. Actual child configuration matches all five selected
+`CICADA_*` Hub/Node/state values and the owned HOME. Child CODEX_HOME is absent;
+that is observation only because context-mode MCP receives native identity
+from the verified Node ticket. Node and Hook still use the real owned record
+root. Real model turns and native queue consumption are zero.
+
+Only this normal private user policy permits the one Host read tool; it is
+not a Cicada grant and changes no transport or Hook trust. Global approval
+policy remains `never` for other unapproved tools:
+
+```toml
+[plugins."cicada@cicada-repo".mcp_servers.cicada.tools.cicada_whoami]
+approval_mode = "approve"
+```
+
+The [official plugin MCP policy](https://learn.chatgpt.com/docs/extend/mcp#plugin-provided-mcp-servers)
+and App's read-only Codex tag `83086188ae0614bd882818ff1aa23f3194962012`
+runtime review identify this ordinary single-tool configuration. Exact policy
+artifact SHA-256:
+`20d9f30d0b4601aba9d0885c46f6a253367ebab0a7014680b996a448394269ae`.
+No broad server approval, additional transport, manual ticket or invented
+nonce is supplied.
+
+The run's synthetic private diagnostics are retained outside TempDir under
+`/home/zyf/Cicada/.local/state/native-pair-acceptance/run-20261020T185125Z-5X7deH/private-codex-diagnostics/001/`.
+Safe artifact hashes: private result
+`ca44fa43f2858502405cd9c6c422811a4cb8a88fd06e79c62e7a3975e4cab5b7`;
+raw PTY `f42897ffe6e3f190974a0812211f7ac2793533c2aeedbaee9ddb2c4879fc1981`;
+rendered viewport
+`71a2499d54ee214b20b9dcf73092e1f22e43186b2c46cd643cd6d1912c671881`;
+normal-trust/join/peers frames
+`e2497481eb811fe814c87f429455215a7f4e4b1bfe3669d8b4d44796cd7e89e5`;
+post-trust inventory
+`1948543873ec217e50044639c9ce872994e1fb4cc621636d22095fb382fcc202`.
+App vaults, Node credentials and raw environments are not copied to evidence.
+
+The product marketplace/portable-format failures above remain unchanged.
+The following later focused CLI failures are also retained; all have
+compilation/vet 0, stable inputs/binaries and confirmed owned cleanup:
+
+| Run / result SHA-256 | Actual boundary and correction |
+| --- | --- |
+| `run-20261020T182501Z-IQ72Nq` / `357c83c6ea34481c43633b03031ad21ec1786c59eebf11b5e4042068d05dfc41` | Two real Hook definitions load; naive ANSI removal loses cursor-positioned spaces, so the driver never chooses the visible normal trust control. |
+| `run-20261020T182906Z-DYuEt8` / `c6dabe743c533ae961529b4d895b91c6caf4b8a4a9fc31d5db240cacd63b3394` | Bounded VT reconstruction identifies the normal control; input remains at the menu. No persisted trust or literal PASS claimed. |
+| `run-20261020T183209Z-zqRJFg` / `23940ee530ea00f6c3be93a97aa4dc81e6ac6eee95e7a57dffafa4d544f16e0d` | Waiting for terminal input initialization alone does not fix missing controlling-terminal plumbing. |
+| `run-20261020T183550Z-kcgH7V` / `d6794a6f4c01efeb64ed53a23b7e7c8344eedc2ff664b46c81c3a9bcf2db633d` | Real foreground PTY, normal trust and visible join succeed; bulk peers+Enter remains in the composer as a paste burst. The driver switches to ordinary paced keys and separate Enter. |
+| `run-20261020T184015Z-l5YEmk` / `a1f61f62b1cb661f74c4679a8192fedb238e0b663cec9011ef3dfa0ad61eb6a3` | Full literal phase exits 0 with provider POST count 0 and post-trust hashes verified; Host stage stops because the driver initially only understood `const`, while the actual SDK advertises the same nonce as a singleton `enum`. |
+| `run-20261020T184403Z-YLCK7K` / `47f17a19ecba9b534d1e9c2114f08d5f99449717ebcbe6b10ae12022a54a7543` | Actual Host refuses an unapproved MCP tool under global Never; it is not a Cicada not-joined/context result. The final run uses only the normal exact read-tool policy above. |
+
+Actual successful literal results currently appear as `Blocked by hook`
+warnings and the body is duplicated by reason/systemMessage. This observed UX
+limitation is reported to App/Root; it is not a native picker or physical GUI
+PASS. Names/cwd/presence remain visible and do not imply authority.
+
+After sealing all eight QA paths, including both untracked source files, QA
+fast-forwarded its own branch to Hub checkpoint
+`92ad9f41a714336c8605e39e3c070b002741348f` in Root's exclusive window with all
+eight files byte-identical. Receipt `ff-managed-92ad9f4.json` SHA-256:
+`aac8133228744de45c75395bb0d7a2d2192d1ab59b1dc1f4b71dfb3d284ecbeb`.
+Root's separate clean-92ad shared-RPC regression is 6/0/0, compile/test 0,
+unchanged clean source/binary, network none and both owned containers absent:
+`native-ux-root/shared-rpc-regression-20261020T1850/result.json`, SHA-256
+`b4289ced7e684139658ef747d24bf98790fada4e0467bdde5c43ffcf8b3e3d3e`;
+binary `751391bc542dc89dd001af56f773464777e4927aa42f19afe90c7a906f4a7933`.
+It is not the actual cold-lease gate. The original default-five-minute cold
+wait, first joined MCP tool, read-only SID/Endpoint/BindingEpoch mapping,
+Node restart/revocation, A/B late heartbeat and original-intent faults remain
+**NOT_RUN** here, pending the next isolated group. Windows DPAPI/ACL/GUI,
+CJK/DPI, Android, real model/queue and public deployment remain **NOT_RUN**.
+The five current-status documents are post-run edits, not retested inputs.

@@ -55,8 +55,14 @@ Its [producer checks](docs/native-endpoint-directory-validation.md) and
 have separate source attribution. Node local-bridge source at `97d8a1d` and
 actual App Owner-read source at `07bd265` are integrated; the
 [App signed-read/recovery checks](docs/native-app-validation.md#2026-10-20-actual-app-owner-directory-integration)
-remain separate from product Hook/MCP and native Runtime acceptance, which are
-pending. Native navigation/CJK source at
+remain separately attributed. Actual installed Codex 0.163 plugin
+[PTY/Host checks](docs/native-app-validation.md#2026-10-20-actual-installed-plugin-pty-and-host-mcp-context)
+now pass their bounded Linux scope: normal Hook trust, visible literal
+registration/directory with zero provider POSTs, and a real Host `whoami` call
+that verifies context then refuses an unjoined Thread. Seven direct-process
+refusal events retain their earlier source. Pair cold leases, operator faults,
+real model/queue consumption and physical Windows remain separate gates.
+Native navigation/CJK source at
 `bb0644b68627579af470ead52035d42618372c75` is integrated; physical Windows review
 remains NOT_RUN. App/Node/MCP storage-default source at
 `73d6f9ad13c26ad7cf203e2924adcc7a46104213` is a partial installed-root change;

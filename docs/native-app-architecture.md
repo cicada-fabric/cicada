@@ -122,8 +122,11 @@ original packets across child/Hub restarts and displays authenticated
 `SNAPSHOT_ONLY` cards. Public capability availability can be false after restart
 while the original authenticated snapshot remains valid; recovery must not require
 a new GET or Owner signature. These have [source-bound independent scopes](native-app-validation.md#2026-10-20-actual-app-owner-directory-integration),
-with no general management/canvas or communication authority. Product Hook/MCP,
-native Runtime, extended expiry/privacy and physical Windows remain pending.
+with no general management/canvas or communication authority. Bounded actual
+installed-plugin register/peers and Host context now have independent Linux
+[execution evidence](native-app-validation.md#2026-10-20-actual-installed-plugin-pty-and-host-mcp-context).
+Pair cold leases, operator faults, extended expiry/privacy, native model/queue
+consumption and physical Windows remain separate pending scopes.
 This does not activate
 the frozen broader C0 installation-registration family. Zero-right registration
 does not require an existing Pair; reserved-Pair communication retains its
@@ -132,10 +135,11 @@ separate Join, slot and consent requirements.
 Native plugin integration must obtain the actual original Thread context,
 validate its native record/workspace and retain the existing Node-side check.
 The tested manual exact-resume procedure is a bounded workaround: connected MCP
-tools alone do not prove a SID, Join or authority. A future explicit local Join
-command or plugin action must work without model decision-making, using those
-same guarded primitives. No new launcher, daemon, guessed SID or unrestricted
-model-provided identity field is implied by this target.
+tools alone do not prove a SID, Join or authority. Current literal registration
+and directory actions use the actual native record and Node bridge without a
+model decision. Reserved-Pair connect/leave and their recovery still require
+their own actual gates. No new installed launcher, daemon, guessed SID or
+unrestricted model-provided identity field is implied by this target.
 
 Owned probes of actual Codex 0.163.0 establish a narrower host mechanism:
 literal UserPromptSubmit hooks can finish synthetic local commands without a
@@ -146,8 +150,17 @@ the mock sink's rejection does not establish a product Guard. The production
 adapter must independently validate its short-lived, per-call original context
 and refuse missing, stale, replayed or cross-Thread tickets. Subagent hooks can
 carry the parent's session ID; it must not be used as a child native identity.
-The product Hook call through the Node bridge, ticket enforcement and
-clear/subagent behavior remain NOT_RUN.
+The later product consumer at `18868ba`, asset correction at `c3a1517` and
+Codex-0.163-compatible single legacy bundle at `1ca85b5` have distinct sources.
+Actual normal trust and literal register/peers execute through the real Node;
+a real Host MCP call echoes its advertised unique nonce, receives a Node-issued
+per-call ticket and reaches the unjoined business refusal. The actual App
+independently signs the matching name/cwd/offline directory card. Missing or
+forged context and restart nonce refusal have a separate seven-event scope.
+These do not prove valid-ticket replay/expiry, A/B heartbeat switching,
+clear/subagent behavior or a joined conversation. The host currently renders
+literal results in duplicated `Blocked by hook` warnings; this is a recorded
+UX limitation, not a native picker acceptance.
 
 Cicada-owned installed user files default to `~/.cicada`, with an installation-
 selected custom root. Existing platform vault and Node locations are not

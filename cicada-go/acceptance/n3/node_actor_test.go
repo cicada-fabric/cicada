@@ -59,6 +59,13 @@ func startNodeProcess(t *testing.T, f *hubFixture, id string) *nodeProcess {
 
 func startNodeProcessMode(t *testing.T, f *hubFixture, id string, once bool) *nodeProcess {
 	t.Helper()
+	return startNodeProcessEnvironment(t, f, id, once, nil)
+}
+
+// A non-nil environment belongs exclusively to this child. Product integration
+// supplies the same private CODEX_HOME to its real Node, Hook and MCP processes.
+func startNodeProcessEnvironment(t *testing.T, f *hubFixture, id string, once bool, environment []string, arguments ...string) *nodeProcess {
+	t.Helper()
 	if f.mode != "--hub-nodes-only" || !syntheticNodeID.MatchString(id) {
 		t.Fatal("actual Node requires the reviewed isolated Hub/Node composition and synthetic ID")
 	}
@@ -72,6 +79,8 @@ func startNodeProcessMode(t *testing.T, f *hubFixture, id string, once bool) *no
 	t.Cleanup(func() { log.Close() })
 	cmd := exec.Command(os.Getenv("CICADA_N3_CICADA_BINARY"), "machine", "agent", "--relay-only",
 		"--id", id, "--name", id, "--control-url", f.cfg.Origin, "--state-dir", state, "--interval", "1s")
+	cmd.Env = environment
+	cmd.Args = append(cmd.Args, arguments...)
 	if once {
 		cmd.Args = append(cmd.Args, "--once")
 	}

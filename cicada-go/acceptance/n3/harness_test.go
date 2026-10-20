@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -286,6 +287,37 @@ func (p *faultProxy) serve(w http.ResponseWriter, r *http.Request) {
 		dropConnection(w)
 		return
 	}
+	// A real resident Node probes/subscribes to its existing Relay event
+	// stream. Forward headers and bounded chunks immediately; buffering an SSE
+	// body would change the product's readiness behavior. This branch never
+	// manufactures events and is not used for an armed RPC fault.
+	if mode == "" && strings.HasPrefix(strings.ToLower(resp.Header.Get("Content-Type")), "text/event-stream") {
+		defer resp.Body.Close()
+		ex.Status = resp.StatusCode
+		p.record(ex)
+		for name, values := range resp.Header {
+			w.Header()[name] = append([]string(nil), values...)
+		}
+		w.WriteHeader(resp.StatusCode)
+		if flush, ok := w.(http.Flusher); ok {
+			flush.Flush()
+		}
+		buffer := make([]byte, 4096)
+		for {
+			n, readErr := resp.Body.Read(buffer)
+			if n > 0 {
+				if _, err := w.Write(buffer[:n]); err != nil {
+					return
+				}
+				if flush, ok := w.(http.Flusher); ok {
+					flush.Flush()
+				}
+			}
+			if readErr != nil {
+				return
+			}
+		}
+	}
 	response, err := io.ReadAll(io.LimitReader(resp.Body, harnessPacketLimit+1))
 	resp.Body.Close()
 	if err != nil || len(response) > harnessPacketLimit {
@@ -350,6 +382,9 @@ type hubFixture struct {
 	proxy  *faultProxy
 	parent *testing.T
 	mode   string
+	// Product integration keeps the public canonical loopback origin on the
+	// opaque fault proxy and binds the real Hub to a separate private port.
+	listenOrigin string
 }
 
 func newHubFixture(t *testing.T) *hubFixture {
@@ -366,21 +401,35 @@ func newHubFixtureMode(t *testing.T, mode string) *hubFixture {
 
 func newHubFixtureAt(t *testing.T, mode, dir string) *hubFixture {
 	t.Helper()
+	return newHubFixtureAtProxied(t, mode, dir, false)
+}
+
+func newHubFixtureAtProxied(t *testing.T, mode, dir string, proxied bool) *hubFixture {
+	t.Helper()
 	listener := must(net.Listen("tcp", "127.0.0.1:0"))
 	origin := "http://" + listener.Addr().String()
 	listener.Close()
+	listenOrigin := origin
+	var proxy *faultProxy
+	if proxied {
+		proxy = newFaultProxy(t, listenOrigin)
+		origin = proxy.server.URL
+	}
 	state := filepath.Join(dir, "synthetic-hub")
 	db := must(store.New(filepath.Join(state, "cicada.sqlite3")))
 	must(db.InitializeHubOwnerLocal("Synthetic N3 harness transport ONLY", origin, true))
 	ids := must(hubidentity.LoadOrCreate(state, ""))
 	auth := must(hubauth.NewService(db, ids))
 	f := &hubFixture{dir: dir, parent: t, mode: mode, cfg: fixtureConfig{Origin: origin, Hub: must(auth.HubIdentity()), Material: *must(auth.IssueActivationLocal(wire.PurposeInitialActivation, "", "", false))}}
+	f.listenOrigin, f.proxy = listenOrigin, proxy
 	if db.Close() != nil {
 		t.Fatal("owned Hub bootstrap Store did not close")
 	}
 	writeJSON(t, filepath.Join(dir, "synthetic-config.json"), f.cfg)
 	f.start(t)
-	f.proxy = newFaultProxy(t, origin)
+	if f.proxy == nil {
+		f.proxy = newFaultProxy(t, origin)
+	}
 	return f
 }
 
@@ -390,7 +439,11 @@ func (f *hubFixture) start(t *testing.T) {
 	if binary == "" {
 		t.Fatal("explicit acceptance-built Cicada executable required")
 	}
-	u := must(url.Parse(f.cfg.Origin))
+	listenOrigin := f.listenOrigin
+	if listenOrigin == "" {
+		listenOrigin = f.cfg.Origin
+	}
+	u := must(url.Parse(listenOrigin))
 	if f.mode != "--hub-only" && f.mode != "--hub-nodes-only" {
 		t.Fatal("unreviewed acceptance Hub composition")
 	}

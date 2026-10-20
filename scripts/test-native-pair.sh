@@ -13,15 +13,20 @@ elif [[ $# == 1 && "$1" == --endpoint-security-boundaries ]]; then mode=endpoint
 elif [[ $# == 1 && "$1" == --endpoint-security-app-fixture ]]; then mode=endpoint-security-app-fixture
 elif [[ $# == 1 && "$1" == --endpoint-security-owner-directory ]]; then mode=endpoint-security-owner-directory
 elif [[ $# == 1 && "$1" == --endpoint-security-owner-directory-recovery ]]; then mode=endpoint-security-owner-directory-recovery
-elif [[ $# != 0 ]]; then printf 'Usage: scripts/test-native-pair.sh [--store-regressions|--a3-core|--a3-http|--a3-size-store|--app-owner|--endpoint-security|--endpoint-security-boundaries|--endpoint-security-app-fixture|--endpoint-security-owner-directory|--endpoint-security-owner-directory-recovery]\n' >&2; exit 2; fi
+elif [[ $# == 1 && "$1" == --codex-product-guards ]]; then mode=codex-product-guards
+elif [[ $# == 1 && "$1" == --codex-product-cli ]]; then mode=codex-product-cli
+elif [[ $# != 0 ]]; then printf 'Usage: scripts/test-native-pair.sh [--store-regressions|--a3-core|--a3-http|--a3-size-store|--app-owner|--endpoint-security|--endpoint-security-boundaries|--endpoint-security-app-fixture|--endpoint-security-owner-directory|--endpoint-security-owner-directory-recovery|--codex-product-guards|--codex-product-cli]\n' >&2; exit 2; fi
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source_root="$repo_root"
 if [[ "$mode" == endpoint-security* && ! -f "$source_root/docs/native-endpoint-directory-contract.md" ]]; then
  printf 'Endpoint security requires the frozen Endpoint directory contract.\n' >&2; exit 2
 fi
+if [[ "$mode" == codex-product-* && ! -f "$source_root/cicada-go/cmd/cicada/codex_hook.go" ]]; then
+ printf 'Codex product guards require the integrated consumer checkpoint; NOT_RUN.\n' >&2; exit 2
+fi
 alternate_source="${CICADA_NATIVE_PAIR_SOURCE_ROOT:-${CICADA_NATIVE_PAIR_STORE_SOURCE_ROOT:-}}"
 if [[ -n "$alternate_source" ]]; then
- if [[ "$mode" == protocol || "$mode" == app-owner || "$mode" == endpoint-security* ]]; then printf 'Alternate source is limited to isolated core regressions.\n' >&2; exit 2; fi
+ if [[ "$mode" == protocol || "$mode" == app-owner || "$mode" == endpoint-security* || "$mode" == codex-product-* ]]; then printf 'Alternate source is limited to isolated core regressions.\n' >&2; exit 2; fi
  source_root="$(cd "$alternate_source" && pwd -P)"
  if [[ ! -f "$source_root/cicada-go/go.mod" ]]; then printf 'Store source must be a Cicada worktree.\n' >&2; exit 2; fi
 fi
@@ -31,6 +36,21 @@ local_root="$workspace_root/.local"
 module_cache="$local_root/cache/n2-acceptance/gomod-go1.27.2-stable"
 build_cache="$local_root/cache/native-pair-acceptance/go-build-go1.27.3"
 image='golang:1.27.3-bookworm@sha256:5c3e9b43cfd3bb95c7937462e29d87ada57b481a96fa23ad0eb61778d7a00110'
+codex_mount=()
+if [[ "$mode" == codex-product-cli ]]; then
+ if [[ ! -f "$source_root/.agents/plugins/cicada/hooks/hooks.json" || ! -f "$source_root/.agents/plugins/cicada/.mcp.json" || ! -f "$source_root/.agents/plugins/cicada/.codex-plugin/plugin.json" ]]; then
+  printf 'Installed-plugin gate requires the integrated existing-plugin assets; NOT_RUN.\n' >&2; exit 2
+ fi
+ codex_binary='/home/zyf/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/bin/codex'
+ python3 - "$codex_binary" <<'PY'
+import hashlib, pathlib, sys
+path = pathlib.Path(sys.argv[1])
+if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != '399ff69c431c066e40de318fba45c2b07f45a76b19939d247ee4828fc70c4215':
+    raise SystemExit('Reviewed Codex 0.163.0 binary unavailable or changed; NOT_RUN.')
+PY
+ export CICADA_NATIVE_PAIR_CODEX_BINARY="$codex_binary"
+ codex_mount=(--mount "type=bind,src=$codex_binary,dst=/tools/codex,readonly" -e CICADA_N3_CODEX_BINARY=/tools/codex)
+fi
 if [[ "$(id -u)" != 1000 || ! -d "$module_cache" ]] || ! docker image inspect "$image" >/dev/null 2>&1; then
  printf 'Requires UID1000, pinned offline Go image and populated read-only module cache.\n' >&2; exit 2
 fi
@@ -65,6 +85,7 @@ common=(docker run --rm --name "$container" --label "cicada.native-pair.run=$run
  --mount "type=bind,src=$build_cache,dst=/gocache"
  --mount "type=bind,src=$state,dst=/state"
  --mount "type=bind,src=$artifacts,dst=/out"
+ "${codex_mount[@]}"
  --workdir /repo/cicada-go "$image")
 lane() {
  local name="$1"; shift
@@ -77,7 +98,7 @@ lane() {
  printf 'Native pair %s exit=%s\n' "$name" "$code"
 }
 lane version go version
-if [[ "$mode" != protocol && "$mode" != app-owner && "$mode" != endpoint-security* ]]; then
+if [[ "$mode" != protocol && "$mode" != app-owner && "$mode" != endpoint-security* && "$mode" != codex-product-* ]]; then
  if [[ "$mode" == store ]]; then
   overlay=/qa/scripts/fixtures/native-pair/overlay.json
   package=./internal/store
@@ -133,6 +154,10 @@ else
    selector='^TestN3OwnerDirectory(ActualAppReadsZeroRightsSnapshot|OldHubCannotStartRead|OriginalPendingRecovers)$'
   elif [[ "$mode" == endpoint-security-owner-directory-recovery ]]; then
    selector='^TestN3OwnerDirectoryOriginalPendingRecovers$'
+  elif [[ "$mode" == codex-product-guards ]]; then
+   selector='^TestN3CodexProduct(ContextRefusesMissingAndForged|MCPRestartRotatesConnectionNonce)$'
+  elif [[ "$mode" == codex-product-cli ]]; then
+   selector='^TestN3CodexProductInstalledPluginLiteralTUI$'
   else
    selector='^TestN3NativePair(BootstrapAndExactReplay|WrongNodeScopeIsFenced|PrepareLossBeforeForward|CompleteLossAfterCommit|MissingOwnerProofCannotBootstrap)$'
   fi
