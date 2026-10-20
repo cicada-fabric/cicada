@@ -156,6 +156,13 @@ func (v *view) workspaceRows(s appcore.Snapshot, flow appui.SetupFlow) []layout.
 			}
 			return layout.Flex{Axis: layout.Vertical}.Layout(gtx, fields...)
 		}))
+		// Keep the existing explicit local fixture preview reachable after the
+		// navigation change. This entry never reads or claims management data.
+		var objects []appui.CanvasObject
+		if v.preview {
+			objects = appui.PreviewCanvasObjects()
+		}
+		rows = append(rows, v.sectionCard(v.canvasSection(appcore.Snapshot{}, false, objects, v.preview)))
 		return rows
 	}
 	rows := []layout.Widget{v.labelRow(appui.Text(v.locale, "workspace.overview_body"))}

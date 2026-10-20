@@ -79,7 +79,7 @@ func (m *mcpServer) dispatchSealedMCPOutbox(outbox *mcpOutboxStore,
 
 func (m *mcpServer) currentLocalSealedSendRequest(operation mcpOutboxOperation,
 	input mcpOutboxInput) (localSealedSendRequest, error) {
-	current, err := detectCodexMCPJoinSession()
+	current, err := m.detectCurrentCodexSession()
 	if err != nil {
 		return localSealedSendRequest{}, err
 	}

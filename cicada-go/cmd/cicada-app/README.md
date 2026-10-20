@@ -602,3 +602,74 @@ wall-clock Hub or Windows acceptance. The pinned Go 1.27.3 toolchain and offline
 module resolution were reused. Independent actual Hub/process acceptance is
 QA-owned; native Windows GUI/DPAPI/ACL/CJK/DPI, physical devices, public HTTPS,
 Android, real model/queue and product Hook integration remain **NOT_RUN** here.
+
+### 2026-10-20 managed Codex consumer checkpoint
+
+The existing single Cicada plugin now selects `cicada mcp --codex-context`
+through the portable `mcp.json` and compatibility `.mcp.json`, with one shared
+Hook definition and the existing `$cicada-network` skill. Literal current-Thread
+messages (`cicada join`, `cicada peers`, `cicada connect`, `cicada leave`,
+`cicada help`) use the Node's
+already reviewed local operator contract. Standard skill/plugin invocations
+remain ordinary model workflows. Registration has zero communication rights;
+repeat registration of a left Thread does not revive it. A saved Pair Join does
+not claim either Owner consent or current communication authority. The native
+Settings page also retains the explicit local fixture preview, using no live
+management snapshot.
+
+Managed MCP startup does not restore an ambient or parent SID. Every tool schema
+requires its connection nonce; the trusted PreToolUse Hook replaces the complete
+context with a fresh Node ticket bound to the actual record, workspace, tool
+and business arguments. MCP consumes that ticket before scope restoration or
+business work. Missing, changed, replayed or unsupported proof fails closed.
+This is the existing same-user local Runtime trust boundary, not a new native
+human attestation or a public Hub authorization mechanism. Hook configuration
+or a public capability alone grants no business permission.
+
+A valid switch cancels and waits for the previous immutable heartbeat worker
+before installing another actor. Renewal uses only its frozen origin, context,
+credential, Group, Endpoint, principal and binding epoch; a late denial cannot
+clear a replacement actor or delete the original persisted scope. Idle renewal
+is lease evidence. The separate named-connect cold-start Node lease work is
+Hub-owned and is not established by this consumer checkpoint.
+
+The existing scoped operator journal persists the original request before IPC.
+A complete Join credential is saved in the existing private MCP scope before
+output and acknowledgment. Cache or output failure retains the original result
+for exact recovery. Leave retains that cache for the Hub Guard to reject stale
+credentials; this consumer does not claim a cross-process cache deletion CAS.
+Unknown results and unauthenticated errors do not settle the original command.
+Human-visible Hook output is supplied through `systemMessage` as well as the
+literal command's block response; actual installed-plugin display remains an
+independent QA gate.
+
+Evidence is retained in
+`/home/zyf/.cicada/acceptance/codex-context-checks/run-20261020T173400Z/`.
+The tested source was dirty `4cf544e8d3ad60c341581480aa09e45e7eed2bb5`,
+not that commit alone. Before/after 2,374-input manifests both hash to
+`ddf566c6585a1dc7e4604d467848dac3af26b865838f90d5329c7336dcd8e25f`.
+Related MCP normal tests recorded **171 PASS, 0 FAIL, 7 SKIP**; the seven
+explicit opt-in Runtime/Android/multi-Hub gates were not run. Affected-context,
+main-entry, session/scope and outbox race tests recorded **85 PASS, 0 FAIL,
+0 SKIP**, using the retained race binary before/after hash
+`c984d7d450d56a44311ab574a36922d6622e79d3a4b814b279f6b84aacb369ac`.
+The new consumer/main-entry subset recorded 21 passing events in each mode.
+Portable UI **136/136** and native **29/29** passed normal/race with no failures
+or skips. Scoped Linux/Windows vet, CLI build, Windows native-test compilation
+and unsigned App cross-build passed. CLI stdio smoke exposed 71 tools and
+rejected a missing ticket despite a synthetic ambient parent SID, without
+writing its private HOME.
+
+Initial synthetic Join fixture setup failures (missing workspace and private
+root permissions) are retained under the earlier run's `preflight-failures/`.
+Earlier runner failures remain separate: wrong package working directory and
+umask caused the first normal run's 15 failures; both broad race attempts
+exceeded their 300-second limits. An initial focused race run also rejected a
+group-writable evidence ancestor used as TMPDIR; the corrected run used an
+owned private temporary root, removed afterward. None was fixed by relaxing
+product validation, and none is reported as an aggregate pass. The final
+receipt records selectors, exact exits, source and artifact hashes; this README
+was updated afterward with a documentation-only delta. No new protocol,
+dependency, deployment or real identity was introduced. Own disposable Docker
+interop, actual installed-plugin/native Runtime, Windows GUI/DPAPI/ACL/CJK/DPI,
+physical device, Android and public HTTPS acceptance remain **NOT_RUN** here.

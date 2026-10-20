@@ -43,6 +43,7 @@ type mcpServer struct {
 	stateMu           sync.Mutex
 	heartbeatOnce     sync.Once
 	stop              chan struct{}
+	codexContext      *codexMCPContextState
 }
 
 var errPeerTaskHandoffRetired = errors.New("Thread-to-Thread plaintext Task handoffs are retired; use sealed cicada_send and explicitly authorized Artifact references. This does not transfer Task responsibility or stop resources.")
@@ -113,6 +114,7 @@ func runMCP(args []string) error {
 	hubID := flags.String("hub-id", "", "exact Hub selection from local multi-Hub registry")
 	hubsFile := flags.String("hubs-file", "", "local multi-Hub registry JSON")
 	stateRoot := flags.String("state-root", "", "local multi-Hub state root")
+	withCodexContext := flags.Bool("codex-context", false, "require a fresh native Codex context for every tool call")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -120,6 +122,7 @@ func runMCP(args []string) error {
 	hubStateDir := ""
 	writerRoot := ""
 	pqtlsSelected := strings.TrimSpace(os.Getenv("CICADA_NODE_PQTLS_CONFIG")) != ""
+	contextNodeID := ""
 	if *hubID != "" || *hubsFile != "" || *stateRoot != "" {
 		if *hubID == "" || *hubsFile == "" || *stateRoot == "" {
 			return errors.New("MCP multi-Hub selection requires --hub-id, --hubs-file and --state-root")
@@ -138,6 +141,7 @@ func runMCP(args []string) error {
 				continue
 			}
 			*apiURL = entry.ControlURL
+			contextNodeID = entry.NodeID
 			pqtlsSelected = strings.TrimSpace(entry.PQTLSConfig) != ""
 			hubStateDir = machineHubStateDir(root, entry)
 			statePath = filepath.Join(hubStateDir, "mcp", "sessions.json")
@@ -157,15 +161,29 @@ func runMCP(args []string) error {
 	server.pqtlsSelected = pqtlsSelected
 	server.hubStateDir = hubStateDir
 	server.writerRoot = writerRoot
+	if *withCodexContext {
+		if contextNodeID == "" {
+			var err error
+			contextNodeID, err = configuredCodexNodeID()
+			if err != nil {
+				return err
+			}
+		}
+		if err := server.enableCodexContext(contextNodeID); err != nil {
+			return err
+		}
+	}
 	if hubStateDir != "" {
 		server.outbox = newMCPOutbox(filepath.Join(hubStateDir, "mcp", "outbox.sqlite3"))
 	}
-	defer close(server.stop)
+	defer func() { close(server.stop); server.stopCodexHeartbeat() }()
 	// A cached credential is considered usable only after the trusted harness
 	// context and the server both validate it. Missing state is ordinary: MCP
 	// starts unjoined and never performs an implicit management join.
-	if context, err := harness.DetectCurrentSession(); err == nil {
-		_ = server.restoreSession(context)
+	if !*withCodexContext {
+		if context, err := harness.DetectCurrentSession(); err == nil {
+			_ = server.restoreSession(context)
+		}
 	}
 	decoder := json.NewDecoder(os.Stdin)
 	encoder := json.NewEncoder(os.Stdout)
@@ -217,7 +235,7 @@ func (m *mcpServer) handle(request mcpRequest) (mcpResponse, bool) {
 	case "ping":
 		return mcpResponse{JSONRPC: "2.0", ID: id, Result: map[string]any{}}, true
 	case "tools/list":
-		return mcpResponse{JSONRPC: "2.0", ID: id, Result: map[string]any{"tools": cicadaMCPTools()}}, true
+		return mcpResponse{JSONRPC: "2.0", ID: id, Result: map[string]any{"tools": m.contextualMCPTools()}}, true
 	case "tools/call":
 		var params struct {
 			Name      string         `json:"name"`
@@ -348,6 +366,13 @@ func cicadaMCPTools() []map[string]any {
 }
 
 func (m *mcpServer) callTool(name string, arguments map[string]any) (any, error) {
+	if m.codexContext != nil {
+		return m.callContextualTool(name, arguments)
+	}
+	return m.callToolWithContext(name, arguments)
+}
+
+func (m *mcpServer) callToolWithContext(name string, arguments map[string]any) (any, error) {
 	if !isCicadaMCPTool(name) {
 		return nil, fmt.Errorf("unknown Cicada tool: %s", name)
 	}
@@ -904,6 +929,10 @@ func (m *mcpServer) clearSessionMemory() {
 }
 
 func (m *mcpServer) startHeartbeat() {
+	if m.codexContext != nil {
+		m.reconcileCodexHeartbeat()
+		return
+	}
 	m.heartbeatOnce.Do(func() {
 		go func() {
 			ticker := time.NewTicker(30 * time.Second)
@@ -1047,7 +1076,7 @@ func (m *mcpServer) join(arguments map[string]any) (any, error) {
 	if groupID == "" {
 		return nil, errors.New("group_id is required (pass group_id or set CICADA_GROUP_ID)")
 	}
-	context, err := detectCodexMCPJoinSession()
+	context, err := m.detectCurrentCodexSession()
 	if err != nil {
 		return nil, err
 	}

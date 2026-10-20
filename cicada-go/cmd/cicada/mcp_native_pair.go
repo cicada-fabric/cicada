@@ -49,7 +49,7 @@ func requestMachineAgentNativePairJoin(socketPath string, request localNativePai
 // Only the small existing public Join result crosses MCP. Node journals retain
 // all complete proofs, sealed receipts and credentials behind the local socket.
 func (m *mcpServer) joinNativePair(selection nativePairJoinSelection) (any, error) {
-	current, err := detectCodexMCPJoinSession()
+	current, err := m.detectCurrentCodexSession()
 	if err != nil {
 		return nil, err
 	}

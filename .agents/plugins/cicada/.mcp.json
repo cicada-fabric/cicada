@@ -1,8 +1,12 @@
 {
   "mcpServers": {
     "cicada": {
+      "type": "stdio",
       "command": "cicada",
-      "args": ["mcp"]
+      "args": [
+        "mcp",
+        "--codex-context"
+      ]
     }
   }
 }

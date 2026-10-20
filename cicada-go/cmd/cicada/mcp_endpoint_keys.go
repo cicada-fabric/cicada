@@ -33,7 +33,7 @@ func (m *mcpServer) publishEndpointKeyCandidate(arguments map[string]any) (any, 
 	m.joinMu.Lock()
 	defer m.joinMu.Unlock()
 
-	current, err := harness.DetectCurrentSession()
+	current, err := m.detectCurrentSession()
 	if err != nil {
 		return nil, err
 	}

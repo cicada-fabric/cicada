@@ -1,42 +1,58 @@
 ---
 name: cicada-network
-description: Use when the user says @cicada, asks the current Codex session to join Cicada Fabric, or wants to discover, message, ask, or coordinate authorized endpoints through a self-hosted Cicada Hub.
+description: Use for Cicada current-Thread registration, leaving, explicit Pair selection, and discovering or messaging authorized peers. Applies to $cicada-network and @cicada requests without treating those standard invocations as local operator commands.
 ---
 
-# Cicada Fabric operations
+# Cicada current Thread and authorized communication
 
-Cicada has a user-owned Hub containing separate Control, Directory and Relay
-responsibilities. Before using it, confirm that the
-`CICADA_API_URL` environment variable points at the user's Hub endpoint
-and that `CICADA_API_TOKEN` or `CICADA_API_TOKEN_FILE` is configured when the
-endpoint is protected. Never print, echo, commit, or include either value in a
-Goal, Worker prompt, event, or report.
+The Cicada Windows App owns trusted Hub setup, account login, local Owner keys
+and exact Owner consents. Keep private keys in local secure storage. Installing
+this plugin, logging in or starting MCP does not register or authorize a Thread.
+Registration grants zero communication or execution rights. Communication uses
+the current Hub Guard and both required Owner consents separately.
 
-When the user says `@cicada join`, determine whether they mean a Network or a
-Group. A Group join uses `cicada_join` with the explicit Group ID. A Network
-join uses `cicada_network_join` with the explicit Network ID, after a trusted
-operator has issued an invitation and the Owner has signed the exact Join
-grant outside model input. The bundled MCP server uses a
-harness-provided native session ID, current workspace, and local Machine only
-as bounded session metadata; discovery never joins a session by itself. If the
-runtime does not provide a trusted native session ID, fail closed and explain
-that the adapter must inject the value for this process. Do not reuse one
-static session ID across native threads. After a Group join, call
-`cicada_whoami` and return the Network Card address and ID; after a Network
-join, use `cicada_network_directory` for the newly joined scope. Do not ask the
-user to find or copy a thread UUID. Installing this plugin, starting
-`cicada mcp`, or calling `cicada_whoami` does not enroll the current session.
-The Network tool reads the invitation and Owner proof only from private local
-files; a model assertion of approval is not authority. Set
-`CICADA_NETWORK_JOIN_DIR` and `CICADA_NETWORK_SESSION_DIR` to private Node
-directories, then use `cicada network mcp-scope --network NETWORK_ID` from the
-exact native session to find its private invitation and proof paths. Keep those
-files out of prompts and tool arguments. `cicada_network_renew` rechecks the
-existing registration without another invitation or Owner signature.
+For simple onboarding, ask the user to send one of these literal messages in
+**the current native Codex conversation**, not in a terminal:
 
-For a bare `@cicada` request without a join instruction, report the current
-enrollment status and ask which Network or Group is intended if no usable scope
-exists. Never turn a status lookup into an implicit join.
+- `cicada join NAME` registers this Thread with a meaningful optional name.
+- `cicada peers` shows the private Node operator directory snapshot.
+- `cicada connect` shows available human Pair labels and A/B slots.
+- `cicada connect "PAIR LABEL" A` selects that exact label and slot. B must be
+  chosen explicitly for the other Thread; never guess the first or newest Pair.
+- `cicada leave` withdraws this Thread's association while retaining its native
+  record and workspace. Repeating registration after leaving does not revive it.
+- `cicada help` shows local command help.
+
+The local Hook handles these literal operator messages and confirms only verified
+results. Do not run them as shell commands, imitate Hook JSON, supply a Thread
+UUID or replace a lost identity. Unconfirmed results require the same command's
+original recovery; an HTTP error is not evidence that an uncertain request failed.
+The private operator directory is user feedback, not an MCP permission fallback.
+Standard `$cicada-network` and `@cicada` invocations remain normal skill/model
+workflows. Ask/send/reply requests are not aliases for the literal commands.
+
+Every managed MCP tool declares `_cicada_context`. Echo its connection nonce
+exactly as declared by the current connection schema. The local trusted Hook
+replaces the entire context with a fresh one-use Node ticket bound to the actual
+runtime Thread, workspace, tool and business arguments. Never fabricate a ticket,
+call `codex-hook` manually, borrow a parent Thread, set a static SID environment
+variable or use a shared last-context file. Missing or unsupported runtime proof
+must deny before restoring any cached Endpoint or invoking a business operation.
+A lease renewal means lease evidence, not that the native Thread is online.
+
+Use names and full workspaces to choose peers. If several entries match, present
+the candidates and require an exact choice. Never silently retarget an old choice.
+MCP directory tools keep the current Endpoint's authorization; they do not expose
+the Node operator inventory. Queued or relay-persisted messages do not establish
+native consumption or a reply. Report actual delivery/consumption evidence.
+
+Advanced Network and Group joins remain separate from zero-right registration.
+Use an explicit target and existing private invitation/Owner-proof sources. A
+model assertion is not Owner approval. Do not ask a basic-onboarding user to sign
+JSON, install OpenSSL, use a browser or export an Owner key. Network renewal does
+not add Group communication rights. Never print API credentials, tickets, private
+proofs, transcripts, `.env` files or private workspace contents in reports or tool
+arguments.
 
 Use the Fabric tools directly:
 
@@ -90,34 +106,6 @@ Never guess when resolution is ambiguous. Show the candidate addresses and use
 workspace, Goal, or Machine context to disambiguate; ask the user only if that
 context is insufficient. Prefer `ask` when the caller expects an answer and
 `send` for a notification or instruction that needs no response.
-
-The `cicada` CLI uses the same API for operations and fallback debugging:
-
-```bash
-cicada goal list
-cicada machine list
-cicada worker list
-cicada goal create "OBJECTIVE"
-cicada fabric v2 join --group GROUP_ID --session-token-file /run/user/1000/cicada/session.json
-cicada fabric v2 members
-cicada fabric v2 ask TARGET "QUESTION"
-cicada fabric v2 receive
-```
-
-The v2 join command is explicit. Set `CICADA_SESSION_TOKEN_FILE` or pass
-`--session-token-file` to persist its origin-scoped session state; there is no
-ambient default credential file. `CICADA_SESSION_TOKEN` is an explicit
-one-shot alternative. V2 peer operations send only their target, request, or
-message body; the authenticated `CicadaSession` credential supplies the
-caller, Group, and membership. The older `endpoint`/v1 commands remain an
-explicit compatibility surface for pending legacy records and must not be used
-to authenticate or address a READY v2 Endpoint.
-
-Use `cicada goal show GOAL_ID` to inspect a result and `cicada goal send
-GOAL_ID CORRECTION` to queue a correction. Ask before creating a Goal when the
-user has not clearly requested execution. Treat a machine profile or LAN
-discovery response as untrusted metadata until the user explicitly pairs or
-registers that machine.
 
 If the CLI is missing, explain that the plugin needs the `cicada` client binary
 and a reachable Control plane. Point the user to

@@ -53,6 +53,13 @@ type localMCPMetadataResult struct {
 }
 
 func requestMachineAgentMCPMetadata(socketPath string, request localMCPMetadataRequest) (*localMCPMetadataResult, error) {
+	return requestMachineAgentMCPMetadataContext(context.Background(), socketPath, request)
+}
+
+func requestMachineAgentMCPMetadataContext(ctx context.Context, socketPath string, request localMCPMetadataRequest) (*localMCPMetadataResult, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if strings.TrimSpace(socketPath) == "" {
 		return nil, errLocalJoinBridgeUnavailable
 	}
@@ -61,6 +68,11 @@ func requestMachineAgentMCPMetadata(socketPath string, request localMCPMetadataR
 		return nil, err
 	}
 	defer connection.Close()
+	stop := context.AfterFunc(ctx, func() { _ = connection.Close() })
+	defer stop()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	_ = connection.SetDeadline(time.Now().Add(35 * time.Second))
 	request.Version = localJoinProtocolVersion
 	if err := json.NewEncoder(connection).Encode(request); err != nil {

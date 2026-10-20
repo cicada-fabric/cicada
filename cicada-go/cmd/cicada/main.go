@@ -59,6 +59,11 @@ func main() {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
+	case "codex-hook":
+		if err := runCodexHook(os.Args[2:], os.Stdin, os.Stdout); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
 	case "migration":
 		var err error
 		if len(os.Args) > 2 && os.Args[2] == "recovery" {
@@ -386,7 +391,8 @@ func printJSON(value any) error {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: cicada serve|hub|components|owner-signer|client|goal|machine|worker|fabric|network|snapshot|external|connector|mcp|migration|owner-key|owner|version")
+	fmt.Fprintln(os.Stderr, "usage: cicada serve|hub|components|owner-signer|client|goal|machine|worker|fabric|network|snapshot|external|connector|mcp|codex-hook|migration|owner-key|owner|version")
+	fmt.Fprintln(os.Stderr, "  codex-hook: read one Codex hook event from stdin; accepts no arguments")
 }
 
 func fabricCommand(baseURL string, args []string) error {

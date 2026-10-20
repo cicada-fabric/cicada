@@ -19,7 +19,8 @@ import (
 const mcpSessionStateVersion = 1
 
 // mcpTrustedContext is the identity boundary used for local session state.
-// These values come from the harness environment, never from MCP arguments.
+// Managed Codex values come from a consumed Node ticket; legacy compatibility
+// callers use their harness environment. MCP arguments never supply identity.
 type mcpTrustedContext struct {
 	Harness         string
 	NativeSessionID string
