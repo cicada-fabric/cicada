@@ -3311,3 +3311,103 @@ adapters. Linux App1 exit/Node-peer continuity is separate from App's Linux
 Hub/Node component-removal tests; Windows App uninstall/DPAPI/clipboard remains
 **NOT_RUN** here. No old N2/N3 matrix, standard interop, real Node service/state,
 SID, queue/model/Runtime or public deployment was exercised by these checks.
+
+
+### Accountless App pre-registration protected storage
+
+2026-10-20 UTC, **SCOPED_LOCAL_STORAGE_PASS**. The new
+`internal/appvault/pre_registration.go` API keeps an independently generated
+ordinary App subject identity before account/Owner IDs exist. Its scope is
+exact canonical origin, Hub ID, complete Hub fingerprint and the stable local
+InstallationID (16 random bytes, 32 lowercase hexadecimal characters). There
+are no invented account/Owner IDs, Owner-signer purpose, key import or identity
+replacement operation. `PreRegistrationPath` places files in the separate
+`pre-registration/<scope-hash>.pending` namespace. The independent file magic,
+complete header AAD and key-wrap context are separate from legacy vaults;
+legacy Scope validation, file format and profile discovery remain unchanged.
+A pending file never becomes a logged-in account profile.
+
+`CreatePreRegistration` atomically publishes the generated subject key before
+returning any key handle. `OpenPreRegistration` requires the exact expected
+scope and never auto-generates a replacement for missing/corrupt state.
+`Identity` returns a detached handle. `LoadState` and `CompareAndSwapState`
+retain one opaque recovery snapshot of at most 1 MiB. Only the current revision
+is accepted; exact bytes at that revision are a no-op, while a stale revision
+conflicts even if bytes match. A nil snapshot is a versioned tombstone that
+retains the identity and monotonic revision. The API never interprets HTTP,
+expiry or settlement and offers no automatic cleanup or delete operation.
+
+**Create success is not permission to send a registration request.** The
+future protocol adapter must first persist admission private key, S and the
+complete original packet together in one CAS, then retain that exact snapshot
+until authenticated settlement. This checkpoint contains no network or DTO
+adapter and does not establish that sequencing end to end. Final account-vault
+promotion/convergence and migration are also **NOT_RUN**; this local store
+alone cannot report enrollment, Owner proof or management success.
+
+The implementation reuses the existing platform Protector, protected directory
+and file checks, process lock and atomic write helper. Production Windows is
+current-user DPAPI with the existing protected current-user/SYSTEM ACL policy.
+The payload is AES-256-GCM encrypted, including private identity and opaque
+state. Cross-scope copies and public-header rewrites fail authentication.
+An open store also checks inode identity and the complete sealed-file hash
+before mutation, rejecting same-inode changes, rename replacement and links.
+A possibly published write or failed post-write validation fences reads,
+identity access and writes with ErrCommitUncertain until close/reopen. Reopen
+uses actual authenticated disk state rather than resealing the cached packet.
+Close clears mutable private buffers; runtime-level zeroization is not claimed.
+
+Evidence is retained under
+`/home/zyf/Cicada/.local/evidence/composable-registration/run-20261020T075053Z-8d262d/app/pre-registration-01/`.
+The producer receipt SHA-256 is
+`abf865207142c56755fafee8532ba8858d820a0db432f10764cd61fd89ac18d9`.
+
+| Check | Actual outcome | Exit |
+| --- | --- | --- |
+| Linux normal appvault checks | 40 PASS / 0 FAIL / 0 SKIP: 28 new pre-registration events and 12 legacy vault/discovery events | 0 |
+| Linux race appvault checks | Same 40 named events, 40 PASS / 0 FAIL / 0 SKIP | 0 |
+| Windows amd64 appvault test-package cross-compile | Actual PE test binary retained; not executed | 0 |
+| Go compiler and all three actual binary metadata | Go 1.27.3, pinned Bookworm builder | 0 |
+
+Counts include parent tests and subtests. The Linux tests explicitly use the
+synthetic password Protector, not a platform-protection fallback or Windows
+DPAPI execution. They cover exact binary snapshot/identity restart recovery,
+stale versus current retries, no-rewrite idempotence, scope copy/header changes,
+corrupt and legacy-format input, invalid scope, size/revision limits, versioned
+tombstones, post-publication sync failure, file replacement and legacy profile
+separation. The actual child process cannot open a parent-held store. After
+the parent releases it, a child durably writes and deliberately exits without
+Close; a fresh open in the parent process recovers the same App identity and
+original bytes.
+That is process-exit recovery, not a host-power-loss acceptance test.
+
+| Actual retained artifact | Bytes | SHA-256 |
+| --- | --- | --- |
+| Normal executed appvault.test | 4,894,983 | `85d847714a4e145d80e0fd789e5ac9284f4ea423a0b455465576bd113445938b` |
+| Race executed appvault.test | 6,676,743 | `9ddd65e1eb310b457d6123d7f2737899cdea489b8e9e954fc44675a660b83f13` |
+| Windows cross-compiled appvault.test.exe | 7,371,264 | `2b9172e4969c543748f420dc2c47847132d1d896644efc4f04fb072d072bc22d` |
+
+Original and retained executed binaries match before and after both Linux
+runs. NUL-separated argv, inherited umask, compiler/module metadata, commands,
+logs and exit codes remain in evidence. Source and full build-input bookends
+match independently. All owned Docker containers were absent and task-private
+temporary state was empty afterward. Network was disabled and source/module
+mounts were read-only. No product service or real credential/state was used.
+
+These executions used **dirty `709531966b90aabedc80ee619922a589b991d20d`
+plus the two new source files**, source manifest
+`677a8cc59f63f27f552f43a515f8a7a5aa5f869699194bb5580a9cbd3f805c65`
+and build-input fingerprint v4
+`9a472d82f183cc53b636f35e0d5ed8b826a9212ce830058446c2b13ad967378d`.
+Root later synchronized the worktree to QA checkpoint
+`79ba11db596f5f5411ae73535a92e421187d6d16` with both WIP hashes unchanged.
+That synchronization and this subsequent documentation append do not convert
+the runs to clean-79ba or later-commit evidence. No repeated UI/installer,
+Windows GUI or historical N2/N3 matrix result is asserted here.
+
+Windows native DPAPI/ACL/GUI, cross-user behavior, physical devices, C0 network
+registration/Owner proof, first-HTTP admission snapshot sequencing, final
+account-vault convergence, real Node/services/queues/Runtime, public HTTPS,
+external rollback resistance and host-power-loss acceptance remain **NOT_RUN**.
+No public protocol, server, deployment, global Codex configuration, real key or
+grant changed, and no management authority is inferred from these storage tests.
