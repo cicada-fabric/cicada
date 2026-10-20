@@ -206,7 +206,7 @@ func validateNodeControlOperation(operation string) bool {
 	case "node.binding.status", "node.heartbeat", "node.jobs.list", "node.jobs.claim",
 		"node.jobs.result", "node.approvals.create", "node.approvals.status",
 		nodewire.SnapshotUploadOperation, nodewire.SnapshotDownloadOperation,
-		nodewire.EndpointRegisterOperation, nodewire.EndpointLeaveOperation, nodewire.NativePairAvailableOperation:
+		nodewire.EndpointRegisterOperation, nodewire.EndpointLeaveOperation, nodewire.NativePairAvailableOperation, nodewire.EndpointDirectoryOperation:
 		return true
 	default:
 		return false
@@ -1133,8 +1133,8 @@ func pruneNodeControlRPCResponsesTx(tx *sql.Tx, now time.Time) error {
 	// per-epoch highwater is never removed, so expired sequence numbers remain
 	// permanently unusable even after their small inbox metadata is reclaimed.
 	if _, err := tx.Exec(`DELETE FROM node_control_rpc_inbox_v1
-WHERE operation IN ('node.binding.status','node.heartbeat','node.jobs.list','node.approvals.status','node.native_pair.describe',?,?,?)
-	 AND created_at<?`, nodewire.SnapshotDownloadOperation, nodewire.NativePairAvailableOperation, nodewire.EndpointRegisterOperation, cutoff); err != nil {
+WHERE operation IN ('node.binding.status','node.heartbeat','node.jobs.list','node.approvals.status','node.native_pair.describe',?,?,?,?)
+	 AND created_at<?`, nodewire.SnapshotDownloadOperation, nodewire.NativePairAvailableOperation, nodewire.EndpointRegisterOperation, nodewire.EndpointDirectoryOperation, cutoff); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(`UPDATE node_control_rpc_inbox_v1 SET response_packet=X''

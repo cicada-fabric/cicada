@@ -6,6 +6,7 @@ import (
 	"time"
 
 	wire "github.com/cicada-ai/cicada/internal/hubaccountwire"
+	"github.com/cicada-ai/cicada/internal/nodewire"
 	"github.com/cicada-ai/cicada/internal/store"
 )
 
@@ -58,4 +59,16 @@ func (s *Service) handleOwnerEndpointRead(ctx context.Context, raw []byte) ([]by
 	defer clear(q.OwnerProof)
 	response, err := s.db.ReadOwnerEndpoints(store.OwnerEndpointReadInput{Hub: hub, NodeControlPublic: s.ids.NodeControl.Public(), Device: d.Public, Packet: raw, Request: q, At: s.requestTime(), Now: s.requestTime}, func(body any) ([]byte, error) { return wire.SealResponse(s.ids.ClientControl, d.Public, r, body) })
 	return response, appNodeServiceError(err)
+}
+
+func (s *Service) NodeOperatorCapabilities() (nodewire.NodeOperatorCapabilities, error) {
+	if s == nil {
+		return nodewire.NodeOperatorCapabilities{}, ErrAuthentication
+	}
+	hub, err := s.HubIdentity()
+	if err != nil {
+		return nodewire.NodeOperatorCapabilities{}, err
+	}
+	return nodewire.NodeOperatorCapabilities{Format: nodewire.NodeOperatorCapabilitiesFormat, ContractRevision: nodewire.NodeOperatorContractRevision,
+		Available: s.appNodeAuthority, HubID: hub.HubID, NodeControlFingerprint: nodewire.IdentityFingerprint(s.ids.NodeControl.Public()), Operations: nodewire.NodeOperatorOperations(), MaxPageRows: 64, MaxPageBytes: nodewire.MaxEndpointDirectoryBytes}, nil
 }

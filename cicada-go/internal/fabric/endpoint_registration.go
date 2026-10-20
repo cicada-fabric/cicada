@@ -20,3 +20,7 @@ func (s *Service) LeaveNodeEndpoint(rpc store.NodeControlRPCInput, in nodewire.E
 func (s *Service) AvailableNodeNativePairs(rpc store.NodeControlRPCInput, controlPublic e2ee.PublicIdentity) (*nodewire.AvailableNativePairs, error) {
 	return s.store.AvailableNodeNativePairs(rpc, controlPublic)
 }
+
+func (s *Service) ListNodeEndpoints(rpc store.NodeControlRPCInput, in nodewire.EndpointDirectoryRequest) (*nodewire.EndpointDirectoryResult, error) {
+	return s.store.ListNodeEndpoints(rpc, in)
+}

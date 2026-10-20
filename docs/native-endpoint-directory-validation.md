@@ -140,3 +140,40 @@ registration/Pair-reuse/Leave/exact-retry checks pass. This producer run does no
 claim QA's separate four-way fault/recovery gate has passed; that rerun retains
 its own source, request packets and receipts. Node self-inventory, local bridge
 and context-ticket work remain later scopes.
+
+
+## Follow-up: private Node-operator directory
+
+The Node-operator profile adds bounded `node.endpoints.list` and its public
+capability format on the same existing GET path. It does not change the empty
+query's Owner format or add an Endpoint/model `directory.read` grant.
+`node-operator-final-20261020T155753Z` passed 5/0/0, exit 0; the related vet run
+`node-operator-vet-20261020T155755Z` passed, exit 0. Their exact dirty source is
+base `2ab4e5155f4d8c082f69a3fe2764b6d7fee84e72` plus manifest
+`82f33d29c5d0f587fcec457262dd972f3800cc01fdda4e54086ce75a599663c8`, using the
+same fixed image and isolated synthetic environment described above.
+
+The cases check actual PQ/TCP zero-rights discovery, separation of public Node
+and Owner capability formats, old-format and wrong-pin refusal, current Node
+revocation, foreign Owner/Node filtering before LIMIT with deliberately earlier
+foreign IDs, cursor refusal, noncreating exact self lookup, stable long-path
+pagination and complete 48-KiB result bounds. A synthetic second-Node metadata row
+is a filtering fixture, not evidence of a second actual Owner-approved Node.
+
+Independent QA's separate two-selector correction on `2ab4e51` plus its dirty
+acceptance driver passed 2/0/0 and observed two HTTP 429 responses to four
+concurrent identical packets. Serial exact retries returned the same PQ receipt
+and the database retained one zero-rights Endpoint. Its receipt is
+`/home/zyf/Cicada/.local/evidence/native-pair-acceptance/run-20261020T155233Z-lR0KG4/result.json`,
+SHA-256 `c5771e67d02db87dc9bb185e85a1b7a125cbf277634de44adbc21901d8442418`.
+That result is not a fresh nine-selector aggregate, Owner-read App consumption,
+local bridge, context-ticket, actual native Runtime or physical-device pass.
+
+
+After the integration owner fast-forwarded this producer to App paths baseline
+`73d6f9ad13c26ad7cf203e2924adcc7a46104213`, the previously tested directory Go
+changes remained byte-identical. The affected CLI compile-only run
+`node-operator-post-paths-compile-20261020T160237Z` completed with exit 0 and zero
+selected tests (manifest `b1fe22b0755b5c316a212242a2c6b752dc78f7a5d47149c58df25ac3cdf20759`).
+This is a build check, not a new directory functional run, Windows/native Runtime
+pass, or reason to duplicate already completed scoped tests.

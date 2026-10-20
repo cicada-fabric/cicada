@@ -195,3 +195,34 @@ prove only their recorded scopes. They do not establish Codex per-call context,
 native Runtime consumption, Windows GUI/DPAPI/ACL, Android, physical devices,
 public HTTPS, a resident deployment upgrade or new Owner→Node key-signing
 delegation. Those remain separately attributed.
+
+
+## Node-operator self-inventory profile
+
+`node-operator-v1` adds only `node.endpoints.list` to the existing Node PQ
+carrier. Its request is `{cursor?,limit?,harness?,native_session_id?}`: limit is
+1..64 (default 64); harness and SID must be supplied together for exact self
+lookup, with no cursor and limit 1. It never creates an Endpoint. Its result is
+`{node_id,captured_at,freshness:SNAPSHOT_ONLY,endpoints,next_cursor}`; cards are
+`endpoint_id,name,workspace,harness,native_session_id,presence,state_digest`.
+Owner and current Node are derived from the approved PQ binding, both Endpoint
+and Principal Owner are checked before LIMIT, and a foreign cursor is refused.
+The complete result, including next_cursor, is at most 48 KiB. A long-path page
+ends at the last actually returned ID.
+
+This is the local Node operator's private registered metadata, not an Endpoint
+business directory. It is available through the existing OS UID/private IPC
+boundary for an explicit operator command. Models' MCP `members/find` operations
+retain their original Group authorization; no Node credential, SID roster or
+state digest is delegated to those model tools. The App's independent Owner
+read continues omitting native SID and state_digest.
+
+GET `/v2/owner/endpoints/read?profile=node-operator` returns the public
+`cicada.node-operator-capabilities.v1` format: contract revision, availability,
+Hub ID, **Node-Control** fingerprint, four Node operation IDs and page bounds.
+The adapter validates this small response against its existing approved Node
+binding using `nodewire.ParseNodeOperatorCapabilities`, before starting any new
+pending operation. Old Hub/old format, wrong pin or unavailable profile refuses
+new starts; it cannot settle an old pending request. Empty-query GET keeps the
+original Owner capabilities format unchanged. This adds no new service, Owner
+signature delegation, business role or permission.

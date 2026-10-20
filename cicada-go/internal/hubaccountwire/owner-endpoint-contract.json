@@ -9,7 +9,8 @@
   "node_operations": {
     "node.endpoint.register": "EndpointRegistration",
     "node.endpoint.leave": "EndpointLeave",
-    "node.native_pair.available": "EMPTY"
+    "node.native_pair.available": "EMPTY",
+    "node.endpoints.list": "EndpointDirectoryRequest"
   },
   "node_terminal_errors": [
     "ENDPOINT_CONTEXT_INVALID",
@@ -69,5 +70,28 @@
   "owner_capabilities_method": "GET",
   "owner_capabilities_path": "/v2/owner/endpoints/read",
   "owner_capabilities_format": "cicada.owner-endpoints-capabilities.v1",
-  "max_capabilities_bytes": 4096
+  "max_capabilities_bytes": 4096,
+  "node_operator_profile": {
+    "query": "profile=node-operator",
+    "format": "cicada.node-operator-capabilities.v1",
+    "contract_revision": "node-operator-v1",
+    "pin": "CURRENT_OWNER_APPROVED_NODE_CONTROL",
+    "max_capabilities_bytes": 4096,
+    "max_page_rows": 64,
+    "max_page_bytes": 49152,
+    "self_selectors": [
+      "harness",
+      "native_session_id"
+    ],
+    "node_card_fields": [
+      "endpoint_id",
+      "name",
+      "workspace",
+      "harness",
+      "native_session_id",
+      "presence",
+      "state_digest"
+    ],
+    "caller": "LOCAL_NODE_OPERATOR_NOT_ENDPOINT_MCP"
+  }
 }

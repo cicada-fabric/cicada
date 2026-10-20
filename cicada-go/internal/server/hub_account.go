@@ -10,6 +10,7 @@ import (
 	wire "github.com/cicada-ai/cicada/internal/hubaccountwire"
 	"github.com/cicada-ai/cicada/internal/hubauth"
 	"github.com/cicada-ai/cicada/internal/hubowner"
+	"github.com/cicada-ai/cicada/internal/nodewire"
 )
 
 type HubAccountAcceptor interface {
@@ -53,6 +54,28 @@ func accountOperation(path string) string {
 }
 func (h *Handler) hubAccount(response http.ResponseWriter, request *http.Request, operation string) {
 	if operation == wire.OperationOwnerEndpointRead && request.Method == http.MethodGet {
+		profiles := request.URL.Query()["profile"]
+		if len(profiles) > 0 {
+			if len(profiles) != 1 || profiles[0] != nodewire.NodeOperatorProfile {
+				writeError(response, http.StatusNotFound, errors.New("directory capability profile unavailable"))
+				return
+			}
+			provider, ok := h.accountAuth.(interface {
+				NodeOperatorCapabilities() (nodewire.NodeOperatorCapabilities, error)
+			})
+			if !ok {
+				writeError(response, http.StatusNotFound, errors.New("Node operator directory unavailable"))
+				return
+			}
+			caps, err := provider.NodeOperatorCapabilities()
+			if err != nil {
+				writeError(response, http.StatusServiceUnavailable, errors.New("Node operator directory unavailable"))
+				return
+			}
+			response.Header().Set("Cache-Control", "no-store")
+			writeJSON(response, http.StatusOK, caps)
+			return
+		}
 		provider, ok := h.accountAuth.(interface {
 			OwnerEndpointReadCapabilities() (wire.OwnerEndpointReadCapabilities, error)
 		})

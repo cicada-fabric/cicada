@@ -62,6 +62,15 @@ func (s *Service) endpointRPC(ctx context.Context, token string, raw []byte, pac
 			return nil
 		}
 		switch in.Operation {
+		case nodewire.EndpointDirectoryOperation:
+			var q *nodewire.EndpointDirectoryRequest
+			if err = decode(&q); err == nil {
+				if q == nil {
+					err = nodewire.ErrEndpointContext
+				} else {
+					result, err = s.fabric.ListNodeEndpoints(in, *q)
+				}
+			}
 		case nodewire.EndpointRegisterOperation:
 			var q nodewire.EndpointRegistration
 			if err = decode(&q); err == nil {

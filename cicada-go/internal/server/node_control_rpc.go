@@ -367,7 +367,7 @@ func nodeControlOperationAllowed(operation string) bool {
 	switch operation {
 	case "node.binding.status", "node.heartbeat", "node.jobs.list", "node.jobs.claim",
 		"node.jobs.result", "node.approvals.create", "node.approvals.status",
-		nodewire.EndpointRegisterOperation, nodewire.EndpointLeaveOperation, nodewire.NativePairAvailableOperation:
+		nodewire.EndpointRegisterOperation, nodewire.EndpointLeaveOperation, nodewire.NativePairAvailableOperation, nodewire.EndpointDirectoryOperation:
 		return true
 	default:
 		return false
@@ -381,6 +381,18 @@ func (h *Handler) dispatchNodeControlRPC(token string, rpc store.NodeControlRPCI
 		return decodeStrictClientJSON(bytes.NewReader(plaintext), nodewire.MaxRequestPlaintextBytes, target)
 	}
 	switch operation {
+	case nodewire.EndpointDirectoryOperation:
+		var input *nodewire.EndpointDirectoryRequest
+		if decode(&input) != nil || input == nil {
+			return nodeEndpointRefusal{nodewire.ErrEndpointContext.Error()}, nil
+		}
+		result, err := h.fabricService.ListNodeEndpoints(rpc, *input)
+		for _, known := range []error{nodewire.ErrEndpointContext, nodewire.ErrEndpointConflict, nodewire.ErrEndpointUnavailable} {
+			if errors.Is(err, known) {
+				return nodeEndpointRefusal{known.Error()}, nil
+			}
+		}
+		return result, err
 	case nodewire.NativePairAvailableOperation:
 		var input struct{}
 		if decode(&input) != nil {

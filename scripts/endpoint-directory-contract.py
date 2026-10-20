@@ -16,7 +16,7 @@ def fields(source, name):
 def check():
     wire = ROOT / "cicada-go/internal/hubaccountwire"
     manifest = json.loads((wire / "owner-endpoint-contract.json").read_text())
-    node = (ROOT / "cicada-go/internal/nodewire/endpoint.go").read_text()
+    node = (ROOT / "cicada-go/internal/nodewire/endpoint.go").read_text() + (ROOT / "cicada-go/internal/nodewire/operator.go").read_text()
     owner = (wire / "owner_endpoint_read.go").read_text()
     crypto = (ROOT / "cicada-go/internal/e2ee/owner_endpoint_read.go").read_text()
     constants = {name: ast.literal_eval('"' + literal + '"') for name, literal in
@@ -33,7 +33,12 @@ def check():
     assert manifest["owner_read_purpose"] == constants["OwnerEndpointReadPurpose"]
     assert manifest["owner_read_domain"] == constants["OwnerEndpointReadDomain"]
     assert set(manifest["node_operations"]) == {constants[x] for x in (
-        "EndpointRegisterOperation", "EndpointLeaveOperation", "NativePairAvailableOperation")}
+        "EndpointRegisterOperation", "EndpointLeaveOperation", "NativePairAvailableOperation", "EndpointDirectoryOperation")}
+    profile = manifest["node_operator_profile"]
+    assert profile["format"] == constants["NodeOperatorCapabilitiesFormat"]
+    assert profile["contract_revision"] == constants["NodeOperatorContractRevision"]
+    assert profile["query"] == "profile=" + constants["NodeOperatorProfile"]
+    assert fields(node, "EndpointDirectoryCard") == profile["node_card_fields"]
     assert fields(owner, "OwnerEndpointReadRequest") == manifest["owner_request_fields"]
     assert fields(owner, "OwnerEndpointReadResult") == manifest["owner_result_fields"]
     assert fields(owner, "OwnerEndpointCard") == manifest["owner_card_fields"]
