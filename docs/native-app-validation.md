@@ -3654,3 +3654,59 @@ Node carriers, Hub restart/restore, standard combined-source Client interop,
 Windows DPAPI/ACL/GUI/uninstall, physical devices, Android, public HTTPS/PQTLS
 and native Runtime also remain separate **NOT_RUN** gates. No real keys/state,
 model/provider, queue/SID or resident deployment was operated.
+
+
+## 2026-10-20 user-operated same-Node Pair batch
+
+Root relayed the user's report that the complete instructed batch behaved
+normally: the original A/B Threads joined, both actual candidates received
+separate consent, ASK/Reply worked in both directions, and communication
+continued after closing the App window. Record these observations as
+**USER_REPORTED_PASS**, not independent execution by QA. The delivered-artifact
+context remains the clean `4ca29dfc76f3eec9143676d554b3a26c1a178f1b`
+package identified above; this feedback introduces no new build, executable
+hash, deployed-image assertion or attribution to the later documentation HEAD.
+
+The first user observation was that both Threads showed Cicada connected with
+nine tools. Root's separate read-only process inspection found that those MCP
+processes had no CODEX_THREAD_ID/CODEX_SESSION_ID. Connected tools alone therefore
+did not establish the original native context or successful Join. The user
+then read each original Thread's actual SID/cwd through its native shell and
+personally resumed that exact existing Thread with per-launch MCP configuration.
+The same SID was used for exact resume and the MCP environment; conflicting
+CODEX_SESSION_ID/CICADA_NATIVE_SESSION_ID/CICADA_WORKSPACE aliases were cleared.
+This is a bounded manual recovery procedure, not general automatic discovery,
+a new launcher or permission to invent a SID, fork/new Thread or replace keys.
+
+After that manual recovery Root reported read-only matching of both actual MCP
+child processes: each CODEX_THREAD_ID matched its previously observed original
+SID, cwd matched its A/B workspace under
+`~/.cicada/acceptance/native-pair/`, and the original Node ID/state path,
+CODEX_HOME and Hub origin matched. Conflicting aliases were empty. Raw SIDs,
+record contents and private context are omitted here. This is
+**ROOT_REPORTED_READONLY_CONTEXT_MATCH**, not QA-operated Join/model/queue work.
+
+| Reported user action | Observation and scope |
+| --- | --- |
+| Original A/B Join into their reviewed Pair slots | USER_REPORTED_PASS; two original Threads after exact manual resume, not a replacement session |
+| App reviews both actual candidates and records separate consents | USER_REPORTED_PASS; account login or the first consent alone is not generalized as peer authority |
+| First ASK/Reply and reverse-direction ASK/Reply | USER_REPORTED_PASS for the instructed native exchange; no request/message IDs or trusted per-hop trace were supplied |
+| Close the App window and continue the exchange | USER_REPORTED_PASS for window-close continuity; logout, uninstall, Hub/Node restart and grant expiry/revocation were not separately reported |
+
+No request/message IDs, answer/witness digests, complete tool traces, elapsed
+times, model/provider/queue counters or actual route evidence accompanied this
+batch. It does not independently prove automatic wake, precise delivery latency,
+all consumption stages, sealed Relay versus direct routing, budget/replay
+boundaries or negative authorization cases. Do not convert the report into an
+aggregate independent PASS or extend it to unexecuted cases. Dedicated native
+Windows DPAPI/ACL/GUI security, fonts/high-DPI and second-instance recovery
+retests remain **NOT_RUN**; historical source-specific failures remain intact.
+
+Recording baseline is `6f7f2c9bd5e98caa1ef76465f6a2a79e8062d735`.
+The five untested lifecycle-harness WIP files remained frozen. This recording
+runs no new gate, build, service operation, model turn, queue or real Join and
+changes no native record, original Node state or Windows vault. C0.1's pure
+186-event result and the empty App2 fixture remain separate; neither is evidence
+for this actual user batch. Remaining feedback and independent acceptance
+criteria are maintained in the [existing plan](native-app-plan.md#current-feedback-and-acceptance-ledger),
+not a new task book. Uninstall scripts are outside the current remediation stage.

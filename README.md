@@ -36,17 +36,26 @@ has [manual independent-Owner installation steps](docs/node-tls-first-install-cl
 Clean amd64/ARM64 package first installation passed its scoped Docker gate;
 standard HTTPS bootstrap and enrolled strict PQ TLS are separate stages.
 
-The development line is **0.0.5**, unreleased on `dev`. Hub, Node and App are
-composable components; installing or registering one does not confer business
-permissions or Owner authority. The current engineering target is
-[controlled installation registration](docs/hub-installation-registration-contract.md):
-C0 v1 at `c2c3ced` records typed-proof, codec and bounds checks, with default
-public availability **false**. Consumer review found independent session-scope,
-new-Node admission and Owner inventory gaps; C0.1 (contract revision v1.1) is
-being prepared. H1/H2 Hub admission/read grants and actual App/Node integration
-remain NOT_RUN. The [native App architecture](docs/native-app-architecture.md)
-and [current plan](docs/native-app-plan.md#composable-installation-and-shared-state-acceptance-target)
-separate this target from completed source-specific checkpoints.
+The development line is **0.0.5**, unreleased on `dev`. On 2026-10-20, the user
+reported successful original A/B Thread Joins, separate Owner consents,
+bidirectional ASK/Reply and continued communication after closing the App
+window. This is **USER_REPORTED_PASS** on the existing delivered Pair flow;
+the [batch record](docs/native-app-validation.md#2026-10-20-user-operated-same-node-pair-batch)
+keeps process-context checks, user feedback and unmeasured delivery/timing
+separate. It is not a fresh build or complete independent native acceptance.
+
+The [current feedback ledger](docs/native-app-plan.md#current-feedback-and-acceptance-ledger)
+tracks the remaining product and safety work in one plan. Hub, Node and App are
+composable components; installation, ordinary registration, account login and
+business/Owner authorization are separate. The bounded Hub remediation will
+reuse zero-right Endpoint registration and scoped topology/Directory;
+implementation and independent acceptance remain pending. The broader
+installation-registration family is frozen. [C0.1](docs/hub-installation-registration-contract.md)
+at `e0e05582dabea005eaa7c3c2d8da3527e263682a` freezes the
+`installation-registration-v1.1` crypto/wire boundary, with default public
+availability **false**. H1/H2 and actual registration consumers remain NOT_RUN.
+This new capability is separate from the already delivered `native-pair-v1`
+flow. See the [native architecture](docs/native-app-architecture.md).
 
 Existing N2 finite Owner activation, N3 Node status and Pair contracts remain
 separate. Account login is not Root; registration grants no Network/Group/peer
@@ -54,13 +63,15 @@ or Runtime rights. Original identities, current Guards and independent Owner
 signatures remain authoritative. App pre-registration custody, UI/installer
 checks and the empty App2 container adapter have bounded
 [validation records](docs/native-app-validation.md); none establishes the new
-cross-component registration flow or real Codex conversation.
+cross-component registration flow. The real conversation feedback above has
+its own user-reported scope.
 
 Historical Windows observations include **USER_REPORTED_FAIL** for Chinese
 text and second-instance setup; keep the [original batch](docs/native-app-validation.md#windows-11-eight-step-user-batch)
 and [subsequent profile-recovery source](docs/native-app-validation.md#profile-recovery-follow-up)
-attributed separately. Physical Windows DPAPI/ACL/GUI/uninstall, actual native
-Runtime and current public registration/Pair acceptance remain unaccepted.
+attributed separately. Dedicated Windows DPAPI/ACL/GUI security tests and
+independent native consumption, automatic-wake and public-operation traces
+remain NOT_RUN; uninstall scripts are outside the current remediation stage.
 Encrypted PKCS#8 import and recovery after losing all Owner signing-key copies
 are not implemented. Source-bound Hub, Worker and Android outcomes remain in
 the [dated closeout](docs/v01-current-closeout-20261009-validation.md#current-20261010)
@@ -83,7 +94,7 @@ Use the checkout-based commands in [distribution and deployment](docs/distributi
 - Optional host Node: `scripts/install-cicada-worker.sh`; review the Hub URL,
   state and Owner confirmation requirements before running it.
 - Binary packaging: `scripts/build-release.sh VERSION [OUTPUT_DIR]`
-  (requires Go 1.27.2); optional PQ packaging requires an accepted OpenSSL stage.
+  (requires Go 1.27.3); optional PQ packaging requires an accepted OpenSSL stage.
 - Local Hub image: `scripts/build-hub-image.sh --image IMAGE --metadata-file PATH`.
 
 These commands build from a local checkout. No published image tag or signed

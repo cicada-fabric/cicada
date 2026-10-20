@@ -8,24 +8,34 @@ Native consumption and physical-phone acceptance remain separate scopes.
 Read the published [community technical site](https://cicada-fabric.github.io/)
 or start with the authoritative [v0.1.x technical guide](v01-technical-guide.md). It describes the
 current 0.0.5 source, deployment boundaries and remaining acceptance work.
-The current native work is [controlled installation registration](hub-installation-registration-contract.md)
-under `installation-registration-v1`: C0 v1 at `c2c3ced` records proof, codec and
-bounds checks; default public availability remains **false**. Consumer review
-found independent session-scope, new-Node admission and Owner inventory gaps.
-C0.1 (contract revision v1.1) is being prepared; H1 durable zero-business-right
-admission, H2 exact fixed read grants and actual App/Node integration remain
-NOT_RUN. Original v1 checks retain their source attribution. Start with the [native architecture](native-app-architecture.md),
-[INST-01..07 plan](native-app-plan.md#composable-installation-and-shared-state-acceptance-target)
-and [source-specific validation](native-app-validation.md). Component installation,
+Current work follows the [single feedback and acceptance ledger](native-app-plan.md#current-feedback-and-acceptance-ledger).
+On 2026-10-20 the user reported original A/B Joins, separate consents,
+bidirectional ASK/Reply and communication after closing the App window as
+successful. The [batch record](native-app-validation.md#2026-10-20-user-operated-same-node-pair-batch)
+labels this USER_REPORTED_PASS, separately from Root's read-only MCP-context
+observations and independent execution. The existing delivered Pair flow is
+available for this bounded use; new registration work is a separate scope.
+The approved bounded Hub direction reuses zero-right Endpoint registration and
+same-Owner topology/Directory with cross-Owner redaction; implementation and
+independent integration remain pending. Broader C0 registration work is frozen.
+
+[C0.1](hub-installation-registration-contract.md) at
+`e0e05582dabea005eaa7c3c2d8da3527e263682a` freezes
+`installation-registration-v1.1` proofs, codecs and bounds. Its default public
+availability remains **false**; H1/H2 and actual registration consumers are
+NOT_RUN. Original v1 checks keep their source attribution. Start with the
+[native architecture](native-app-architecture.md), [plan](native-app-plan.md)
+and [source-specific validation](native-app-validation.md). Installation,
 registration, account login and Owner/business authorization are distinct.
 
 Earlier N2 Owner activation and bounded N3 status/Pair results retain their own
 contracts, source/artifact hashes and environments. App pre-registration local
 custody, component-installer/UI checks and the empty App2 container adapter are
 preparatory scopes; they do not establish actual new registration, Owner-pin
-exchange or independent App2 authorized Hub-state reads. Real Codex A/B/A,
-Windows DPAPI/ACL/GUI/uninstall and current public registration/Pair operation
-remain unaccepted. The [Windows batch](native-app-validation.md#windows-11-eight-step-user-batch)
+exchange or independent App2 authorized Hub-state reads. Dedicated Windows
+DPAPI/ACL/GUI security tests, automatic-wake/timing traces and independent
+real-consumption/public-operation evidence remain NOT_RUN. Uninstall scripts
+are outside this remediation stage. The [Windows batch](native-app-validation.md#windows-11-eight-step-user-batch)
 retains USER_REPORTED_FAIL for Chinese text and second-instance entry; later
 [profile-recovery code](native-app-validation.md#profile-recovery-follow-up)
 does not erase that historical attribution or prove a new physical retest.
@@ -40,7 +50,7 @@ guide's v0.1.x denotes the planned first release line.
 | Product architecture | [Adopted specification](../CICADA.md), [implementation status](architecture-v2-status.md), [completion ledger](completion-ledger.md) |
 | Hub Owner bootstrap checkpoint | [Operator guide](hub-owner-bootstrap.md), [first-signer contract](hub-owner-bootstrap-contract.md), [validation](hub-owner-bootstrap-validation.md), and [historical UI and retained security-design notes](owner-onboarding-design.md) — historical bounded Hub/account SCOPED PASS; original aggregate failures/timeouts retained. N2 adds [finite activation and exact pending-Owner continuation](hub-owner-activation-contract.md). Lost/revoked Root recovery is not implemented by N2 |
 | Native App | [Architecture](native-app-architecture.md), [plan and matrix](native-app-plan.md), [integration evidence and Windows procedure](native-app-validation.md#n2-hubapp-integration) — earlier N2/N3 Linux scopes and later Core/UI/installer/cross-build records remain source-specific. Dedicated Windows DPAPI/ACL/GUI/uninstall and physical visual review remain unaccepted. Unencrypted existing Owner identities can be vaulted and proved; encrypted PKCS#8 input unsupported |
-| Controlled installation registration | [C0 contract](hub-installation-registration-contract.md), [native plan](native-app-plan.md#composable-installation-and-shared-state-acceptance-target), [validation](native-app-validation.md) — C0 v1 crypto/DTO checks retain their source; C0.1/v1.1 revision in progress, default public availability false and actual INST integration NOT_RUN |
+| Controlled installation registration | [C0.1 contract](hub-installation-registration-contract.md), [native plan](native-app-plan.md#composable-installation-and-shared-state-acceptance-target), [validation](native-app-validation.md) — v1.1 crypto/wire checkpoint committed; default public availability false and actual INST integration NOT_RUN |
 | Identity/Node-only Hub | [Operator guide](hub-nodes-only.md), [N3 contract](hub-app-node-authority-contract.md), [Hub validation](hub-app-node-authority-validation.md) — standard HTTPS plus application PQ envelopes; strict PQTLS, native Runtime and physical deployment acceptance remain separate |
 | Deployment and platform interfaces | [CLI, legacy Web UI and local components](deployment-interface-design.md) — official-product research and platform delivery plan; the native App is the current user-interface target, and platform build/runtime evidence stays separate |
 | Install and operate | [Distribution](distribution.md), [development setup](../DEVELOPMENT.md), [Hub build provenance](hub-build-input-provenance.md) |

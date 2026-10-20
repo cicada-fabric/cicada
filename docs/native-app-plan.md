@@ -43,11 +43,63 @@ selected root consistently and migrating existing installations are not
 implemented or accepted by this plan. Historical validation paths and results
 keep their original attribution.
 
-The next user-operated two-Thread acceptance workspace and Cicada MCP cache
-are planned under `~/.cicada/acceptance`. This does not migrate, copy or recreate
+The 2026-10-20 user-operated two-Thread batch used new workspaces and a Cicada
+MCP cache under `~/.cicada/acceptance` for its bounded manual workaround.
+This does not migrate, copy or recreate
 the existing Node state or Windows vault, or change the original Codex account
-and `CODEX_HOME`. Actual two-Thread acceptance remains the current priority;
-this path requirement adds no new gate.
+and `CODEX_HOME`. Current priority is the consolidated product/security
+remediation below; root unification and migration remain pending. This path
+record adds no new gate.
+
+## Current feedback and acceptance ledger
+
+2026-10-20 consolidation on recording baseline
+`6f7f2c9bd5e98caa1ef76465f6a2a79e8062d735`. This is the single current
+feedback list, not a new task book or authorization to change a protocol.
+App owns product implementation/unit checks; independent QA owns integration,
+security and evidence. Hub owns shared contracts and authoritative state.
+Unsettled protocol/API rows remain DESIGN_PENDING before executable drivers.
+Source/portable results, user observations and independent real execution stay
+separate; older matrices and failures below keep their original attribution.
+
+The approved bounded Hub direction reuses existing zero-right Endpoint
+registration and same-Owner topology/Directory, with cross-Owner path redaction.
+Its final minimal contract, implementation and integration still need review
+and execution. The broader C0 installation-registration family remains frozen;
+its pure tests are not the acceptance result for this direction.
+
+The [latest actual user batch](native-app-validation.md#2026-10-20-user-operated-same-node-pair-batch)
+reports original A/B Join, separate consents, forward/reverse ASK/Reply and
+window-close continuation as **USER_REPORTED_PASS**. Root separately reported
+matching actual MCP child SID/cwd/Node/API after manual exact resume. Request/
+message IDs, timing, automatic wake and independent native-consumption traces
+were not supplied. This does not close every older N3-TT or Windows gate.
+
+| ID | Feedback and required independent observation | Current boundary |
+| --- | --- | --- |
+| FB-01 | Optional Hub/Node/App on one host; ordinary registration allows only necessary self-auth/status, with zero business rights. Account login cannot create Root, Join, communication or execution authority. | C0.1 v1.1 crypto/wire committed; actual H1/H2 and consumers NOT_RUN. Co-installation cannot inherit grants. |
+| FB-02 | Owner chooses explicit software/business permissions or presets; Hub durably verifies the original Owner signing-key chain, exact actor/target/current versions and expiry. Unsigned/self-issued presets or revoked/stale authority deny. | Broader policy behavior DESIGN_PENDING. Existing finite Pair/status grants retain their contracts; UI presets cannot become a new authority. |
+| FB-03 | Node obtains a device code and App approves the actual candidate. Normal trusted-pin setup requires no manual Owner public-key/fingerprint transfer; wrong/replaced pin or missing proof rejects without fallback or key replacement. | Manual export/import remains the delivered interim path with user-reported prerequisites. Integrated new flow NOT_RUN. |
+| FB-04 | Own lists lead with name + workspace + Node + status and retain original SID/Endpoint ID/workspace/name. Renaming changes neither stable identity, keys nor permissions; removing an association preserves the original Thread/workspace. | Naming/inventory contract DESIGN_PENDING; ID-only primary interaction is a product gap. |
+| FB-05 | Duplicate names return AMBIGUOUS/require explicit choice. Matching name/workspace can use human labels; selection binds exact internal ID/current version. Revocation rejects an old choice rather than retargeting another same-name Endpoint. | Resolution/version contract DESIGN_PENDING. Test rename, duplicate, stale selection and revoke/rebind independently. |
+| FB-06 | Current-machine and remote lists filter by this Owner or exact authorized scope. Cross-Owner discovery hides absolute paths by default; qualified Owner inventory may show registered but unpermitted objects with that distinction visible. Hub persists inventory/permissions. | Reuse of existing zero-right Endpoint registration and same-Owner topology/Directory is the approved direction; final projection contract/implementation and independent integration remain pending. |
+| FB-07 | Plugin/MCP binds the actual original native record, SID and canonical cwd, with original Codex account, Node/API and independent Node record validation. Reject missing/mismatched records, A/B swaps and inherited SID/workspace aliases. | Codex 0.163.0 MCP startup lacked SID; bounded manual exact resume repaired the reported run. General automatic integration NOT_IMPLEMENTED; connected tools are not a Join receipt. |
+| FB-08 | Explicit local/plugin registration or Join commands execute deterministic guarded operations without model decision-making and bind the actual original context. Zero-right registration does not require a Pair/slot; communication still needs separate authority, including exact Pair/slot for the existing reserved-Pair flow. | Product entry/contract DESIGN_PENDING. Existing `cicada_join` is a model-invoked MCP entry; no identity forgery, relaxed Guard, new launcher or daemon is authorized by this row. |
+| FB-09 | New installations default Cicada-owned user files to `~/.cicada`, permit custom root and apply it consistently to configuration/state/managed workspace/cache. Development `~/Cicada` stays separate. | Default-root unification/migration NOT_IMPLEMENTED; actual new acceptance workspace/cache is scoped under `~/.cicada/acceptance`. Existing Node/vault and Codex account locations remain intact. |
+| FB-10 | Locate and unlock old/nested vault layouts, resume the original profile/keys/outbox and reconcile uncertain original requests. Missing/busy/corrupt storage gives safe recovery, never silent first setup or a replacement identity. | Existing profile-recovery source/portable checks and old second-instance failure retain their records. Matching physical Windows recovery retest NOT_RUN. |
+| FB-11 | Login-first presentation hides Node/Owner/private workspace data before current account authentication. A persistent Node registration survives the separate 15-minute App status-access expiry, explicit end and reauthorization without reinstalling or pairing again. | Earlier login/status user batches passed their reported scopes. New cross-scope, expiry/stale and privacy assertions require separate evidence. |
+| FB-12 | Native navigation has clear summaries and collapsible detail, usable errors/recovery, legible CJK at real DPI and selectable/copyable public fields. Copy/export never exposes private keys, tokens or secret tickets. | Chinese text was USER_REPORTED_FAIL and previously deferred; it is now an open remediation item. Later copy/select source checks do not establish a new delivered/physical UI PASS. |
+| FB-13 | Keep original Hub/Owner pins, DPAPI/ACL and exact encrypted requests before send. Loss, unsigned/corrupt responses, duplicates and restart recover authenticated original outcomes; expiry/stale data cannot renew authority. | Existing N2/N3/PQ fault receipts are source-bound. New flows NOT_RUN; dedicated Windows DPAPI/ACL/GUI security needs actual native evidence. |
+| FB-14 | Closing/logout of App1 does not implicitly revoke independently valid work. App2 registers with its own keys and reads matching fresh Hub state under separate grants, without copying App1 Owner keys/session/outbox. Expiry/revocation still deny at original limits. | Window-close communication USER_REPORTED_PASS; logout/expiry adversaries, actual independent App2 and shared-state recovery NOT_RUN. Empty App2 fixture is preparation only. |
+| FB-15 | Keep Go core and existing crypto/TCP/persistence, with no new coordination service or model polling. Record idle/request/resource costs and exact source/toolchain/product versions; verify upstream stable versions when choosing updates. | Pinned build/fixture checks retain their original versions. Installed Codex 0.163.0 is an observation, not a claim of latest stable; no silent deployment update is implied. |
+| FB-16 | Preserve identities/state through the current remediation; the user will later perform a full uninstall/reinstall acceptance. Record retained/deleted data and platform results only when actually executed. | Uninstall scripts are explicitly NOT_IN_SCOPE for this stage. Full removal/reinstall and physical Windows cases NOT_RUN; no real deployment/state operation is authorized here. |
+
+The next independent matrix will reuse owned real-crypto/TCP/persistent-DB
+fixtures for new authorization/Directory/recovery boundaries after contracts
+are reviewed. Plugin context and deterministic commands need their actual
+delivered entry before synthetic cross-process faults; product units remain
+with App. Real Thread/queue/model operation remains user-controlled. No old
+large matrix, new driver or uninstall implementation is requested by this ledger.
 
 ## Composable installation and shared-state acceptance target
 
@@ -56,6 +108,10 @@ These future observations are all **NOT_RUN**, not extensions of N2/N3 PASS.
 This target list itself does not authorize schema or wire changes; actual
 protocol changes follow the reviewed C0/C0.1 contracts. Unimplemented or
 unaccepted flows remain pending.
+
+The removal portion of INST-04 is retained as a later product target; uninstall
+scripts are outside this remediation stage. Window-close continuity has the
+separate user-reported result above, not complete INST-04 acceptance.
 
 1. **INST-01** Fresh installation proves its identity/registers; necessary own-status works, but Owner management, Node execution and peer operations deny without business grants.
 2. **INST-02** Installing optional Hub/Node/App roles on one host does not expand existing Hub/Owner grants; a new Hub's bootstrap conveys no authority on an old Hub.
@@ -94,7 +150,8 @@ The independent container adapter now has a separate harness-only command:
 empty App Core/container/network isolation, not enrollment, business authority,
 shared Hub state or INST-04/05 completion; see the [adapter receipt](native-app-validation.md#app2-isolated-container-adapter-preparation).
 Ordinary missing prerequisites skip; the explicitly required gate rejects
-missing control/child evidence. C0 positive cases remain contract-pending.
+missing control/child evidence. C0.1 v1.1 is committed; actual positive
+registration cases still depend on delivered Hub/App/Node consumers.
 
 ## Checkpoints
 
@@ -102,8 +159,8 @@ missing control/child evidence. C0 positive cases remain contract-pending.
 | --- | --- | --- |
 | N1 — Native foundation | Typed Hub connection and health verification; strict secret-free connection card; explicit transport policy; encrypted-vault identity and exact-packet persistence; existing encrypted claim/login/inspect/logout calls; honest account/Root pending states; native controller contract and deterministic protocol tests. | In progress in the current source checkpoint. See [validation](native-app-validation.md). |
 | N2 — Owner proof and finite activation | Reuse exact existing Owner keys; one-use local activation code; server-authorized Root proof; finite App lease; controlled pending-Owner continuation; trusted profile restart and authenticated recovery. Account login alone never activates Root. | Hub/App core implemented under [owner-activation-v1](hub-owner-activation-contract.md), schema 62; independent Linux protocol SCOPED_PASS (131 events, zero failures/skips). Oct 17 Windows initial flow/positive ACL are user-reported PARTIAL; dedicated native security tests and comprehensive visual acceptance remain NOT_RUN. See [validation](native-app-validation.md#n2-hubapp-integration). |
-| N3 — Authorized live canvas and Node actions | Add live objects only from an authenticated, authorized Hub/Node read path; add explicit guarded Node actions and status reconciliation. Empty/unavailable canvas stays empty; no demo objects are presented as live state. | Bounded Node enrollment/status/recovery under `app-node-authority-v1`, schema 63. Reviewed `854a594` plus dirty QA: Linux 84/0/0 and separate automatic status-entry 2/0/0; earlier Ubuntu 84/0/0 retains its source. Windows `1980dce` batch steps 1–5/8 are USER_REPORTED_PASS; second-instance entry and Chinese text are USER_REPORTED_FAIL. Independent native execution remains NOT_RUN. These dated results remain historical; current carrier work follows C0 below, while real same-Node Codex dialogue is NOT_RUN and workspace/task creation is paused. Live canvas, App SSE and native Runtime acceptance remain incomplete. |
-| C0 / H1 / H2 — Controlled installation registration | Ordinary installation/subject identity with zero business rights; independent Owner pin; exact status/Pair read grants; actual Hub/App/Node shared-state recovery. | [C0](hub-installation-registration-contract.md) v1 crypto/DTO checks at `c2c3ced55effd1ef90f803fea8c5b9fb24a91f17` retain their original source attribution, with default public availability false. Consumer review found independent session-scope, new-Node admission and Owner inventory gaps; C0.1 (contract revision v1.1) is in progress. H1/H2 and App/Node integration, including INST-01..07, remain NOT_RUN. Local pre-registration storage and the empty App2 isolation adapter do not substitute for those flows. |
+| N3 — Authorized live canvas and Node actions | Add live objects only from an authenticated, authorized Hub/Node read path; add explicit guarded Node actions and status reconciliation. Empty/unavailable canvas stays empty; no demo objects are presented as live state. | Bounded Node enrollment/status/recovery under `app-node-authority-v1`, schema 63. Reviewed `854a594` plus dirty QA: Linux 84/0/0 and separate automatic status-entry 2/0/0; earlier Ubuntu 84/0/0 retains its source. Windows `1980dce` batch steps 1–5/8 are USER_REPORTED_PASS; second-instance entry and Chinese text are USER_REPORTED_FAIL. Independent native execution remains NOT_RUN. Those source-specific results remain historical. The 2026-10-20 actual Pair batch is USER_REPORTED_PASS for original A/B Joins, dual consent, bidirectional ASK/Reply and window-close continuation; independent native traces and broader workspace/task creation remain unaccepted. Live canvas, App SSE and native Runtime acceptance remain incomplete. |
+| C0 / H1 / H2 — Controlled installation registration | Ordinary installation/subject identity with zero business rights; independent Owner pin; exact status/Pair read grants; actual Hub/App/Node shared-state recovery. | [C0](hub-installation-registration-contract.md) v1 crypto/DTO checks at `c2c3ced55effd1ef90f803fea8c5b9fb24a91f17` retain their attribution. C0.1 v1.1 is committed at `e0e05582dabea005eaa7c3c2d8da3527e263682a`, with default availability false. H1/H2 and actual App/Node integration, including INST-01..07, remain NOT_RUN. Local pre-registration storage and the empty App2 fixture do not substitute for those flows. |
 | N4 — Legacy naming and surface retirement | Retire transitional browser and public Client names only after equivalent App behavior, migration and interoperability gates pass. Preserve old wire identifiers and historical evidence attribution. | Not started. |
 
 The authorized Android history-preserving subtree import is complete as
@@ -443,6 +500,13 @@ candidate's USER_REPORTED_FAIL and deferred Chinese display failure remain.
 
 ## Same-Node real Codex Thread acceptance preparation
 
+Current 2026-10-20 follow-up: the [actual user batch](native-app-validation.md#2026-10-20-user-operated-same-node-pair-batch)
+reports the instructed Join/consent/bidirectional/window-close sequence as
+USER_REPORTED_PASS. The matrix and preparation narrative below retain their
+2026-10-17 scope; they are not a claim that the later user run never occurred.
+Independent traces, timings, automatic wake and adversarial cases remain open
+in the [current ledger](#current-feedback-and-acceptance-ledger).
+
 Preparation baseline `a14ad28`, 2026-10-17. The user's next priority is an actual
 question/answer between two independent real Codex Threads on the same logical
 Node ID and physical gpu1 host, through the existing production Join/Fabric/MCP
@@ -495,7 +559,9 @@ the conversation lane with its actual route recorded. It is not direct PASS.
 | N3-TT-16 | Crypto epochs, budget and replay | Separate App session epoch, native binding epoch, E2EE key/counter/replay state and message budgets. Approved `native-pair-v1` fixes four independent ASK roots in either direction, at most one outstanding ASK, one reply per ASK/four replies/eight messages/eight native deliveries, 8 KiB plaintext per message and 64 KiB total plaintext, 128 KiB ciphertext per message and 1 MiB total ciphertext. Exact retries cannot reset/double-charge budget or revive permission | CONTRACT_DEFINED; full real acceptance NOT_RUN |
 | N3-TT-17 | Lightweight, measured operation | Reuse existing Go/crypto/transport/persistence with no new coordination service/dependency. Record actual request/response JSON bytes, peer ciphertext bytes, latency, requests/retries/native submissions, owned-SID model calls and idle pair traffic separately; no extra authorization renewal, model loop or polling is inferred from availability | NOT_RUN |
 
-The following is a **user-operated manual acceptance skeleton**. The historical
+The following is the **user-operated manual acceptance skeleton** retained
+for the delivered flow. Its instructed sequence has the later user-reported
+batch above; independent trace requirements remain open. The historical
 2026-10-17 13:57 UTC preflight found public Hub `e42640d` with native-pair HTTP
 404 and the user-delivered `1980dce` App without Pair UI/Dispatch. That was the
 older DELIVERY_PENDING checkpoint; it is not the current build status.
@@ -511,14 +577,15 @@ login, export and Node setup feedback as **USER_REPORTED_PASS**; see the
 The posted Linux checksum, Codex version, Owner-pin command status and active
 Node service are recorded separately from the overall procedural feedback.
 Independent Windows GUI/DPAPI/ACL checks, protected public pair operations and
-the real original-SID A/B/A dialogue remain **NOT_RUN / USER_VALIDATION_PENDING**.
+independent original-SID consumption traces remain **NOT_RUN**. The later
+2026-10-20 user-reported original-Thread batch is recorded separately above.
 QA/Root did not operate real turns/queues for this record. Later documentation
 commits do not change the package's clean-4ca build attribution.
 
-Two onboarding UX improvements remain pending:
+The following onboarding feedback is tracked in FB-03/FB-12 above:
 
-- Add Copy buttons and selectable text for the key fields users must transfer
-  or verify, including public identity/fingerprint fields.
+- Copy/selectable public fields have later source/portable checks; matching
+  physical Windows interaction remains NOT_RUN on that source.
 - Complete trusted Owner-pin establishment within the Node device-code/App
   approval flow. Current manual public-key/fingerprint export/import is an
   interim procedure, not the final onboarding UX. Preserve original identities,
@@ -561,9 +628,11 @@ Two onboarding UX improvements remain pending:
    The user personally launches/selects A and B and completes one harmless
    initial turn in each, establishing two distinct original native SIDs and
    checking its actual loaded MCP tools. Root/scripts do not start those turns.
-   Native SID is injected by Codex and verified against its local
-   session/workspace record; never set literal `CODEX_THREAD_ID` or
-   `CODEX_SESSION_ID` values to impersonate A/B. Complete these configuration
+   Use the actual SID read in each original native context and verify its local
+   session/workspace record. Codex 0.163.0 MCP startup did not provide that SID
+   in the observed run; the bounded manual remedy uses the same verified SID
+   for exact resume and per-launch MCP environment, clearing conflicting aliases.
+   Never invent a SID or substitute a different Thread. Complete these configuration
    and initial-turn prerequisites **before** starting App Pair bootstrap.
 2. **Prepare two empty slots in the App.** The user logs in normally, selects
    the original gpu1 Node and uses the delivered new pair authorization entry.
@@ -595,8 +664,8 @@ Two onboarding UX improvements remain pending:
    `cicada_reply` for that exact request ID, from the answer it already knows.
    Both B and A receive through the guarded delivery path confirmed for the
    delivered build, each in its original context; A reports the correlated
-   answer plus its own witness. The exact delivery/receipt entry point remains
-   USER_VALIDATION_PENDING on the user's actual upgraded services and Threads.
+   answer plus its own witness. The user reported this exchange and its reverse
+   successful; exact delivery/receipt traces remain unprovided for independent attribution.
    This Pair tool contract is limited to ASK/Reply/status/cancel;
    no receive-tool invocation is prescribed here. The ASK/Reply names are usable
    only after the new chain is delivered and authorized. If the user must
@@ -613,7 +682,7 @@ Two onboarding UX improvements remain pending:
    observations are USER_REPORTED until independently backed by matching traces;
    absent traces and unexecuted Windows checks remain NOT_RUN/NOT_PROVEN.
 
-Remaining manual prerequisites are matching user-operated Hub/Node/App
+For a future independently traced rerun, prerequisites are matching user-operated Hub/Node/App
 upgrades, reviewed per-Thread Cicada MCP configuration/loading and the real
 original-account/SID delivery path. The integrated candidate includes Hub/Node
 reserved Join/candidate/Owner-pin guards and App original-vault Pair actions;
@@ -628,7 +697,8 @@ duplicate ASK/REPLY, delayed original after cancellation, binding/lease change,
 and queue/injection crash windows. Fixture-only outcomes remain separate from
 actual public native consumption. Retain request/result hashes, process/turn
 and tool counts, source/image/CLI hashes, route evidence, exit code, cleanup and
-all incomplete levels. No real two-Thread conversation has passed this matrix.
+all incomplete levels. The 2026-10-20 user batch is USER_REPORTED_PASS for its
+stated actions; no complete independent execution of this matrix is claimed.
 Use existing transport/driver counters and bounded private traces for these
 measurements; do not add a monitoring framework or a separate optimization
 project before the usable chain closes. Distinguish application JSON size from

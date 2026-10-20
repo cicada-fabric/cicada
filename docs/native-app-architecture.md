@@ -32,8 +32,13 @@ acceptance; historical results retain their original source attribution.
 
 ## Composable installation and shared authority target
 
-2026-10-19 product direction: a target, not an accepted wire protocol, schema,
-implementation or completed acceptance result.
+2026-10-19 product direction, with the 2026-10-20
+[feedback ledger](native-app-plan.md#current-feedback-and-acceptance-ledger)
+tracking implementation and acceptance separately. C0.1 freezes the new
+registration crypto/wire contract; it does not implement this whole target.
+The existing Pair flow has a separate
+[user-reported same-Node batch](native-app-validation.md#2026-10-20-user-operated-same-node-pair-batch),
+including both communication directions and continuation after closing App.
 
 Hub, Node and App are optional components that may coexist on one host. A
 device is the UI entry point; authentication identifies a controlled installation
@@ -59,20 +64,71 @@ local authentication/signing and protected profiles plus a durable original-pack
 pending/outbox record; this record is not disposable cache. App is not the
 resident business controller.
 
-Closing App1 sends no network revocation; logout ends only its account session.
-Uninstall defaults to retaining protected identity and unresolved original-request
-material, with unrelated Hub/Node programs, services and state; it does not revoke
-the Hub's App-device registration. Deleting retained data and explicitly revoking
+The required lifecycle boundary is that closing App1 sends no network revocation
+and logout ends only its account session. Closing-window continuation is
+USER_REPORTED_PASS; logout and adversarial lifetime cases need separate evidence.
+Future component removal must retain protected identity and unresolved original-request
+material and preserve unrelated Hub/Node programs, services and state. It must
+not revoke the Hub's App-device registration. Deleting retained data and explicitly revoking
 a Hub device are separate actions. Existing authorized Node/peer work retains its
 original limits. Expiry and explicit device/epoch/grant revocation still apply,
 including dependencies on the original App-device identity. App2 registers
 independently, receives exact authorization and reads Hub's shared state without
-copying App1's local data or private identities.
+copying App1's local data or private identities. This remediation stage does
+not develop uninstall scripts; these removal requirements remain future targets.
 
 Owner's long-lived identity is independent of any one App installation. Signing
 keys stay in controlled local custody, never uploaded to Hub. If all copies of
 the sole Owner signing key are lost, recovery remains **NOT_IMPLEMENTED**;
 a new App/password cannot restore Root. See the [future acceptance targets](native-app-plan.md#composable-installation-and-shared-state-acceptance-target).
+
+## Naming, Directory and native-context targets
+
+The 2026-10-20 feedback is tracked in the
+[existing acceptance ledger](native-app-plan.md#current-feedback-and-acceptance-ledger).
+The following product targets need reviewed contracts and implementation;
+they are not new wire fields or proof of current Directory behavior.
+
+Endpoint IDs remain stable internal identity. Ordinary lists lead with name,
+workspace, Node and current status, while retaining the original native SID,
+Endpoint ID, workspace and name. Labels and workspace paths confer no authority;
+renaming cannot change keys or permissions. Duplicate names, including matching
+name/workspace pairs, require explicit disambiguation and selection. Selection
+binds the exact internal ID and current version; a revoked selection fails
+instead of resolving to another Endpoint with a similar label. Removing an
+Endpoint association must not delete the original Thread or its workspace.
+
+Lists on the current machine still require this Owner's or the caller's exact
+authorized scope. Cross-Owner discovery does not disclose absolute workspace
+paths by default. A qualified Owner may see registered objects with no granted
+communication rights; the UI must distinguish registration from authorization.
+Hub persists inventory and permissions; App is not their only store. Permission
+presets must still follow the genuine Owner signing-key chain and current Hub/
+Node Guards. A selected name, policy preset or account login is not a grant.
+
+The current approved direction reuses existing zero-right Endpoint registration
+and same-Owner topology/Directory with cross-Owner redaction. Final minimal
+contracts, implementation and integration remain pending. This does not activate
+the frozen broader C0 installation-registration family. Zero-right registration
+does not require an existing Pair; reserved-Pair communication retains its
+separate Join, slot and consent requirements.
+
+Native plugin integration must obtain the actual original Thread context,
+validate its native record/workspace and retain the existing Node-side check.
+The tested manual exact-resume procedure is a bounded workaround: connected MCP
+tools alone do not prove a SID, Join or authority. A future explicit local Join
+command or plugin action must work without model decision-making, using those
+same guarded primitives. No new launcher, daemon, guessed SID or unrestricted
+model-provided identity field is implied by this target.
+
+Cicada-owned installed user files default to `~/.cicada`, with an installation-
+selected custom root. Existing platform vault and Node locations are not
+silently migrated, replaced or rekeyed. Root selection and restoration must
+locate the original protected identities and unresolved requests, including old
+nested vault layouts. See the [path rule](native-app-plan.md#installed-user-file-root).
+Native navigation, summaries/details, legible CJK text, selectable/copyable
+public fields and actionable recovery are product acceptance requirements;
+they do not justify exposing private keys, secrets or signed-out workspace data.
 
 ## Authority and cryptographic boundaries
 
@@ -145,8 +201,8 @@ The bounded sequence is:
 | Stage | Scope | Current state |
 |---|---|---|
 | N1 — native foundation | Gio Windows UI source; typed Hub identity verification; account claim/login/inspect/logout; separate Owner and App-device identities; AES-GCM vault and durable exact-packet state; truthful Root/Manager pending state. | Partial in software 0.0.5. The app is not a released installer or an accepted Windows program. |
-| N2 — finite Owner activation | Single-code first Root proof; exact legacy `PENDING_PROOF` continuation; automatic profile/restart resume and authenticated error/status recovery. | Hub/App core implemented under `owner-activation-v1`, schema 62; independent Linux protocol gate SCOPED_PASS (131 test events, zero failures/skips). Native Windows remains NOT_RUN. See the [contract](hub-owner-activation-contract.md) and [receipts](native-app-validation.md#n2-hubapp-integration). |
-| N3 — authorized Hub/Node workspace | Compose existing Hub/Node Guard, explicit Node preview/confirmation, target-only status and durable recovery in the native App. | Bounded `app-node-authority-v1` App core/UI and `serve --hub-nodes-only` implemented, schema 63. Latest reviewed `854a594` plus dirty QA inputs: Linux 84/0/0 and separate automatic status-entry 2/0/0, SCOPED_PASS. Earlier Ubuntu 24.04.4 84/0/0 retains its own source. Windows automatic decay had a user-reported failure; new window behavior awaits retest. Live canvas, App SSE, native Runtime and physical acceptance remain incomplete. See the [matrix](native-app-plan.md#n3-independent-safety-model-and-acceptance-matrix) and [receipts](native-app-validation.md#n3-idle-decay-and-automatic-status-follow-up). |
+| N2 — finite Owner activation | Single-code first Root proof; exact legacy `PENDING_PROOF` continuation; automatic profile/restart resume and authenticated error/status recovery. | Hub/App core implemented under `owner-activation-v1`, schema 62; independent Linux protocol gate SCOPED_PASS (131 test events, zero failures/skips). Dedicated native Windows security remains NOT_RUN. See the [contract](hub-owner-activation-contract.md) and [receipts](native-app-validation.md#n2-hubapp-integration). |
+| N3 — authorized Hub/Node workspace | Compose existing Hub/Node Guard, explicit Node preview/confirmation, target-only status and durable recovery in the native App. | Bounded `app-node-authority-v1` App core/UI and `serve --hub-nodes-only` implemented, schema 63. Latest reviewed `854a594` plus dirty QA inputs: Linux 84/0/0 and separate automatic status-entry 2/0/0, SCOPED_PASS. Earlier Ubuntu 24.04.4 84/0/0 retains its own source. Earlier Windows automatic decay failed; the later 1980dce batch reported stale/online recovery passing. The 2026-10-20 Pair batch reports Joins, dual consent, bidirectional ASK/Reply and window-close continuation passing, with independent traces still NOT_RUN. Live canvas, App SSE, native Runtime and physical acceptance remain incomplete. See the [matrix](native-app-plan.md#n3-independent-safety-model-and-acceptance-matrix) and [receipts](native-app-validation.md#n3-idle-decay-and-automatic-status-follow-up). |
 | N4 — compatibility retirement | Retire browser product surfaces and public Client-facing names after equivalent App behavior; Hub public `/` returns 404. | Not implemented. Preserve frozen wire names and historical evidence. |
 
 The local vault uses AES-256-GCM with an authenticated, scope-bound envelope.
