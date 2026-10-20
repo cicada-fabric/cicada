@@ -673,3 +673,53 @@ was updated afterward with a documentation-only delta. No new protocol,
 dependency, deployment or real identity was introduced. Own disposable Docker
 interop, actual installed-plugin/native Runtime, Windows GUI/DPAPI/ACL/CJK/DPI,
 physical device, Android and public HTTPS acceptance remain **NOT_RUN** here.
+
+
+### 2026-10-20 installed-plugin asset correction
+
+Independent QA's original `18868ba` installed-plugin run confirmed that
+`plugin marketplace add /repo` succeeded, while `plugin add cicada@cicada-repo`
+failed because the manifest's `./cicada` source resolved to missing `/repo/cicada`.
+The original result remains at
+`/home/zyf/Cicada/.local/evidence/native-pair-acceptance/run-20261020T175718Z-eBSGNY/result.json`
+(SHA-256 `d7e21d89b81033656cb29b08e20e52902cfa4faa02132427e215e04ef054b1d6`).
+This was a product asset failure before the actual Host environment/tool gate.
+The existing marketplace now selects `./.agents/plugins/cicada` from the
+repository root. The single bundle, identity, version and portable launch command
+are retained.
+
+Official `rust-v0.163.0` source resolves to
+`83086188ae0614bd882818ff1aa23f3194962012`.
+Its [marketplace resolver](https://github.com/openai/codex/blob/83086188ae0614bd882818ff1aa23f3194962012/codex-rs/core-plugins/src/marketplace.rs#L677)
+uses that repository-root layout. Its
+[Codex MCP overlay](https://github.com/openai/codex/blob/83086188ae0614bd882818ff1aa23f3194962012/codex-rs/core-plugins/src/agent_plugin_mcp_overlay.rs#L58)
+adds local `env_vars` from the same-name compatibility stdio server after loading
+the portable server, preserving the portable command and arguments. The local
+launcher clears inherited variables and builds a bounded environment; its Unix
+default list does not include Cicada configuration.
+
+The compatibility `.mcp.json` therefore adds 17 explicit configuration names:
+Hub origin, Node selection, selected user/Node roots, original MCP session and
+outbox file/directory aliases, PQTLS configuration path, the existing advanced
+Network directories, and the retained XDG state location. It supplies no values,
+interpolation, caller SID, Endpoint/Group identity, credentials, key or proof
+contents. The portable `mcp.json` and Hook definition are unchanged. The config
+check independently resolves the marketplace source to the existing bundle and
+checks the complete allowlist and shared transport. Existing scope and server
+Guard validation remain authoritative. The opt-in per-call context schema from
+`18868ba` is a local MCP schema change; this correction changes no Hub wire.
+
+Source and validation evidence live under
+`/home/zyf/.cicada/acceptance/codex-context-checks/env-review-20261020T174600Z/`.
+The original read-only review, official tag/source hashes, pre-marketplace
+26/26 normal/race result and a local marketplace regression **FAIL** are retained.
+Final affected config/context/state/outbox tests recorded **26 PASS, 0 FAIL,
+0 SKIP** in each mode; scoped vet also passed. The tested source was dirty
+`18868bade057d5da97afe3e8139cc3cafb104afe`, with 2,374 inputs unchanged
+across the before/after manifests
+`74101ba420af1a97514cec53260864e55a319cf21530b950d9662b3012f8065c`.
+`asset-gate-receipt.json` retains selectors, commands and binary hashes. This
+README is a later documentation-only delta. Actual installed-plugin loading,
+configuration forwarding, human-visible feedback and managed `whoami` remain
+independent QA gates. No new Windows Runtime, GUI, Docker, Android, physical
+device or public HTTPS result is claimed by these asset checks.

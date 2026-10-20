@@ -6,6 +6,25 @@
       "args": [
         "mcp",
         "--codex-context"
+      ],
+      "env_vars": [
+        "CICADA_API_URL",
+        "CICADA_MACHINE_ID",
+        "CICADA_USER_ROOT",
+        "CICADA_NODE_STATE_DIR",
+        "CICADA_STATE_DIR",
+        "CICADA_MCP_SESSION_STATE_FILE",
+        "CICADA_MCP_STATE_FILE",
+        "CICADA_SESSION_STATE_DIR",
+        "CICADA_MCP_STATE_DIR",
+        "CICADA_MCP_OUTBOX_STATE_FILE",
+        "CICADA_MCP_OUTBOX_FILE",
+        "CICADA_MCP_OUTBOX_STATE_DIR",
+        "CICADA_MCP_OUTBOX_DIR",
+        "CICADA_NODE_PQTLS_CONFIG",
+        "CICADA_NETWORK_JOIN_DIR",
+        "CICADA_NETWORK_SESSION_DIR",
+        "XDG_STATE_HOME"
       ]
     }
   }

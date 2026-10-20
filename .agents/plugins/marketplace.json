@@ -9,7 +9,7 @@
       "name": "cicada",
       "source": {
         "source": "local",
-        "path": "./cicada"
+        "path": "./.agents/plugins/cicada"
       },
       "policy": {
         "installation": "AVAILABLE",

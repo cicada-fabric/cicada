@@ -481,9 +481,42 @@ func TestCodexSinglePluginManagedConfiguration(t *testing.T) {
 	if portable["name"] != "cicada" || legacy["name"] != "cicada" {
 		t.Fatal("plugin identity changed")
 	}
+	marketplace := read(filepath.Join("..", "marketplace.json"))
+	plugins := marketplace["plugins"].([]any)
+	if len(plugins) != 1 || plugins[0].(map[string]any)["name"] != "cicada" {
+		t.Fatal("marketplace no longer selects the single Cicada bundle")
+	}
+	source := plugins[0].(map[string]any)["source"].(map[string]any)
+	sourcePath, ok := source["path"].(string)
+	// Codex resolves local sources from the repository marketplace root,
+	// after stripping the .agents/plugins/marketplace.json layout suffix.
+	resolved := filepath.Join("..", "..", "..", strings.TrimPrefix(sourcePath, "./"))
+	if !ok || source["source"] != "local" || !strings.HasPrefix(sourcePath, "./") || filepath.Clean(resolved) != filepath.Clean(root) {
+		t.Fatal("marketplace source does not resolve to the existing Cicada bundle from its repository root")
+	}
+	if info, err := os.Stat(resolved); err != nil || !info.IsDir() {
+		t.Fatal("marketplace source directory is missing")
+	}
 	modern, compat := read("mcp.json"), read(".mcp.json")
+	compatServer := compat["mcpServers"].(map[string]any)["cicada"].(map[string]any)
+	// Codex 0.163 loads this same-name compatibility allowlist into the
+	// portable stdio server. Its transport command still comes from mcp.json.
+	wantEnvironment := []any{
+		"CICADA_API_URL", "CICADA_MACHINE_ID", "CICADA_USER_ROOT",
+		"CICADA_NODE_STATE_DIR", "CICADA_STATE_DIR",
+		"CICADA_MCP_SESSION_STATE_FILE", "CICADA_MCP_STATE_FILE",
+		"CICADA_SESSION_STATE_DIR", "CICADA_MCP_STATE_DIR",
+		"CICADA_MCP_OUTBOX_STATE_FILE", "CICADA_MCP_OUTBOX_FILE",
+		"CICADA_MCP_OUTBOX_STATE_DIR", "CICADA_MCP_OUTBOX_DIR",
+		"CICADA_NODE_PQTLS_CONFIG", "CICADA_NETWORK_JOIN_DIR",
+		"CICADA_NETWORK_SESSION_DIR", "XDG_STATE_HOME",
+	}
+	if !reflect.DeepEqual(compatServer["env_vars"], wantEnvironment) {
+		t.Fatal("plugin did not retain the reviewed configuration-only environment allowlist")
+	}
+	delete(compatServer, "env_vars")
 	if !reflect.DeepEqual(modern["mcpServers"], compat["mcpServers"]) {
-		t.Fatal("portable/legacy MCP configuration diverged")
+		t.Fatal("portable/legacy MCP transport configuration diverged")
 	}
 	server := modern["mcpServers"].(map[string]any)["cicada"].(map[string]any)
 	if server["command"] != "cicada" || server["type"] != "stdio" || !reflect.DeepEqual(server["args"], []any{"mcp", "--codex-context"}) || server["env"] != nil {
