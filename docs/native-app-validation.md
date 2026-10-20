@@ -3082,3 +3082,71 @@ original identity, authenticated proof and exact pin verification; login is
 still not Root. No protocol design, implementation, real pin/key/state change,
 service operation, new test/build or deployment was performed by this record.
 The package's source remains clean `4ca29df`; no rebuild or relabel is required.
+
+### Go 1.27.3 toolchain and verifiable-build checkpoint
+
+2026-10-20 UTC. Go **1.27.3**, released October 19, fixes `crypto/x509`
+security issues ([official release history](https://go.dev/doc/devel/release#go1.27.3)).
+The current toolchain directive, three Docker builders, two CI workflows,
+release/WASM validators and active acceptance builders now select 1.27.3.
+The minimum `go 1.26.0` directive, `go.sum` and algorithm dependencies are
+unchanged. Historical 1.27.2 results and cache provenance remain unchanged.
+
+Pinned builder references use official Docker index digests; they are not
+inferred image IDs:
+
+- `golang:1.27.3-bookworm@sha256:5c3e9b43cfd3bb95c7937462e29d87ada57b481a96fa23ad0eb61778d7a00110`
+- `golang:1.27.3-alpine3.24@sha256:f2c872bcee949b7be9c490efd02b48a8a2fbf947cdf533f1c58525ec9d8170fd`
+
+Both actual builders returned `go version go1.27.3 linux/amd64`. Root retains
+pull/inspect evidence in the parent run. QA used the populated old module cache
+read-only, with new task-private Go and WASM build caches. Native builder defaults
+also use separate 1.27.3 compilation caches; the N2 immutable-reference preflight
+accepts the complete pinned reference before checking local availability.
+
+Evidence is under
+`/home/zyf/Cicada/.local/evidence/composable-registration/run-20261020T075053Z-8d262d/qa-toolchain-e4hg5jt5/`.
+Inputs were **dirty `dbf1f94809c0293c0c098294a56dca3bab065246` plus recorded WIP**.
+Canonical Hub/Go build-input bookends match, fingerprint v4
+`53a5be870f12c291dc8ee312872876f48e267e0505d385b74a649834ff700a2c`.
+Original/final parser and packaging-source variants have separate complete
+copies and hashes; later metadata-only changes did not change Go/WASM inputs.
+These are not clean-commit executions and must not be relabelled after commit.
+
+| Check | Actual outcome | Exit |
+| --- | --- | --- |
+| Final N3 evidence parser | 18 PASS / 0 FAIL / 0 SKIP | 0 |
+| Final packaging checks, including N2 complete-reference preflight | 23 PASS / 0 FAIL / 6 optional SKIP, 29 total | 0 |
+| Real Go WASM PQ/Wire and UI-model checks under Node 24.16.0 | 1.27.3 WASM/runtime/manifest match; prior toolchains rejected | 0 |
+| Focused e2ee, original module-root cwd | 157 PASS / 11 FAIL / 1 SKIP; all 11 errors explicitly missing package-relative vector files | 1 |
+| Same original e2ee binary, corrected package cwd | 206 PASS / 0 FAIL / 1 SKIP; independent OpenSSL 3.5.9 interop not supplied | 0 |
+| Hub account wire / Hub identity | 105/0/0 and 3/0/0 | 0 each |
+| Buildinfo, original trimmed binary | 2 PASS / 1 FAIL; runtime.Caller source path cannot locate root VERSION | 1 |
+| Buildinfo, newly compiled without trimpath | 3 PASS / 0 FAIL / 0 SKIP; original binary and failure retained | 0 |
+| Linux CLI compile and Go binary metadata | Actual retained executable reports compiler 1.27.3 | 0 each |
+
+All executed test-binary pre/post hashes match; all **16** owned Docker
+containers were independently absent. Per-lane exact argv, logs, exits and
+both original failures remain. Packaging skips cover missing optional release/PQ
+artifacts or OpenSSL stages; they are not accepted execution. Nine shell files
+were checked individually and the changed JS test passed syntax checking.
+The CLI verification artifact is **36024664 bytes**, SHA-256
+`a11e608042ded172ac9fcfb4d6ca00085bb9829c84186ff9ac71270a4cdde6da`.
+It was built with `-buildvcs=false`; dirty source attribution is external,
+not an asserted embedded revision. WASM/runtime/test artifacts have full sizes
+and hashes in `toolchain-review-result.json`, SHA-256
+`7061a243db00f198d498429f2f96539743ae9d4099404a0517cdc68a5acd5984`.
+
+The existing N3 driver now retains each execution argv and requires pre/post
+and final on-disk binary inventories to match. Missing/malformed argv,
+replaced/missing artifacts and symlinks cannot produce a parser PASS. Even a
+valid older N3 result keeps `installation_acceptance=NOT_RUN`. Pair evidence
+records the complete builder reference separately from its digest.
+
+This is a toolchain/build-evidence checkpoint, not new registration or Owner-pin
+acceptance. INST-01..07 and the stronger App2 profile/container isolation await
+the reviewed Hub contract and actual App/Node adapters; no wire is guessed.
+The old N2/N3 matrices were not rerun. Root reserves standard Client interop for
+one later integrated gate. Windows GUI/DPAPI/ACL/uninstall, real Node services,
+queue/model/Runtime and public deployment remain **NOT_RUN** here. The delivered
+clean-4ca package was neither rebuilt nor relabelled, and no real state changed.

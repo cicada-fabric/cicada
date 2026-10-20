@@ -141,6 +141,43 @@ def sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def binary_manifest(artifacts):
+    files = {}
+    for name in ('cicada', 'n3.test'):
+        path = artifacts / name
+        try:
+            if stat.S_ISREG(path.lstat().st_mode):
+                files[name] = {'bytes': path.stat().st_size, 'sha256': sha(path)}
+        except OSError:
+            continue
+    return {'schema': 'cicada.n3.executed-binaries.v1', 'files': files}
+
+
+def execution_evidence(run, artifacts, image, lanes):
+    current = binary_manifest(artifacts)
+    inventories = []
+    for side in ('before', 'after'):
+        try:
+            inventories.append(json.loads((run / ('binaries-' + side + '.json')).read_text()))
+        except (OSError, ValueError):
+            inventories.append(None)
+    stable = (inventories[0] == inventories[1] == current
+              and set(current['files']) == {'cicada', 'n3.test'}
+              and all(item['bytes'] > 0 for item in current['files'].values()))
+    commands = {}
+    for lane in sorted(lanes):
+        path = run / (lane + '.command.json')
+        try:
+            argv = json.loads(path.read_text())
+            valid = (isinstance(argv, list) and len(argv) > 3
+                     and all(isinstance(arg, str) for arg in argv)
+                     and argv[:2] == ['docker', 'run'] and image in argv[2:-1])
+            commands[lane] = {'valid': valid, 'sha256': sha(path)}
+        except (OSError, ValueError):
+            commands[lane] = {'valid': False, 'sha256': None}
+    return stable, current, commands
+
+
 def save(path, data):
     path.write_text(json.dumps(data, indent=2, sort_keys=True) + '\n')
 
@@ -212,10 +249,11 @@ def finish(run, artifacts, image, required, owned_present, mode='preparation', c
         expected = {name for name in RUNTIME_EXPECTED if name == case or name.startswith(case + '/')}
     missing = sorted(expected - {name for name, action in got.items() if action == 'pass'})
     lanes = {'version', 'compile-cli', 'compile-tests', 'harness', 'vet'}
-    binaries = all((artifacts / name).is_file() and (artifacts / name).stat().st_size > 0 for name in ('n3.test', 'cicada'))
+    binaries, inventory, commands = execution_evidence(run, artifacts, image, lanes)
+    argv_recorded = all(item['valid'] for item in commands.values())
     contract_matches = all(before.get('files', {}).get(path) == digest for path, digest in CONTRACT['files'].items())
     passed = (set(codes) == lanes and not any(codes.values()) and before == after and not owned_present and binaries
-              and contract_matches and not missing and set(got) == expected
+              and argv_recorded and contract_matches and not missing and set(got) == expected
               and all(action == 'pass' for action in got.values()))
     # A reviewed schema does not establish production N3 behavior. Remain
     # closed until the actual Hub/App/Node cases are integrated and run.
@@ -229,13 +267,16 @@ def finish(run, artifacts, image, required, owned_present, mode='preparation', c
         'reason': 'Preparation selector only; full production N3 runtime cases are not executed by this run.',
         'reviewed_contract': CONTRACT, 'contract_pin_matches': contract_matches,
         'exit_code': code, 'exit_codes': codes,
+        'executed_binaries_stable': binaries, 'executed_binary_inventory': inventory,
+        'execution_argv_recorded': argv_recorded, 'execution_commands': commands,
+        'installation_acceptance': 'NOT_RUN',
         'source_head': before['head'], 'source_dirty': before['dirty'], 'source_manifest_sha256': before['manifest_sha256'],
         'source_stable': before == after, 'builder_image': image,
         'test_events': {a: list(got.values()).count(a) for a in ('pass', 'fail', 'skip')},
         'expected_tests': sorted(expected),
         'missing_or_unpassed_tests': missing, 'owned_container_absent': not owned_present,
-        'test_binary_sha256': sha(artifacts / 'n3.test') if (artifacts / 'n3.test').is_file() else None,
-        'cicada_binary_sha256': sha(artifacts / 'cicada') if (artifacts / 'cicada').is_file() else None,
+        'test_binary_sha256': inventory['files'].get('n3.test', {}).get('sha256'),
+        'cicada_binary_sha256': inventory['files'].get('cicada', {}).get('sha256'),
         'actors': {'hub': 'ACTUAL_CLI_PROCESS' if any(name in expected and action == 'pass' for name, action in got.items()) else 'NOT_RUN',
                    'packet_client': 'OPAQUE_HARNESS_NOT_APP' if got.get('TestN3HarnessRealHubReplyRecovery') == 'pass' else 'NOT_ACCEPTED',
                    'production_app_core_n2': 'ACTUAL_PROCESS' if got.get('TestN3HarnessActualAppBootstrapAndResume') == 'pass' else 'NOT_ACCEPTED',
@@ -357,6 +398,10 @@ def ubuntu_finish(run, artifacts, image, owned):
 if __name__ == '__main__':
     if sys.argv[1] == 'snapshot':
         snapshot(Path(sys.argv[2]), Path(sys.argv[3]))
+    elif sys.argv[1] == 'command':
+        save(Path(sys.argv[2]), sys.argv[3:])
+    elif sys.argv[1] == 'binaries':
+        save(Path(sys.argv[3]), binary_manifest(Path(sys.argv[2])))
     elif sys.argv[1] == 'finish':
         sys.exit(finish(Path(sys.argv[2]), Path(sys.argv[3]), sys.argv[4], sys.argv[5] == 'true', sys.argv[6] == 'true',
                         sys.argv[7] if len(sys.argv) > 7 else 'preparation', sys.argv[8] if len(sys.argv) > 8 else None))

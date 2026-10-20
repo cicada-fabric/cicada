@@ -12,11 +12,12 @@ fi
 source_run="$(realpath "$1")"
 source_artifacts="$local_root/artifacts/n3-acceptance/$(basename "$source_run")"
 ubuntu='sha256:224a1869083a311ef3f13648a154ba79832fbef6364d31493642ca03082da254'
-builder='sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61'
+builder='golang:1.27.3-bookworm@sha256:5c3e9b43cfd3bb95c7937462e29d87ada57b481a96fa23ad0eb61778d7a00110'
 docker image inspect "$ubuntu" >/dev/null 2>&1 || exit 2
 docker image inspect "$builder" >/dev/null 2>&1 || exit 2
-build_cache="$local_root/cache/n3-acceptance/go-build"
+build_cache="$local_root/cache/n3-acceptance/go-build-go1.27.3"
 module_cache="${CICADA_N3_GOMODCACHE:-$local_root/cache/n2-acceptance/gomod-go1.27.2-stable}"
+mkdir -p "$build_cache"
 exec 9>"$build_cache/driver.lock"
 flock -n 9 || exit 2
 state="$(mktemp -d "$local_root/state/n3-acceptance/ubuntu-$(date -u +%Y%m%dT%H%M%SZ)-XXXXXX")"

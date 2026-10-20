@@ -7,8 +7,8 @@ common_dir="$(git -C "$repo_root" rev-parse --path-format=absolute --git-common-
 workspace_root="$(dirname "$(dirname "$common_dir")")"
 local_root="${CICADA_N3_LOCAL_ROOT:-$workspace_root/.local}"
 module_cache="${CICADA_N3_GOMODCACHE:-$local_root/cache/n2-acceptance/gomod-go1.27.2-stable}"
-build_cache="${CICADA_N3_GOCACHE:-$local_root/cache/n3-acceptance/go-build}"
-image='sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61'
+build_cache="${CICADA_N3_GOCACHE:-$local_root/cache/n3-acceptance/go-build-go1.27.3}"
+image='golang:1.27.3-bookworm@sha256:5c3e9b43cfd3bb95c7937462e29d87ada57b481a96fa23ad0eb61778d7a00110'
 required=false
 mode=preparation
 case_name=''
@@ -76,6 +76,7 @@ common=(docker run --rm --name "$container" --label "cicada.n3.run=$run_id"
  --workdir /repo/cicada-go "$image")
 lane() {
  local name="$1"; shift
+ python3 "$repo_root/scripts/native_app_n3_evidence.py" command "$evidence/$name.command.json" "${common[@]}" "$@"
  set +e
  "${common[@]}" "$@" >"$evidence/$name.log" 2>&1
  local code="$?"
@@ -87,6 +88,7 @@ lane version go version
 lane compile-cli env CGO_ENABLED=0 go build -mod=readonly -trimpath -o /out/cicada ./cmd/cicada
 lane compile-tests go test -mod=readonly -c -o /out/n3.test ./acceptance/n3
 if [[ "$(cat "$evidence/compile-cli.exit")" == 0 && "$(cat "$evidence/compile-tests.exit")" == 0 ]]; then
+ python3 "$repo_root/scripts/native_app_n3_evidence.py" binaries "$artifacts" "$evidence/binaries-before.json"
  selector='^TestN3Harness(RealHubReplyRecovery|DelayedPacketCancellation|CommitBeforeReplyCrashWindow|ActualAppBootstrapAndResume|ActualAppVaultCommitBarrier)$'
  if [[ "$mode" == discovery ]]; then selector='^TestN3ActualAppUnsupportedCapabilitiesSendNoSecrets$'; fi
  if [[ "$mode" == seed ]]; then selector='^TestN3SeedRetainedN2Fixture$'; fi
@@ -101,6 +103,7 @@ if [[ "$(cat "$evidence/compile-cli.exit")" == 0 && "$(cat "$evidence/compile-te
   timeout=20m
  fi
  lane harness go tool test2json -t /out/n3.test -test.v -test.count=1 "-test.timeout=$timeout" -test.run "$selector"
+ python3 "$repo_root/scripts/native_app_n3_evidence.py" binaries "$artifacts" "$evidence/binaries-after.json"
 else
  printf 'NOT_RUN: required compilation failed\n' >"$evidence/harness.log"
  printf '125\n' >"$evidence/harness.exit"

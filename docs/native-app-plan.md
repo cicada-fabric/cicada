@@ -32,19 +32,37 @@ implemented or accepted by this plan.
 These future observations are all **NOT_RUN**, not extensions of N2/N3 PASS or
 a frozen protocol. No schema, wire change, global master key or daemon is added.
 
-1. Fresh installation proves its identity/registers; necessary own-status works, but Owner management, Node execution and peer operations deny without business grants.
-2. Installing optional Hub/Node/App roles on one host does not expand existing Hub/Owner grants; a new Hub's bootstrap conveys no authority on an old Hub.
-3. Actual Hub restart with the same database preserves IDs/keys, shared state, grants/tasks/audit, revocations and original pending/replay receipts, without extending deadlines.
-4. Close/logout App1, then uninstall its component; preserve identities/outbox and other components/state. Authorized Node/peer work continues at original limits; expiry or explicit revocation, including original App-device dependencies, still denies.
-5. Independently register/authorize App2 with empty profile/own keys before App1 loss. Deny access to App1 files; read matching Hub objects and fresh changes after App1 exits.
-6. Lose all copies of the sole Owner signing key: new App/password cannot self-approve or reopen Root. Recovery is NOT_IMPLEMENTED; negative denial is not recovery PASS.
-7. A registered attacker self-grants, impersonates Owner, crosses Hub/Owner scope, submits an unknown role or substitutes public keys: reject with no unauthorized state change.
+1. **INST-01** Fresh installation proves its identity/registers; necessary own-status works, but Owner management, Node execution and peer operations deny without business grants.
+2. **INST-02** Installing optional Hub/Node/App roles on one host does not expand existing Hub/Owner grants; a new Hub's bootstrap conveys no authority on an old Hub.
+3. **INST-03** Actual Hub restart with the same database preserves IDs/keys, shared state, grants/tasks/audit, revocations and original pending/replay receipts, without extending deadlines.
+4. **INST-04** Close/logout App1, then uninstall its component; preserve identities/outbox and other components/state. Authorized Node/peer work continues at original limits; expiry or explicit revocation, including original App-device dependencies, still denies.
+5. **INST-05** Independently register/authorize App2 with empty profile/own keys before App1 loss. Deny access to App1 files; read matching Hub objects and fresh changes after App1 exits.
+6. **INST-06** Lose all copies of the sole Owner signing key: new App/password cannot self-approve or reopen Root. Recovery is NOT_IMPLEMENTED; negative denial is not recovery PASS.
+7. **INST-07** A registered attacker self-grants, impersonates Owner, crosses Hub/Owner scope, submits an unknown role or substitutes public keys: reject with no unauthorized state change.
 
 Future execution uses owned real-crypto/TCP/persistent-state Docker fixtures,
 records source/artifact identity, before/after authority, original deadlines,
 requests/receipts, exits and cleanup. App2 needs qualified signer approval or
 separately implemented recovery. Distinguish transport, queue and real native
 consumption; Windows uninstall/security remains NOT_RUN until actually executed.
+
+2026-10-20 independent QA preparation: these seven observations retain their
+INST-01..07 scope and **NOT_RUN** state. Extend the existing N3 process harness
+and native-App/Pair drivers; no new wire paths, states or selectors are assumed.
+QA owns `acceptance/n3`, those fault/evidence drivers and this plan/validation;
+Hub owns the frozen protocol, App/Node owners their production adapters.
+Reuse opaque pre-forward/ACK-loss/delayed/corrupt-response barriers and durable
+original-packet recovery. Apply wrong/replaced Owner pin, concurrency, expiry,
+cross-Hub/Owner scope and Hub/Node restart faults only through the reviewed
+registration/pin contract. Assert zero business authority before each separate
+status/Pair grant and no expansion into the other scope. Positive Owner proofs
+must come from the actual App, without driver-held signer keys or injected grants.
+App2 runs in an owned separate container sharing only fixture networking/source;
+mount only its own profile/synthetic input, never App1 state or a Docker socket.
+Keep original outbox/identities on component removal, and test current grant
+expiry/revocation independently. Exact argv and pre/post executed-binary hashes
+are required. Contract revision, canonical proof tuple, outcomes, ACK/retry and
+restore semantics must be frozen/reviewed before adding the actual selectors.
 
 ## Checkpoints
 

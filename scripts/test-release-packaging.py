@@ -66,6 +66,28 @@ def synthetic_elf64(machine: int, interpreter: str, needed: tuple[str, ...], run
 
 
 class ReleasePackagingTests(unittest.TestCase):
+    def test_n2_default_immutable_image_reaches_only_the_image_preflight(self):
+        with tempfile.TemporaryDirectory(prefix="synthetic-go-image-preflight-") as temporary:
+            root = pathlib.Path(temporary)
+            tools, modules = root / "tools", root / "modules"
+            tools.mkdir(); modules.mkdir()
+            marker = root / "image-probe"
+            docker = tools / "docker"
+            docker.write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$CICADA_QA_IMAGE_PROBE"\nexit 1\n')
+            docker.chmod(0o700)
+            environment = {**os.environ, "PATH": str(tools) + os.pathsep + os.environ["PATH"],
+                           "CICADA_N2_GOMODCACHE": str(modules),
+                           "CICADA_N2_LOCAL_ROOT": str(root / "unused-fixture"),
+                           "CICADA_QA_IMAGE_PROBE": str(marker)}
+            environment.pop("CICADA_N2_GO_IMAGE", None)
+            result = subprocess.run(["bash", str(ROOT / "scripts/test-native-app-n2.sh")],
+                                    env=environment, capture_output=True, text=True, timeout=10)
+            self.assertEqual(result.returncode, 2)
+            self.assertEqual(marker.read_text().splitlines(), ["image", "inspect",
+                             "golang:1.27.3-bookworm@sha256:5c3e9b43cfd3bb95c7937462e29d87ada57b481a96fa23ad0eb61778d7a00110"])
+            self.assertIn("must already be available locally", result.stderr)
+            self.assertFalse((root / "unused-fixture").exists())
+
     def test_pq_gate_cleanup_requires_exact_id_and_owner_and_allows_package_only(self):
         script = (ROOT / "scripts/test-pqtls-packaging.sh").read_text()
         cleanup = script.split("<<'PY_CONTAINER'\n", 1)[1].split("\nPY_CONTAINER", 1)[0]
@@ -543,7 +565,7 @@ class ReleaseArtifactSmokeTests(unittest.TestCase):
                 self.assertEqual(hashlib.sha256(compressed_wasm).hexdigest(), manifest["wasm_gzip_sha256"])
                 raw_wasm = gzip.decompress(compressed_wasm)
                 self.assertEqual(hashlib.sha256(raw_wasm).hexdigest(), manifest["wasm_sha256"])
-                self.assertEqual(manifest["toolchain"], "go1.27.2")
+                self.assertEqual(manifest["toolchain"], "go1.27.3")
                 self.assertEqual(health["catalog_sha256"], self.metadata["catalog_sha256"])
             finally:
                 process.terminate()
@@ -586,7 +608,7 @@ class PQSelectionTests(unittest.TestCase):
             fake.write_text("#!" + sys.executable + "\n" + '''import json,os,pathlib,sys
 import shutil
 args=sys.argv[1:]
-if args[0]=='version': print('go version go1.27.2 linux/amd64')
+if args[0]=='version': print('go version go1.27.3 linux/amd64')
 elif args[0]=='env': print(os.environ['SYNTHETIC_GOROOT'] if args[1]=='GOROOT' else os.environ.get(args[1],{'GOOS':'linux','GOARCH':'amd64','GOHOSTOS':'linux','GOHOSTARCH':'amd64'}[args[1]]))
 elif args[0]=='list': print(json.dumps({'Module':{'Main':True}}))
 elif args[0]=='build':
@@ -722,7 +744,7 @@ else: sys.exit(91)
         with tempfile.TemporaryDirectory(prefix="cicada-pq-target-") as directory:
             tools = pathlib.Path(directory)
             fake = tools / "go"
-            fake.write_text("#!/bin/sh\ncase \"$1\" in version) printf 'go version go1.27.2 linux/amd64\\n';; *) exit 91;; esac\n")
+            fake.write_text("#!/bin/sh\ncase \"$1\" in version) printf 'go version go1.27.3 linux/amd64\\n';; *) exit 91;; esac\n")
             fake.chmod(0o755)
             for extra in ({"CGO_ENABLED": "0"}, {"GOARCH": "arm64"}, {"GOOS": "darwin"}):
                 with self.subTest(extra=extra):
@@ -903,7 +925,7 @@ class PQArtifactTests(unittest.TestCase):
         self.assertEqual((root / "share/licenses/cicada/LICENSE").read_bytes(), (ROOT / "LICENSE").read_bytes())
         notices = json.loads((root / "share/licenses/go/MODULES.json").read_text())
         self.assertTrue(notices["modules"])
-        self.assertIn("go1.27.2", notices["toolchain"])
+        self.assertIn("go1.27.3", notices["toolchain"])
         self.assertTrue((root / "share/licenses/go/LICENSE").read_bytes())
         for module in notices["modules"]:
             self.assertTrue(module["notices"])

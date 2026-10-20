@@ -6,8 +6,8 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 common_dir="$(git -C "$repo_root" rev-parse --path-format=absolute --git-common-dir)"
 local_root="${CICADA_N2_WINDOWS_LOCAL_ROOT:-$(dirname "$(dirname "$common_dir")")/.local}"
 module_cache="${CICADA_N2_GOMODCACHE:-$local_root/cache/n2-acceptance/gomod-go1.27.2-stable}"
-build_cache="${CICADA_N2_WINDOWS_GOCACHE:-$local_root/cache/n2-acceptance/native-windows-go-build}"
-image='sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61'
+build_cache="${CICADA_N2_WINDOWS_GOCACHE:-$local_root/cache/n2-acceptance/native-windows-go-build-go1.27.3}"
+image='golang:1.27.3-bookworm@sha256:5c3e9b43cfd3bb95c7937462e29d87ada57b481a96fa23ad0eb61778d7a00110'
 if [[ "$#" -ne 0 ]]; then printf 'Usage: scripts/build-native-app-n2-windows.sh\n' >&2; exit 2; fi
 if [[ ! -d "$module_cache" ]] || ! docker image inspect "$image" >/dev/null 2>&1; then
  printf 'Pinned Go image and populated read-only offline module cache are required.\n' >&2; exit 2

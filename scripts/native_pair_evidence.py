@@ -145,7 +145,8 @@ def finish(run, artifacts, image, owned, mode='protocol'):
              'protocol': 'REAL_TCP_PQ_BOOTSTRAP_AND_RECOVERY_ONLY'}[mode]
     summary = {'scope': scope,
                'status': 'SCOPED_PASS' if passed else ('EXPECTED_RED_SERVICE_UNAVAILABLE' if expected_red else 'FAIL'),
-               'exit_code': code, 'exit_codes': exits, 'docker_image_digest': image,
+               'exit_code': code, 'exit_codes': exits, 'docker_image_reference': image,
+               'docker_image_digest': image.rsplit('@', 1)[-1],
                'source_before_sha256': sha(run / 'source-before.json'),
                'source_after_sha256': sha(run / 'source-after.json'),
                'source_stable': matched, 'head': before['head'], 'dirty': before['dirty'],

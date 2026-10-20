@@ -24,7 +24,7 @@ def main() -> int:
     toolchain = parts[2] if len(parts) == 4 and parts[:2] == ["go", "version"] else "unsupported"
     gzip_path = asset_dir / "cicada-webcrypto.wasm.gz"
     runtime_path = asset_dir / "wasm_exec.js"
-    if toolchain != "go1.27.2" or not all(path.is_file() for path in (raw_wasm_path, gzip_path, runtime_path)):
+    if toolchain != "go1.27.3" or not all(path.is_file() for path in (raw_wasm_path, gzip_path, runtime_path)):
         raise SystemExit("web-panel manifest inputs are missing or use an unsupported toolchain")
     wasm, wasm_sha = digest(raw_wasm_path)
     wasm_gzip, wasm_gzip_sha = digest(gzip_path)

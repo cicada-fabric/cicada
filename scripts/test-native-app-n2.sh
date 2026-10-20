@@ -7,12 +7,12 @@ common_dir="$(git -C "$repo_root" rev-parse --path-format=absolute --git-common-
 workspace_root="$(dirname "$(dirname "$common_dir")")"
 local_root="${CICADA_N2_LOCAL_ROOT:-$workspace_root/.local}"
 module_cache="${CICADA_N2_GOMODCACHE:-$local_root/cache/gomod}"
-build_cache="${CICADA_N2_GOCACHE:-$local_root/cache/n2-acceptance/go-build}"
-image="${CICADA_N2_GO_IMAGE:-sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61}"
+build_cache="${CICADA_N2_GOCACHE:-$local_root/cache/n2-acceptance/go-build-go1.27.3}"
+image="${CICADA_N2_GO_IMAGE:-golang:1.27.3-bookworm@sha256:5c3e9b43cfd3bb95c7937462e29d87ada57b481a96fa23ad0eb61778d7a00110}"
 require_n2=false
 if [[ "${1:-}" == --require-n2 ]]; then require_n2=true; shift; fi
 if [[ "$#" -ne 0 ]]; then printf '%s\n' 'Usage: scripts/test-native-app-n2.sh [--require-n2]' >&2; exit 2; fi
-if [[ ! "$image" =~ ^sha256:[0-9a-f]{64}$ || ! -d "$module_cache" ]]; then
+if [[ ! "$image" =~ ^(sha256:[0-9a-f]{64}|golang:1\.27\.3-bookworm@sha256:[0-9a-f]{64})$ || ! -d "$module_cache" ]]; then
  printf '%s\n' 'An immutable local Go image and populated offline module cache are required.' >&2; exit 2
 fi
 if ! docker image inspect "$image" >/dev/null 2>&1; then

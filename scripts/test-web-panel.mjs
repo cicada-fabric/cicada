@@ -28,14 +28,14 @@ async function loadOwnerBootstrapValidator(uiDir) {
 async function webCryptoManifestChecks(uiDir) {
   const source = (await readFile(path.join(uiDir, 'panel-bootstrap.js'), 'utf8'))
     .replace(/^import .*;\s*$/gm, '').replace(/export\s+(?=(?:async\s+)?function)/g, '');
-  for (const toolchain of ['go1.27.1', 'go1.27.2']) {
+  for (const toolchain of ['go1.27.1', 'go1.27.2', 'go1.27.3']) {
     const context = {
       fetch: async () => ({ ok: true, json: async () => ({ toolchain,
         wasm_file: 'cicada-webcrypto.wasm.gz', wasm_sha256: 'synthetic-digest' }) }),
       document: { createElement() { throw new Error('accepted-current-manifest'); } },
     };
     vm.runInNewContext(`${source}\nglobalThis.load = loadCryptoWasm;`, context);
-    await assert.rejects(context.load(), toolchain === 'go1.27.2'
+    await assert.rejects(context.load(), toolchain === 'go1.27.3'
       ? /accepted-current-manifest/ : /unsupported Go toolchain/);
   }
 }

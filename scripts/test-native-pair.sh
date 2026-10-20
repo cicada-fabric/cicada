@@ -21,8 +21,8 @@ common_dir="$(git -C "$repo_root" rev-parse --path-format=absolute --git-common-
 workspace_root="$(dirname "$(dirname "$common_dir")")"
 local_root="$workspace_root/.local"
 module_cache="$local_root/cache/n2-acceptance/gomod-go1.27.2-stable"
-build_cache="$local_root/cache/native-pair-acceptance/go-build"
-image='sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61'
+build_cache="$local_root/cache/native-pair-acceptance/go-build-go1.27.3"
+image='golang:1.27.3-bookworm@sha256:5c3e9b43cfd3bb95c7937462e29d87ada57b481a96fa23ad0eb61778d7a00110'
 if [[ "$(id -u)" != 1000 || ! -d "$module_cache" ]] || ! docker image inspect "$image" >/dev/null 2>&1; then
  printf 'Requires UID1000, pinned offline Go image and populated read-only module cache.\n' >&2; exit 2
 fi

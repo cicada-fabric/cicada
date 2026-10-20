@@ -21,6 +21,10 @@ class PreparationEvidenceTests(unittest.TestCase):
         source = {'head': 'synthetic', 'dirty': True, 'manifest_sha256': 'synthetic', 'files': ev.CONTRACT['files']}
         for side in ('before', 'after'): ev.save(run / ('source-' + side + '.json'), source)
         for lane in ('version', 'compile-cli', 'compile-tests', 'harness', 'vet'): (run / (lane + '.exit')).write_text('0\n')
+        for lane in ('version', 'compile-cli', 'compile-tests', 'harness', 'vet'):
+            ev.save(run / (lane + '.command.json'), ['docker', 'run', 'synthetic-image', 'go', lane])
+        for side in ('before', 'after'):
+            ev.save(run / ('binaries-' + side + '.json'), ev.binary_manifest(artifacts))
         (run / 'harness.log').write_text('\n'.join(json.dumps({'Action': 'pass', 'Test': name})
                                                  for name in sorted(ev.EXPECTED) if all_tests))
         return run, artifacts
@@ -71,6 +75,66 @@ class PreparationEvidenceTests(unittest.TestCase):
             run, artifacts = self.fixture(Path(tmp))
             (artifacts / 'cicada').unlink()
             self.assertEqual(self.finish(run, artifacts)[0], 1)
+
+    def test_execution_evidence_cannot_promote_installation_acceptance(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run, artifacts = self.fixture(Path(tmp))
+            code, result = self.finish(run, artifacts, required=False)
+            self.assertEqual(code, 0)
+            self.assertTrue(result['executed_binaries_stable'])
+            self.assertTrue(result['execution_argv_recorded'])
+            self.assertEqual(result['installation_acceptance'], 'NOT_RUN')
+            for lane, record in result['execution_commands'].items():
+                self.assertEqual(record['sha256'], ev.sha(run / (lane + '.command.json')))
+
+    def test_replacing_executed_binary_after_inventory_cannot_pass(self):
+        for name in ('cicada', 'n3.test'):
+            with self.subTest(binary=name), tempfile.TemporaryDirectory() as tmp:
+                run, artifacts = self.fixture(Path(tmp))
+                (artifacts / name).write_bytes(b'SYNTHETIC replaced after execution')
+                code, result = self.finish(run, artifacts)
+                self.assertEqual(code, 1)
+                self.assertFalse(result['executed_binaries_stable'])
+
+    def test_missing_malformed_or_changed_binary_inventory_cannot_pass(self):
+        for side in ('before', 'after'):
+            for value in (None, b'{', b'[]', b'{}'):
+                with self.subTest(side=side, value=value), tempfile.TemporaryDirectory() as tmp:
+                    run, artifacts = self.fixture(Path(tmp))
+                    path = run / ('binaries-' + side + '.json')
+                    if value is None: path.unlink()
+                    else: path.write_bytes(value)
+                    code, result = self.finish(run, artifacts)
+                    self.assertEqual(code, 1)
+                    self.assertFalse(result['executed_binaries_stable'])
+
+    def test_symlink_cannot_substitute_executed_artifact(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run, artifacts = self.fixture(Path(tmp))
+            outside = Path(tmp) / 'SYNTHETIC_OUTSIDE_ARTIFACTS'
+            outside.write_bytes((artifacts / 'cicada').read_bytes())
+            (artifacts / 'cicada').unlink()
+            (artifacts / 'cicada').symlink_to(outside)
+            for side in ('before', 'after'):
+                ev.save(run / ('binaries-' + side + '.json'), ev.binary_manifest(artifacts))
+            code, result = self.finish(run, artifacts)
+            self.assertEqual(code, 1)
+            self.assertNotIn('cicada', result['executed_binary_inventory']['files'])
+            self.assertIsNone(result['cicada_binary_sha256'])
+
+    def test_missing_or_invalid_execution_argv_cannot_pass(self):
+        for lane in ('version', 'compile-cli', 'compile-tests', 'harness', 'vet'):
+            for value in (None, b'{', b'{}', b'[]', b'["docker","run",17,"go"]',
+                          b'["docker","run","wrong-image","go","test"]',
+                          b'["echo","synthetic-image","go","test"]'):
+                with self.subTest(lane=lane, value=value), tempfile.TemporaryDirectory() as tmp:
+                    run, artifacts = self.fixture(Path(tmp))
+                    path = run / (lane + '.command.json')
+                    if value is None: path.unlink()
+                    else: path.write_bytes(value)
+                    code, result = self.finish(run, artifacts)
+                    self.assertEqual(code, 1)
+                    self.assertFalse(result['execution_argv_recorded'])
 
     def test_unreviewed_contract_bytes_cannot_pass(self):
         with tempfile.TemporaryDirectory() as tmp:
