@@ -3710,3 +3710,249 @@ changes no native record, original Node state or Windows vault. C0.1's pure
 for this actual user batch. Remaining feedback and independent acceptance
 criteria are maintained in the [existing plan](native-app-plan.md#current-feedback-and-acceptance-ledger),
 not a new task book. Uninstall scripts are outside the current remediation stage.
+
+## 2026-10-20 independent Endpoint and Hook checkpoint
+
+The bounded backend is committed at
+`d3acd4bfe6f3f10867db6a5e3ae432f8477d9748`, parent
+`bb0644b68627579af470ead52035d42618372c75`. Its
+[contract](native-endpoint-directory-contract.md) and
+[producer validation](native-endpoint-directory-validation.md) remain separate
+from the independent scopes below. The broader C0/H1/H2 installation family
+stays frozen. No old N2/N3, LOGIN, N3-TT, INST or Windows result is relabelled.
+
+### Integrated UI and retained unvalidated work
+
+The seven UI blobs in `bb0644b68627579af470ead52035d42618372c75` add native
+navigation, collapsible detail, public text selection and OS CJK font fallback.
+Producer evidence is under
+`/home/zyf/.cicada/acceptance/app-ui-checks/run-20261020T135022Z/`:
+
+| Receipt | Result and source | SHA-256 |
+| --- | --- | --- |
+| `ui-validation.json` | Normal/race each 133/0/0, vet 0 on its initial dirty `9866cf3` source including retained old WIP; later fixed Windows cross-builds have their own manifest | `769812375855d18c93a1a2412244d5cacd22ec21c43cd7b7c42d7b1e9d47fa0c` |
+| `ui-cjk-compile-validation.json` | Two Windows cross-build exits 0 on later dirty CJK source, manifest `d740a042fa2fc8c2f726385af0d154327f2a00bb63eb974ca675314be134c01c`; the earlier normal/race result is not transferred to it | `4d2d49c1a92c5e95595cc3b04ba6825af532bbeefdfaedb9f9f878349983fdc3` |
+| `ui-commit-receipt.json` | Seven committed blobs match the reviewed candidate; ten old WIP files excluded | `43e0c45548648feb4c7862b9449cec6941f810fdfbdbf2c6e1b07f704ab11b91` |
+
+Root independently ran clean `bb0644b` in disposable offline Docker:
+`/home/zyf/Cicada/.local/evidence/native-ux-root/ui-state-tmp-20261020T140807Z-a18060/result.json`,
+SHA-256 `d7ac2cddf4c430ca13b8a9705539ced1af7c136167977f9fd43109dd8e760c3b`.
+Normal UI tests passed 133/0/0 (39 top-level, 94 subtests); both Windows cross-builds
+passed. This is not a clean-source race run. Its GUI EXE SHA-256 is
+`fcb6fb357cdd03d0fb4bf261d0d9c792501af26309ec4cc8e57d54cb7c70c367`;
+the native UI test EXE is
+`89cedd5a246b0da18fa3cdb94a0bea92af93318b8fd09c0d87b054fe3474c585`.
+Root's earlier output/tmp permission setup failures remain retained and ran no
+product tests. Font loading, clipboard/DPI, GUI execution, DPAPI and ACL remain
+**NOT_RUN**. Historical Chinese and second-instance failures remain intact.
+
+The old unfinished lifecycle work was archived before the new independent
+driver was written, then removed/restored out of active build inputs:
+
+| Git archive ref | Commit, parent `bb0644b68627579af470ead52035d42618372c75` | Boundary |
+| --- | --- | --- |
+| `archive/composable-acceptance-wip-20261020` | `7268310069704221f83322ec1df3f87c04edf8ab` | Five QA files, UNVALIDATED; no compile/test/integration claim |
+| `archive/composable-app-wip-20261020` | `b0df01963d0307b9a43d3e11f0e1d1a339bfcb83` | Ten App files, UNVALIDATED; no acceptance inferred from their presence in an earlier UI source |
+
+Root separately preserved/pushed the archive refs; QA did not integrate or push.
+QA's five-blob archive verification is
+`composable-registration/run-20261020T075053Z-8d262d/qa-wip-archive-4x4zpd7l/archive-verification.json`
+under the workspace evidence root, SHA-256
+`55fcb7bc23b20fee92f9ad82ece622e608848bd5b3585c6ef53b7befc7acdc2e`.
+The preceding record's statement that old WIP was frozen describes that earlier
+recording time; it is no longer present as active unfinished source.
+
+The subsequent 29-file paths checkpoint is
+`73d6f9ad13c26ad7cf203e2924adcc7a46104213`, parent
+`2ab4e5155f4d8c082f69a3fe2764b6d7fee84e72`. It partially implements new
+App/Node/MCP defaults, custom root, installer file prefix and original-location
+recovery; Hub/workspace/cache defaults, migration and physical Windows remain
+pending. Its [producer record](../cicada-go/cmd/cicada-app/README.md#selected-user-root-and-original-state-recovery-2026-10-20)
+keeps original dirty-bb0644b normal/race matrices and affected dirty-d3 Core
+8/0/0 plus Windows cross-build separately attributed. The 29-blob commit receipt
+is `/home/zyf/.cicada/acceptance/app-path-checks/run-20261020T151357Z/paths-commit-receipt.json`,
+SHA-256 `27579b7ab8e39d56715af039e0e7eac46801094b7e19ec7eba230d38173e625e`.
+No real vault, Node data, launch environment or Codex account was migrated.
+
+### Independent real App approval and Endpoint TCP faults
+
+Reproduction: `scripts/test-native-pair.sh --endpoint-security`.
+This builds the actual CLI and acceptance executable, starts owned Hub Nodes
+CLI processes on allocated loopback ports, and uses real App Core child/vault
+actions to approve a visibly synthetic Node. The driver never loads the Owner
+private signer. Only the Node wire actor/SIDs/workspace are synthetic. Every
+original encrypted request is persisted before send; the proxy only loses or
+changes opaque transport bytes. The actual Hub restarts against its owned
+SQLite database and original keys. Offline read-only SQL observes zero rights;
+it creates no pins, grants, memberships or positive authorization.
+
+The image is Go 1.27.3 at
+`sha256:5c3e9b43cfd3bb95c7937462e29d87ada57b481a96fa23ad0eb61778d7a00110`.
+Docker uses network none, read-only root/source/module mounts, UID/GID 1000,
+no extra capabilities and a locked task build cache. Source snapshots include
+the complete Go tree, the new contract and drivers; before/after binary hashes
+and exact container absence are mandatory. A skip/missing test is a failure.
+Neither a dirty build nor later corrected tests are attributed solely to HEAD.
+
+Evidence root: `/home/zyf/Cicada/.local/evidence/native-pair-acceptance/`.
+All four development runs below used `d3acd4b` plus their distinct dirty QA inputs;
+each retained all nine expected terminal test events, CLI/test compilation and
+vet exit 0, matching source/binary bookends and an absent owned container.
+Each aggregate returned exit **1**, not PASS:
+
+| Run | Pass/fail/skip events | Reason retained | `result.json` SHA-256 |
+| --- | --- | --- | --- |
+| `run-20261020T153028Z-eOR2AA` | 1/8/0 | New synthetic Node IDs lacked the existing fixture prefix; Endpoint protocol was not reached | `e14a9f9dc819b8962300027398c2eabd05cd6d81f06c2b992773a6c3b2ea1919` |
+| `run-20261020T153345Z-2XbWKt` | 2/7/0 | Leave passed; driver incorrectly counted preceding App proxy traffic and attempted a second initial Node approval forbidden by the current App provenance flow; concurrent 403 also observed | `1fe2c939dcaf082047082be39c917119720803ba063644f0c2ea1448f25b53de` |
+| `run-20261020T153625Z-iJCOfn` | 2/7/0 | Driver expected full-Handler routes/statuses in the bounded Nodes-only composition; concurrent public 403 diagnosis retained | `9887e9bc8cba33b07d5340d372ece8b95b26d1c084fcfcf4f0968ed3beb0ed93` |
+| `run-20261020T153910Z-m6vDoD` | 7/2/0 | Method barrier, Leave and all four fault subcases passed; session-token prefix expectation still wrong; concurrent overload remained FAIL after successful original recovery | `3a46e86094993d4daf595a40b5db269ccaf132747a3bc970d2ce546a44b6d0d1` |
+
+The last source manifest is
+`0f16bd4d2b59ff57897203ce5a85842b8a4475461ef6dc7d7f6d6ad852ab7c23`.
+Its executed CLI/test SHA-256 hashes are
+`c2eb483ae09c614067931c33e8b50c506eb82b5abec224dd8c984b2dc03f19d8` and
+`092b26cea199cb7a439fd808b160c317ebf93211b4276cb986dca112f1c3a8e1`.
+Its passed fault scope covers loss before forwarding, loss after committed
+response, unsigned 403 and corrupt response. Closing the actual App child and
+restarting the actual Hub still recovers the exact persisted request and cached
+authenticated receipt, with one offline zero-right Endpoint. Replacing the body
+under the same operation is refused and cannot replace the original receipt.
+Leave checks current opaque digest, authenticated cached terminal refusals,
+another Endpoint remaining unchanged and no revival/deletion of the left identity.
+
+The independent concurrent failure is assigned to Hub: four identical valid
+packets can hit the two-slot nonblocking worker limit; `hubnodes.Service.acquire`
+returns generic unavailable and `hubNodesHandler.nodeRPC` maps it to unsigned
+403, "Node binding status request rejected". The fourth run observes two such
+403s, then verifies serial recovery of the original authenticated receipt and
+only one zero-right Endpoint. This is overload/status ambiguity, not evidence
+of unauthorized mutation. Root approved a distinct busy→429/Retry-After repair;
+old failures remain. The correction selector is
+`scripts/test-native-pair.sh --endpoint-security-boundaries`, covering only
+registration/auth boundaries and concurrent original recovery.
+
+The correction ran on `2ab4e5155f4d8c082f69a3fe2764b6d7fee84e72` plus dirty
+QA source: `run-20261020T155233Z-lR0KG4`, **2/0/0**, all CLI/test compilation,
+harness, vet and driver exits **0**. Source manifest is
+`69ecd1a2e15484c2729a8abb9573d69d19a1b45b4af7a921e07da6a27fa5d8c6`;
+`result.json` SHA-256 is
+`c5771e67d02db87dc9bb185e85a1b7a125cbf277634de44adbc21901d8442418`.
+Source and executed binary bookends match. CLI SHA-256 is
+`16af7da4a9ef2f863c86e18aca9399a5cdc90e53f28317ec8bb8da77402999de`;
+test executable is
+`24fb0d2be825a1f165abf15497dfcb82f00e86ff87b4272a4a7a90d67d77c0e5`.
+Exact container `cicada-native-pair-run-20261020t155233z-lr0kg4` was removed
+and its absence independently rechecked after the driver ended.
+
+Actual App approval, offline zero business rights, duplicate labels with distinct
+IDs, immutable repeated metadata, wrong Node route, wrong credential scheme and
+valid-format but nonexistent native Session credential all pass. Four concurrent
+identical packets produce two actual 429 responses with `Retry-After: 1`, retain
+the original pending packet, and recover one authenticated terminal receipt with
+one zero-right Endpoint. This closes the bounded overload-status defect; it does
+not make an unsigned 429 an authenticated outcome. The earlier seven passing
+events retain their original source; there is no fresh nine-event aggregate PASS.
+The final status-document edits are post-test documentation, not changed Go code.
+
+After Root fast-forwarded the paths checkpoint, only the affected actual-App
+fixture was rerun with
+`scripts/test-native-pair.sh --endpoint-security-app-fixture` on dirty
+`73d6f9ad13c26ad7cf203e2924adcc7a46104213`:
+`run-20261020T155704Z-RxgyoV`, **1/0/0**, CLI build, complete acceptance-package
+compilation, harness, vet and driver exits **0**. Source manifest is
+`0610bb7b6a53f0827aaca9bdecce5d87d87ee7d28c6f25f81acef82d41e4b573`;
+`result.json` SHA-256 is
+`88152ed86e89380fb2a392e62add2aacac20f7a7629b7881cd9bc0a7c7730108`.
+CLI/test executable SHA-256 hashes are
+`b6f512100bed0712007c0bcf62e734823a6ba8bea87d356ab7d72ee7ea1bbf70` and
+`434b6bbc03059405ab024833c4cae2ba36bd0c456509d02bd890a131f559d6b2`.
+Source/binary bookends match, and exact container
+`cicada-native-pair-run-20261020t155704z-rxgyov` is independently confirmed absent.
+This verifies actual App Core approval and the zero-rights/authentication fixture
+after the storage changes. Concurrent/Leave/fault and producer path/security
+results retain their earlier sources; they were not silently transferred or
+rerun as a full matrix. Root's separate standard interop remains unreported
+here until its own receipt, not inferred from this test.
+
+Actual production Node process/outbox/adapter, product Hook tickets, second
+approved-Node adoption, real Group/Network Leave or changed-authorization CAS,
+actual Owner-directory App action/privacy/page/cache/old-N2-TTL cases and actual
+native Runtime remain **NOT_RUN** independently here. The forged Node route
+checks token/Node binding only. Existing producer coverage is linked above;
+it is not substituted for these independent cases. Control inference is off.
+
+### Actual Codex Hook mechanism; product bridge not accepted
+
+The first bounded probe is under
+`/home/zyf/.cicada/acceptance/hooks-qa/run-20261020T134434Z-dt98a27i/`.
+Its `evidence/final-review.json` SHA-256 is
+`bcddbd134a543b46371fddb49785112f57305e4b34d0057f8661ffd2ee226bfe`;
+inventory SHA-256 is
+`8be34abace42bd5fe4fb869641e5d1cf5db443cd71e2f01a5b2fb8a49ac081a6`.
+Actual 0.163.0 CLI/TUI used empty owned HOME/CODEX_HOME and no credentials,
+real SIDs, Node, model or queues. An actual normal TUI persisted exact Hook trust;
+a fresh CLI consumed it without bypass and handled a synthetic literal command
+with zero provider requests. The earlier explicit-bypass mechanism run and
+first inspection-only TUI attempt remain separately retained.
+
+Eleven prepared normal-trust/failure fixtures show that trusted literal
+peers/join/leave or exit-2 blocking can finish before the local provider trap.
+Missing/modified/untrusted Hook, nonliteral input, exit 1, malformed-looking
+stdout and timeout can continue to the trap: seven local HTTP requests in total,
+each rejected by the static 400 responder. These are pass-through observations,
+not host fail-closed or product command/authorization acceptance. No external
+network is reachable in network-none Docker; all six owned containers were removed.
+Fresh-state reproduction is `python3 <run>/reproduce_normal_trust.py` or
+`bash <run>/reproduce_negative.sh baseline` / `faults`. The negative orchestration
+exit alone is not a product gate; compare actual CLI/trap observations.
+
+The separate PreToolUse probe is under
+`/home/zyf/.cicada/acceptance/hooks-qa/pretool-v2-20261020T152356Z-rrakawp_/`.
+Its `evidence/final-review.json` SHA-256 is
+`fb51de1384020e1e58ce7f057f4385febc0b335f4c429ab0d914e2bfceb9a2fd`;
+inventory is `58ea59d8fce4f530e5e7a92d9ef6070bba72423315cac5ae6cc4bd149710d399`.
+Reproduce each case with `python3 <run>/reproduce.py main`, `missing-hook`,
+or `fork`; each creates fresh owned state (fork first creates a fresh parent).
+Expected mechanism exit is 0, not a product integration verdict. The script
+SHA-256 is `4117c63d069707e446b3757195c5818e72e3883a65994476bbb330e0d674d901`.
+
+| Actual CLI case | Observed mechanism |
+| --- | --- |
+| Main | One PreToolUse and one mock MCP call; actual `session_id` matches `thread.started`, cwd matches; `tool_use_id/turn_id/tool_name` arrive and `allow+updatedInput` replaces actual MCP arguments |
+| Missing Hook | Original arguments still dispatch; mock MCP returns `isError:true` for missing context, while CLI exits 0 and contacts the second static response; this is fixture rejection only |
+| Actual `exec fork` | A distinct child session and new call ID; static provider deliberately supplies the parent context, and the actual Hook replaces it with the child's context received by mock MCP |
+
+The tool schema declares `qa_context` and has top-level
+`additionalProperties=false`; acceptance of undeclared fields is not inferred.
+The provider uses the actual advertised namespace `mcp__qa` / function `probe`;
+Hook canonical name is `mcp__qa__probe`. Prepared trust uses actual hooks/list
+key/hash and the previously TUI-observed persisted form, verified by a fresh
+process, with no bypass. Three cases took about 5.2 seconds each, CLI/semantic
+exits 0, six local static HTTP requests, no real model turns and three removed
+owned containers. The initial flattened-name probe failed before dispatch;
+`pretool-20261020T152113Z-54fmzd3u` remains unchanged and is not counted as PASS.
+
+The exact read-only Codex binary before/after SHA-256 is
+`399ff69c431c066e40de318fba45c2b07f45a76b19939d247ee4828fc70c4215`.
+Official [Hook semantics](https://learn.chatgpt.com/docs/hooks) and
+[Responses namespace format](https://developers.openai.com/api/reference/resources/responses/methods/create)
+inform the synthetic probe; actual raw inputs/outputs establish its scoped result.
+The real Cicada per-call ticket/MAC/expiry/replay/cross-SID Guard, PQ register/leave
+via Hook, clear and subagent context are **NOT_RUN**. Parent SID in a subagent
+Hook is not proof of that child's native identity. Windows DPAPI/ACL/GUI and
+real-user provider/queue consumption remain **NOT_RUN**.
+
+Root's upstream-version check is
+`/home/zyf/Cicada/.local/evidence/native-ux-root/upstream-versions-20261020.json`:
+SHA-256 `7c7e128b3d5e23e2675d06cc93387d19bca73b8ae2cf0d271bcb96a0a7296b3e`;
+at 2026-10-20 15:38 UTC, Go's official stable feed reports 1.27.3, the official
+module proxy lists Gio 0.10.3 and x/sys 0.49.0, and the official Codex changelog's
+latest CLI entry is 0.163.0 dated 2026-10-15. This is dated version evidence,
+with no dependency upgrade, global config change, deployment or model operation.
+
+Documentation checks preserve the complete historical validation prefix and all
+old plan matrix sections. A full-document link scan found an existing historical
+`../.cicada-data/native-app-foundation/...` artifact link absent in this worktree;
+it is not reported as a full link-check PASS and historical evidence is unchanged.
+Only links introduced by this checkpoint are checked against current repository
+files. Go formatting, shell syntax, Python AST and whitespace checks pass.

@@ -86,8 +86,9 @@ a new App/password cannot restore Root. See the [future acceptance targets](nati
 
 The 2026-10-20 feedback is tracked in the
 [existing acceptance ledger](native-app-plan.md#current-feedback-and-acceptance-ledger).
-The following product targets need reviewed contracts and implementation;
-they are not new wire fields or proof of current Directory behavior.
+The following product targets are implemented in stages under the
+[bounded Endpoint/directory contract](native-endpoint-directory-contract.md).
+Backend, actual App/Node consumers and physical UI have separate acceptance.
 
 Endpoint IDs remain stable internal identity. Ordinary lists lead with name,
 workspace, Node and current status, while retaining the original native SID,
@@ -106,9 +107,17 @@ Hub persists inventory and permissions; App is not their only store. Permission
 presets must still follow the genuine Owner signing-key chain and current Hub/
 Node Guards. A selected name, policy preset or account login is not a grant.
 
-The current approved direction reuses existing zero-right Endpoint registration
-and same-Owner topology/Directory with cross-Owner redaction. Final minimal
-contracts, implementation and integration remain pending. This does not activate
+The backend at `d3acd4bfe6f3f10867db6a5e3ae432f8477d9748` reuses zero-right
+Endpoint registration and same-Owner topology/Directory with cross-Owner
+redaction. Registration preserves the original SID/Endpoint/Principal/name/cwd,
+starts offline and creates no native SessionBinding, lease, key or membership.
+Repeat registration is read-only; changed cwd conflicts and `left` is not revived.
+Leave uses the original authorization-state digest and current Node fence.
+The independent finite `owner.endpoints.read` proof leaves the old N2 two-operation
+allowlist unchanged. Its result is a private bounded snapshot, never communication
+authority. Actual Node local-bridge/Hook and App Core read integration remain
+pending, with [source-bound evidence](native-app-validation.md#2026-10-20-independent-endpoint-and-hook-checkpoint).
+This does not activate
 the frozen broader C0 installation-registration family. Zero-right registration
 does not require an existing Pair; reserved-Pair communication retains its
 separate Join, slot and consent requirements.
@@ -121,11 +130,26 @@ command or plugin action must work without model decision-making, using those
 same guarded primitives. No new launcher, daemon, guessed SID or unrestricted
 model-provided identity field is implied by this target.
 
+Owned probes of actual Codex 0.163.0 establish a narrower host mechanism:
+literal UserPromptSubmit hooks can finish synthetic local commands without a
+provider call, and PreToolUse can replace declared MCP arguments with the actual
+session/cwd/call context. An actual fork receives a distinct session ID and the
+replacement reaches the mock MCP. Missing or failed hooks can pass through;
+the mock sink's rejection does not establish a product Guard. The production
+adapter must independently validate its short-lived, per-call original context
+and refuse missing, stale, replayed or cross-Thread tickets. Subagent hooks can
+carry the parent's session ID; it must not be used as a child native identity.
+Product ticket/bridge, clear/subagent behavior and PQ integration remain NOT_RUN.
+
 Cicada-owned installed user files default to `~/.cicada`, with an installation-
 selected custom root. Existing platform vault and Node locations are not
 silently migrated, replaced or rekeyed. Root selection and restoration must
 locate the original protected identities and unresolved requests, including old
 nested vault layouts. See the [path rule](native-app-plan.md#installed-user-file-root).
+Partial source `73d6f9ad13c26ad7cf203e2924adcc7a46104213` covers new App/Node/MCP
+defaults, custom App root selection and component file-prefix defaults; authenticated
+recovery retains original sources. Hub/workspace/cache defaults and migration
+remain separate pending work, and physical Windows execution remains NOT_RUN.
 Native navigation, summaries/details, legible CJK text, selectable/copyable
 public fields and actionable recovery are product acceptance requirements;
 they do not justify exposing private keys, secrets or signed-out workspace data.

@@ -154,6 +154,7 @@ func awaitMarker(t *testing.T, p *process, marker string) {
 }
 
 type exchange struct {
+	Method         string `json:"method"`
 	Path           string `json:"path"`
 	RequestSHA256  string `json:"request_sha256"`
 	ResponseSHA256 string `json:"response_sha256,omitempty"`
@@ -169,6 +170,7 @@ type faultProxy struct {
 	client *http.Client
 	mu     sync.Mutex
 	path   string
+	method string
 	mode   string
 	count  int
 	gate   *pausePoint
@@ -204,9 +206,15 @@ func newFaultProxy(t *testing.T, origin string) *faultProxy {
 }
 
 func (p *faultProxy) arm(path, mode string, count int) (<-chan struct{}, func()) {
+	return p.armMethod(path, "", mode, count)
+}
+
+// Discovery GET and the authorized POST can share a path. A mutation fault
+// must not accidentally consume the discovery request that precedes it.
+func (p *faultProxy) armMethod(path, method, mode string, count int) (<-chan struct{}, func()) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.path, p.mode, p.count = path, mode, count
+	p.path, p.method, p.mode, p.count = path, method, mode, count
 	p.gate = &pausePoint{entered: make(chan struct{}), release: make(chan struct{})}
 	p.gates = append(p.gates, p.gate)
 	return p.gate.entered, p.gate.unblock
@@ -233,12 +241,12 @@ func (p *faultProxy) serve(w http.ResponseWriter, r *http.Request) {
 	p.mu.Lock()
 	mode := ""
 	var gate *pausePoint
-	if p.count > 0 && r.URL.Path == p.path {
+	if p.count > 0 && r.URL.Path == p.path && (p.method == "" || r.Method == p.method) {
 		mode, gate = p.mode, p.gate
 		p.count--
 	}
 	p.mu.Unlock()
-	ex := exchange{Path: r.URL.Path, RequestSHA256: hash(raw), request: bytes.Clone(raw)}
+	ex := exchange{Method: r.Method, Path: r.URL.Path, RequestSHA256: hash(raw), request: bytes.Clone(raw)}
 	if mode == "unsupported-before-forward" || mode == "unknown-profile-before-forward" {
 		ex.Status = http.StatusNotFound
 		if mode == "unknown-profile-before-forward" {

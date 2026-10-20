@@ -8,12 +8,18 @@ elif [[ $# == 1 && "$1" == --a3-core ]]; then mode=a3
 elif [[ $# == 1 && "$1" == --a3-http ]]; then mode=a3-http
 elif [[ $# == 1 && "$1" == --a3-size-store ]]; then mode=a3-size-store
 elif [[ $# == 1 && "$1" == --app-owner ]]; then mode=app-owner
-elif [[ $# != 0 ]]; then printf 'Usage: scripts/test-native-pair.sh [--store-regressions|--a3-core|--a3-http|--a3-size-store|--app-owner]\n' >&2; exit 2; fi
+elif [[ $# == 1 && "$1" == --endpoint-security ]]; then mode=endpoint-security
+elif [[ $# == 1 && "$1" == --endpoint-security-boundaries ]]; then mode=endpoint-security-boundaries
+elif [[ $# == 1 && "$1" == --endpoint-security-app-fixture ]]; then mode=endpoint-security-app-fixture
+elif [[ $# != 0 ]]; then printf 'Usage: scripts/test-native-pair.sh [--store-regressions|--a3-core|--a3-http|--a3-size-store|--app-owner|--endpoint-security|--endpoint-security-boundaries|--endpoint-security-app-fixture]\n' >&2; exit 2; fi
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source_root="$repo_root"
+if [[ "$mode" == endpoint-security* && ! -f "$source_root/docs/native-endpoint-directory-contract.md" ]]; then
+ printf 'Endpoint security requires the frozen Endpoint directory contract.\n' >&2; exit 2
+fi
 alternate_source="${CICADA_NATIVE_PAIR_SOURCE_ROOT:-${CICADA_NATIVE_PAIR_STORE_SOURCE_ROOT:-}}"
 if [[ -n "$alternate_source" ]]; then
- if [[ "$mode" == protocol || "$mode" == app-owner ]]; then printf 'Alternate source is limited to isolated core regressions.\n' >&2; exit 2; fi
+ if [[ "$mode" == protocol || "$mode" == app-owner || "$mode" == endpoint-security* ]]; then printf 'Alternate source is limited to isolated core regressions.\n' >&2; exit 2; fi
  source_root="$(cd "$alternate_source" && pwd -P)"
  if [[ ! -f "$source_root/cicada-go/go.mod" ]]; then printf 'Store source must be a Cicada worktree.\n' >&2; exit 2; fi
 fi
@@ -69,7 +75,7 @@ lane() {
  printf 'Native pair %s exit=%s\n' "$name" "$code"
 }
 lane version go version
-if [[ "$mode" != protocol && "$mode" != app-owner ]]; then
+if [[ "$mode" != protocol && "$mode" != app-owner && "$mode" != endpoint-security* ]]; then
  if [[ "$mode" == store ]]; then
   overlay=/qa/scripts/fixtures/native-pair/overlay.json
   package=./internal/store
@@ -115,6 +121,12 @@ else
   python3 "$repo_root/scripts/native_pair_evidence.py" binaries "$artifacts" "$evidence/binaries-before.json"
   if [[ "$mode" == app-owner ]]; then
    selector='^TestN3AppPairActionsBootstrapDualConsentAndRevoke$'
+  elif [[ "$mode" == endpoint-security ]]; then
+   selector='^(TestN3HarnessMethodSpecificFaultBarrier|TestN3EndpointSecurity(ZeroAuthorityAndIdentityRetention|LeaveCASAndExactReplay|RegistrationFaultRecovery|ConcurrentOriginalRequest))$'
+  elif [[ "$mode" == endpoint-security-boundaries ]]; then
+   selector='^TestN3EndpointSecurity(ZeroAuthorityAndIdentityRetention|ConcurrentOriginalRequest)$'
+  elif [[ "$mode" == endpoint-security-app-fixture ]]; then
+   selector='^TestN3EndpointSecurityZeroAuthorityAndIdentityRetention$'
   else
    selector='^TestN3NativePair(BootstrapAndExactReplay|WrongNodeScopeIsFenced|PrepareLossBeforeForward|CompleteLossAfterCommit|MissingOwnerProofCannotBootstrap)$'
   fi

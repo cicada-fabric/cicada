@@ -209,7 +209,15 @@ type appPairNodeFixture struct {
 // existing child/vault and the production Node confirmation path.
 func newAppPairNodeFixture(t *testing.T, f *hubFixture, do func(appcore.Action) appcore.Snapshot) *appPairNodeFixture {
 	t.Helper()
-	n := &appPairNodeFixture{f: f, id: "synthetic-n3-actual-app-pair", key: must(e2ee.NewIdentity()),
+	return newAppPairNodeFixtureID(t, f, do, "synthetic-n3-actual-app-pair")
+}
+
+func newAppPairNodeFixtureID(t *testing.T, f *hubFixture, do func(appcore.Action) appcore.Snapshot, id string) *appPairNodeFixture {
+	t.Helper()
+	if !syntheticNodeID.MatchString(id) {
+		t.Fatal("Node fixture requires a visibly synthetic scoped identifier")
+	}
+	n := &appPairNodeFixture{f: f, id: id, key: must(e2ee.NewIdentity()),
 		client: &http.Client{Timeout: 10 * time.Second, Transport: &http.Transport{DisableKeepAlives: true}}}
 	t.Cleanup(n.client.CloseIdleConnections)
 	code, raw := n.http(t, http.MethodGet, "/v2/node/identity", "", "", nil)
@@ -283,7 +291,27 @@ func (n *appPairNodeFixture) http(t *testing.T, method, path, authorization, gro
 	return response.StatusCode, out
 }
 
-func (n *appPairNodeFixture) rpc(t *testing.T, operation string, body, target any) {
+type appPairNodeRequest struct {
+	Route  nodewire.Route
+	Packet []byte
+}
+
+type appPairNodeReply struct {
+	OK          bool            `json:"ok"`
+	OperationID string          `json:"operation_id"`
+	Sequence    uint64          `json:"sequence"`
+	Result      json.RawMessage `json:"result"`
+	ErrorCode   string          `json:"error_code"`
+}
+
+type appPairNodeHTTPResult struct {
+	wireHTTPResult
+	RetryAfter string
+}
+
+// Retain this exact persisted request through uncertainty and replay. Preparing
+// a replacement is a separate operation, never a retry.
+func (n *appPairNodeFixture) prepareRPC(t *testing.T, operation string, body any) appPairNodeRequest {
 	t.Helper()
 	n.sequence++
 	b := n.binding
@@ -291,32 +319,64 @@ func (n *appPairNodeFixture) rpc(t *testing.T, operation string, body, target an
 		NodeID: b.NodeID, BindingID: b.BindingID, BindingVersion: b.BindingVersion, NodeKeyEpoch: b.NodeKeyEpoch,
 		Sequence: n.sequence, OperationID: must(wire.NewRequestID()), Operation: operation,
 		SenderKeyID: b.NodeKey.ID, SenderKeyVersion: b.NodeKeyVersion, ReceiverKeyID: b.HubKey.ID, ReceiverKeyVersion: b.HubKeyVersion}
-	packet := must(nodewire.SealRequest(n.key, b.HubKey, b, route, must(json.Marshal(body))))
+	plain := must(json.Marshal(body))
+	defer clear(plain)
+	packet := must(nodewire.SealRequest(n.key, b.HubKey, b, route, plain))
 	atomicPrivate(t, filepath.Join(n.f.dir, "app-pair-original-node-"+route.OperationID+".packet"), packet)
-	req := must(http.NewRequest(http.MethodPost, n.f.cfg.Origin+"/v2/node/control/rpc", bytes.NewReader(packet)))
+	return appPairNodeRequest{Route: route, Packet: packet}
+}
+
+// The proxy can lose or corrupt opaque bytes; it never creates Hub responses.
+func (n *appPairNodeFixture) postRPC(t *testing.T, request appPairNodeRequest, throughProxy bool) appPairNodeHTTPResult {
+	t.Helper()
+	target := n.f.cfg.Origin
+	if throughProxy {
+		target = n.f.proxy.server.URL
+	}
+	req := must(http.NewRequest(http.MethodPost, target+"/v2/node/control/rpc", bytes.NewReader(request.Packet)))
 	req.Header.Set("Origin", n.f.cfg.Origin)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "CicadaNode "+n.token)
-	response := must(n.client.Do(req))
-	defer response.Body.Close()
-	raw := must(io.ReadAll(io.LimitReader(response.Body, wire.MaxNativePairNodeReconcilePacketBytes+1)))
-	if response.StatusCode != http.StatusOK || len(raw) > wire.MaxNativePairNodeReconcilePacketBytes {
-		t.Fatal("owned synthetic Node PQ operation failed", operation, response.StatusCode)
+	response, err := n.client.Do(req)
+	if err != nil {
+		return appPairNodeHTTPResult{wireHTTPResult: wireHTTPResult{err: err}}
 	}
+	defer response.Body.Close()
+	raw, err := io.ReadAll(io.LimitReader(response.Body, wire.MaxNativePairNodeReconcilePacketBytes+1))
+	if len(raw) > wire.MaxNativePairNodeReconcilePacketBytes {
+		t.Fatal("owned synthetic Node response exceeded its bounded fixture")
+	}
+	return appPairNodeHTTPResult{wireHTTPResult: wireHTTPResult{status: response.StatusCode, response: raw, err: err},
+		RetryAfter: response.Header.Get("Retry-After")}
+}
+
+func (n *appPairNodeFixture) openRPC(t *testing.T, request appPairNodeRequest, raw []byte) appPairNodeReply {
+	t.Helper()
+	b := n.binding
 	opened := must(nodewire.OpenResponse(n.key, b.HubKey, b, raw))
-	want := route
+	defer clear(opened.Plaintext)
+	want := request.Route
 	want.Direction = nodewire.DirectionResponse
 	want.SenderKeyID, want.ReceiverKeyID = want.ReceiverKeyID, want.SenderKeyID
 	want.SenderKeyVersion, want.ReceiverKeyVersion = want.ReceiverKeyVersion, want.SenderKeyVersion
-	var reply struct {
-		OK          bool            `json:"ok"`
-		OperationID string          `json:"operation_id"`
-		Sequence    uint64          `json:"sequence"`
-		Result      json.RawMessage `json:"result"`
-		ErrorCode   string          `json:"error_code"`
+	var reply appPairNodeReply
+	if opened.Route != want || json.Unmarshal(opened.Plaintext, &reply) != nil || reply.OperationID != request.Route.OperationID ||
+		reply.Sequence != request.Route.Sequence || reply.OK && (len(reply.Result) == 0 || reply.ErrorCode != "") ||
+		!reply.OK && (len(reply.Result) != 0 || reply.ErrorCode == "") {
+		t.Fatal("owned synthetic Node response changed its original route or envelope")
 	}
-	if opened.Route != want || json.Unmarshal(opened.Plaintext, &reply) != nil || !reply.OK || reply.OperationID != route.OperationID ||
-		reply.Sequence != route.Sequence || json.Unmarshal(reply.Result, target) != nil {
-		t.Fatal("owned synthetic Node response changed its original route or result", operation, reply.ErrorCode)
+	return reply
+}
+
+func (n *appPairNodeFixture) rpc(t *testing.T, operation string, body, target any) {
+	t.Helper()
+	request := n.prepareRPC(t, operation, body)
+	response := n.postRPC(t, request, false)
+	if response.err != nil || response.status != http.StatusOK {
+		t.Fatal("owned synthetic Node PQ operation failed", operation, response.status)
+	}
+	reply := n.openRPC(t, request, response.response)
+	if !reply.OK || json.Unmarshal(reply.Result, target) != nil {
+		t.Fatal("owned synthetic Node response did not accept its typed result", operation, reply.ErrorCode)
 	}
 }

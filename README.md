@@ -47,9 +47,17 @@ separate. It is not a fresh build or complete independent native acceptance.
 The [current feedback ledger](docs/native-app-plan.md#current-feedback-and-acceptance-ledger)
 tracks the remaining product and safety work in one plan. Hub, Node and App are
 composable components; installation, ordinary registration, account login and
-business/Owner authorization are separate. The bounded Hub remediation will
-reuse zero-right Endpoint registration and scoped topology/Directory;
-implementation and independent acceptance remain pending. The broader
+business/Owner authorization are separate. The bounded Hub backend at
+`d3acd4bfe6f3f10867db6a5e3ae432f8477d9748` implements
+[zero-right Endpoint registration and private Owner directory reads](docs/native-endpoint-directory-contract.md).
+Its [producer checks](docs/native-endpoint-directory-validation.md) and
+[independent fault checks](docs/native-app-validation.md#2026-10-20-independent-endpoint-and-hook-checkpoint)
+have separate source attribution. Actual Node local-bridge/Hook integration and
+the App Owner-directory action remain pending. Native navigation/CJK source at
+`bb0644b68627579af470ead52035d42618372c75` is integrated; physical Windows review
+remains NOT_RUN. App/Node/MCP storage-default source at
+`73d6f9ad13c26ad7cf203e2924adcc7a46104213` is a partial installed-root change;
+Hub/workspace/cache defaults and migration remain pending. The broader
 installation-registration family is frozen. [C0.1](docs/hub-installation-registration-contract.md)
 at `e0e05582dabea005eaa7c3c2d8da3527e263682a` freezes the
 `installation-registration-v1.1` crypto/wire boundary, with default public

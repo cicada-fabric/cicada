@@ -21,6 +21,15 @@ A3_EXPECTED = {'TestQANativePairA3' + name for name in (
 A3_HTTP_EXPECTED = {'TestQANativePairA3HTTPExactBodyAndAtomicRejection'}
 A3_SIZE_EXPECTED = {'TestQANativePairA3DeliveryOverflowCannotPublishAuthority'}
 APP_OWNER_EXPECTED = {'TestN3AppPairActionsBootstrapDualConsentAndRevoke'}
+ENDPOINT_SECURITY_EXPECTED = {'TestN3HarnessMethodSpecificFaultBarrier'}
+ENDPOINT_SECURITY_EXPECTED.update('TestN3EndpointSecurity' + suffix for suffix in (
+    'ZeroAuthorityAndIdentityRetention', 'LeaveCASAndExactReplay',
+    'RegistrationFaultRecovery', 'ConcurrentOriginalRequest'))
+ENDPOINT_SECURITY_EXPECTED.update('TestN3EndpointSecurityRegistrationFaultRecovery/' + mode for mode in (
+    'before-forward', 'drop-after-response', 'unsigned-403', 'corrupt-response'))
+ENDPOINT_BOUNDARIES_EXPECTED = {'TestN3EndpointSecurityZeroAuthorityAndIdentityRetention',
+                                'TestN3EndpointSecurityConcurrentOriginalRequest'}
+ENDPOINT_APP_FIXTURE_EXPECTED = {'TestN3EndpointSecurityZeroAuthorityAndIdentityRetention'}
 
 
 def sha(path):
@@ -44,6 +53,9 @@ def snapshot(repo, dest, harness=None):
     harness = harness or repo
     paths = [p for p in (repo / 'cicada-go').rglob('*') if p.is_file()]
     paths += [repo / 'docs' / name for name in ('hub-native-pair-contract.md', 'native-app-plan.md')]
+    endpoint_contract = repo / 'docs/native-endpoint-directory-contract.md'
+    if endpoint_contract.exists():
+        paths.append(endpoint_contract)
     paths += [repo / 'scripts/native-pair-contract.py']
     files = {'source/' + str(p.relative_to(repo)): sha(p) for p in sorted(paths)}
     formal = None
@@ -91,7 +103,7 @@ def terminal_events(path):
 
 
 def finish(run, artifacts, image, owned, mode='protocol'):
-    if mode not in ('protocol', 'store', 'a3', 'a3-http', 'a3-size-store', 'app-owner'):
+    if mode not in ('protocol', 'store', 'a3', 'a3-http', 'a3-size-store', 'app-owner', 'endpoint-security', 'endpoint-security-boundaries', 'endpoint-security-app-fixture'):
         raise ValueError('Only protocol and isolated core regression modes are active.')
     before, after = [json.loads((run / f'source-{side}.json').read_text()) for side in ('before', 'after')]
     results, diagnostics, metrics = {}, [], []
@@ -112,8 +124,11 @@ def finish(run, artifacts, image, owned, mode='protocol'):
     exits = {p.stem: int(p.read_text().strip()) for p in run.glob('*.exit')}
     matched = before == after
     expected = {'store': STORE_EXPECTED, 'a3': A3_EXPECTED, 'a3-http': A3_HTTP_EXPECTED,
-                'a3-size-store': A3_SIZE_EXPECTED, 'app-owner': APP_OWNER_EXPECTED, 'protocol': EXPECTED}[mode]
-    core = mode not in ('protocol', 'app-owner')
+                'a3-size-store': A3_SIZE_EXPECTED, 'app-owner': APP_OWNER_EXPECTED,
+                'endpoint-security': ENDPOINT_SECURITY_EXPECTED, 'endpoint-security-boundaries': ENDPOINT_BOUNDARIES_EXPECTED,
+                'endpoint-security-app-fixture': ENDPOINT_APP_FIXTURE_EXPECTED,
+                'protocol': EXPECTED}[mode]
+    core = mode not in ('protocol', 'app-owner', 'endpoint-security', 'endpoint-security-boundaries', 'endpoint-security-app-fixture')
     stages = ('version', 'compile-tests', 'compile-race', 'harness', 'race', 'vet') if core else ('version', 'compile-cli', 'compile-tests', 'harness', 'vet')
     race = terminal_events(run / 'race.log') if core else None
     race_passed = not core or (set(race) == expected and all(v == 'pass' for v in race.values()))
@@ -124,6 +139,9 @@ def finish(run, artifacts, image, owned, mode='protocol'):
                          'a3-http': {'nativepair-a3-http.test', 'nativepair-a3-http-race.test'},
                          'a3-size-store': {'nativepair-a3-size.test', 'nativepair-a3-size-race.test'},
                          'app-owner': {'cicada', 'n3.test'},
+                         'endpoint-security': {'cicada', 'n3.test'},
+                         'endpoint-security-boundaries': {'cicada', 'n3.test'},
+                         'endpoint-security-app-fixture': {'cicada', 'n3.test'},
                          'protocol': {'cicada', 'n3.test'}}[mode]
     binaries_stable = set(binary_records[0]) == expected_binaries and binary_records[0] == binary_records[1]
     passed = (all(exits.get(n) == 0 for n in stages)
@@ -142,6 +160,9 @@ def finish(run, artifacts, image, owned, mode='protocol'):
              'a3-http': 'REAL_PQ_TCP_SYNTHETIC_RELAY_DERIVED_TYPED_HTTP_BYTE_BOUNDARIES_NOT_RUNTIME',
              'a3-size-store': 'SYNTHETIC_STORE_PQ_ORIGINAL_CONSENT_ACTIVATION_SIZE_ATOMICITY_NOT_TCP_OR_RUNTIME',
              'app-owner': 'ACTUAL_APP_CORE_CHILD_PAIR_OWNER_ACTIONS_AND_SYNTHETIC_NODE_PQ_TO_PRODUCTION_HUB_NOT_GUI_OR_RUNTIME',
+             'endpoint-security': 'ACTUAL_APP_CORE_NODE_APPROVAL_SYNTHETIC_NODE_PQ_TCP_ZERO_RIGHTS_ENDPOINT_CAS_EXACT_REPLAY_NOT_NATIVE_ADAPTER_OR_OWNER_DIRECTORY',
+             'endpoint-security-boundaries': 'TARGETED_ACTUAL_APP_NODE_APPROVAL_ZERO_RIGHTS_AUTH_AND_CONCURRENT_EXACT_RETRY_CORRECTION_NOT_FULL_AGGREGATE',
+             'endpoint-security-app-fixture': 'AFFECTED_ACTUAL_APP_CORE_NODE_APPROVAL_AND_ZERO_RIGHTS_FIXTURE_AFTER_STORAGE_CHECKPOINT_NOT_FULL_AGGREGATE',
              'protocol': 'REAL_TCP_PQ_BOOTSTRAP_AND_RECOVERY_ONLY'}[mode]
     summary = {'scope': scope,
                'status': 'SCOPED_PASS' if passed else ('EXPECTED_RED_SERVICE_UNAVAILABLE' if expected_red else 'FAIL'),
@@ -160,7 +181,12 @@ def finish(run, artifacts, image, owned, mode='protocol'):
                'diagnostics': diagnostics, 'http_measurements': metrics,
                'artifacts': {p.name: {'sha256': sha(p), 'bytes': p.stat().st_size} for p in artifacts.iterdir() if p.is_file()},
                'evidence_sha256': {p.name: sha(p) for p in run.iterdir() if p.is_file() and p.name != 'result.json'},
-               'not_run': ([] if mode == 'app-owner' else ['production_App_native_pair']) +
+               'not_run': ((['actual_App_Owner_endpoint_directory', 'production_Node_registration_adapter',
+                             'product_Hook_context_ticket_guard', 'Group_Network_scope_leave',
+                             'changed_authorization_state_leave_CAS', 'distinct_Node_operation_concurrency']
+                            + ['second_approved_Node_same_SID_adoption']
+                            if mode.startswith('endpoint-security') else []) +
+                           ([] if mode == 'app-owner' else ['production_App_native_pair'])) +
                           ['actual_Codex_dialogue', 'real_native_same_Node_sealed_Relay_consumption',
                            'native_queue_consumption', 'Windows_DPAPI', 'Windows_ACL', 'Windows_GUI'] +
                           (['full_public_availability_gate', 'actual_sender_writer_current_enforcement'] if mode in ('a3', 'a3-http') else

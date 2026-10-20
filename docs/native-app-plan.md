@@ -36,20 +36,25 @@ component and security scopes preserved. `~/Cicada` is the development workspace
 not an installed-user-data default. `~` denotes the current user's home on
 the target platform.
 
-Current defaults are not unified: App custody still uses platform user-config
-or Windows Local AppData paths, while the component installer's explicit
-`--prefix` installs files without relocating existing state. Applying the
-selected root consistently and migrating existing installations are not
-implemented or accepted by this plan. Historical validation paths and results
-keep their original attribution.
+The partial implementation at `73d6f9ad13c26ad7cf203e2924adcc7a46104213`
+defaults new App vaults to `<root>/app/vaults`, implicit Node state to
+`<root>/state` and MCP session state to `<root>/mcp/sessions.json`.
+`--user-root` takes precedence over `CICADA_USER_ROOT`; a custom App launch must
+retain that flag/environment. The component installer defaults its file prefix
+to the selected root, without migrating existing data or launch settings.
+Authenticated discovery retains original legacy/nested vault and outbox sources,
+with no copying or replacement keys. Hub `/state`, managed workspace `/workspace`
+and caches are not unified by this checkpoint. Global unification/migration and
+physical Windows acceptance remain pending; historical paths/results retain
+their original attribution.
 
 The 2026-10-20 user-operated two-Thread batch used new workspaces and a Cicada
 MCP cache under `~/.cicada/acceptance` for its bounded manual workaround.
 This does not migrate, copy or recreate
 the existing Node state or Windows vault, or change the original Codex account
 and `CODEX_HOME`. Current priority is the consolidated product/security
-remediation below; root unification and migration remain pending. This path
-record adds no new gate.
+remediation below; the partial paths source has separate producer and affected
+integration receipts, not full installed-root or migration acceptance.
 
 ## Current feedback and acceptance ledger
 
@@ -62,11 +67,15 @@ Unsettled protocol/API rows remain DESIGN_PENDING before executable drivers.
 Source/portable results, user observations and independent real execution stay
 separate; older matrices and failures below keep their original attribution.
 
-The approved bounded Hub direction reuses existing zero-right Endpoint
-registration and same-Owner topology/Directory, with cross-Owner path redaction.
-Its final minimal contract, implementation and integration still need review
-and execution. The broader C0 installation-registration family remains frozen;
-its pure tests are not the acceptance result for this direction.
+The bounded backend at `d3acd4bfe6f3f10867db6a5e3ae432f8477d9748` implements
+[zero-right Endpoint registration and private Owner read](native-endpoint-directory-contract.md),
+including immutable original identity, Leave CAS, bounded snapshots and foreign-card
+redaction. Its producer checks and independent TCP fault results remain
+[source-specific](native-app-validation.md#2026-10-20-independent-endpoint-and-hook-checkpoint).
+Actual Node local bridge/Hook and App read actions remain pending. The broader
+C0 installation-registration family stays frozen; its pure results are separate.
+Native navigation/CJK source at `bb0644b68627579af470ead52035d42618372c75` is
+integrated, with physical Windows review still NOT_RUN.
 
 The [latest actual user batch](native-app-validation.md#2026-10-20-user-operated-same-node-pair-batch)
 reports original A/B Join, separate consents, forward/reverse ASK/Reply and
@@ -77,29 +86,32 @@ were not supplied. This does not close every older N3-TT or Windows gate.
 
 | ID | Feedback and required independent observation | Current boundary |
 | --- | --- | --- |
-| FB-01 | Optional Hub/Node/App on one host; ordinary registration allows only necessary self-auth/status, with zero business rights. Account login cannot create Root, Join, communication or execution authority. | C0.1 v1.1 crypto/wire committed; actual H1/H2 and consumers NOT_RUN. Co-installation cannot inherit grants. |
+| FB-01 | Optional Hub/Node/App on one host; ordinary registration allows only necessary self-auth/status, with zero business rights. Account login cannot create Root, Join, communication or execution authority. | The d3acd4b bounded Endpoint backend is implemented with separate producer/independent scopes; actual native adapter consumers remain pending. Broader C0.1/H1/H2 stay frozen/NOT_RUN. |
 | FB-02 | Owner chooses explicit software/business permissions or presets; Hub durably verifies the original Owner signing-key chain, exact actor/target/current versions and expiry. Unsigned/self-issued presets or revoked/stale authority deny. | Broader policy behavior DESIGN_PENDING. Existing finite Pair/status grants retain their contracts; UI presets cannot become a new authority. |
-| FB-03 | Node obtains a device code and App approves the actual candidate. Normal trusted-pin setup requires no manual Owner public-key/fingerprint transfer; wrong/replaced pin or missing proof rejects without fallback or key replacement. | Manual export/import remains the delivered interim path with user-reported prerequisites. Integrated new flow NOT_RUN. |
-| FB-04 | Own lists lead with name + workspace + Node + status and retain original SID/Endpoint ID/workspace/name. Renaming changes neither stable identity, keys nor permissions; removing an association preserves the original Thread/workspace. | Naming/inventory contract DESIGN_PENDING; ID-only primary interaction is a product gap. |
-| FB-05 | Duplicate names return AMBIGUOUS/require explicit choice. Matching name/workspace can use human labels; selection binds exact internal ID/current version. Revocation rejects an old choice rather than retargeting another same-name Endpoint. | Resolution/version contract DESIGN_PENDING. Test rename, duplicate, stale selection and revoke/rebind independently. |
-| FB-06 | Current-machine and remote lists filter by this Owner or exact authorized scope. Cross-Owner discovery hides absolute paths by default; qualified Owner inventory may show registered but unpermitted objects with that distinction visible. Hub persists inventory/permissions. | Reuse of existing zero-right Endpoint registration and same-Owner topology/Directory is the approved direction; final projection contract/implementation and independent integration remain pending. |
-| FB-07 | Plugin/MCP binds the actual original native record, SID and canonical cwd, with original Codex account, Node/API and independent Node record validation. Reject missing/mismatched records, A/B swaps and inherited SID/workspace aliases. | Codex 0.163.0 MCP startup lacked SID; bounded manual exact resume repaired the reported run. General automatic integration NOT_IMPLEMENTED; connected tools are not a Join receipt. |
-| FB-08 | Explicit local/plugin registration or Join commands execute deterministic guarded operations without model decision-making and bind the actual original context. Zero-right registration does not require a Pair/slot; communication still needs separate authority, including exact Pair/slot for the existing reserved-Pair flow. | Product entry/contract DESIGN_PENDING. Existing `cicada_join` is a model-invoked MCP entry; no identity forgery, relaxed Guard, new launcher or daemon is authorized by this row. |
-| FB-09 | New installations default Cicada-owned user files to `~/.cicada`, permit custom root and apply it consistently to configuration/state/managed workspace/cache. Development `~/Cicada` stays separate. | Default-root unification/migration NOT_IMPLEMENTED; actual new acceptance workspace/cache is scoped under `~/.cicada/acceptance`. Existing Node/vault and Codex account locations remain intact. |
+| FB-03 | Node obtains a device code and App approves the actual candidate. Normal trusted-pin setup requires no manual Owner public-key/fingerprint transfer; wrong/replaced pin or missing proof rejects without fallback or key replacement. | Actual App Core approves a synthetic Node using the existing device-code/PQ path in the new independent fixture. Product automatic pin/bridge integration remains pending; this does not erase the delivered manual prerequisites. |
+| FB-04 | Own lists lead with name + workspace + Node + status and retain original SID/Endpoint ID/workspace/name. Renaming changes neither stable identity, keys nor permissions; removing an association preserves the original Thread/workspace. | The d3acd4b contract preserves original metadata and adds private own-Owner cards; repeat registration cannot rename or revive left state. Actual App/Node inventory UX and rename remain pending. |
+| FB-05 | Duplicate names return AMBIGUOUS/require explicit choice. Matching name/workspace can use human labels; selection binds exact internal ID/current version. Revocation rejects an old choice rather than retargeting another same-name Endpoint. | The d3acd4b backend retains AMBIGUOUS and exact Node/workspace filtering, with producer privacy/resolution checks. Actual human-label selection and stale-selection integration remain pending; there is no new rename operation. |
+| FB-06 | Current-machine and remote lists filter by this Owner or exact authorized scope. Cross-Owner discovery hides absolute paths by default; qualified Owner inventory may show registered but unpermitted objects with that distinction visible. Hub persists inventory/permissions. | The d3acd4b backend implements zero-right cards, same-Owner projection, independent finite Owner proofs and foreign-card redaction. Actual App read/Node operator integration and its independent privacy cases remain pending. |
+| FB-07 | Plugin/MCP binds the actual original native record, SID and canonical cwd, with original Codex account, Node/API and independent Node record validation. Reject missing/mismatched records, A/B swaps and inherited SID/workspace aliases. | Actual Codex 0.163.0 PreToolUse→mock MCP and actual fork context replacement pass their owned mechanism scopes. Missing/failed hooks can pass through; product ticket Guard/record/cwd checks, clear and subagent identity remain NOT_RUN. The prior exact-resume batch stays separate. |
+| FB-08 | Explicit local/plugin registration or Join commands execute deterministic guarded operations without model decision-making and bind the actual original context. Zero-right registration does not require a Pair/slot; communication still needs separate authority, including exact Pair/slot for the existing reserved-Pair flow. | Owned literal UserPromptSubmit hooks finish synthetic commands without provider access; PreToolUse can replace declared MCP context arguments. Product deterministic registration/Join/leave and ticket/PQ bridge remain NOT_RUN; existing model-invoked MCP entry remains separately attributed. |
+| FB-09 | New installations default Cicada-owned user files to `~/.cicada`, permit custom root and apply it consistently to configuration/state/managed workspace/cache. Development `~/Cicada` stays separate. | Partial source 73d6f9a covers new App/Node/MCP paths, custom root and installer file prefix with original-state recovery. Hub/workspace/cache defaults, migration and physical Windows remain pending; no real state or Codex account is moved. |
 | FB-10 | Locate and unlock old/nested vault layouts, resume the original profile/keys/outbox and reconcile uncertain original requests. Missing/busy/corrupt storage gives safe recovery, never silent first setup or a replacement identity. | Existing profile-recovery source/portable checks and old second-instance failure retain their records. Matching physical Windows recovery retest NOT_RUN. |
 | FB-11 | Login-first presentation hides Node/Owner/private workspace data before current account authentication. A persistent Node registration survives the separate 15-minute App status-access expiry, explicit end and reauthorization without reinstalling or pairing again. | Earlier login/status user batches passed their reported scopes. New cross-scope, expiry/stale and privacy assertions require separate evidence. |
-| FB-12 | Native navigation has clear summaries and collapsible detail, usable errors/recovery, legible CJK at real DPI and selectable/copyable public fields. Copy/export never exposes private keys, tokens or secret tickets. | Chinese text was USER_REPORTED_FAIL and previously deferred; it is now an open remediation item. Later copy/select source checks do not establish a new delivered/physical UI PASS. |
-| FB-13 | Keep original Hub/Owner pins, DPAPI/ACL and exact encrypted requests before send. Loss, unsigned/corrupt responses, duplicates and restart recover authenticated original outcomes; expiry/stale data cannot renew authority. | Existing N2/N3/PQ fault receipts are source-bound. New flows NOT_RUN; dedicated Windows DPAPI/ACL/GUI security needs actual native evidence. |
+| FB-12 | Native navigation has clear summaries and collapsible detail, usable errors/recovery, legible CJK at real DPI and selectable/copyable public fields. Copy/export never exposes private keys, tokens or secret tickets. | Native navigation/CJK source bb0644b is integrated. Initial dirty-source normal/race, later CJK cross-builds and Root's clean-bb0644b normal 133/0/0 plus two Windows cross-builds retain distinct receipts; none retests physical fonts/DPI/GUI. The historical Chinese USER_REPORTED_FAIL remains. |
+| FB-13 | Keep original Hub/Owner pins, DPAPI/ACL and exact encrypted requests before send. Loss, unsigned/corrupt responses, duplicates and restart recover authenticated original outcomes; expiry/stale data cannot renew authority. | Independent real-App-approved synthetic-Node TCP gates cover original-packet loss/corruption recovery, zero-right leave CAS and Hub restart. The original concurrent unsigned-403 failure remains recorded; 2ab4e51 plus dirty QA passes its two-item correction with actual 429/backpressure and original-receipt recovery. Earlier seven passing events retain their own source; Windows security and product Hook tickets remain NOT_RUN. |
 | FB-14 | Closing/logout of App1 does not implicitly revoke independently valid work. App2 registers with its own keys and reads matching fresh Hub state under separate grants, without copying App1 Owner keys/session/outbox. Expiry/revocation still deny at original limits. | Window-close communication USER_REPORTED_PASS; logout/expiry adversaries, actual independent App2 and shared-state recovery NOT_RUN. Empty App2 fixture is preparation only. |
-| FB-15 | Keep Go core and existing crypto/TCP/persistence, with no new coordination service or model polling. Record idle/request/resource costs and exact source/toolchain/product versions; verify upstream stable versions when choosing updates. | Pinned build/fixture checks retain their original versions. Installed Codex 0.163.0 is an observation, not a claim of latest stable; no silent deployment update is implied. |
+| FB-15 | Keep Go core and existing crypto/TCP/persistence, with no new coordination service or model polling. Record idle/request/resource costs and exact source/toolchain/product versions; verify upstream stable versions when choosing updates. | Root checked upstream stable versions on 2026-10-20: Go 1.27.3, Gio 0.10.3, x/sys 0.49.0 and latest official Codex CLI changelog entry 0.163.0 (2026-10-15). Exact JSON/hash evidence is linked in validation; no dependency/global runtime/deployment update was performed. |
 | FB-16 | Preserve identities/state through the current remediation; the user will later perform a full uninstall/reinstall acceptance. Record retained/deleted data and platform results only when actually executed. | Uninstall scripts are explicitly NOT_IN_SCOPE for this stage. Full removal/reinstall and physical Windows cases NOT_RUN; no real deployment/state operation is authorized here. |
 
-The next independent matrix will reuse owned real-crypto/TCP/persistent-DB
-fixtures for new authorization/Directory/recovery boundaries after contracts
-are reviewed. Plugin context and deterministic commands need their actual
-delivered entry before synthetic cross-process faults; product units remain
-with App. Real Thread/queue/model operation remains user-controlled. No old
-large matrix, new driver or uninstall implementation is requested by this ledger.
+The approved minimal independent driver reuses actual App Core Node approval,
+real PQ/TCP, persistent owned SQLite and disposable Docker. It tests only the
+reviewed Endpoint boundaries; App Owner-read positive cases wait for the actual
+Core action and never substitute a driver-held Owner signer. Later Node/Hook
+integration needs its delivered entry before product ticket/context faults.
+Product units remain with App. Real Thread/queue/model operation stays
+user-controlled; old large matrices and uninstall implementation are not resumed.
+The old lifecycle WIP is retained in two UNVALIDATED archive commits, excluded
+from current builds; see the checkpoint record for exact refs and hashes.
 
 ## Composable installation and shared-state acceptance target
 
