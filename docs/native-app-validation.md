@@ -3245,3 +3245,69 @@ service, deployment or global Codex configuration changed. New independent
 App registration and Node pairing-secret storage adapters await the reviewed
 Hub contract; no successful authorization is inferred from these file/UI
 checks. The earlier clean-4ca delivery remains unchanged.
+
+### App2 isolated-container adapter preparation
+
+2026-10-20 UTC, **SCOPED_HARNESS_PASS only**. The reusable adapter starts the
+actual empty App Core in a second container; it does not register App2, mint
+business grants, establish an Owner pin or read simulated Hub business state.
+Re-run with `bash scripts/test-native-app-n3.sh --app2-isolation-only` in an
+isolated checkout with the pinned offline builder/module prerequisites.
+
+The host's bounded test supervisor shares only the owned fixture's network
+namespace. Actual daemon inspection verifies independent PID/private IPC,
+nonroot UID/GID 1000, read-only rootfs, dropped capabilities, no privileged or
+SYS_PTRACE additions, no published ports and no-new-privileges. The only bind
+mounts are App2's own profile, its own synthetic input/mailbox, and the actual
+`n3.test` read-only. No App1/Hub/Node state, source directory, Owner keys or Docker
+socket is mounted. App2 proves a single fixture TCP nonce exchange, an empty
+production Controller profile, the same executable hash and failed opens of
+the App1 private canary/socket/parent-only paths. This TCP probe is not a Hub
+response, enrollment proof or shared-state read. No extra product service,
+automatic authorization renewal, model call or business polling was added.
+
+Both actual container runs below are **dirty `ed468b45f69cfc4009f6c8cc299a0b3b10706927`
+plus five QA WIP files**, with byte-identical before/after source snapshots and
+executed-binary inventories in each run. Root later synchronized this worktree
+to `709531966b90aabedc80ee619922a589b991d20d`, preserving all five WIP hashes.
+These container-run results do not become clean-7095319 or later-checkpoint executions.
+Evidence is under `.local/evidence/n3-acceptance/`, with matching binaries under
+`.local/artifacts/n3-acceptance/`:
+
+| Container run | Declared outcome | Original result.json SHA-256 |
+| --- | --- | --- |
+| `run-20261020T084214Z-NHdxHy` | 1 PASS / 0 FAIL / 0 SKIP; all five stage exits 0; initial explicit-driver prerequisite | `167ad8790b55cb887c6955f93a69a55c5a1fe4443b12b896892af10e75cb4a50` |
+| `run-20261020T084711Z-u1J0QG` | 1 PASS / 0 FAIL / 0 SKIP; all five stage exits 0; explicit required-mode flag | `0312e8153b1475615930554474c04c63c25503047527fc1d1d9d89a159c3f804` |
+
+| Actual retained test binary | Bytes | SHA-256 |
+| --- | --- | --- |
+| First run `n3.test` | 22670772 | `538307a6bf3e8f2ca28a886ca81804ca8ad0abe50b90d564f6ce40e97f667f66` |
+| Required-mode run `n3.test` | 22670612 | `b65b5a3442e336df81874c6524ea9f6dba8f92f2741cf9e1179afe26cfa90615` |
+
+Source manifests are respectively
+`92a2ae8d183e7d93ecbfa52915ee511de8604ff932efc4be2ae7bae762b59351` and
+`8fea6fd46abec976290694894ede842f88919fbef0299ba65e8190c3e2b10b6e`.
+Each run's `original-tested-WIP/` preserves its complete five-file variant;
+private control/profile state stays in owned host-bound state, not evidence.
+Both actual App2 child tests exited 0 without skip; actual parent/child resource
+absence was independently checked. Exact argv, actual inspect reports and child
+log hashes remain in each `app2/receipt.json` and execution records.
+
+The final binary separately skips the ordinary unconfigured test (exit 0,
+**1 SKIP**, not acceptance), and rejects required mode without its control
+supervisor (exit 1, **1 expected FAIL**). The driver sets
+`CICADA_N3_REQUIRE_APP2=1`; missing child/supervisor or a skipped dedicated test
+cannot satisfy its gate. Final evidence-parser tests are **22/0/0**. A later
+parser-only fix rejects a JSON-null child receipt; re-evaluating the same frozen
+second-run events/argv/binary/receipt under that stricter evaluator exits 0 and
+produces the same result hash, without a third container run or source relabelling.
+The policy/parser review is
+`.local/evidence/composable-registration/run-20261020T075053Z-8d262d/qa-app2-prep-t__248pk/post-required-policy-fvnl_4wp/review.json`,
+SHA-256 `3b00cd982ca715f406c5b4fd41280af56efce1c34e3a55f909f1f9fbb4da655d`.
+
+All INST-01..07, new C0 registration/pin authority and actual App2 authorized
+shared-state reads remain **NOT_RUN** pending the frozen Hub contract and real
+adapters. Linux App1 exit/Node-peer continuity is separate from App's Linux
+Hub/Node component-removal tests; Windows App uninstall/DPAPI/clipboard remains
+**NOT_RUN** here. No old N2/N3 matrix, standard interop, real Node service/state,
+SID, queue/model/Runtime or public deployment was exercised by these checks.

@@ -64,6 +64,13 @@ expiry/revocation independently. Exact argv and pre/post executed-binary hashes
 are required. Contract revision, canonical proof tuple, outcomes, ACK/retry and
 restore semantics must be frozen/reviewed before adding the actual selectors.
 
+The independent container adapter now has a separate harness-only command:
+`bash scripts/test-native-app-n3.sh --app2-isolation-only`. It proves actual
+empty App Core/container/network isolation, not enrollment, business authority,
+shared Hub state or INST-04/05 completion; see the [adapter receipt](native-app-validation.md#app2-isolated-container-adapter-preparation).
+Ordinary missing prerequisites skip; the explicitly required gate rejects
+missing control/child evidence. C0 positive cases remain contract-pending.
+
 ## Checkpoints
 
 | Checkpoint | Scope | State |

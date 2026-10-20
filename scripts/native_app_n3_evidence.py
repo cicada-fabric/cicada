@@ -7,6 +7,9 @@ import subprocess
 import sys
 import shutil
 import stat
+import os
+import re
+import time
 from datetime import datetime, timezone
 
 EXPECTED = {'TestN3HarnessRealHubReplyRecovery', 'TestN3HarnessDelayedPacketCancellation',
@@ -20,6 +23,7 @@ DISCOVERY_EXPECTED.update('TestN3ActualAppUnsupportedCapabilitiesSendNoSecrets/'
 SEED_EXPECTED = {'TestN3SeedRetainedN2Fixture'}
 AUTO_EXPECTED = {'TestN3ActualAutomaticStatusKeepsScopeAndSelfCancelledNode',
                  'TestN3ActualAutomaticStatusLossFreezesTicksUntilExactRecovery'}
+APP2_EXPECTED = {'TestN3HarnessApp2ContainerIsolation'}
 RUNTIME_TOP = {
     'TestN3ConcurrentPrepareConfirmAndConflictingReplay', 'TestN3ActualVaultFailureStopsBeforeSecretSend',
     'TestN3ServerRejectsIndependentProofScopeAttacks', 'TestN3ServerRejectsForgedCompletionPreservingPreview',
@@ -238,11 +242,195 @@ def events(path):
     return result
 
 
+def app2_inspection(info, parent_id, run_id, expected_mounts):
+    """Validate daemon-reported isolation, not a desired docker argv."""
+    config, host = info['Config'], info['HostConfig']
+    if (config.get('Labels', {}).get('cicada.n3.app2.run') != run_id
+            or config.get('User') != '1000:1000'
+            or host.get('NetworkMode') != 'container:' + parent_id
+            or host.get('PidMode') not in ('', None)
+            or host.get('IpcMode') != 'private'
+            or host.get('Privileged') or host.get('CapAdd')
+            or 'ALL' not in (host.get('CapDrop') or [])
+            or not host.get('ReadonlyRootfs') or host.get('PortBindings')
+            or not any(option in ('no-new-privileges', 'no-new-privileges=true')
+                       for option in host.get('SecurityOpt', []))):
+        raise ValueError('App2 daemon configuration violates isolation')
+    seen = {}
+    for mount in info.get('Mounts', []):
+        if mount['Type'] == 'tmpfs' and mount['Destination'] == '/tmp':
+            continue
+        if mount['Type'] != 'bind' or mount['Destination'] in seen:
+            raise ValueError('App2 has an unexpected or repeated mount')
+        seen[mount['Destination']] = (mount['Source'], mount['RW'])
+    if seen != expected_mounts:
+        raise ValueError('App2 actual mount set differs from its private profile/input/binary')
+    if any(value.startswith('CICADA_') and value != 'CICADA_N3_APP2_CHILD=1'
+           for value in config.get('Env', [])):
+        raise ValueError('App2 received an unexpected component environment')
+    return {'id': info['Id'], 'parent_id': parent_id, 'image_id': info['Image'],
+            'image_reference': config['Image'], 'network': host['NetworkMode'],
+            'pid_mode': host.get('PidMode'), 'ipc_mode': host['IpcMode'],
+            'mounts': info['Mounts'], 'mounts_verified': True}
+
+
+def app2_child_passed(path):
+    lines = [line.strip() for line in path.read_text(errors='replace').splitlines()]
+    return (sum(line == '=== RUN   TestN3App2Process' for line in lines) == 1
+            and sum(line.startswith('--- PASS: TestN3App2Process (') for line in lines) == 1
+            and not any(line.startswith(('--- FAIL:', '--- SKIP:')) for line in lines)
+            and bool(lines) and lines[-1] == 'PASS')
+
+
+def _app2_checkpoint(path, data):
+    temporary = path.with_suffix(path.suffix + '.next')
+    with os.fdopen(os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), 'w') as out:
+        json.dump(data, out, sort_keys=True)
+        out.write('\n')
+        out.flush()
+        os.fsync(out.fileno())
+    os.replace(temporary, path)
+
+
+def _app2_inspect(reference):
+    result = subprocess.run(['docker', 'container', 'inspect', reference], capture_output=True, timeout=10)
+    if result.returncode:
+        if result.returncode == 1 and any(text in result.stderr.lower()
+                                         for text in (b'no such object', b'no such container')):
+            return None
+        raise ValueError('Docker did not establish exact App2 resource presence/absence')
+    return json.loads(result.stdout)[0]
+
+
+def supervise_app2(state, artifacts, evidence, image, parent, run_id):
+    """One bounded, task-owned test sidecar; no Docker socket enters a fixture."""
+    state, artifacts = state.resolve(strict=True), artifacts.resolve(strict=True)
+    control, own = state / 'app2-control', state / 'app2'
+    evidence.mkdir(mode=0o700)
+    name, process, inspected = parent + '-app2', None, None
+    report = {'scope': 'APP2_EMPTY_CORE_CONTAINER_ISOLATION_ONLY', 'status': 'FAIL',
+              'container': name, 'errors': [], 'installation_acceptance': 'NOT_RUN'}
+    output = error = None
+    deadline = time.monotonic() + 150
+    try:
+        request = control / 'request.json'
+        while not request.is_file():
+            if (control / 'stop').exists() or time.monotonic() >= deadline:
+                raise ValueError('App2 request absent before fixture termination')
+            time.sleep(0.05)
+        if request.is_symlink() or request.stat().st_size > 4096:
+            raise ValueError('App2 launch request is not a bounded owned file')
+        request_id = json.loads(request.read_text()).get('request_id', '')
+        if not re.fullmatch('[0-9a-f]{32}', request_id):
+            raise ValueError('App2 launch request ID is invalid')
+        for directory in (control, own, own / 'profile', own / 'io'):
+            if (directory.is_symlink() or not stat.S_ISDIR(directory.lstat().st_mode)
+                    or not directory.resolve().is_relative_to(state)):
+                raise ValueError('App2 directory escapes the task fixture')
+        input_path = own / 'io/start.json'
+        if input_path.is_symlink() or input_path.stat().st_size > 8192:
+            raise ValueError('App2 startup input is not bounded')
+        startup = json.loads(input_path.read_text())
+        if (set(startup) != {'request_id', 'probe_address', 'probe_sha256', 'forbidden_paths'}
+                or startup['request_id'] != request_id or any((own / 'profile').iterdir())):
+            raise ValueError('App2 must start with its own empty profile and no Owner material')
+        binary = artifacts / 'n3.test'
+        if not stat.S_ISREG(binary.lstat().st_mode):
+            raise ValueError('App2 requires the actual regular test executable')
+        report['binary_sha256'] = sha(binary)
+        parent_info = _app2_inspect(parent)
+        if (not parent_info or parent_info['Config'].get('Labels', {}).get('cicada.n3.run') != run_id
+                or parent_info['HostConfig']['NetworkMode'] != 'none'
+                or not parent_info['State']['Running']):
+            raise ValueError('App2 parent is not the owned isolated live fixture')
+        if _app2_inspect(name):
+            raise ValueError('App2 container name already exists')
+        mounts = {'/app2/profile': (str(own / 'profile'), True),
+                  '/app2/io': (str(own / 'io'), True), '/tests/n3.test': (str(binary), False)}
+        argv = ['docker', 'run', '--rm', '--name', name, '--label', 'cicada.n3.app2.run=' + run_id,
+                '--network', 'container:' + parent_info['Id'], '--ipc', 'private', '--read-only',
+                '--user', '1000:1000', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges',
+                '--cpus', '2', '--memory', '1g', '--pids-limit', '128',
+                '--tmpfs', '/tmp:rw,nosuid,nodev,size=128m', '--env', 'CICADA_N3_APP2_CHILD=1']
+        for destination, (source, writable) in mounts.items():
+            argv += ['--mount', 'type=bind,src=' + source + ',dst=' + destination
+                     + ('' if writable else ',readonly')]
+        argv += ['--workdir', '/app2/profile', image, '/tests/n3.test', '-test.v', '-test.count=1',
+                 '-test.timeout=90s', '-test.run=^TestN3App2Process$']
+        save(evidence / 'command.json', argv)
+        output, error = (evidence / 'stdout.log').open('wb'), (evidence / 'stderr.log').open('wb')
+        process = subprocess.Popen(argv, stdout=output, stderr=error)
+        while not inspected:
+            inspected = _app2_inspect(name)
+            if not inspected and (process.poll() is not None or time.monotonic() >= deadline):
+                raise ValueError('App2 exited or timed out before daemon inspection')
+            if not inspected:
+                time.sleep(0.05)
+        report['inspection'] = app2_inspection(inspected, parent_info['Id'], run_id, mounts)
+        if report['inspection']['image_reference'] != image:
+            raise ValueError('App2 image differs from the selected immutable builder')
+        _app2_checkpoint(control / 'started.json', {'ok': True})
+        while process.poll() is None:
+            if (control / 'stop').exists() or time.monotonic() >= deadline:
+                raise ValueError('App2 did not stop through its actual Controller lifetime')
+            time.sleep(0.05)
+        output.close(); error.close()
+        report['exit_code'] = process.returncode
+        report['child_test_passed'] = app2_child_passed(evidence / 'stdout.log')
+        report['binary_stable'] = sha(binary) == report['binary_sha256']
+        if process.returncode or not report['child_test_passed'] or not report['binary_stable']:
+            raise ValueError('App2 actual child execution was not accepted')
+    except (OSError, ValueError, KeyError, subprocess.SubprocessError) as failure:
+        report['errors'].append(type(failure).__name__ + ': ' + str(failure))
+    finally:
+        try:
+            actual = _app2_inspect(name)
+            if actual and inspected and actual['Id'] == inspected['Id'] and actual['Config'].get(
+                    'Labels', {}).get('cicada.n3.app2.run') == run_id:
+                subprocess.run(['docker', 'container', 'rm', '-f', actual['Id']],
+                               capture_output=True, timeout=10)
+        except (ValueError, subprocess.SubprocessError):
+            report['errors'].append('App2 cleanup presence/ownership could not be verified')
+        if process is not None:
+            try:
+                process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                process.kill(); process.wait(timeout=5)
+        if output is not None: output.close()
+        if error is not None: error.close()
+        try:
+            report['owned_container_absent'] = _app2_inspect(name) is None
+        except (ValueError, subprocess.SubprocessError):
+            report['owned_container_absent'] = False
+        if not report['owned_container_absent']:
+            report['errors'].append('App2 container absence could not be established')
+        if not report['errors'] and report.get('child_test_passed') and report.get('inspection'):
+            report['status'] = 'SCOPED_PASS'
+        report['evidence_files'] = {path.name: sha(path) for path in evidence.iterdir() if path.is_file()}
+        save(evidence / 'receipt.json', report)
+        if not (control / 'started.json').exists():
+            _app2_checkpoint(control / 'started.json', {'ok': False})
+        _app2_checkpoint(control / 'exited.json', {'ok': report['status'] == 'SCOPED_PASS'})
+    return 0 if report['status'] == 'SCOPED_PASS' else 1
+
+
+def app2_receipt_valid(report, binary_sha256):
+    return (isinstance(report, dict) and isinstance(report.get('inspection'), dict)
+            and report.get('scope') == 'APP2_EMPTY_CORE_CONTAINER_ISOLATION_ONLY'
+            and report.get('status') == 'SCOPED_PASS' and not report.get('errors')
+            and report.get('owned_container_absent') is True
+            and report.get('inspection', {}).get('mounts_verified') is True
+            and report.get('child_test_passed') is True and report.get('binary_stable') is True
+            and type(report.get('exit_code')) is int and report['exit_code'] == 0
+            and report.get('binary_sha256') == binary_sha256)
+
+
 def finish(run, artifacts, image, required, owned_present, mode='preparation', case=None):
     before, after = [json.loads((run / ('source-' + side + '.json')).read_text()) for side in ('before', 'after')]
     codes = {p.stem: int(p.read_text()) for p in run.glob('*.exit')}
     got = events(run / 'harness.log')
     expected = {'discovery': DISCOVERY_EXPECTED, 'seed': SEED_EXPECTED, 'auto': AUTO_EXPECTED,
+                'app2-isolation': APP2_EXPECTED,
                 'runtime': RUNTIME_EXPECTED | ({AGED_TEST} if required else set())}.get(mode, EXPECTED)
     if mode == 'case':
         if case not in RUNTIME_TOP: raise ValueError('Unknown independent runtime case')
@@ -252,8 +440,31 @@ def finish(run, artifacts, image, required, owned_present, mode='preparation', c
     binaries, inventory, commands = execution_evidence(run, artifacts, image, lanes)
     argv_recorded = all(item['valid'] for item in commands.values())
     contract_matches = all(before.get('files', {}).get(path) == digest for path, digest in CONTRACT['files'].items())
+    legacy_contract_required = mode != 'app2-isolation'
+    app2_receipt = None
+    if mode == 'app2-isolation':
+        try:
+            app2_receipt = json.loads((run / 'app2/receipt.json').read_text())
+        except (OSError, ValueError):
+            app2_receipt = {}
+        try:
+            supervisor_exit = int((run / 'app2/supervisor.exit').read_text())
+        except (OSError, ValueError):
+            supervisor_exit = None
+    app2_verified = (mode != 'app2-isolation' or app2_receipt_valid(
+        app2_receipt, inventory['files'].get('n3.test', {}).get('sha256')) and supervisor_exit == 0)
+    if mode == 'app2-isolation' and app2_verified:
+        try:
+            expected_files = {'command.json', 'stdout.log', 'stderr.log'}
+            recorded = app2_receipt.get('evidence_files', {})
+            app2_verified = (set(recorded) == expected_files and all(
+                sha(run / 'app2' / name) == recorded[name] for name in expected_files)
+                and app2_child_passed(run / 'app2/stdout.log'))
+        except OSError:
+            app2_verified = False
     passed = (set(codes) == lanes and not any(codes.values()) and before == after and not owned_present and binaries
-              and argv_recorded and contract_matches and not missing and set(got) == expected
+              and argv_recorded and (contract_matches or not legacy_contract_required) and app2_verified
+              and not missing and set(got) == expected
               and all(action == 'pass' for action in got.values()))
     # A reviewed schema does not establish production N3 behavior. Remain
     # closed until the actual Hub/App/Node cases are integrated and run.
@@ -266,6 +477,7 @@ def finish(run, artifacts, image, required, owned_present, mode='preparation', c
         'harness': ('SETUP_READY' if mode == 'seed' else 'SCOPED_PASS') if passed else 'FAIL', 'n3_acceptance': 'NOT_RUN',
         'reason': 'Preparation selector only; full production N3 runtime cases are not executed by this run.',
         'reviewed_contract': CONTRACT, 'contract_pin_matches': contract_matches,
+        'legacy_contract_required': legacy_contract_required,
         'exit_code': code, 'exit_codes': codes,
         'executed_binaries_stable': binaries, 'executed_binary_inventory': inventory,
         'execution_argv_recorded': argv_recorded, 'execution_commands': commands,
@@ -288,6 +500,14 @@ def finish(run, artifacts, image, required, owned_present, mode='preparation', c
         'real_native_runtime': 'NOT_RUN',
         'matrix': {f'N3-{i:02}': 'NOT_RUN' for i in range(1, 28)},
     }
+    if mode == 'app2-isolation':
+        result.update({'scope': 'isolated-container-empty-App-core-fixture-network-only',
+                       'reason': 'No enrollment, Owner pin, business grant or real shared Hub-state test was run.',
+                       'app2_isolation': 'SCOPED_HARNESS_PASS' if passed else 'FAIL',
+                       'app2_supervision': app2_receipt,
+                       'actors': {'hub': 'NOT_RUN', 'production_app_n3': 'EMPTY_CORE_ONLY',
+                                  'production_node_n3': 'NOT_RUN',
+                                  'App2': 'ACTUAL_ISOLATED_CORE_PROCESS' if passed else 'NOT_ACCEPTED'}})
     if mode == 'discovery':
         result['discovery_guard'] = 'SCOPED_PASS' if passed else 'FAIL'
         result['matrix']['N3-01'] = 'PARTIAL_DISCOVERY_GUARD' if passed else 'NOT_ACCEPTED'
@@ -402,6 +622,8 @@ if __name__ == '__main__':
         save(Path(sys.argv[2]), sys.argv[3:])
     elif sys.argv[1] == 'binaries':
         save(Path(sys.argv[3]), binary_manifest(Path(sys.argv[2])))
+    elif sys.argv[1] == 'supervise-app2':
+        sys.exit(supervise_app2(*(Path(arg) for arg in sys.argv[2:5]), *sys.argv[5:8]))
     elif sys.argv[1] == 'finish':
         sys.exit(finish(Path(sys.argv[2]), Path(sys.argv[3]), sys.argv[4], sys.argv[5] == 'true', sys.argv[6] == 'true',
                         sys.argv[7] if len(sys.argv) > 7 else 'preparation', sys.argv[8] if len(sys.argv) > 8 else None))

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Guard preparation results against accidental N3 promotion."""
 import contextlib
+import copy
 import importlib.util
 import io
 import json
@@ -86,6 +87,100 @@ class PreparationEvidenceTests(unittest.TestCase):
             self.assertEqual(result['installation_acceptance'], 'NOT_RUN')
             for lane, record in result['execution_commands'].items():
                 self.assertEqual(record['sha256'], ev.sha(run / (lane + '.command.json')))
+
+    def app2_fixture(self, root):
+        run, artifacts = self.fixture(root)
+        (run / 'harness.log').write_text(json.dumps({'Action': 'pass', 'Test': next(iter(ev.APP2_EXPECTED))}))
+        (run / 'app2').mkdir()
+        report = {'scope': 'APP2_EMPTY_CORE_CONTAINER_ISOLATION_ONLY', 'status': 'SCOPED_PASS',
+                  'errors': [], 'owned_container_absent': True, 'inspection': {'mounts_verified': True},
+                  'child_test_passed': True, 'binary_stable': True, 'exit_code': 0,
+                  'binary_sha256': ev.sha(artifacts / 'n3.test')}
+        (run / 'app2/command.json').write_text('["SYNTHETIC parser fixture, not executed"]\n')
+        (run / 'app2/stdout.log').write_text('=== RUN   TestN3App2Process\n--- PASS: TestN3App2Process (0.00s)\nPASS\n')
+        (run / 'app2/stderr.log').write_text('')
+        report['evidence_files'] = {name: ev.sha(run / 'app2' / name)
+                                    for name in ('command.json', 'stdout.log', 'stderr.log')}
+        ev.save(run / 'app2/receipt.json', report)
+        (run / 'app2/supervisor.exit').write_text('0\n')
+        return run, artifacts, report
+
+    def app2_finish(self, run, artifacts):
+        with contextlib.redirect_stdout(io.StringIO()):
+            code = ev.finish(run, artifacts, 'synthetic-image', False, False, 'app2-isolation')
+        return code, json.loads((run / 'result.json').read_text())
+
+    def test_app2_harness_never_accepts_business_or_hub_execution(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run, artifacts, _ = self.app2_fixture(Path(tmp))
+            code, result = self.app2_finish(run, artifacts)
+            self.assertEqual(code, 0)
+            self.assertEqual(result['app2_isolation'], 'SCOPED_HARNESS_PASS')
+            self.assertEqual(result['n3_acceptance'], 'NOT_RUN')
+            self.assertEqual(result['installation_acceptance'], 'NOT_RUN')
+            self.assertEqual(result['actors']['hub'], 'NOT_RUN')
+            self.assertTrue(all(value == 'NOT_RUN' for value in result['matrix'].values()))
+
+    def test_app2_requires_supervisor_exit_and_complete_child_receipt(self):
+        for bad in (None, [], 'SYNTHETIC invalid receipt', {}):
+            with self.subTest(receipt=bad), tempfile.TemporaryDirectory() as tmp:
+                run, artifacts, _ = self.app2_fixture(Path(tmp))
+                ev.save(run / 'app2/receipt.json', bad)
+                self.assertEqual(self.app2_finish(run, artifacts)[0], 1)
+        for field, bad in [('owned_container_absent', False), ('inspection', {}),
+                           ('child_test_passed', False), ('binary_stable', False),
+                           ('binary_sha256', 'other'), ('exit_code', False), ('errors', ['failure'])]:
+            with self.subTest(field=field), tempfile.TemporaryDirectory() as tmp:
+                run, artifacts, report = self.app2_fixture(Path(tmp))
+                report[field] = bad; ev.save(run / 'app2/receipt.json', report)
+                self.assertEqual(self.app2_finish(run, artifacts)[0], 1)
+        for name in ['receipt.json', 'supervisor.exit']:
+            with self.subTest(missing=name), tempfile.TemporaryDirectory() as tmp:
+                run, artifacts, _ = self.app2_fixture(Path(tmp))
+                (run / 'app2' / name).unlink()
+                self.assertEqual(self.app2_finish(run, artifacts)[0], 1)
+        with tempfile.TemporaryDirectory() as tmp:
+            run, artifacts, _ = self.app2_fixture(Path(tmp))
+            (run / 'app2/stdout.log').write_text('changed after child receipt\n')
+            self.assertEqual(self.app2_finish(run, artifacts)[0], 1)
+        with tempfile.TemporaryDirectory() as tmp:
+            run, artifacts, _ = self.app2_fixture(Path(tmp))
+            (run / 'harness.log').write_text(json.dumps({'Action': 'skip', 'Test': next(iter(ev.APP2_EXPECTED))}))
+            self.assertEqual(self.app2_finish(run, artifacts)[0], 1)
+
+    def test_app2_zero_match_skip_or_failure_cannot_be_a_child_pass(self):
+        for body in ['', 'testing: warning: no tests to run\nPASS\n',
+                     '=== RUN   TestN3App2Process\n--- SKIP: TestN3App2Process (0.00s)\nPASS\n',
+                     '=== RUN   TestN3App2Process\n--- FAIL: TestN3App2Process (0.00s)\n--- PASS: TestN3App2Process (0.00s)\nPASS\n']:
+            with self.subTest(body=body), tempfile.TemporaryDirectory() as tmp:
+                path = Path(tmp) / 'child.log'; path.write_text(body)
+                self.assertFalse(ev.app2_child_passed(path))
+
+    def test_app2_checks_daemon_namespaces_capabilities_and_actual_mounts(self):
+        mounts = {'/app2/profile': ('/synthetic/profile', True), '/app2/io': ('/synthetic/io', True),
+                  '/tests/n3.test': ('/synthetic/n3.test', False)}
+        info = {'Id': 'synthetic-child', 'Image': 'synthetic-image-id',
+                'Config': {'Labels': {'cicada.n3.app2.run': 'synthetic-run'}, 'User': '1000:1000',
+                           'Image': 'synthetic-image-ref', 'Env': ['CICADA_N3_APP2_CHILD=1']},
+                'HostConfig': {'NetworkMode': 'container:synthetic-parent', 'PidMode': '',
+                               'IpcMode': 'private', 'Privileged': False, 'CapAdd': None,
+                               'CapDrop': ['ALL'], 'ReadonlyRootfs': True, 'PortBindings': {},
+                               'SecurityOpt': ['no-new-privileges']},
+                'Mounts': [{'Type': 'bind', 'Destination': dst, 'Source': src, 'RW': rw}
+                           for dst, (src, rw) in mounts.items()]}
+        self.assertTrue(ev.app2_inspection(info, 'synthetic-parent', 'synthetic-run', mounts)['mounts_verified'])
+        for field, bad in [('PidMode', 'host'), ('PidMode', 'container:other'), ('IpcMode', 'host'),
+                           ('IpcMode', 'container:other'), ('Privileged', True), ('CapAdd', ['SYS_PTRACE']),
+                           ('ReadonlyRootfs', False), ('NetworkMode', 'host'), ('SecurityOpt', [])]:
+            with self.subTest(field=field):
+                other = copy.deepcopy(info); other['HostConfig'][field] = bad
+                with self.assertRaises(ValueError): ev.app2_inspection(other, 'synthetic-parent', 'synthetic-run', mounts)
+        for extra in [{'Type': 'bind', 'Destination': '/state', 'Source': '/synthetic/App1', 'RW': False},
+                      {'Type': 'bind', 'Destination': '/var/run/docker.sock', 'Source': '/var/run/docker.sock', 'RW': True}]:
+            other = copy.deepcopy(info); other['Mounts'].append(extra)
+            with self.assertRaises(ValueError): ev.app2_inspection(other, 'synthetic-parent', 'synthetic-run', mounts)
+        other = copy.deepcopy(info); other['Mounts'][-1]['RW'] = True
+        with self.assertRaises(ValueError): ev.app2_inspection(other, 'synthetic-parent', 'synthetic-run', mounts)
 
     def test_replacing_executed_binary_after_inventory_cannot_pass(self):
         for name in ('cicada', 'n3.test'):

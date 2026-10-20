@@ -17,10 +17,11 @@ for arg in "$@"; do
   --require-n3) required=true ;;
   --runtime-core) mode=runtime ;;
   --auto-status-only) mode=auto ;;
+  --app2-isolation-only) mode=app2-isolation ;;
   --case=*) mode=case; case_name="${arg#--case=}" ;;
   --discovery-only) mode=discovery ;;
   --seed-expiry) mode=seed ;;
-  *) printf 'Usage: scripts/test-native-app-n3.sh [--require-n3 | --runtime-core | --auto-status-only | --case=TestName | --discovery-only | --seed-expiry]\n' >&2; exit 2 ;;
+  *) printf 'Usage: scripts/test-native-app-n3.sh [--require-n3 | --runtime-core | --auto-status-only | --app2-isolation-only | --case=TestName | --discovery-only | --seed-expiry]\n' >&2; exit 2 ;;
  esac
 done
 if [[ "$required" == true && "$mode" != preparation && "$mode" != runtime ]]; then
@@ -49,7 +50,20 @@ if [[ -n "${CICADA_N3_AGED_SEED:-}" ]]; then
   "$state/retained-aged-n2" "$local_root/state/n3-acceptance" "$evidence/aged-seed-copy.json"
 fi
 container="cicada-n3-acceptance-${run_id,,}"
+app2_supervisor=''
+app2_environment=()
+if [[ "$mode" == app2-isolation ]]; then
+ mkdir "$state/app2" "$state/app2-control"
+ app2_environment=(-e CICADA_N3_REQUIRE_APP2=1)
+fi
 cleanup() {
+ if [[ -n "$app2_supervisor" ]]; then
+  touch "$state/app2-control/stop"
+  local supervisor_code=0
+  wait "$app2_supervisor" || supervisor_code="$?"
+  printf '%s\n' "$supervisor_code" >"$evidence/app2/supervisor.exit"
+  app2_supervisor=''
+ fi
  if [[ "$(docker inspect --format '{{index .Config.Labels "cicada.n3.run"}}' "$container" 2>/dev/null || true)" == "$run_id" ]]; then
   docker rm -f "$container" >/dev/null 2>&1 || true
  fi
@@ -65,6 +79,8 @@ common=(docker run --rm --name "$container" --label "cicada.n3.run=$run_id"
  -e GOMAXPROCS=2 -e GOTOOLCHAIN=local -e GOPROXY=off -e GOSUMDB=off
  -e GOCACHE=/gocache -e GOMODCACHE=/gomodcache -e TMPDIR=/state/tmp
  -e CICADA_N3_CICADA_BINARY=/out/cicada
+ -e CICADA_N3_APP2_CONTROL=/state/app2-control
+ "${app2_environment[@]}"
  -e CICADA_N3_PRIVATE_DIAGNOSTICS=/state/private-diagnostics
  -e CICADA_N3_RETAINED_FIXTURE=/state/retained-aged-n2
  -e "CICADA_N3_SEED_SOURCE_HEAD=$(git -C "$repo_root" rev-parse HEAD)"
@@ -93,6 +109,11 @@ if [[ "$(cat "$evidence/compile-cli.exit")" == 0 && "$(cat "$evidence/compile-te
  if [[ "$mode" == discovery ]]; then selector='^TestN3ActualAppUnsupportedCapabilitiesSendNoSecrets$'; fi
  if [[ "$mode" == seed ]]; then selector='^TestN3SeedRetainedN2Fixture$'; fi
  if [[ "$mode" == auto ]]; then selector="$(python3 "$repo_root/scripts/native_app_n3_evidence.py" auto-selector)"; fi
+ if [[ "$mode" == app2-isolation ]]; then
+  selector='^TestN3HarnessApp2ContainerIsolation$'
+  python3 "$repo_root/scripts/native_app_n3_evidence.py" supervise-app2 "$state" "$artifacts" "$evidence/app2" "$image" "$container" "$run_id" &
+  app2_supervisor="$!"
+ fi
  timeout=120s
  if [[ "$mode" == runtime ]]; then
   selector="$(python3 "$repo_root/scripts/native_app_n3_evidence.py" runtime-selector "$required")"
