@@ -88,6 +88,43 @@ class PreparationEvidenceTests(unittest.TestCase):
             for lane, record in result['execution_commands'].items():
                 self.assertEqual(record['sha256'], ev.sha(run / (lane + '.command.json')))
 
+    def lifecycle_fixture(self, root):
+        run, artifacts = self.fixture(root)
+        source = json.loads((run / 'source-before.json').read_text())
+        source['files'] = ev.LIFECYCLE_CONTRACT['files']
+        for side in ('before', 'after'):
+            ev.save(run / ('source-' + side + '.json'), source)
+        (run / 'harness.log').write_text(json.dumps({'Action': 'pass', 'Test': next(iter(ev.LIFECYCLE_EXPECTED))}))
+        return run, artifacts
+
+    def test_lifecycle_stays_scoped_and_requires_its_own_source_pins(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run, artifacts = self.lifecycle_fixture(Path(tmp))
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(ev.finish(run, artifacts, 'synthetic-image', False, False, 'app-lifecycle'), 0)
+            result = json.loads((run / 'result.json').read_text())
+            self.assertEqual(result['app_lifecycle'], 'SCOPED_HARNESS_PASS')
+            self.assertEqual(result['n3_acceptance'], 'NOT_RUN')
+            self.assertEqual(result['installation_acceptance'], 'NOT_RUN')
+            self.assertTrue(result['contract_pin_required'])
+            self.assertTrue(result['contract_pin_matches'])
+            self.assertEqual(result['reviewed_contract'], ev.LIFECYCLE_CONTRACT)
+            self.assertTrue(all(v == 'NOT_RUN' for v in result['matrix'].values()))
+            source = json.loads((run / 'source-before.json').read_text())
+            source['files'].pop(next(iter(ev.LIFECYCLE_CONTRACT['files'])))
+            for side in ('before', 'after'):
+                ev.save(run / ('source-' + side + '.json'), source)
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(ev.finish(run, artifacts, 'synthetic-image', False, False, 'app-lifecycle'), 1)
+
+    def test_lifecycle_zero_match_skip_and_failed_child_never_pass(self):
+        for action in (None, 'skip', 'fail'):
+            with self.subTest(action=action), tempfile.TemporaryDirectory() as tmp:
+                run, artifacts = self.lifecycle_fixture(Path(tmp))
+                (run / 'harness.log').write_text('' if action is None else json.dumps({'Action': action, 'Test': next(iter(ev.LIFECYCLE_EXPECTED))}))
+                with contextlib.redirect_stdout(io.StringIO()):
+                    self.assertEqual(ev.finish(run, artifacts, 'synthetic-image', False, False, 'app-lifecycle'), 1)
+
     def app2_fixture(self, root):
         run, artifacts = self.fixture(root)
         (run / 'harness.log').write_text(json.dumps({'Action': 'pass', 'Test': next(iter(ev.APP2_EXPECTED))}))

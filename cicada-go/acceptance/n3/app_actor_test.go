@@ -160,6 +160,7 @@ type appActorCheckpoint struct {
 type appActorCommand struct {
 	Action             *appcore.Action `json:"action,omitempty"`
 	ClockOffsetSeconds int64           `json:"logical_clock_offset_seconds"`
+	Close              bool            `json:"close,omitempty"`
 }
 
 type appActorReply struct {
@@ -191,6 +192,21 @@ func queueAppCommand(t *testing.T, f *hubFixture, p *appProcess, sequence int, c
 	base := filepath.Join(f.dir, "app-command-"+p.mailbox+"-"+strconv.Itoa(sequence))
 	writeJSON(t, base+".json", command)
 	return base
+}
+
+// Graceful close is separate from both ActionLogout and an abrupt process kill.
+// A zero exit means the actor checked the real Controller.Close result.
+func closeApp(t *testing.T, f *hubFixture, p *appProcess, sequence int) {
+	t.Helper()
+	queueAppCommand(t, f, p, sequence, appActorCommand{Close: true})
+	select {
+	case <-p.done:
+		if p.cmd.ProcessState == nil || !p.cmd.ProcessState.Success() {
+			t.Fatal("actual App did not close successfully")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("actual App did not close before its bounded deadline")
+	}
 }
 
 func startAppProcess(t *testing.T, f *hubFixture, step, marker string) *appProcess {
@@ -281,6 +297,15 @@ func TestN3AppProcess(t *testing.T) {
 		}
 		var command appActorCommand
 		readJSON(t, base+".json", &command)
+		if command.Close {
+			if command.Action != nil || command.ClockOffsetSeconds != 0 {
+				t.Fatal("graceful App close cannot contain another action or clock change")
+			}
+			if c.Close() != nil {
+				t.Fatal("actual App Controller.Close failed")
+			}
+			return
+		}
 		// Logical-clock evidence is explicitly labeled; it never establishes a
 		// real 15-minute wall-clock wait or a production Hub clock transition.
 		clockOffset.Store(command.ClockOffsetSeconds)

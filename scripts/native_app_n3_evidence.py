@@ -24,6 +24,7 @@ SEED_EXPECTED = {'TestN3SeedRetainedN2Fixture'}
 AUTO_EXPECTED = {'TestN3ActualAutomaticStatusKeepsScopeAndSelfCancelledNode',
                  'TestN3ActualAutomaticStatusLossFreezesTicksUntilExactRecovery'}
 APP2_EXPECTED = {'TestN3HarnessApp2ContainerIsolation'}
+LIFECYCLE_EXPECTED = {'TestN3HarnessActualAppGracefulCloseAndResume'}
 RUNTIME_TOP = {
     'TestN3ConcurrentPrepareConfirmAndConflictingReplay', 'TestN3ActualVaultFailureStopsBeforeSecretSend',
     'TestN3ServerRejectsIndependentProofScopeAttacks', 'TestN3ServerRejectsForgedCompletionPreservingPreview',
@@ -141,6 +142,24 @@ CONTRACT = {'revision': 'app-node-authority-v1',
  'store_reviewed_source': 'e078c58d97413f5e0457acb3c586afbef1a9d438'}
 
 
+LIFECYCLE_CONTRACT = {
+    'revision': 'owner-activation-v1',
+    'reviewed_source': 'e0e05582dabea005eaa7c3c2d8da3527e263682a',
+    'scope': 'existing-N2-Core-graceful-lifecycle-harness-only',
+    'files': {
+        'docs/hub-owner-activation-contract.md': '7d6059746486383fc660e3531ed3a08c653e36f5a1b300abc6db3bc1b57a8989',
+        'cicada-go/internal/hubaccountwire/activation.go': 'c9466e417fdbfc79e962852ab1840160025fc20ce75c5cfb7bb2e854e5a44bb4',
+        'cicada-go/internal/hubaccountwire/activation_validation.go': 'd8897242846ab5f697c4d95ada5d5c19dd0ab516e9c4ba5477ca853003937a6a',
+        'cicada-go/internal/hubaccountwire/activation-contract.json': 'b3201cc13cfe80baa23260fa926d0bf98b4b50a1efcd7efeb4a8c3521302053f',
+        'cicada-go/internal/appcore/controller.go': '8e596d67f7540bdb2b5066c6c8fb53dbe7c0c0a718956fec7266c4bfce7682f6',
+        'cicada-go/internal/appcore/profiles.go': '9d65226b8dbe1ae311b3fe0cdde23f026837468ec343bb906c1749c773728795',
+        'cicada-go/internal/appcore/controller_state.go': '81fdd930805e5923ff6ab4035aacec66c08fbeeecaaee88955ffe1c7a8cc9880',
+        'cicada-go/internal/appcore/types.go': 'a81d1ae9fefe6a1aea71e151d16b93e54472f597d93189c7c15605cfc9cb657f',
+        'cicada-go/internal/appvault/vault.go': '73bf0819b8f6178420c483d693f83324b6aa84ae1132fe1bd78dfa78989770d4',
+    },
+}
+
+
 def sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -219,7 +238,8 @@ def snapshot(repo, dest):
     paths += [repo / 'docs' / name for name in ('native-app-plan.md', 'native-app-validation.md',
                                               'native-app-architecture.md', 'README.md')]
     paths += [p for p in (repo / 'docs').glob('*app*node*authority*') if p.is_file()]
-    paths += [repo / path for path in CONTRACT['files'] if (repo / path).is_file()]
+    paths += [repo / path for path in CONTRACT['files'].keys() | LIFECYCLE_CONTRACT['files'].keys()
+              if (repo / path).is_file()]
     files = {str(p.relative_to(repo)): sha(p) for p in sorted(paths)}
     save(dest, {'head': subprocess.check_output(['git', '-C', str(repo), 'rev-parse', 'HEAD'], text=True).strip(),
                 'dirty': bool(subprocess.check_output(['git', '--no-optional-locks', '-C', str(repo), 'status', '--porcelain', '--untracked-files=all'])),
@@ -430,7 +450,7 @@ def finish(run, artifacts, image, required, owned_present, mode='preparation', c
     codes = {p.stem: int(p.read_text()) for p in run.glob('*.exit')}
     got = events(run / 'harness.log')
     expected = {'discovery': DISCOVERY_EXPECTED, 'seed': SEED_EXPECTED, 'auto': AUTO_EXPECTED,
-                'app2-isolation': APP2_EXPECTED,
+                'app2-isolation': APP2_EXPECTED, 'app-lifecycle': LIFECYCLE_EXPECTED,
                 'runtime': RUNTIME_EXPECTED | ({AGED_TEST} if required else set())}.get(mode, EXPECTED)
     if mode == 'case':
         if case not in RUNTIME_TOP: raise ValueError('Unknown independent runtime case')
@@ -439,8 +459,10 @@ def finish(run, artifacts, image, required, owned_present, mode='preparation', c
     lanes = {'version', 'compile-cli', 'compile-tests', 'harness', 'vet'}
     binaries, inventory, commands = execution_evidence(run, artifacts, image, lanes)
     argv_recorded = all(item['valid'] for item in commands.values())
-    contract_matches = all(before.get('files', {}).get(path) == digest for path, digest in CONTRACT['files'].items())
-    legacy_contract_required = mode != 'app2-isolation'
+    reviewed_contract = LIFECYCLE_CONTRACT if mode == 'app-lifecycle' else CONTRACT
+    contract_matches = all(before.get('files', {}).get(path) == digest for path, digest in reviewed_contract['files'].items())
+    contract_required = mode != 'app2-isolation'
+    legacy_contract_required = mode not in ('app2-isolation', 'app-lifecycle')
     app2_receipt = None
     if mode == 'app2-isolation':
         try:
@@ -463,7 +485,7 @@ def finish(run, artifacts, image, required, owned_present, mode='preparation', c
         except OSError:
             app2_verified = False
     passed = (set(codes) == lanes and not any(codes.values()) and before == after and not owned_present and binaries
-              and argv_recorded and (contract_matches or not legacy_contract_required) and app2_verified
+              and argv_recorded and (contract_matches or not contract_required) and app2_verified
               and not missing and set(got) == expected
               and all(action == 'pass' for action in got.values()))
     # A reviewed schema does not establish production N3 behavior. Remain
@@ -476,7 +498,8 @@ def finish(run, artifacts, image, required, owned_present, mode='preparation', c
                   'real-hub-cli-app-core-pq-tcp-process-harness-on-frozen-n2-only'),
         'harness': ('SETUP_READY' if mode == 'seed' else 'SCOPED_PASS') if passed else 'FAIL', 'n3_acceptance': 'NOT_RUN',
         'reason': 'Preparation selector only; full production N3 runtime cases are not executed by this run.',
-        'reviewed_contract': CONTRACT, 'contract_pin_matches': contract_matches,
+        'reviewed_contract': reviewed_contract, 'contract_pin_matches': contract_matches,
+        'contract_pin_required': contract_required,
         'legacy_contract_required': legacy_contract_required,
         'exit_code': code, 'exit_codes': codes,
         'executed_binaries_stable': binaries, 'executed_binary_inventory': inventory,
@@ -500,6 +523,11 @@ def finish(run, artifacts, image, required, owned_present, mode='preparation', c
         'real_native_runtime': 'NOT_RUN',
         'matrix': {f'N3-{i:02}': 'NOT_RUN' for i in range(1, 28)},
     }
+    if mode == 'app-lifecycle':
+        result.update({'scope': 'actual-existing-N2-App-Core-graceful-close-and-profile-resume-only',
+                       'reason': 'No registration, Node continuity, component uninstall, INST or physical Windows test was run.',
+                       'app_lifecycle': 'SCOPED_HARNESS_PASS' if passed else 'FAIL'})
+        result['actors']['production_app_core_n2'] = 'ACTUAL_CORE_PROCESS' if passed else 'NOT_ACCEPTED'
     if mode == 'app2-isolation':
         result.update({'scope': 'isolated-container-empty-App-core-fixture-network-only',
                        'reason': 'No enrollment, Owner pin, business grant or real shared Hub-state test was run.',

@@ -18,10 +18,11 @@ for arg in "$@"; do
   --runtime-core) mode=runtime ;;
   --auto-status-only) mode=auto ;;
   --app2-isolation-only) mode=app2-isolation ;;
+  --app-lifecycle-only) mode=app-lifecycle ;;
   --case=*) mode=case; case_name="${arg#--case=}" ;;
   --discovery-only) mode=discovery ;;
   --seed-expiry) mode=seed ;;
-  *) printf 'Usage: scripts/test-native-app-n3.sh [--require-n3 | --runtime-core | --auto-status-only | --app2-isolation-only | --case=TestName | --discovery-only | --seed-expiry]\n' >&2; exit 2 ;;
+  *) printf 'Usage: scripts/test-native-app-n3.sh [--require-n3 | --runtime-core | --auto-status-only | --app2-isolation-only | --app-lifecycle-only | --case=TestName | --discovery-only | --seed-expiry]\n' >&2; exit 2 ;;
  esac
 done
 if [[ "$required" == true && "$mode" != preparation && "$mode" != runtime ]]; then
@@ -109,6 +110,7 @@ if [[ "$(cat "$evidence/compile-cli.exit")" == 0 && "$(cat "$evidence/compile-te
  if [[ "$mode" == discovery ]]; then selector='^TestN3ActualAppUnsupportedCapabilitiesSendNoSecrets$'; fi
  if [[ "$mode" == seed ]]; then selector='^TestN3SeedRetainedN2Fixture$'; fi
  if [[ "$mode" == auto ]]; then selector="$(python3 "$repo_root/scripts/native_app_n3_evidence.py" auto-selector)"; fi
+ if [[ "$mode" == app-lifecycle ]]; then selector='^TestN3HarnessActualAppGracefulCloseAndResume$'; fi
  if [[ "$mode" == app2-isolation ]]; then
   selector='^TestN3HarnessApp2ContainerIsolation$'
   python3 "$repo_root/scripts/native_app_n3_evidence.py" supervise-app2 "$state" "$artifacts" "$evidence/app2" "$image" "$container" "$run_id" &
