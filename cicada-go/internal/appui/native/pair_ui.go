@@ -3,6 +3,7 @@
 package native
 
 import (
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -43,8 +44,9 @@ func (v *view) pairSection(s appcore.Snapshot) layout.Widget {
 				layout.Rigid(v.pairButton(s, appcore.ActionPreparePair, "", appui.Text(v.locale, "pair.prepare"), validPairLabel(v.pairLabel.Text()))))
 		}
 		if s.Pair.PairID != "" {
+			rows = append(rows, v.publicFieldRows("pair/", appui.PairPublicFields(s, time.Now()))...)
 			for _, field := range []struct{ key, value string }{
-				{"pair.label", safeDisplay(s.Pair.Label, 128)}, {"pair.id", safeDisplay(s.Pair.PairID, 128)}, {"pair.node", safeDisplay(s.Pair.NodeID, 128)},
+				{"pair.label", safeDisplay(s.Pair.Label, 128)},
 				{"pair.join_until", displayNodeTime(s.Pair.JoinUntil)}, {"pair.until", displayNodeTime(s.Pair.PeerExpiresAt)},
 			} {
 				if field.value != "" {
@@ -76,17 +78,14 @@ func (v *view) pairSection(s appcore.Snapshot) layout.Widget {
 				if index == 1 {
 					letter, consent, allowed = "B", &v.pairSlotBConsent, flow.SlotBConsent
 				}
-				rows = append(rows, layout.Rigid(v.headingRow(appui.Text(v.locale, "pair.slot")+" "+letter)),
-					layout.Rigid(v.labelRow(appui.Text(v.locale, "pair.sid")+": "+safeDisplay(slot.NativeSessionID, 128))))
-				if slot.CandidateFingerprint != "" {
-					rows = append(rows, layout.Rigid(v.labelRow(appui.Text(v.locale, "pair.fingerprint")+": "+safeDisplay(slot.CandidateFingerprint, 80))))
-				}
+				rows = append(rows, layout.Rigid(v.headingRow(appui.Text(v.locale, "pair.slot")+" "+letter)))
+				rows = append(rows, v.publicFieldRows("pair/"+letter+"/", appui.PairSlotPublicFields(s, index, allowed, time.Now()))...)
 				if slot.ConsentRecorded && s.Pair.State != "ACTIVE" {
 					rows = append(rows, layout.Rigid(v.labelRow(appui.Text(v.locale, "pair.recorded"))))
 				}
 				if allowed {
-					for _, detail := range appui.PairSlotReviewDetails(v.locale, slot) {
-						rows = append(rows, layout.Rigid(v.labelRow(detail)))
+					for detailIndex, detail := range appui.PairSlotReviewDetails(v.locale, slot) {
+						rows = append(rows, layout.Rigid(v.publicFieldRow("pair/"+letter+"/detail/"+strconv.Itoa(detailIndex), appui.PublicField{Value: detail})))
 					}
 					rows = append(rows, layout.Rigid(v.pairCheckbox(consent, "pair.slot_consent")),
 						layout.Rigid(v.pairButton(s, appcore.ActionApprovePairSlot, letter, appui.Text(v.locale, "pair.approve_slot"), consent.Value)))

@@ -42,6 +42,12 @@ func (v *view) nodeSection(s appcore.Snapshot) layout.Widget {
 		} else {
 			rows = append(rows, layout.Rigid(v.headingRow(appui.Text(v.locale, "node.section"))))
 		}
+		for _, field := range appui.NodePublicFields(s, time.Now()) {
+			if field.Key == "node.fingerprint" || field.Key == "node.hub_fingerprint" {
+				continue // Shown under the existing fingerprint detail control.
+			}
+			rows = append(rows, layout.Rigid(v.publicFieldRow("node/"+field.Key, field)))
+		}
 		if s.Node.ErrorCode != "" {
 			rows = append(rows, layout.Rigid(v.labelRow(appui.ErrorText(v.locale, s.Node.ErrorCode))))
 		}
@@ -62,7 +68,7 @@ func (v *view) nodeSection(s appcore.Snapshot) layout.Widget {
 				rows = append(rows, layout.Rigid(v.labelRow(appui.Text(v.locale, flow.Notice))))
 			}
 			for _, field := range []struct{ key, value string }{
-				{"node.name", safeDisplay(c.Name, 128)}, {"node.id", safeDisplay(c.NodeID, 128)},
+				{"node.name", safeDisplay(c.Name, 128)},
 				{"node.candidate_until", displayNodeTime(c.ExpiresAt)}, {"node.access_until", displayNodeTime(c.AuthorizationExpiresAt)},
 			} {
 				if field.value != "" {
@@ -79,7 +85,11 @@ func (v *view) nodeSection(s appcore.Snapshot) layout.Widget {
 				return style.Layout(gtx)
 			}))
 			if v.nodePinDetails {
-				rows = append(rows, layout.Rigid(v.labelRow(appui.Text(v.locale, "node.fingerprint")+": "+safeDisplay(c.NodeFingerprint, 80))), layout.Rigid(v.labelRow(appui.Text(v.locale, "node.hub_fingerprint")+": "+safeDisplay(c.HubControlFingerprint, 80))))
+				for _, field := range appui.NodePublicFields(s, time.Now()) {
+					if field.Key == "node.fingerprint" || field.Key == "node.hub_fingerprint" {
+						rows = append(rows, layout.Rigid(v.publicFieldRow("node/"+field.Key, field)))
+					}
+				}
 			}
 			rows = append(rows, layout.Rigid(v.labelRow(appui.Text(v.locale, scopeKey))))
 			if flow.Consent && !c.StatusOnly {

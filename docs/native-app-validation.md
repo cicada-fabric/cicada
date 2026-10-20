@@ -3150,3 +3150,98 @@ The old N2/N3 matrices were not rerun. Root reserves standard Client interop for
 one later integrated gate. Windows GUI/DPAPI/ACL/uninstall, real Node services,
 queue/model/Runtime and public deployment remain **NOT_RUN** here. The delivered
 clean-4ca package was neither rebuilt nor relabelled, and no real state changed.
+
+
+### Public App fields and guarded local component-file checkpoint
+
+2026-10-20 UTC. This checkpoint adds complete, selectable display values and
+Copy/已复制 feedback for the existing public Hub, account/Owner/App-device,
+Node and Pair fields. The explicit projection excludes credentials, proofs,
+private keys and serialized snapshots, preserves original value bytes, and
+uses the existing authenticated account-visibility boundary. Changing the
+presentation scope clears selection and queued copy state. English/Chinese
+catalog parity remains checked. The native clipboard command and two-second
+feedback are implemented; OS clipboard success is not independently observed.
+
+The optional local file installer is exposed as:
+
+```text
+cicada components install --prefix ABS --components hub,node --binary FILE --sha256 HEX --licenses DIR
+cicada components remove --prefix ABS --components hub,node
+cicada components list --prefix ABS
+```
+
+Linux amd64/arm64 permits Hub/Node; Windows amd64 permits App with
+`--components app`. Only local, self-contained standard `CGO_ENABLED=0`
+artifacts are accepted. Linux requires ET_EXEC with no PT_INTERP, PT_DYNAMIC
+or DT_NEEDED dependency; PQTLS/dynamic distributions and PIE are refused.
+The installer checks SHA-256, actual executable headers, Go main/target and
+all compiled dependency notices before creating a destination. It installs
+only the binary, licenses and a bounded manifest beneath
+`PREFIX/components/<component>`. A changed/unowned installation is refused;
+an identical repeat is accepted. Removal validates every selected manifest
+and owned file before deleting the first managed byte, retaining unknown
+files, identity/outbox data and other components. Multi-component I/O failures
+may leave earlier components completed; no rollback is promised.
+
+Filesystem operations retain `os.Root` directory handles across ancestor
+replacement, reject symlinks and use descriptor-based operation locks. On
+Linux, the managed components root and existing component directories must
+belong to the effective current user and disallow group/other writes.
+Foreign-owner and missing-owner negative cases use synthetic `FileInfo`;
+no chown or other-user directory was used. Windows POSIX mode bits do not
+establish ACL protection. The installer does not start services, enroll
+devices, issue grants, migrate state or establish an Owner pin.
+
+All evidence is retained below
+`/home/zyf/Cicada/.local/evidence/composable-registration/run-20261020T075053Z-8d262d/app/`.
+Each lane used the pinned Go 1.27.3 Bookworm builder above, network disabled,
+read-only source/module mounts, private state and build-cache directories,
+and actual retained test binaries with original/copy hash equality and
+NUL-separated execution argv. Each source snapshot and complete build-input
+inventory matched its own before/after bookends. All owned containers were
+absent and private temporary state was empty after completion.
+
+| Evidence variant | Actual outcome | Receipt SHA-256 |
+| --- | --- | --- |
+| `independent-01` initial UI/installer baseline | normal and race each AppUI 10/0/0 plus installer 23/0/0; five CLI targets and Windows amd64 GUI compiled, all exit 0 | `ae1f50d4af78ad2cc0c01318a130f40197f78266cf3755ddca6f7c6eba0ab340` |
+| `dynamic-red-01`, new negative cases against the old validator | EXPECTED_RED: actual CGO1 ELF and CGO0 PIE were accepted and created destinations; parent plus two cases FAIL, test exit 1 | `ebf2f760ac135e1e8b56d715b8c2a5700f43cd4f6d81892ce6ba45e498413ff7` |
+| `installer-final-01`, static-artifact and directory-owner guards | installer normal 31/0/0 and race 31/0/0, identical named maps; CLI Linux amd64/arm64, Darwin amd64/arm64 and Windows amd64 compiled, all exit 0 | `928e77a07546e0e8f4577a123253997a549e9219a6c10cffc8b734b24ed581fb` |
+
+Counts include parent tests and subtests and are PASS/FAIL/SKIP. Synthetic
+Go ELF/PE fixture binaries are visibly marked and never executed; the test
+binaries execute production installer functions against disposable files.
+The negative cases assert that no destination is created. Header mismatch,
+wrong role/target/hash, missing/changed notices, symlink/traversal attempts,
+changed removal targets, state preservation, parent replacement and lock
+release are included. Darwin is a CLI compilation compatibility check only;
+component installation remains unsupported there.
+
+All three variants are **dirty `ed468b45f69cfc4009f6c8cc299a0b3b10706927`
+plus separately inventoried WIP**, not executions of a later clean commit:
+
+| Variant | Source manifest SHA-256 | Build-input fingerprint v4 |
+| --- | --- | --- |
+| initial | `6e71414eba84e9bf6f4697be4e0c0c612f91b809be89b45c5710b69a60bb192e` | `53caeaafc0995453c43b445f9895767afad3fb7bce982d6440b51b2173f0fcb5` |
+| negative | `2609e9456ac0ecd65e649a0b88b1f94147030e620056a812d5a17ef9ded764be` | `479eafad022f738a2d7b47b1cf8f0d0aa1e277bfa62581e68463b76cecd0d74d` |
+| final installer | `c84375b0cab853229d4422438a86004849da4b0ae167b7cff87146e557b94765` | `7a0ef2e2a0feaeec9368ac68cbd769d4761b970b327d0feaa884f7f743f099f9` |
+
+The final Linux amd64 CLI is 24,936,608 bytes, SHA-256
+`60be3ed7b142c10a3370bb7a4ef4a1d6683db092e31bb90240b2aa5ad010c7d9`.
+The unchanged UI's initial Windows GUI compile is 13,806,592 bytes, SHA-256
+`6012e3f776955c546aa5f2140d4d9ba2c04e330b4a4240c15ac50a88a7c8cd3f`.
+Actual compiler/module metadata, all target artifact sizes/hashes, commands,
+logs and exits remain in the corresponding receipt. The App GUI build has no
+linked buildinfo runtime reporting interface; its provenance is external.
+The UI and GUI build were not repeated for installer-only fixes, and their
+original evidence attribution is retained. This documentation append followed
+the completed gates and is not part of their source bookends.
+
+Windows GUI/clipboard/selection/copy feedback, native Windows install/remove
+and ACL, physical devices, real Node services/queues/Runtime, public HTTPS,
+new device-registration/Owner-pin protocols and the full old matrix remain
+**NOT_RUN** here. No public DTO/server/protocol, real key/grant, resident
+service, deployment or global Codex configuration changed. New independent
+App registration and Node pairing-secret storage adapters await the reviewed
+Hub contract; no successful authorization is inferred from these file/UI
+checks. The earlier clean-4ca delivery remains unchanged.

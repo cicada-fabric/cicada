@@ -234,6 +234,15 @@ const (
 )
 
 const (
+	msgCopy            messageID = "common.copy"
+	msgCopied          messageID = "common.copied"
+	msgAccountDeviceID messageID = "account.device_id"
+	msgNodeBindingID   messageID = "node.binding_id"
+	msgPairKeyID       messageID = "pair.key_id"
+	msgPairTargetHash  messageID = "pair.target_digest"
+)
+
+const (
 	msgNodeUnavailableError messageID = "error.node_unavailable"
 	msgNodeCodeInvalid      messageID = "error.node_code_invalid"
 	msgNodeCounterConflict  messageID = "error.node_counter_conflict"
@@ -243,6 +252,12 @@ const (
 
 var catalog = map[Locale]map[messageID]string{
 	English: {
+		msgCopy:                      "Copy",
+		msgCopied:                    "Copied",
+		msgAccountDeviceID:           "App device ID",
+		msgNodeBindingID:             "Node binding ID",
+		msgPairKeyID:                 "Candidate key ID",
+		msgPairTargetHash:            "Full target digest",
 		msgOwnerKeyID:                "Local Owner key ID",
 		msgOwnerPeerFingerprint:      "Local Owner fingerprint for Node trust",
 		msgExportOwnerPublic:         "Save Owner public key JSON to a new file",
@@ -470,6 +485,12 @@ var catalog = map[Locale]map[messageID]string{
 		msgBackToActivation:          "Back to activation",
 	},
 	Chinese: {
+		msgCopy:                      "复制",
+		msgCopied:                    "已复制",
+		msgAccountDeviceID:           "App 设备 ID",
+		msgNodeBindingID:             "Node 绑定 ID",
+		msgPairKeyID:                 "候选密钥 ID",
+		msgPairTargetHash:            "完整目标摘要",
 		msgOwnerKeyID:                "本地 Owner 完整密钥 ID",
 		msgOwnerPeerFingerprint:      "用于 Node 信任的本地 Owner 完整指纹",
 		msgExportOwnerPublic:         "将 Owner 公钥 JSON 保存为新文件",

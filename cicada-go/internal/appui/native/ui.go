@@ -75,6 +75,7 @@ type view struct {
 	buttons              map[appcore.ActionKind]*widget.Clickable
 	profileButtons       map[string]*widget.Clickable
 	pairButtons          map[string]*widget.Clickable
+	publicFields         map[string]*publicFieldState
 	pairLabel            widget.Editor
 	pairBootstrapConsent widget.Bool
 	pairSlotAConsent     widget.Bool
@@ -122,6 +123,7 @@ func newView(controller appcore.Controller, ctx context.Context, cancel context.
 		buttons:        make(map[appcore.ActionKind]*widget.Clickable),
 		profileButtons: make(map[string]*widget.Clickable),
 		pairButtons:    make(map[string]*widget.Clickable),
+		publicFields:   make(map[string]*publicFieldState),
 	}
 	// Keep Gio system-font fallback enabled for Windows CJK fonts. Layout
 	// dimensions use dp/sp so Windows scaling applies to text and controls.
@@ -270,6 +272,7 @@ func (v *view) statusCard(gtx layout.Context, s appcore.Snapshot) layout.Dimensi
 		}))
 		if v.details {
 			rows = append(rows, layout.Rigid(v.labelRow(v.hubSummary(s.Hub))), layout.Rigid(v.labelRow(v.accountSummary(s))), layout.Rigid(v.labelRow(v.managementLabel(s.Management))))
+			rows = append(rows, v.publicFieldRows("account/", appui.AccountPublicFields(s, time.Now()))...)
 			if s.Node.Available && s.Setup.Purpose != "" {
 				rows = append(rows, layout.Rigid(v.labelRow(appui.Text(v.locale, "authorization.initial")+": "+v.authorizationLabel(s.Authorization.State))))
 			}
@@ -405,6 +408,7 @@ func (v *view) publicStatusRows(s appcore.Snapshot) []layout.Widget {
 }
 
 func (v *view) resetPresentationInputs() {
+	v.publicFields = make(map[string]*publicFieldState)
 	v.activation.SetText("")
 	v.username.SetText("")
 	v.password.SetText("")
@@ -802,15 +806,6 @@ func (v *view) hubSummary(h appcore.HubSnapshot) string {
 	} else {
 		parts = append(parts, appui.Text(v.locale, "hub.unverified"))
 	}
-	if h.Origin != "" {
-		parts = append(parts, appui.Text(v.locale, "hub.origin")+": "+safeDisplay(h.Origin, 256))
-	}
-	if h.HubID != "" {
-		parts = append(parts, appui.Text(v.locale, "hub.identity")+": "+safeDisplay(h.HubID, 128))
-	}
-	if h.Fingerprint != "" {
-		parts = append(parts, appui.Text(v.locale, "hub.fingerprint")+": "+safeDisplay(h.Fingerprint, 64))
-	}
 	status := string(h.Health)
 	if status == "" {
 		status = string(appcore.HubHealthUnknown)
@@ -832,21 +827,6 @@ func (v *view) accountSummary(s appcore.Snapshot) string {
 	}
 	if account.Username != "" {
 		parts = append(parts, appui.Text(v.locale, "account.username")+": "+safeDisplay(account.Username, 128))
-	}
-	if account.AccountID != "" {
-		parts = append(parts, appui.Text(v.locale, "account.id")+": "+safeDisplay(account.AccountID, 128))
-	}
-	if account.OwnerID != "" {
-		parts = append(parts, appui.Text(v.locale, "account.owner_id")+": "+safeDisplay(account.OwnerID, 128))
-	}
-	if account.OwnerFingerprint != "" {
-		parts = append(parts, appui.Text(v.locale, "account.owner_fingerprint")+": "+safeDisplay(account.OwnerFingerprint, 64))
-	}
-	if account.LocalOwnerKeyID != "" {
-		parts = append(parts, appui.Text(v.locale, "account.owner_key_id")+": "+account.LocalOwnerKeyID)
-	}
-	if account.OwnerPeerFingerprint != "" {
-		parts = append(parts, appui.Text(v.locale, "account.owner_peer_fingerprint")+": "+account.OwnerPeerFingerprint)
 	}
 	return appui.Text(v.locale, "section.account") + ": " + strings.Join(parts, "  •  ")
 }
