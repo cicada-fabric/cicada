@@ -23,6 +23,7 @@ import (
 	fabricpkg "github.com/cicada-ai/cicada/internal/fabric"
 	"github.com/cicada-ai/cicada/internal/harness"
 	"github.com/cicada-ai/cicada/internal/nodeinbox"
+	"github.com/cicada-ai/cicada/internal/nodewire"
 	"github.com/cicada-ai/cicada/internal/store"
 )
 
@@ -66,22 +67,25 @@ type localNetworkRenewRequest struct {
 }
 
 type localJoinResponse struct {
-	Version            int                                   `json:"version"`
-	Join               *fabricpkg.JoinResult                 `json:"join,omitempty"`
-	NetworkJoin        *fabricpkg.NetworkJoinResult          `json:"network_join,omitempty"`
-	NativeContextScope *nodeinbox.NativeContextScopeDecision `json:"native_context_scope,omitempty"`
-	JoinRecovery       *localJoinRecoveryStatus              `json:"join_recovery,omitempty"`
-	NetworkDirect      *localNetworkDirectResult             `json:"network_direct,omitempty"`
-	SealedSend         *localSealedSendResult                `json:"sealed_send,omitempty"`
-	MCPMetadata        *localMCPMetadataResult               `json:"mcp_metadata,omitempty"`
-	SealedRPC          *localSealedRPCResult                 `json:"sealed_rpc,omitempty"`
-	LocalGroup         *localGroupResult                     `json:"local_group,omitempty"`
-	CrossNodeGroup     *crossNodeGroupResult                 `json:"cross_node_group,omitempty"`
-	GroupBroadcast     *groupBroadcastResult                 `json:"group_broadcast,omitempty"`
-	GroupSpace         *groupSpaceLocalResult                `json:"group_space,omitempty"`
-	MonitorBroadcast   *monitorBroadcastResult               `json:"monitor_broadcast,omitempty"`
-	Retryable          bool                                  `json:"retryable,omitempty"`
-	Error              string                                `json:"error,omitempty"`
+	EndpointOperation   *localEndpointResult                  `json:"endpoint_operation,omitempty"`
+	CodexContextIssue   *localCodexContextIssueResult         `json:"codex_context_issue,omitempty"`
+	CodexContextConsume *localCodexContextConsumeResult       `json:"codex_context_consume,omitempty"`
+	Version             int                                   `json:"version"`
+	Join                *fabricpkg.JoinResult                 `json:"join,omitempty"`
+	NetworkJoin         *fabricpkg.NetworkJoinResult          `json:"network_join,omitempty"`
+	NativeContextScope  *nodeinbox.NativeContextScopeDecision `json:"native_context_scope,omitempty"`
+	JoinRecovery        *localJoinRecoveryStatus              `json:"join_recovery,omitempty"`
+	NetworkDirect       *localNetworkDirectResult             `json:"network_direct,omitempty"`
+	SealedSend          *localSealedSendResult                `json:"sealed_send,omitempty"`
+	MCPMetadata         *localMCPMetadataResult               `json:"mcp_metadata,omitempty"`
+	SealedRPC           *localSealedRPCResult                 `json:"sealed_rpc,omitempty"`
+	LocalGroup          *localGroupResult                     `json:"local_group,omitempty"`
+	CrossNodeGroup      *crossNodeGroupResult                 `json:"cross_node_group,omitempty"`
+	GroupBroadcast      *groupBroadcastResult                 `json:"group_broadcast,omitempty"`
+	GroupSpace          *groupSpaceLocalResult                `json:"group_space,omitempty"`
+	MonitorBroadcast    *monitorBroadcastResult               `json:"monitor_broadcast,omitempty"`
+	Retryable           bool                                  `json:"retryable,omitempty"`
+	Error               string                                `json:"error,omitempty"`
 }
 
 // localJoinRecoveryStatus describes a partial commit. The Hub membership and
@@ -130,6 +134,8 @@ func localJoinRecoveryFromError(err error) (*localJoinRecoveryStatus, bool) {
 }
 
 type machineAgentJoinBridge struct {
+	endpointMu    sync.Mutex
+	codexContexts localCodexContextAuthority
 	listener      net.Listener
 	path          string
 	socketFile    os.FileInfo
@@ -434,6 +440,49 @@ func (b *machineAgentJoinBridge) serveConnection(connection net.Conn) {
 	}
 	if err := json.Unmarshal(requestBytes, &header); err != nil {
 		_ = json.NewEncoder(connection).Encode(localJoinResponse{Version: localJoinProtocolVersion, Error: "invalid local Node request"})
+		return
+	}
+	if localEndpointOperation(header.Operation) {
+		var q localEndpointRequest
+		if decodeLocalBridgeRequest(requestBytes, &q) != nil {
+			_ = json.NewEncoder(connection).Encode(localJoinErrorResponse(nodewire.ErrEndpointContext))
+			return
+		}
+		result, err := b.endpointOperation(q)
+		response := localJoinResponse{Version: localJoinProtocolVersion, EndpointOperation: result}
+		if err != nil {
+			response.Error = safeLocalJoinError(err)
+			response.Retryable = result != nil && result.State == "UNKNOWN"
+		}
+		_ = json.NewEncoder(connection).Encode(response)
+		return
+	}
+	if header.Operation == "codex_context_issue" {
+		var q localCodexContextIssue
+		if decodeLocalBridgeRequest(requestBytes, &q) != nil {
+			_ = json.NewEncoder(connection).Encode(localJoinErrorResponse(errLocalCodexContext))
+			return
+		}
+		result, err := b.codexContextIssue(q)
+		if err != nil {
+			_ = json.NewEncoder(connection).Encode(localJoinErrorResponse(err))
+			return
+		}
+		_ = json.NewEncoder(connection).Encode(localJoinResponse{Version: localJoinProtocolVersion, CodexContextIssue: result})
+		return
+	}
+	if header.Operation == "codex_context_consume" {
+		var q localCodexContextConsume
+		if decodeLocalBridgeRequest(requestBytes, &q) != nil {
+			_ = json.NewEncoder(connection).Encode(localJoinErrorResponse(errLocalCodexContext))
+			return
+		}
+		result, err := b.codexContextConsume(q)
+		if err != nil {
+			_ = json.NewEncoder(connection).Encode(localJoinErrorResponse(err))
+			return
+		}
+		_ = json.NewEncoder(connection).Encode(localJoinResponse{Version: localJoinProtocolVersion, CodexContextConsume: result})
 		return
 	}
 	if header.Operation == "native_pair_join" {

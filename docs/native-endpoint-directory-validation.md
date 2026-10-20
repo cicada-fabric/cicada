@@ -177,3 +177,85 @@ changes remained byte-identical. The affected CLI compile-only run
 selected tests (manifest `b1fe22b0755b5c316a212242a2c6b752dc78f7a5d47149c58df25ac3cdf20759`).
 This is a build check, not a new directory functional run, Windows/native Runtime
 pass, or reason to duplicate already completed scoped tests.
+
+## Follow-up: local adapter, exact intent recovery and context authority
+
+This producer checkpoint is based on `4215ddce83443673d9b3f4c70a3db7ba02fcc434`
+plus its own dirty source manifests. It implements the existing private socket's
+Endpoint register/Leave/operator-directory/available-Pair/named-Join adapter,
+durable exact intents, and the local HMAC issue/consume authority. It does not
+modify App/Android implementation, main dispatch, old protocol identifiers,
+existing Owner identities or keys, scopes, consent requirements or live state.
+
+All runs below used the same pinned Go 1.27.3 Docker image, no container network,
+read-only source and module cache, task-specific build cache, synthetic keys and
+disposable private socket/TCP/SQLite fixtures. No shared development Hub was used.
+Evidence is retained under
+`/home/zyf/Cicada/.local/evidence/node-endpoint-registration/`.
+
+| Run | Result | Exact dirty source manifest |
+| --- | --- | --- |
+| `local-bridge-final-functional-20261020T162513Z` | 11 pass / 0 fail / 0 skip | `8db1977c8a4d69650c62cb7a219ae9f993a6c0ffa5ae53041eef3ab4b636f89a` |
+| `local-bridge-fence-correction-20261020T162648Z` | 2 pass / 0 fail / 0 skip | `04dac1a4d4b1f7e9fb58bcb433a5c3b8d091e3883960499a8eab7699d397beb1` |
+| `local-bridge-frozen-race-20261020T162742Z` | 9 pass / 0 fail / 0 skip, `-race` | `04dac1a4d4b1f7e9fb58bcb433a5c3b8d091e3883960499a8eab7699d397beb1` |
+| `local-bridge-frozen-vet-20261020T162742Z` | exit 0 | same `04dac1a4...` |
+| `local-context-monotonic-correction-20261020T162903Z` | 4 pass / 0 fail / 0 skip | `bf652cdd65b5fccb46880796559f65e8d4103f87d5ceb4e0d9e764b908e05d1b` |
+| `local-context-monotonic-vet-20261020T162903Z` | exit 0 | same `bf652cdd...` |
+
+The final four-line correction preserves Go's monotonic clock in live 30-second
+ticket comparisons and formats only the returned expiry as UTC. Its narrow
+rerun covers all three authority tests and the actual private IPC/TCP adapter
+test; the full matrix was not repeated. Final source-after checks match all
+manifest files before this validation prose was added. Candidate receipts map
+all final Go blobs to that exact correction source.
+
+The tests establish concurrent atomic single-use context consumption, wrong
+tool/arguments/nonce/origin/binding refusal, expiry, 512-live-ticket backpressure
+without live eviction, process-key restart invalidation, one bounded non-link
+owned transcript record, actual fork ID matching, and unsupported subagent or
+unknown ancestry. The real production private socket issues and consumes a
+ticket and rejects its replay. This uses synthetic metadata, not a native Hook.
+
+Intent tests establish exact Leave digest and packet retention across ACK loss,
+disk reload/startup recovery, and atomic receipt/outbox persistence. Expired old
+Leave cannot prepare a self read, old IDs cannot change their issue millisecond,
+time-floor persistence prevents rollback resurrection, completed/local-only
+history is collected rather than imposing a lifetime quota, and unknown packets
+survive collection. Full short-window capacity rejects new work before a counter
+or packet is allocated. Authenticated Pair refusal remains a retained refusal.
+
+The actual Hub/SQLite/PQ/TCP test uses the new private IPC to register an offline
+private Endpoint, list it as the local Node operator, reject a nonexistent Leave
+without creating an Endpoint, then choose the exact human Pair label and A slot.
+It reuses the registered Endpoint under the original real synthetic Owner proof.
+After the Hub commits Join and its ACK is deliberately lost, the exact retry
+sends byte-identical original packets with the same generation. One joined slot
+does not admit the Pair, sign its keys, synthesize consent or run a model.
+Existing dual-consent/relay and explicit-new-intent fence regressions also pass
+in the separately attributed functional run.
+
+Historical failures are retained. The first endpoint run
+`local-endpoint-focused-20261020T162015Z` had 2 pass / 1 fail / 0 skip: its test
+reused a JSON decode destination whose omitted pending field retained its prior
+value. Resetting the destination fixed the evidence assertion; production receipt
+logic was unchanged for that failure. The earlier cold race run
+`local-bridge-final-race-20261020T162602Z` reported 8/0/0, but source changed in
+the host working tree during its read-only mount, so its explicit mutability
+note excludes it as a final source gate. It is not substituted for the frozen
+9/0/0 run above.
+
+Actual per-call Codex Hook/MCP Runtime, TUI/desktop ticket lifecycle, hostile
+same-UID isolation, Windows IPC/GUI/DPAPI/ACL, Android, physical devices, public
+HTTPS, real keys and resident deployments remain **NOT_RUN** here. Hook/MCP
+consumption and the operator CLI surface belong to their separately reviewed
+consumer work. These results do not prove human intent, native anti-inheritance,
+Runtime message consumption, or a completed user-facing installation.
+
+State compatibility is directional: the new binary reads the prior Node state,
+and the new local intent/floor fields are optional additions under existing
+state Version 1. After those fields are written, an older binary's strict JSON
+reader rejects the state rather than understanding the new recovery records.
+Downward binary compatibility and automatic downgrade/migration are not claimed;
+refusal must preserve the original state and identity, never initialize a
+replacement identity to bypass it. This checkpoint did not deploy or downgrade
+a resident Node.

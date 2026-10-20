@@ -226,3 +226,73 @@ pending operation. Old Hub/old format, wrong pin or unavailable profile refuses
 new starts; it cannot settle an old pending request. Empty-query GET keeps the
 original Owner capabilities format unchanged. This adds no new service, Owner
 signature delegation, business role or permission.
+
+## Local Node adapter and exact intents
+
+The existing same-UID private Unix socket accepts Version 1 operations
+`endpoint_register`, `endpoint_leave`, `endpoint_directory`,
+`native_pair_available`, and `native_pair_join_named`. Their local request is
+`{version,operation,request_id,issued_at,api_origin,harness?,native_session_id?,
+workspace?,name?,pair_label?,slot?,cursor?,limit?}`. This is a local adapter DTO,
+not a replacement Hub protocol. The operator-only directory accepts cursor and
+limit, without a caller-selected native identity. Register/Leave/Join independently
+check the original local Codex record and canonical workspace. No identity is
+created to make that check pass.
+
+`newLocalEndpointRequestID(now)` produces 12 lowercase hex Unix-millisecond
+digits followed by 20 random hex digits. The prefix must equal the UTC
+`issued_at` millisecond. New intents allow a two-minute window and at most
+30 seconds future skew. Request ID, full original intent digest, Hub, Node,
+operation and outcome state bind the response. Changing any intent field with
+the same ID is refused. Availability is checked before preparing a new intent;
+an old pending packet remains recoverable independently of current availability.
+
+The existing private 8 MiB Node-Control state stores original intent metadata,
+fixed child operation IDs, prepared bodies and bounded original sealed receipts.
+Receipt retention and clearing the shared outbox use one durable write, including
+startup recovery. There is a 1 MiB completion reserve before a new local packet
+is sent, and a 256 KiB local receipt ceiling. At most 256 mutation intents and
+64 read intents are active. Expired settled/no-dispatch intents can be collected
+with a monotonically increasing `local_endpoint_admission_floor_ms` in the same
+write; new admissions at or below that floor are refused even after clock
+rollback. Pending/unknown packets are never evicted. Capacity applies temporary
+backpressure; it is not a Node lifetime quota or a reason to replace keys.
+
+After the issue window, only an already sealed original packet may be retried;
+no new child read or mutation is prepared. Leave first performs a fixed exact
+self lookup, never a registration probe, then durably fixes its original state
+digest. Lost replies cannot cause a new read to withdraw scopes joined later.
+Named Join requires exactly one matching human Pair label and explicit A/B
+slot in a complete available result. Pair ID/generation are saved once; original
+Describe, Owner-key trust, bootstrap proof, Join, key approval and dual consent
+remain authoritative. No first-row selection or App-prebound slot is introduced.
+
+## Local per-call Codex context
+
+`codex_context_issue` accepts Version 1, API origin, harness `codex`, native SID,
+canonical workspace, transcript path, 64-hex MCP connection nonce, tool name,
+64-hex canonical business-argument digest, turn ID and tool-use ID.
+`codex_context_consume` accepts Version 1, API origin, connection nonce, tool
+name, argument digest and opaque ticket; it has no caller-supplied SID or path.
+The consumed result contains only the verified original context and expiry.
+
+The Node reads one supplied transcript under its actual Codex sessions root,
+checking non-link path components, same-UID non-writable record ownership,
+regular-file open-handle identity and bounded `session_meta` metadata. It does
+not scan session history per tool call. Metadata ID and cwd must match exactly;
+fork ancestry never supplies an identity. Supported sources are the existing
+`cli` shape and the isolated-tested `exec`/`codex_exec` shape. Missing/unknown
+sources and structured subagent records are unsupported.
+
+The Node uses a memory-only random HMAC key and at most 512 live opaque tickets,
+each expiring in 30 seconds. Tickets bind the current Hub/Node binding, API
+origin, actual SID/cwd, MCP nonce, tool, argument digest, turn and call. Valid
+consumption is atomic and single-use; mismatch does not consume a valid ticket.
+Live tickets are never evicted for capacity. Node restart invalidates all tickets;
+an MCP restart uses a new nonce. No key is written to disk or supplied to a model.
+This establishes only the existing same-UID local trust boundary. It is not a
+Codex signature, proof of human intent, or protection from a malicious process
+under the same UID. Inherited parent context without a distinct native record
+cannot be promoted into a proven child identity. Real per-call Hook/MCP Runtime,
+TUI/desktop, Windows IPC and subagent lifecycle coverage remain separately
+attributed and are not established by these deterministic tests.

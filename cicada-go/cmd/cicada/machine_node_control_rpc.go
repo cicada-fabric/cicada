@@ -102,45 +102,48 @@ type machineNodeControlPairingInput struct {
 }
 
 type machineNodeControlState struct {
-	Version                 int                                 `json:"version"`
-	NodeID                  string                              `json:"node_id"`
-	HubOrigin               string                              `json:"hub_origin"`
-	HubCandidateID          string                              `json:"hub_candidate_id,omitempty"`
-	HubCandidateFingerprint string                              `json:"hub_candidate_fingerprint,omitempty"`
-	HubCandidateVersion     uint64                              `json:"hub_candidate_version,omitempty"`
-	HubCandidateIdentity    e2ee.PublicIdentity                 `json:"hub_candidate_identity,omitempty"`
-	PendingPairingUserCode  string                              `json:"pending_pairing_user_code,omitempty"`
-	PendingPairingURI       string                              `json:"pending_pairing_uri,omitempty"`
-	HubID                   string                              `json:"hub_id,omitempty"`
-	HubKeyID                string                              `json:"hub_key_id,omitempty"`
-	HubFingerprint          string                              `json:"hub_fingerprint,omitempty"`
-	HubKeyVersion           uint64                              `json:"hub_key_version,omitempty"`
-	HubPublicIdentity       e2ee.PublicIdentity                 `json:"hub_public_identity,omitempty"`
-	NodeKeyID               string                              `json:"node_key_id,omitempty"`
-	NodeKeyFingerprint      string                              `json:"node_key_fingerprint,omitempty"`
-	NodeKeyVersion          uint64                              `json:"node_key_version,omitempty"`
-	BindingID               string                              `json:"binding_id,omitempty"`
-	BindingVersion          uint64                              `json:"binding_version,omitempty"`
-	NodeKeyEpoch            uint64                              `json:"node_key_epoch,omitempty"`
-	ApprovedRequestID       string                              `json:"approved_request_id,omitempty"`
-	ApprovedRequestVersion  int64                               `json:"approved_request_version,omitempty"`
-	ApprovedCandidateDigest string                              `json:"approved_candidate_digest,omitempty"`
-	PendingPairing          *machineNodeControlCandidate        `json:"pending_pairing,omitempty"`
-	Sequence                uint64                              `json:"sequence"`
-	PendingOperationID      string                              `json:"pending_operation_id,omitempty"`
-	PendingOperation        string                              `json:"pending_operation,omitempty"`
-	PendingSequence         uint64                              `json:"pending_sequence,omitempty"`
-	PendingPlaintextDigest  string                              `json:"pending_plaintext_digest,omitempty"`
-	PendingPacket           []byte                              `json:"pending_packet,omitempty"`
-	PendingResponsePacket   []byte                              `json:"pending_response_packet,omitempty"`
-	PendingNativePairBody   []byte                              `json:"pending_native_pair_body,omitempty"`
-	NativePairReceipts      map[string]machineNativePairReceipt `json:"native_pair_receipts,omitempty"`
-	NativePairDiagnostic    *machineNativePairDiagnostic        `json:"native_pair_diagnostic,omitempty"`
-	PendingWorkerID         string                              `json:"pending_worker_id,omitempty"`
-	PendingWorkerAttempt    int                                 `json:"pending_worker_attempt,omitempty"`
-	PendingSnapshotPath     string                              `json:"pending_snapshot_path,omitempty"`
-	PendingSnapshotManifest *nodewire.SnapshotManifest          `json:"pending_snapshot_manifest,omitempty"`
-	ClaimTicket             *machineNodeControlClaimTicket      `json:"claim_ticket,omitempty"`
+	LocalEndpointAdmissionFloorMS int64                                 `json:"local_endpoint_admission_floor_ms,omitempty"`
+	LocalEndpointIntents          map[string]machineLocalEndpointIntent `json:"local_endpoint_intents,omitempty"`
+	PendingLocalEndpointIntentID  string                                `json:"pending_local_endpoint_intent_id,omitempty"`
+	Version                       int                                   `json:"version"`
+	NodeID                        string                                `json:"node_id"`
+	HubOrigin                     string                                `json:"hub_origin"`
+	HubCandidateID                string                                `json:"hub_candidate_id,omitempty"`
+	HubCandidateFingerprint       string                                `json:"hub_candidate_fingerprint,omitempty"`
+	HubCandidateVersion           uint64                                `json:"hub_candidate_version,omitempty"`
+	HubCandidateIdentity          e2ee.PublicIdentity                   `json:"hub_candidate_identity,omitempty"`
+	PendingPairingUserCode        string                                `json:"pending_pairing_user_code,omitempty"`
+	PendingPairingURI             string                                `json:"pending_pairing_uri,omitempty"`
+	HubID                         string                                `json:"hub_id,omitempty"`
+	HubKeyID                      string                                `json:"hub_key_id,omitempty"`
+	HubFingerprint                string                                `json:"hub_fingerprint,omitempty"`
+	HubKeyVersion                 uint64                                `json:"hub_key_version,omitempty"`
+	HubPublicIdentity             e2ee.PublicIdentity                   `json:"hub_public_identity,omitempty"`
+	NodeKeyID                     string                                `json:"node_key_id,omitempty"`
+	NodeKeyFingerprint            string                                `json:"node_key_fingerprint,omitempty"`
+	NodeKeyVersion                uint64                                `json:"node_key_version,omitempty"`
+	BindingID                     string                                `json:"binding_id,omitempty"`
+	BindingVersion                uint64                                `json:"binding_version,omitempty"`
+	NodeKeyEpoch                  uint64                                `json:"node_key_epoch,omitempty"`
+	ApprovedRequestID             string                                `json:"approved_request_id,omitempty"`
+	ApprovedRequestVersion        int64                                 `json:"approved_request_version,omitempty"`
+	ApprovedCandidateDigest       string                                `json:"approved_candidate_digest,omitempty"`
+	PendingPairing                *machineNodeControlCandidate          `json:"pending_pairing,omitempty"`
+	Sequence                      uint64                                `json:"sequence"`
+	PendingOperationID            string                                `json:"pending_operation_id,omitempty"`
+	PendingOperation              string                                `json:"pending_operation,omitempty"`
+	PendingSequence               uint64                                `json:"pending_sequence,omitempty"`
+	PendingPlaintextDigest        string                                `json:"pending_plaintext_digest,omitempty"`
+	PendingPacket                 []byte                                `json:"pending_packet,omitempty"`
+	PendingResponsePacket         []byte                                `json:"pending_response_packet,omitempty"`
+	PendingNativePairBody         []byte                                `json:"pending_native_pair_body,omitempty"`
+	NativePairReceipts            map[string]machineNativePairReceipt   `json:"native_pair_receipts,omitempty"`
+	NativePairDiagnostic          *machineNativePairDiagnostic          `json:"native_pair_diagnostic,omitempty"`
+	PendingWorkerID               string                                `json:"pending_worker_id,omitempty"`
+	PendingWorkerAttempt          int                                   `json:"pending_worker_attempt,omitempty"`
+	PendingSnapshotPath           string                                `json:"pending_snapshot_path,omitempty"`
+	PendingSnapshotManifest       *nodewire.SnapshotManifest            `json:"pending_snapshot_manifest,omitempty"`
+	ClaimTicket                   *machineNodeControlClaimTicket        `json:"claim_ticket,omitempty"`
 }
 
 // ClaimTicket retains only the Hub's sealed response. The plaintext job is
@@ -382,6 +385,7 @@ func cloneMachineNodeControlState(state machineNodeControlState) machineNodeCont
 	state.PendingPacket = cloneBytes(state.PendingPacket)
 	state.PendingResponsePacket = cloneBytes(state.PendingResponsePacket)
 	state = cloneMachineNativePairState(state)
+	state = cloneMachineLocalEndpointState(state)
 	if state.PendingSnapshotManifest != nil {
 		manifest := *state.PendingSnapshotManifest
 		state.PendingSnapshotManifest = &manifest
@@ -475,6 +479,17 @@ func (client *machineNodeControlClient) call(ctx context.Context, token, operati
 		client.state.NodeKeyID != client.identity.Public().ID || client.state.HubKeyID != client.state.HubPublicIdentity.ID {
 		return errors.New("Node-Control key binding is not Owner-approved")
 	}
+	localScope, localCall := ctx.Value(localEndpointCallKey{}).(localEndpointCallScope)
+	if localCall {
+		if replayed, err := client.replayLocalEndpointLocked(localScope, operation, plain, target); replayed {
+			return err
+		}
+		if len(client.state.PendingPacket) > 0 && (client.state.PendingOperationID != localScope.StepID || client.state.PendingLocalEndpointIntentID != localScope.IntentID) {
+			return errMachineNodeControlOutcomeUncertain
+		}
+	} else if client.state.PendingLocalEndpointIntentID != "" {
+		return errMachineNodeControlOutcomeUncertain
+	}
 	if len(client.state.PendingPacket) == 0 {
 		if client.state.Sequence >= uint64(^uint64(0)>>1) {
 			return errors.New("Node-Control sequence exhausted; require Owner-approved epoch upgrade")
@@ -483,6 +498,9 @@ func (client *machineNodeControlClient) call(ctx context.Context, token, operati
 		operationID, err := newMachineNodeControlOperationID()
 		if err != nil {
 			return err
+		}
+		if localCall {
+			operationID = localScope.StepID
 		}
 		binding := machineNodeControlBindingFromState(client)
 		public := client.identity.Public()
@@ -508,6 +526,13 @@ func (client *machineNodeControlClient) call(ctx context.Context, token, operati
 			client.state.PendingNativePairBody = append([]byte(nil), plain...)
 		}
 		client.state.PendingResponsePacket = nil
+		if localCall {
+			client.state.PendingLocalEndpointIntentID = localScope.IntentID
+			if err := client.localEndpointCapacityLocked(); err != nil {
+				client.state = previous
+				return err
+			}
+		}
 		client.state.PendingWorkerID, client.state.PendingWorkerAttempt = machineNodeControlPendingWorker(operation, requestBody)
 		if err := client.persistLocked(); err != nil {
 			client.state = previous
@@ -622,6 +647,10 @@ func (client *machineNodeControlClient) call(ctx context.Context, token, operati
 	}
 	previous := cloneMachineNodeControlState(client.state)
 	completedOperation := client.state.PendingOperation
+	if err := client.rememberLocalEndpointReceiptLocked(responsePacket); err != nil {
+		client.state = previous
+		return err
+	}
 	if err := client.rememberNativePairReceiptLocked(responsePacket, envelope.Result, envelope.OK, envelope.ErrorCode); err != nil {
 		client.state = previous
 		return err
@@ -652,6 +681,9 @@ func (client *machineNodeControlClient) call(ctx context.Context, token, operati
 		return err
 	}
 	if !envelope.OK {
+		if endpointNodeBusinessOperation(completedOperation) {
+			return localEndpointTerminalError(envelope.ErrorCode)
+		}
 		if nativePairNodeBusinessOperation(completedOperation) {
 			return errNativePairNodeRejected
 		}
@@ -805,6 +837,10 @@ func (client *machineNodeControlClient) recoverPending(ctx context.Context, toke
 	}
 	previous := cloneMachineNodeControlState(client.state)
 	operation := client.state.PendingOperation
+	if err := client.rememberLocalEndpointReceiptLocked(responsePacket); err != nil {
+		client.state = previous
+		return err
+	}
 	if err := client.rememberNativePairReceiptLocked(responsePacket, envelope.Result, envelope.OK, envelope.ErrorCode); err != nil {
 		client.state = previous
 		return err
@@ -835,6 +871,9 @@ func (client *machineNodeControlClient) recoverPending(ctx context.Context, toke
 		return err
 	}
 	if !envelope.OK {
+		if endpointNodeBusinessOperation(operation) {
+			return localEndpointTerminalError(envelope.ErrorCode)
+		}
 		switch envelope.ErrorCode {
 		case "RESULT_TOO_LARGE":
 			return errors.New("Node-Control rejected an oversized queued Worker response")
@@ -1001,6 +1040,8 @@ func (client *machineNodeControlClient) postPacket(ctx context.Context, token st
 			limit, pairResponse = wire.MaxNativePairNodeReceiptBytes, true
 		case original.Route.Operation == wire.OperationNativePairNodeReconcile:
 			limit, pairResponse = wire.MaxNativePairNodeReconcilePacketBytes, true
+		case endpointNodeBusinessOperation(original.Route.Operation):
+			limit = 256 << 10
 		}
 	}
 	data, err := io.ReadAll(io.LimitReader(response.Body, int64(limit)+1))
@@ -1032,6 +1073,7 @@ func truncateMachineAPIError(data []byte) []byte {
 }
 
 func (client *machineNodeControlClient) clearPendingLocked() {
+	client.state.PendingLocalEndpointIntentID = ""
 	client.state.PendingOperationID = ""
 	client.state.PendingOperation = ""
 	client.state.PendingSequence = 0

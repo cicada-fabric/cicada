@@ -48,7 +48,7 @@ func nativePairNodeBusinessOperation(operation string) bool {
 }
 
 func machineNodeControlResponseCodeAllowedFor(operation, code string) bool {
-	return machineNodeControlResponseCodeAllowed(code) || operation == wire.OperationNativePairNodeJoin && code == wire.NativePairNodeJoinFenceCode
+	return machineNodeControlResponseCodeAllowed(code) || operation == wire.OperationNativePairNodeJoin && code == wire.NativePairNodeJoinFenceCode || endpointNodeBusinessOperation(operation) && (code == nodewire.ErrEndpointContext.Error() || code == nodewire.ErrEndpointConflict.Error() || code == nodewire.ErrEndpointUnavailable.Error())
 }
 
 func cloneMachineNativePairReceipt(record machineNativePairReceipt) machineNativePairReceipt {
