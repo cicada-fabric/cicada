@@ -28,11 +28,12 @@ var errLocalEndpointReceiptExpired = errors.New("ENDPOINT_LOCAL_RECEIPT_EXPIRED:
 // Settled intents may expire behind a durable, monotonic admission floor.
 // Unknown packets remain retained; an evicted old intent cannot become fresh.
 type machineLocalEndpointIntent struct {
-	Digest    string                              `json:"digest"`
-	Operation string                              `json:"operation"`
-	IssuedAt  string                              `json:"issued_at"`
-	Mutation  bool                                `json:"mutation"`
-	Steps     map[string]machineLocalEndpointStep `json:"steps,omitempty"`
+	Digest           string                              `json:"digest"`
+	Operation        string                              `json:"operation"`
+	IssuedAt         string                              `json:"issued_at"`
+	Mutation         bool                                `json:"mutation"`
+	LocalJoinRefused bool                                `json:"local_join_refused,omitempty"`
+	Steps            map[string]machineLocalEndpointStep `json:"steps,omitempty"`
 }
 
 type machineLocalEndpointStep struct {
@@ -199,6 +200,9 @@ func (client *machineNodeControlClient) prepareLocalEndpointStep(id, digest, ste
 	if !ok || intent.Digest != digest {
 		return scope, errLocalEndpointIntentConflict
 	}
+	if intent.LocalJoinRefused && operation == wire.OperationNativePairNodeJoin {
+		return scope, errNativePairNodeRejected
+	}
 	if old, ok := intent.Steps[scope.StepID]; ok {
 		if old.Operation != operation || !bytes.Equal(old.Body, plain) {
 			return scope, errLocalEndpointIntentConflict
@@ -247,6 +251,9 @@ func (client *machineNodeControlClient) replayLocalEndpointLocked(scope localEnd
 	intent, ok := client.state.LocalEndpointIntents[scope.IntentID]
 	if !ok || intent.Digest != scope.Digest {
 		return true, errLocalEndpointIntentConflict
+	}
+	if intent.LocalJoinRefused && operation == wire.OperationNativePairNodeJoin {
+		return true, errNativePairNodeRejected
 	}
 	s, ok := intent.Steps[scope.StepID]
 	if !ok || s.Operation != operation || !bytes.Equal(s.Body, plain) {

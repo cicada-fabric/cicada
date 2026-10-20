@@ -99,6 +99,12 @@ func (b *machineAgentJoinBridge) nodeOperatorAvailable(client *machineNodeContro
 	return nil
 }
 
+var errLocalNamedPairSelection = errors.New("PAIR_SELECTION_REFUSED: choose one unambiguous available Pair label and slot")
+
+func localNamedJoinRefusalEligible(err error) bool {
+	return errors.Is(err, errLocalNamedPairSelection) || errors.Is(err, errManagedPairLeaseFull) || errors.Is(err, errManagedPairLeaseStopped) || errors.Is(err, errLocalEndpointReceiptExpired) || errors.Is(err, nodewire.ErrEndpointContext) || errors.Is(err, nodewire.ErrEndpointConflict) || errors.Is(err, nodewire.ErrEndpointUnavailable)
+}
+
 func (b *machineAgentJoinBridge) endpointOperation(q localEndpointRequest) (*localEndpointResult, error) {
 	if err := q.validate(); err != nil {
 		return nil, err
@@ -139,6 +145,10 @@ func (b *machineAgentJoinBridge) endpointOperation(q localEndpointRequest) (*loc
 	}
 	binding := client.approvedBinding()
 	r := &localEndpointResult{RequestID: q.RequestID, IntentDigest: digest, HubID: binding.HubID, NodeID: b.nodeID, Operation: q.Operation, State: "UNKNOWN"}
+	if q.Operation == "native_pair_join_named" && client.localNamedJoinRefused(q.RequestID, digest) {
+		r.State = "REFUSED"
+		return r, errNativePairNodeRejected
+	}
 	// Recover only the already sealed packet. A terminal refusal is retained in
 	// its step and will be returned below; unresolved outcomes stop new work.
 	if err := client.recoverPending(b.ctx, b.nodeToken); err != nil {
@@ -169,6 +179,23 @@ func (b *machineAgentJoinBridge) endpointOperation(q localEndpointRequest) (*loc
 		}
 	case "native_pair_join_named":
 		err = b.localEndpointNamedJoin(client, q, digest, r)
+	}
+	if q.Operation == "native_pair_join_named" && err != nil {
+		if errors.Is(err, errNativePairNodeRejected) {
+			r.State = "REFUSED"
+			return r, err
+		}
+		if localNamedJoinRefusalEligible(err) {
+			fenced, fenceErr := client.fenceLocalNamedJoinRefusal(q.RequestID, digest)
+			if fenceErr != nil {
+				return r, fenceErr
+			}
+			if fenced {
+				r.State = "REFUSED"
+				return r, errNativePairNodeRejected
+			}
+		}
+		return r, err // Dispatched/uncertain Join can never become a local refusal.
 	}
 	if err == nil {
 		r.State = "COMPLETED"
@@ -206,6 +233,9 @@ func (b *machineAgentJoinBridge) localEndpointLeave(client *machineNodeControlCl
 	if err := client.callLocalEndpoint(b.ctx, b.nodeToken, q.RequestID, digest, "leave", nodewire.EndpointLeaveOperation, leave, &result); err != nil {
 		return err
 	}
+	if err := client.stopManagedPairLeasesForNative(q.Harness, q.NativeSessionID, q.Workspace); err != nil {
+		return err
+	}
 	r.Registration = &result
 	return nil
 }
@@ -241,7 +271,7 @@ func (b *machineAgentJoinBridge) localEndpointNamedJoin(client *machineNodeContr
 				return err
 			}
 			if available.Truncated {
-				return errors.New("PAIR_SELECTION_AMBIGUOUS: available Pair directory is truncated")
+				return errLocalNamedPairSelection
 			}
 			matches := 0
 			for _, pair := range available.Pairs {
@@ -256,7 +286,7 @@ func (b *machineAgentJoinBridge) localEndpointNamedJoin(client *machineNodeContr
 				}
 			}
 			if matches != 1 || selected.PairID == "" || selected.Generation == 0 {
-				return errors.New("PAIR_SELECTION_AMBIGUOUS: choose one available Pair label and slot explicitly")
+				return errLocalNamedPairSelection
 			}
 			if _, err := client.prepareLocalEndpointStep(q.RequestID, digest, "selection", "local.selection", selected); err != nil {
 				return err
@@ -277,18 +307,33 @@ func (b *machineAgentJoinBridge) localEndpointNamedJoin(client *machineNodeContr
 			generation = description.SlotBGeneration
 		}
 		if generation != selected.Generation {
-			return errors.New("PAIR_SELECTION_CHANGED: original selected slot generation changed")
+			return errLocalNamedPairSelection
 		}
 		join = wire.NativePairNodeJoin{ContractRevision: wire.NativePairContractRevision, PairID: selected.PairID, Slot: q.Slot, ExpectedGeneration: generation, BootstrapProofDigest: wire.NativePairProofDigest(description.BootstrapOwnerProof), Runtime: "codex", NativeSessionID: q.NativeSessionID, Workspace: q.Workspace}
 	}
 	var joined fabric.JoinResult
+	if err := client.reserveManagedPairLease(b.ctx, q, digest, join, time.Now().UTC()); err != nil {
+		return err
+	}
 	if err := client.callLocalEndpoint(b.ctx, b.nodeToken, q.RequestID, digest, "join", wire.OperationNativePairNodeJoin, join, &joined); err != nil {
+		if errors.Is(err, errNativePairNodeRejected) {
+			if stopErr := client.stopManagedPairLease(localEndpointStepID(q.RequestID, digest, "join"), "", "JOIN_REJECTED_FENCED", true); stopErr != nil {
+				return stopErr
+			}
+		}
 		return err
 	}
 	local := localNativePairJoinRequest{Version: localJoinProtocolVersion, Operation: "native_pair_join", PairID: join.PairID, Slot: q.Slot, Harness: q.Harness, NativeSessionID: q.NativeSessionID, Workspace: q.Workspace, APIOrigin: q.APIOrigin}
 	result, scope, err := b.completeNativePairJoin(local, &joined)
 	if err != nil {
 		return err
+	}
+	if err := client.activateManagedPairLease(b.ctx, q, digest, result, scope, time.Now().UTC()); err != nil {
+		return err
+	}
+	select {
+	case b.managedLeaseWake <- struct{}{}:
+	default:
 	}
 	r.Join, r.NativeContextScope = result, scope
 	return nil

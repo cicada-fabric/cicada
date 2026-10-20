@@ -152,6 +152,17 @@ func (client *machineNodeControlClient) validateNativePairJoinResultLocked(q wir
 	if err != nil || p.PairID != q.PairID || p.NodeID != client.nodeID || p.BootstrapDigest != q.BootstrapProofDigest || p.HubIdentity.HubID != client.state.HubID {
 		return nil, errors.New("native Pair Join receipt is outside the original retained Owner policy")
 	}
+	return client.validateNativePairJoinResultWithPolicyLocked(q, raw, p)
+}
+
+func (client *machineNodeControlClient) validateNativePairJoinResultWithPolicyLocked(q wire.NativePairNodeJoin, raw []byte, p *nodekeys.NativePairPolicy) (*fabric.JoinResult, error) {
+	var joined fabric.JoinResult
+	if decodeMachineNodeControlJSON(raw, &joined) != nil || joined.Endpoint.ID == "" || joined.Endpoint.PrincipalID == "" || joined.Endpoint.Harness != "codex" || joined.Endpoint.NativeSessionID != q.NativeSessionID || joined.Endpoint.Workspace != q.Workspace || joined.Endpoint.MachineID != client.nodeID || joined.SessionToken == "" || len(joined.SessionToken) > 512 || joined.BindingID == "" || joined.BindingEpoch == 0 {
+		return nil, errors.New("native Pair Join receipt differs from the original local Thread context")
+	}
+	if p == nil || p.PairID != q.PairID || p.NodeID != client.nodeID || p.BootstrapDigest != q.BootstrapProofDigest || p.HubIdentity.HubID != client.state.HubID {
+		return nil, errors.New("native Pair Join receipt is outside the original retained Owner policy")
+	}
 	var proof e2ee.OwnerNativePairProof
 	if json.Unmarshal(p.BootstrapProof, &proof) != nil || joined.Endpoint.Owner != proof.Claims.Scope.Actor.OwnerID {
 		return nil, errors.New("native Pair Join receipt changed its original Owner")

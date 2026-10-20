@@ -331,3 +331,81 @@ result. Its own repeated acknowledgment is idempotent; an old acknowledgment
 cannot delete a later pending command. Process restart, IPC response loss and
 local result-save failure preserve the original request. Current server Guard,
 native-scope and lease checks continue to govern use of a restored session.
+
+## Node-managed explicit Pair leases
+
+Only `native_pair_join_named` may enroll a managed lease. The Node first durably
+reserves one of 32 live entries and 16 KiB of completion space per RESERVED entry
+in its existing bounded Node-Control file, before issuing the immutable Join.
+All writers preserve that completion headroom. The entry binds the original
+intent/digest, Join operation ID/body, slot/generation, proof digest, current
+Hub/Node binding, original accepted policy and independently installed Owner
+public pin/version. The complete authenticated original Join reply is frozen
+by digest; its session token remains in the original sealed receipt, not a new
+plaintext token store. ACTIVE is persisted only after the existing current
+Guard/native-scope/key-publication completion checks, before IPC success.
+
+The states are RESERVED, ACTIVE and STOPPED. Uncertain RESERVED entries never
+expire into replacement authority. Restart resumes only explicitly enrolled
+ACTIVE entries with an unchanged original tuple and a still-live last proven
+lease; it never discovers historical receipts, an MCP cache, a last SID or a
+replacement slot to construct new authority. Leave, explicit revocation,
+changed epochs/policy/Owner pin, the last proven lease deadline or the original
+peer ceiling permanently stop that entry. A delayed heartbeat cannot reactivate
+a concurrently stopped entry. Known STOPPED history may be collected after its
+peer ceiling (or the original intent TTL for proven no-effect records), together
+with the existing monotonic admission floor. This is a live-capacity limit,
+not a lifetime quota. Unknown outcomes are retained.
+
+One worker belongs to the existing Node bridge context/wait group and closes
+with it. It issues only the existing session-authenticated Fabric heartbeat,
+independently of model inference or a first MCP tool call. It neither Joins,
+generates identities/consent nor periodically runs the Join completion pipeline.
+It processes at most four ACTIVE entries per 30-second round, with a five-second
+request budget per entry and a wake after explicit activation. At full capacity,
+the normal round-robin budget is 32/4*30+4*5=260 seconds within the five-minute
+lease; outages, process suspension and unavailable authorization storage are not
+promises of continued availability. With up to four entries the scheduled Node
+cost is two heartbeats/minute/entry, in addition to the existing MCP heartbeat
+when running. No new ownership handoff or daemon is introduced. Each batch
+merges current state under the shared lock and persists at most once; an equal
+or older successful expiry causes no write. Concurrent outbox/counter work is
+preserved. Presence means recent lease renewal, not proof that a human/native
+Thread is online or has consumed a message.
+
+Every renewal checks the original signed Describe/Join, local policy and Owner
+pin through the existing Nodekeys services. `OpenExistingCryptoState(ctx,dir)`
+opens only an existing real private 0700 directory/0600 database and private
+sidecars, reads live WAL with `mode=rw` plus `query_only`, and requires the current
+schema. It does not create directories/databases/keys, repair permissions or
+migrate. Existing-only reads have a SQLite busy wait of at most 100 ms, shortened
+by the caller deadline; the normal writer/outbox configuration is unchanged.
+Missing policy/pin, a revoked pin or a definite authority/integrity mismatch stops
+the entry. A missing database path is unavailable storage, not proof that its authorization
+rows were revoked. That and other unproven I/O/busy/deadline errors send no heartbeat
+and retain the original entry for retry within its last proven lease. No fresh authority is
+inferred from an unavailable store. The offline immutable trust snapshot reader
+is not used for this online path.
+
+A known local pre-Join rejection (capacity or unavailable/ambiguous/truncated
+selection, changed generation, or an expired pre-dispatch preparation) is an
+acknowledgeable REFUSED result only after the bound original intent proves all
+three dispatch coordinates absent: neither the shared pending operation ID nor
+its decoded packet route names the Join (malformed pending packets cannot prove
+absence), there is no native-Pair sealed receipt, and no local Join step has a
+request packet, response packet or settled flag. The Node persists an original
+`local_join_refused` fence before returning the existing recognized named-Join
+terminal error. This local authentication/no-dispatch evidence is not a newly
+signed Hub refusal; the existing Hub-signed refusal path remains separate.
+No client error whitelist or public wire identifier changes. Any dispatched or
+uncertain old/upgraded intent remains UNKNOWN, including one missing the new
+managed marker. After a consumer emits the refusal and ACKs it, a repaired
+capacity/directory permits only a fresh explicit command: the old raw request
+cannot Join. Failure to persist the fence remains UNKNOWN.
+
+These optional private fields extend Node state Version 1 directionally. The
+new binary reads earlier state; an older strict reader may reject a state after
+these fields are written. Preserve it and its identities; automatic downgrade,
+state replacement and renewal of old non-enrolled sessions are not supported.
+The frozen public protocol, App/MCP/main implementations and consent powers are
+unchanged by this checkpoint.

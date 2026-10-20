@@ -194,7 +194,7 @@ func (s *CryptoState) NativePairPolicyForGroup(ctx context.Context, groupID stri
 		return nil, err
 	}
 	defer conn.Close()
-	if err := configureCryptoConnection(ctx, conn); err != nil {
+	if err := s.configureConnection(ctx, conn); err != nil {
 		return nil, err
 	}
 	var id string

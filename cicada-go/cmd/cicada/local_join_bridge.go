@@ -134,21 +134,25 @@ func localJoinRecoveryFromError(err error) (*localJoinRecoveryStatus, bool) {
 }
 
 type machineAgentJoinBridge struct {
-	endpointMu    sync.Mutex
-	codexContexts localCodexContextAuthority
-	listener      net.Listener
-	path          string
-	socketFile    os.FileInfo
-	baseURL       string
-	stateDir      string
-	nodeID        string
-	nodeToken     string
-	ctx           context.Context
-	localWake     chan struct{}
-	wg            sync.WaitGroup
-	closeOnce     sync.Once
-	spaceSyncMu   sync.Mutex
-	spaceSyncNext int
+	managedLeaseMu   sync.Mutex
+	managedLeaseNext int
+	managedLeaseWake chan struct{}
+	cancel           context.CancelFunc
+	endpointMu       sync.Mutex
+	codexContexts    localCodexContextAuthority
+	listener         net.Listener
+	path             string
+	socketFile       os.FileInfo
+	baseURL          string
+	stateDir         string
+	nodeID           string
+	nodeToken        string
+	ctx              context.Context
+	localWake        chan struct{}
+	wg               sync.WaitGroup
+	closeOnce        sync.Once
+	spaceSyncMu      sync.Mutex
+	spaceSyncNext    int
 }
 
 func machineAgentJoinSocketPath(stateDir, nodeID string) string {
@@ -356,15 +360,19 @@ func startMachineAgentJoinBridge(ctx context.Context, stateDir, baseURL, nodeID,
 		}
 		return nil, errors.New("local Node Join socket path was replaced during startup")
 	}
+	bridgeContext, cancelBridge := context.WithCancel(ctx)
 	bridge := &machineAgentJoinBridge{
 		listener: listener, path: path, socketFile: info, baseURL: strings.TrimRight(baseURL, "/"),
-		stateDir: stateDir, nodeID: nodeID, nodeToken: nodeToken, ctx: ctx,
-		localWake: make(chan struct{}, 1),
+		stateDir: stateDir, nodeID: nodeID, nodeToken: nodeToken, ctx: bridgeContext, cancel: cancelBridge,
+		localWake:        make(chan struct{}, 1),
+		managedLeaseWake: make(chan struct{}, 1),
 	}
 	bridge.wg.Add(1)
 	go bridge.serve()
+	bridge.wg.Add(1)
+	go bridge.runManagedPairLeaseWorker()
 	go func() {
-		<-ctx.Done()
+		<-bridgeContext.Done()
 		_ = bridge.Close()
 	}()
 	return bridge, nil
@@ -393,6 +401,9 @@ func (b *machineAgentJoinBridge) Close() error {
 	}
 	var closeErr error
 	b.closeOnce.Do(func() {
+		if b.cancel != nil {
+			b.cancel()
+		}
 		closeErr = b.listener.Close()
 		b.wg.Wait()
 		if err := removeOwnedMachineAgentJoinSocket(b.path, b.socketFile); err != nil && closeErr == nil {

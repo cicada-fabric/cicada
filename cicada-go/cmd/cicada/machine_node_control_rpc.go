@@ -102,6 +102,7 @@ type machineNodeControlPairingInput struct {
 }
 
 type machineNodeControlState struct {
+	ManagedPairLeases             map[string]machineManagedPairLease    `json:"managed_pair_leases,omitempty"`
 	LocalEndpointAdmissionFloorMS int64                                 `json:"local_endpoint_admission_floor_ms,omitempty"`
 	LocalEndpointIntents          map[string]machineLocalEndpointIntent `json:"local_endpoint_intents,omitempty"`
 	PendingLocalEndpointIntentID  string                                `json:"pending_local_endpoint_intent_id,omitempty"`
@@ -308,7 +309,7 @@ func (client *machineNodeControlClient) persistLocked() error {
 	if err != nil {
 		return err
 	}
-	if len(data)+1 > maxMachineNodeControlStateBytes {
+	if len(data)+1+managedPairStateReserve(client.state) > maxMachineNodeControlStateBytes {
 		return errors.New("Node-Control local state exceeds its bounded size")
 	}
 	return persistNodeSecretFile(client.statePath, append(data, '\n'), ".node-control-state-*")
@@ -386,6 +387,7 @@ func cloneMachineNodeControlState(state machineNodeControlState) machineNodeCont
 	state.PendingResponsePacket = cloneBytes(state.PendingResponsePacket)
 	state = cloneMachineNativePairState(state)
 	state = cloneMachineLocalEndpointState(state)
+	state = cloneManagedPairLeaseState(state)
 	if state.PendingSnapshotManifest != nil {
 		manifest := *state.PendingSnapshotManifest
 		state.PendingSnapshotManifest = &manifest

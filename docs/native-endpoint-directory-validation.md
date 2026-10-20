@@ -308,3 +308,111 @@ same-UID isolation, Windows ACL/IPC/GUI, Android, physical devices, public HTTPS
 and resident deployment remain **NOT_RUN** for this helper checkpoint. A
 privately cached completion is historical evidence; current authorization and
 lease renewal still require the existing Guard and native-scope paths.
+
+## Follow-up: Node-managed explicit Pair leases
+
+The checkpoint adds only a Node-owned worker and private recovery metadata,
+plus a context-bounded existing-database Nodekeys read entry. It uses the existing
+Guard, native scope, policy/pin, sealed receipt, heartbeat, outbox and secret-file
+services. No App/MCP/main consumer, public protocol identifier, new dependency,
+resident Hub or real key is changed.
+
+The pre-refusal/I/O-review source on dirty base
+`18868bade057d5da97afe3e8139cc3cafb104afe`, manifest
+`e727d8ab7947a0f51fe339feded1baaba15aaf784f622f330b600695b39ff3d4`,
+passed `managed-pair-combined-functional-20261020T175026Z` (21/0/0, 13 top-level),
+`managed-pair-combined-vet-20261020T175026Z` (exit 0), and
+`managed-pair-combined-race-20261020T175243Z` (19/0/0, 11 top-level, 488.152 s).
+These remain evidence for those exact dirty bytes, not clean later commits.
+The task then preserved all five WIP files byte-for-byte across the authorized
+fast-forward to asset-only base
+`c3a1517c7b47864a5d9d9a20c6de9ee444799622`; the external receipt is
+`managed-pair-asset-ff-receipt.json`, SHA-256
+`6f49db5d02fe29a7b3a0b49e77f1a940007521331435929fd9ca89658b9330da`.
+
+The review added durable no-dispatch refusal fences and transient-I/O handling.
+`managed-pair-refusal-io-final-functional-20261020T181937Z` passed 21/0/0
+(9 substantive top-level tests and 12 nested cases), dirty manifest
+`eab5c9cc124c61d3e754da2191d924e47eda90548da58051cb32d67c750c9937`
+on that c3a1517 base. It covers the real operator helper/IPC capacity and typo
+refusal, ACK and fresh-command recovery, old-command fencing, a dispatched
+Join with its new marker absent remaining UNKNOWN, independent pending ID/
+packet/receipt/local-step evidence, fence-write failure, real SQLite EXCLUSIVE
+lock failure and same-original recovery, confirmed deleted policy/pin, and the
+existing-only reader's missing paths/bad permissions/old schema/live WAL/
+query-only/context/busy budget. The Store itself permits just one nonterminal
+Pair per Owner/Hub/Node. Duplicate-label and truncated-directory negatives use
+visibly synthetic authenticated directory responses over the real socket and
+client helper; they do not claim the current Store can create duplicate Pairs.
+Two earlier failed functional attempts are retained separately: one test compared
+a pre-wake marker before locking the keeper, and the attempted second real Pair
+was correctly refused by the Store. Fixture correction did not weaken production
+checks. The earlier vet on manifest b2a101ca7453422fbcbbd2b4b7045665ed75eb77ae02d6563914441a0a6f715b
+passed; only the synthetic-directory test changed afterward.
+
+The remaining managed tests cover lost committed Join ACK and byte-identical
+restart retry, durable ACTIVE before IPC completion, failed activation-write
+recovery without a second Join, unknown reservation retention and safe known
+history collection, actual Leave/Owner pin revocation/Hub Pair revocation/epoch
+change/native-access expiry/peer ceiling, normal Owner dual-consent transition,
+Node plus ordinary session heartbeat concurrency, delayed reply and concurrent
+Leave, unchanged-expiry no-write (bytes and inode), concurrent genuine encrypted
+outbox ACK loss, current-state merge and failed batch-persist rollback/restart.
+The cold Node-only case uses the actual 30-second worker and shortens only its
+disposable Hub's original native/access leases to 40 seconds; it crosses that
+old deadline with no joined MCP, first tool or model call. It is not a real
+five-minute native Runtime wait. The ordinary concurrent session call follows
+the same heartbeat endpoint as MCP; it is not an actual MCP worker lifecycle.
+
+All gates use the pinned Go 1.27.3 Docker image
+`sha256:5c3e9b43cfd3bb95c7937462e29d87ada57b481a96fa23ad0eb61778d7a00110`,
+network-disabled containers, disposable loopback Hub/SQLite/PQ/native-record
+fixtures, source/module read-only mounts and task-local caches. Source-after
+checks compare every manifest file before subsequent edits. Actual Runtime,
+Windows IPC/GUI/ACL, Android, physical devices, public HTTPS, real credentials,
+model service, resident deployments and installation acceptance are **NOT_RUN**
+by these Hub/Node gates and must remain separately attributed to consumer/QA
+records. Private Version 1 state compatibility is directional, as in the contract.
+
+### Final frozen gates and storage-availability correction
+
+On dirty c3a1517 source manifest
+`3c64bf38eb1112da1141b8c9e8c5f85dcfe2f85638d62a3fa63f6eafa4db34d2`,
+`managed-pair-final-functional-20261020T182137Z` passed 62/0/0 (33 top-level,
+including the operator subprocess harness's empty parent selector, which is
+not an independent product pass). The full Nodekeys package regression,
+`managed-pair-final-nodekeys-regression-20261020T182240Z`, passed 120/0/0
+(74 top-level); `managed-pair-final-vet-20261020T182137Z` exited 0.
+
+The same source's `managed-pair-final-race-20261020T182137Z` is **NOT_A_PASS**:
+it exited 1 at Go's default ten-minute package timeout (cmd package 600.044 s,
+runner 639.849 s). It emitted 27 completed case passes and no case-failure or
+DATA RACE warning, but the package gate failed. At timeout the next test was
+still in its disposable Hub bootstrap HTTP setup. Do not turn partial case
+events into a passed gate or combine them into a clean-commit aggregate.
+
+Root's final review distinguished an unavailable database path from a missing
+authorization row in a successfully opened valid original database. Only the
+former's `os.ErrNotExist` permanent-stop classification was removed (plus its
+unused import); all other production blobs remained unchanged. A new actual
+TCP/SQLite case moves the existing synthetic database away, verifies no POST,
+no replacement database and no marker change, restores the same database within
+the last proven lease and renews the same frozen binding. It then repeats the
+fault past the last proven deadline, persists STOPPED, restores the database,
+and proves there is no renewal or second Join. Restoring storage cannot borrow
+a new lease or peer ceiling. Confirmed missing policy/pin and revoked/changed
+authority still stop through the existing services.
+
+The resulting dirty c3a1517 source manifest is
+`6f16c49d2d13afef89d48f7e342918199812f786da0b9484f3122b5c53d08a7f`.
+`managed-pair-storage-boundary-functional-20261020T183520Z` passed 22/0/0,
+`managed-pair-storage-boundary-race-20261020T183529Z` passed 22/0/0
+(10 substantive top-level tests and 12 nested cases, 292.977 s), and
+`managed-pair-storage-boundary-vet-20261020T183529Z` exited 0. These scoped gates
+cover all new refusal/storage cases and the existing-only reader, with an
+explicit 20-minute test budget. They are the bounded follow-up to the timed-out
+aggregate, not a claim that that aggregate passed. The prior core race gate on
+e727d8ab remains separately attributed above. Each completed final gate has a
+full unchanged-source after-check. After those checks, only this validation
+record was appended; the candidate records final per-file hashes and each gate's
+actual source. No Runtime or platform exclusion above is upgraded by these gates.

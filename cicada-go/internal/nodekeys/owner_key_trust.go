@@ -127,7 +127,7 @@ func (s *CryptoState) GetNodeOwnerKeyTrustLocalContext(ctx context.Context, owne
 			trust, result = nil, fmt.Errorf("close Node Owner trust read: %w", err)
 		}
 	}()
-	if err := configureCryptoConnection(ctx, conn); err != nil {
+	if err := s.configureConnection(ctx, conn); err != nil {
 		return nil, err
 	}
 	trust, err = loadNodeOwnerKeyTrust(ctx, conn, ownerID, keyID)
@@ -217,7 +217,7 @@ func (s *CryptoState) trustedOwnerKeysForBundle(ctx context.Context,
 		return OwnerKeyTrust{}, OwnerKeyTrust{}, fmt.Errorf("connect to Node crypto state: %w", err)
 	}
 	defer conn.Close()
-	if err := configureCryptoConnection(ctx, conn); err != nil {
+	if err := s.configureConnection(ctx, conn); err != nil {
 		return OwnerKeyTrust{}, OwnerKeyTrust{}, err
 	}
 	source, err := loadNodeOwnerKeyTrust(ctx, conn, bundle.SourceGrant.OwnerID, bundle.SourceGrant.OwnerKeyID)

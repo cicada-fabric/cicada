@@ -74,9 +74,10 @@ type InboundRecord struct {
 // opaque envelope bytes produced by their cryptographic layer and persist them
 // before sending.
 type CryptoState struct {
-	db     *sql.DB
-	mu     sync.Mutex
-	closed bool
+	db           *sql.DB
+	mu           sync.Mutex
+	closed       bool
+	existingOnly bool
 }
 
 // OpenCryptoState opens the Node-local crypto state database beneath stateDir.
