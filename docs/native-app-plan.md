@@ -26,6 +26,29 @@ HTTPS is required by default, and HTTP is permitted only when a user/operator
 explicitly enables a loopback fixture. A native strict-PQTLS transport is not
 implemented or accepted by this plan.
 
+## Installed user-file root
+
+2026-10-20 user requirement: after installation, Cicada-owned user files
+default to `~/.cicada`, with a custom root selectable during installation.
+Configuration, component state, protected identities/outboxes, managed
+workspaces and caches belong under the selected root, with their existing
+component and security scopes preserved. `~/Cicada` is the development workspace,
+not an installed-user-data default. `~` denotes the current user's home on
+the target platform.
+
+Current defaults are not unified: App custody still uses platform user-config
+or Windows Local AppData paths, while the component installer's explicit
+`--prefix` installs files without relocating existing state. Applying the
+selected root consistently and migrating existing installations are not
+implemented or accepted by this plan. Historical validation paths and results
+keep their original attribution.
+
+The next user-operated two-Thread acceptance workspace and Cicada MCP cache
+are planned under `~/.cicada/acceptance`. This does not migrate, copy or recreate
+the existing Node state or Windows vault, or change the original Codex account
+and `CODEX_HOME`. Actual two-Thread acceptance remains the current priority;
+this path requirement adds no new gate.
+
 ## Composable installation and shared-state acceptance target
 
 2026-10-19 product target; see the [authority and custody model](native-app-architecture.md#composable-installation-and-shared-authority-target).
