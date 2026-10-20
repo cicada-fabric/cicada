@@ -117,3 +117,26 @@ build attributed solely to that base. Catalog SHA-256 remains
 The final candidate/commit receipt links the exact tested source hashes and
 post-test documentation hashes; adding this evidence record does not change the
 Go code tested by the final correction/TCP/vet gates.
+
+
+## Follow-up: bounded Node admission backpressure
+
+This separate correction is based on clean backend `d3acd4bfe6f3f10867db6a5e3ae432f8477d9748`
+plus its own dirty manifest. Independent QA observed four valid identical Node
+packets competing for Hub Nodes' two processing slots: excess requests were
+incorrectly reported as HTTP 403 by the shared handler. Its original FAIL remains
+in QA's separately owned native App validation; it is not an authorization pass.
+
+The producer now distinguishes `hubnodes.ErrBusy` from unavailable/authentication
+errors and returns HTTP 429 with `Retry-After: 1`. Capacity stays two; there is no
+unbounded queue, new identity or new authority. The sender keeps the original
+packet and operation fence. Cancellation retains its existing semantics.
+
+`busy-admission-correction-20261020T154736Z` passed 3/0/0, exit 0, on the same fixed
+Go 1.27.3 image, with dirty manifest
+`c8b1389692bead8c018de860596c5f424982677ed21dca8588db79be725177e7`.
+The deterministic capacity/cancellation/release unit and existing actual TCP
+registration/Pair-reuse/Leave/exact-retry checks pass. This producer run does not
+claim QA's separate four-way fault/recovery gate has passed; that rerun retains
+its own source, request packets and receipts. Node self-inventory, local bridge
+and context-ticket work remain later scopes.

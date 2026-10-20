@@ -55,6 +55,13 @@ edges, Network edges, access sessions and native SessionBindings, advancing thei
 real revisions/epochs. Other Endpoints and Principal-level Network memberships
 are retained. Neither Thread nor workspace is deleted.
 
+Hub Nodes retains its two-request bounded admission capacity. Capacity exhaustion
+returns HTTP `429` with `Retry-After: 1`, separately from authentication/context
+rejection (`403`); it creates no unbounded queue. The sender retains and retries
+the **same original sealed packet**. A busy delivery is not settlement of an
+original packet already submitted by another concurrent attempt, and is never
+permission to change its operation ID, digest, counter or target.
+
 Known terminal errors use the existing encrypted wrapper:
 `{ok:false,operation_id,sequence,error_code}` with exactly
 `ENDPOINT_CONTEXT_INVALID`, `ENDPOINT_STATE_CONFLICT` or

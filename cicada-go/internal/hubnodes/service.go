@@ -20,6 +20,7 @@ import (
 )
 
 var ErrUnavailable = errors.New("Hub Node request unavailable")
+var ErrBusy = errors.New("Hub Node request capacity is busy")
 
 type Service struct {
 	db      *store.Store
@@ -56,7 +57,7 @@ func (s *Service) acquire(ctx context.Context) (func(), error) {
 	case s.workers <- struct{}{}:
 		return func() { <-s.workers }, nil
 	default:
-		return nil, ErrUnavailable
+		return nil, ErrBusy
 	}
 }
 func (s *Service) Start(ctx context.Context, input nodebinding.Input) (*nodebinding.DeviceCode, error) {

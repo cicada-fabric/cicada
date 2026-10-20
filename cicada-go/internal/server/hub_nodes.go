@@ -264,6 +264,11 @@ func (h *hubNodesHandler) nodeRPC(w http.ResponseWriter, r *http.Request) {
 	}
 	packet, err := h.nodes.RPC(r.Context(), token, raw)
 	if err != nil {
+		if errors.Is(err, hubnodes.ErrBusy) {
+			w.Header().Set("Retry-After", "1")
+			writeError(w, http.StatusTooManyRequests, errors.New("Node request capacity is busy; retain and retry the original packet"))
+			return
+		}
 		writeError(w, http.StatusForbidden, errors.New("Node binding status request rejected"))
 		return
 	}
