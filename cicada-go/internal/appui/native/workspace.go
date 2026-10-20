@@ -138,10 +138,18 @@ func (v *view) workspaceRows(s appcore.Snapshot, flow appui.SetupFlow) []layout.
 		}
 		return rows
 	case "settings":
-		return []layout.Widget{
+		rows := []layout.Widget{
 			v.sectionCard(v.labelRow(appui.Text(v.locale, "workspace.settings_body"))),
 			v.sectionCard(v.labelRow(appui.Text(v.locale, "workspace.storage_body"))),
 		}
+		rows = append(rows, v.sectionCard(func(gtx layout.Context) layout.Dimensions {
+			fields := v.publicFieldRows("storage/", appui.StoragePublicFields(s, time.Now()))
+			if s.Storage.Legacy {
+				fields = append(fields, layout.Rigid(v.nodeCaption(appui.Text(v.locale, "storage.legacy_body"))))
+			}
+			return layout.Flex{Axis: layout.Vertical}.Layout(gtx, fields...)
+		}))
+		return rows
 	}
 	rows := []layout.Widget{v.labelRow(appui.Text(v.locale, "workspace.overview_body"))}
 	// A session being registered or an account being logged in never implies

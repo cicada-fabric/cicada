@@ -17,8 +17,9 @@ Passwords and activation codes are never included in UI status or logs. Existing
 Owner PEM import uses native Windows file selection and the shared strict parser;
 this checkpoint accepts unencrypted PKCS#8 only.
 
-On startup the App discovers up to 64 existing vaults in its protected local
-directory. Filenames and public headers are locators only: current-user DPAPI
+On startup the App discovers up to 64 existing vaults across the selected
+directory and its fixed retained locations. Filenames and public headers are
+locators only: current-user DPAPI
 unlock, authenticated decryption and agreement with the encrypted connection
 scope must succeed before a saved connection is displayed. Discovery sends no
 network traffic. A single authenticated profile resumes automatically; multiple
@@ -425,3 +426,99 @@ subsequent clean integration gate. The HTML information-architecture prototype
 is a design artifact and is not a Gio or Windows runtime acceptance result.
 User-file root selection, Owner directory access and automatic Codex context
 binding remain separate checkpoints; this change does not migrate any vault.
+
+## Selected user root and original-state recovery (2026-10-20)
+
+New App vaults default to `~/.cicada/app/vaults`. `~` is the current user's
+home on the target platform; the development workspace `~/Cicada` is not a
+product default. `cicada-app.exe --user-root "D:\CicadaData"` selects a custom
+root, ahead of `CICADA_USER_ROOT`. The selection must be an absolute canonical
+path with protected existing ancestors. Invalid paths, links/reparse points,
+Win32 aliases and untrusted write access fail closed. The resolver creates no
+files. Current-user DPAPI, the original vault's authenticated scope, private
+ACLs and atomic vault persistence remain the custody mechanisms.
+
+This entry point does not install a shortcut or remember the launch flag.
+Repeat `--user-root` or retain `CICADA_USER_ROOT` when opening that custom
+installation. The existing component installer accepts omitted `--prefix`
+using the same user-root default, or an explicit prefix. It installs files;
+it does not migrate existing component data or change existing launch settings.
+
+The App also checks the published nested legacy vault location
+`%LOCALAPPDATA%/CICADA/vaults/CICADA/vaults` and the home-default App vaults.
+It authenticates every discovered profile before publishing a complete
+scope-to-source association. Selecting an empty custom root cannot hide an old
+Owner or create a replacement identity. Duplicate scopes, corrupt or busy
+vaults, renamed filename aliases and missing previously known sources require
+recovery. Known profiles always reopen their original location; nothing is
+copied, moved or rekeyed. Explicit creation of a genuinely new profile first
+rechecks the fixed locations. Settings shows the selected root and the actual
+authenticated vault source only after account sign-in, with full selectable
+paths and a retained-location explanation in English and Chinese.
+
+New implicit Node and MCP state defaults are `<root>/state` and
+`<root>/mcp/sessions.json`. Existing component-specific state overrides retain
+priority. A single populated legacy MCP location remains the source;
+multiple populated locations require an explicit original state directory.
+Outbox main databases and their SQLite side files count as retained state.
+Orphan side files without a main database require recovery before SQLite can
+open or create anything. Exact known Node state markers under the former
+implicit `/state` require selecting the original `--state-dir` or component
+environment override. Empty unrelated directories do not block new setup.
+Invalid defaults stop before lock, identity or current-directory state creation.
+These changes do not relocate managed workspaces, caches or existing Node data.
+
+The recovery regression creates an encrypted synthetic profile with an
+uncertain activation packet, closes its controller, selects an empty custom
+root, rediscovers the original vault, and resumes the same Owner/App keys and
+exact encrypted packet. This uses the real Core/PQ actor fixture, not a live
+production Hub. Additional cases cover duplicate/corrupt/busy/missing sources,
+explicit-only creation, filename aliases, retained outboxes and invalid path
+side effects. Private production keys and payloads are not evidence inputs.
+
+Scoped checks and retained test binaries are under
+`/home/zyf/.cicada/acceptance/app-path-checks/run-20261020T151357Z/`.
+These checks used dirty `bb0644b68627579af470ead52035d42618372c75` plus
+the recorded paths changes, with the earlier ten WIP files already archived
+and absent. Each following count includes test/subtest events, with zero
+failures or skips in that listed successful lane:
+
+| Checked source manifest | Normal / race checks |
+| --- | --- |
+| `source-final-before.json` (`1508bc08…`) | apppaths **3 / 3**, scoped appcore **27 / 27**, appui **134 / 134** |
+| `source-corrected-before.json` (`6187bae1…`) | componentinstall **32 / 32**, scoped CLI **10 / 10** |
+| `source-sideguard-before.json` (`1e0e5e65…`) | final CLI recovery/default guards **24 / 24** |
+
+The initial Windows builds failed because pinned `x/sys/windows` does not
+export `FILE_DELETE_CHILD`; the corrected source uses its documented WinNT.h
+value. Initial installer test execution failed because fixture subprocesses
+could not find Go in the test process PATH. Correcting only that process's
+PATH let the same retained installer binaries pass. Earlier preflight fixture
+failures and the evidence driver's filename/inventory errors are preserved,
+not overwritten or counted as passes. The final orphan-side-file cases reject
+opening a missing main database; intermediate presence-only behavior is not
+the delivered behavior.
+
+The corrected source passed scoped Linux/Windows vet, Windows amd64 App and
+core/path test compilation, and Linux CLI build. The subsequent CLI-only
+guards passed their own vet/build and normal/race runs. Before/after source
+inventories and retained binary hashes are checked in the corresponding
+`first-formal-review.json`, `corrected-gate-receipt.json` and
+`sideguard-gate-receipt.json`; results are not transferred between manifests.
+The Go 1.27.3 executable was extracted from the pinned official builder and
+hash-verified; dependency resolution used the stable module cache with
+`-mod=readonly`, `GOPROXY=off` and `GOSUMDB=off`. These were host
+synthetic/local-TCP checks, not Docker-isolation
+results. Disposable integrated interop belongs to the integration owner.
+Native Windows DPAPI/ACL/GUI/CJK/DPI, physical devices, public HTTPS, Android,
+live model/queue and product Hook integration remain **NOT_RUN** here.
+
+After Root fast-forwarded the backend base to
+`d3acd4bfe6f3f10867db6a5e3ae432f8477d9748`, all 29 local checkpoint
+inputs were preserved. The affected Core storage selector passed **8/0/0**
+normal events, and the Windows amd64 App cross-build exited **0**.
+`post-d3-gate-receipt.json` binds these checks to the unchanged 1,308-entry
+before/after manifest
+`a5c81131f8f6aab005c63b24efdf0dca9ff706d7ea4730e31c1c00112d1608f4`.
+The older normal/race matrices above retain their original sources. This paths
+checkpoint does not yet consume the new Owner directory operation.

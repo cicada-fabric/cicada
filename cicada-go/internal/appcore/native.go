@@ -6,8 +6,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"os"
 	"path/filepath"
 
+	"github.com/cicada-ai/cicada/internal/apppaths"
 	"github.com/cicada-ai/cicada/internal/appvault"
 )
 
@@ -18,14 +20,34 @@ type VaultOpener func(context.Context, appvault.Scope, bool) (*appvault.Vault, e
 // this uses current-user DPAPI. Other platforms compile for development but
 // return an unsupported-platform vault error when a vault is opened.
 func OpenNativeController() (Controller, error) {
-	root, err := nativeVaultRoot()
-	if err != nil || root == "" {
+	return OpenNativeControllerWithRoot("")
+}
+
+// OpenNativeControllerWithRoot selects new-profile storage while retaining the
+// original published vault location for authenticated recovery. It never moves
+// a vault or creates an identity merely because a selected directory is empty.
+func OpenNativeControllerWithRoot(explicit string) (Controller, error) {
+	root, err := apppaths.ResolveUserRoot(explicit)
+	if err != nil {
 		return nil, errors.New("native App configuration directory unavailable")
 	}
 	// N1 already published vaults at this nested path. Keep it stable: moving
 	// local identities requires an explicit migration, never a silent rekey.
-	root = filepath.Join(root, "CICADA", "vaults")
-	return newController(Config{HTTP: NewHTTPClient(), OpenVault: NewPlatformVaultOpener(root), DiscoverVaults: NewProfileDiscovery(root)}, true)
+	legacy, err := nativeVaultRoot()
+	if err != nil || legacy == "" {
+		return nil, errors.New("original native App configuration directory unavailable")
+	}
+	primary := apppaths.AppVaultRoot(root)
+	oldRoots := []string{filepath.Join(legacy, "CICADA", "vaults")}
+	if home, homeErr := os.UserHomeDir(); homeErr == nil && home != "" {
+		oldRoots = append(oldRoots, apppaths.AppVaultRoot(filepath.Join(home, ".cicada")))
+	}
+	storage, err := newProfileStorage(primary, oldRoots, NewPlatformVaultOpener)
+	if err != nil {
+		return nil, err
+	}
+	return newController(Config{HTTP: NewHTTPClient(), OpenVault: storage.open, DiscoverVaults: storage.discover,
+		UserRoot: root, VaultLocation: storage.location}, true)
 }
 
 // NewProfileDiscovery supplies untrusted scope locators only. The controller

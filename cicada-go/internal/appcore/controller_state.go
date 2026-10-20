@@ -2,6 +2,7 @@ package appcore
 
 import (
 	"errors"
+	"path/filepath"
 	"time"
 
 	"github.com/cicada-ai/cicada/internal/appkeys"
@@ -443,6 +444,13 @@ func (c *nativeController) publish() {
 		Management: ManagementUnavailable, Canvas: CanvasSnapshot{State: CanvasNoAuthorization}}
 	for _, profile := range c.profiles {
 		view.Profiles = append(view.Profiles, profile.view)
+	}
+	view.Storage.UserRoot = c.cfg.UserRoot
+	if c.vault != nil && c.cfg.VaultLocation != nil {
+		if root, ok := c.cfg.VaultLocation(cardScope(c.connection)); ok {
+			view.Storage.VaultRoot = root
+			view.Storage.Legacy = root != filepath.Join(c.cfg.UserRoot, "app", "vaults")
+		}
 	}
 	if c.connected {
 		view.Hub = HubSnapshot{Verified: true, Origin: c.connection.Origin, HubID: c.connection.HubID,

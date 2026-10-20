@@ -40,6 +40,16 @@ func AccountPublicFields(s appcore.Snapshot, now time.Time) []PublicField {
 	)
 }
 
+func StoragePublicFields(s appcore.Snapshot, now time.Time) []PublicField {
+	if !AccountInformationVisible(s, now) {
+		return nil
+	}
+	return presentPublicFields(
+		PublicField{"storage.user_root", s.Storage.UserRoot},
+		PublicField{"storage.vault_root", s.Storage.VaultRoot},
+	)
+}
+
 func NodePublicFields(s appcore.Snapshot, now time.Time) []PublicField {
 	if !AccountInformationVisible(s, now) {
 		return nil

@@ -82,3 +82,17 @@ func TestPublicFieldsFollowCurrentAccountVisibility(t *testing.T) {
 		})
 	}
 }
+
+func TestStoragePathsArePrivateAndCopyTheirActualLocation(t *testing.T) {
+	now := time.Date(2026, 10, 20, 0, 0, 0, 0, time.UTC)
+	s := accountDisplayFixture(now)
+	s.Storage = appcore.StorageSnapshot{UserRoot: "/synthetic/chosen/.cicada", VaultRoot: "/synthetic/original/vaults", Legacy: true}
+	fields := StoragePublicFields(s, now)
+	if len(fields) != 2 || fields[0].Value != s.Storage.UserRoot || fields[1].Value != s.Storage.VaultRoot {
+		t.Fatal("storage display changed or hid the actual authenticated source")
+	}
+	s.Account.SessionExpiresAt = now.Format(time.RFC3339Nano)
+	if StoragePublicFields(s, now) != nil || PresentScreen(s, now).Snapshot.Storage != (appcore.StorageSnapshot{}) {
+		t.Fatal("signed-out/expired presentation retained private filesystem paths")
+	}
+}

@@ -16,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/cicada-ai/cicada/internal/apppaths"
 	"github.com/cicada-ai/cicada/internal/control"
 	"github.com/cicada-ai/cicada/internal/nodebackup"
 	"github.com/cicada-ai/cicada/internal/nodeinbox"
@@ -608,10 +609,20 @@ func machineAgentStateDir() string {
 		return value
 	}
 	base := strings.TrimSpace(os.Getenv("CICADA_STATE_DIR"))
-	if base == "" {
-		base = "/state"
+	if base != "" {
+		return base
 	}
-	return base
+	root, err := apppaths.ResolveUserRoot("")
+	if err != nil {
+		return ""
+	}
+	selected, err := chooseMachineDefaultState(apppaths.NodeStateRoot(root), "/state")
+	if err != nil {
+		// Every caller must reject an empty default before preparing paths.
+		// An explicit --state-dir or component environment override still wins.
+		return ""
+	}
+	return selected
 }
 
 func executeMachineJobWithHeartbeats(ctx context.Context, base, machineID, nodeToken string, interval time.Duration, job machineJob) machineJobResult {

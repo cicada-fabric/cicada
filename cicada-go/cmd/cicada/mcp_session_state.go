@@ -67,24 +67,18 @@ func newMCPSessionStateStore(path string) *mcpSessionStateStore {
 // mcpSessionStatePath returns the process-wide default used by runMCP. Direct
 // mcpServer test fixtures leave sessionStatePath empty and therefore never
 // touch a user's home directory.
-func mcpSessionStatePath() string {
+func mcpSessionStatePath() (string, error) {
 	for _, name := range []string{"CICADA_MCP_SESSION_STATE_FILE", "CICADA_MCP_STATE_FILE"} {
 		if value := strings.TrimSpace(os.Getenv(name)); value != "" {
-			return filepath.Clean(value)
+			return filepath.Clean(value), nil
 		}
 	}
 	for _, name := range []string{"CICADA_SESSION_STATE_DIR", "CICADA_MCP_STATE_DIR", "CICADA_STATE_DIR"} {
 		if value := strings.TrimSpace(os.Getenv(name)); value != "" {
-			return filepath.Join(value, "mcp", "sessions.json")
+			return filepath.Join(value, "mcp", "sessions.json"), nil
 		}
 	}
-	if value := strings.TrimSpace(os.Getenv("XDG_STATE_HOME")); value != "" {
-		return filepath.Join(value, "cicada", "mcp", "sessions.json")
-	}
-	if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
-		return filepath.Join(home, ".local", "state", "cicada", "mcp", "sessions.json")
-	}
-	return ""
+	return defaultMCPSessionPath()
 }
 
 // normalizeMCPAPIOrigin strips the root path, queries, fragments, credentials, and

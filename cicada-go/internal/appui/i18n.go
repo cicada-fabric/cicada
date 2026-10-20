@@ -252,6 +252,9 @@ const (
 
 var catalog = map[Locale]map[messageID]string{
 	English: {
+		"storage.user_root":              "Selected user-file root",
+		"storage.vault_root":             "Current identity-vault location",
+		"storage.legacy_body":            "The current identity is opened from its original location. It has not been migrated to the selected new-profile root.",
 		"workspace.hub_verified":         "Hub verified",
 		"workspace.continue_account":     "Complete the next account step to continue.",
 		"workspace.continue_operation":   "Continue the original operation",
@@ -506,6 +509,9 @@ var catalog = map[Locale]map[messageID]string{
 		msgBackToActivation:          "Back to activation",
 	},
 	Chinese: {
+		"storage.user_root":              "选定的用户文件根目录",
+		"storage.vault_root":             "当前身份库的实际位置",
+		"storage.legacy_body":            "当前身份继续从原位置打开，尚未迁移到选定的新配置根目录。",
 		"workspace.hub_verified":         "Hub 已验证",
 		"workspace.continue_account":     "完成当前账户步骤后继续。",
 		"workspace.continue_operation":   "继续原操作",

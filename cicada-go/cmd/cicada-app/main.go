@@ -3,6 +3,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 
@@ -12,10 +13,15 @@ import (
 )
 
 func main() {
-	controller, err := appcore.OpenNativeController()
+	flags := flag.NewFlagSet("cicada-app", flag.ContinueOnError)
+	userRoot := flags.String("user-root", "", "absolute Cicada user-file root (default ~/.cicada)")
+	if err := flags.Parse(os.Args[1:]); err != nil || len(flags.Args()) != 0 {
+		os.Exit(2)
+	}
+	controller, err := appcore.OpenNativeControllerWithRoot(*userRoot)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "Cicada App could not initialize its local core.")
-		return
+		os.Exit(1)
 	}
 	go func() {
 		windowErr := native.RunWindow(controller)

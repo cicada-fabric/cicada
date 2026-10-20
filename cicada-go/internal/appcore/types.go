@@ -137,6 +137,15 @@ type Snapshot struct {
 	Authorization    AuthorizationSnapshot `json:"authorization"`
 	Node             NodeSetupSnapshot     `json:"node"`
 	Pair             PairSetupSnapshot     `json:"pair"`
+	Storage          StorageSnapshot       `json:"storage"`
+}
+
+// StorageSnapshot describes local file locations only. It is not Hub state or
+// authorization, and renderers hide it until the account display is trusted.
+type StorageSnapshot struct {
+	UserRoot  string `json:"user_root,omitempty"`
+	VaultRoot string `json:"vault_root,omitempty"`
+	Legacy    bool   `json:"legacy"`
 }
 
 type SetupSnapshot struct {

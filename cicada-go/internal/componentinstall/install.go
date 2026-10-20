@@ -14,9 +14,11 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+
+	"github.com/cicada-ai/cicada/internal/apppaths"
 )
 
-const Usage = "usage: cicada components install --prefix ABS --components hub,node --binary FILE --sha256 HEX --licenses DIR | remove --prefix ABS --components hub,node | list --prefix ABS\nOnly local component files are installed or removed. Services, enrollment, grants and existing state are unchanged. Linux amd64/arm64 supports hub,node; Windows amd64 supports app. Only self-contained standard CGO_ENABLED=0 builds are supported; Linux ELF must not require an external loader or dynamic libraries. Install supports a new component or an identical repeat; changed installations are refused. An I/O failure may leave earlier selected components completed; multi-component rollback is not promised."
+const Usage = "usage: cicada components install [--prefix ABS] --components hub,node --binary FILE --sha256 HEX --licenses DIR | remove [--prefix ABS] --components hub,node | list [--prefix ABS]\nThe default user-file root is ~/.cicada (or CICADA_USER_ROOT); --prefix selects a custom absolute root. Only local component files are installed or removed. Services, enrollment, grants and existing state are unchanged. Linux amd64/arm64 supports hub,node; Windows amd64 supports app. Only self-contained standard CGO_ENABLED=0 builds are supported; Linux ELF must not require an external loader or dynamic libraries. Install supports a new component or an identical repeat; changed installations are refused. An I/O failure may leave earlier selected components completed; multi-component rollback is not promised."
 
 type plan struct {
 	manifest manifest
@@ -50,14 +52,19 @@ func command(args []string, output io.Writer, target platform) error {
 	}
 	flags := flag.NewFlagSet("components "+action, flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	prefix := flags.String("prefix", "", "absolute file-install prefix; existing state stays in its original location")
+	prefix := flags.String("prefix", "", "absolute user-file root (default ~/.cicada); existing state stays in its original location")
 	selection := flags.String("components", "", "comma-separated components")
 	binary := flags.String("binary", "", "existing local component executable")
 	expected := flags.String("sha256", "", "independently checked executable SHA-256")
 	licenses := flags.String("licenses", "", "matching compiled-dependency license directory")
-	if flags.Parse(args[1:]) != nil || len(flags.Args()) != 0 || *prefix == "" || filepath.Dir(*prefix) == *prefix {
+	if flags.Parse(args[1:]) != nil || len(flags.Args()) != 0 {
 		return errors.New(Usage)
 	}
+	resolved, err := apppaths.ResolveUserRoot(*prefix)
+	if err != nil {
+		return err
+	}
+	*prefix = resolved
 	if err := checkPath(*prefix, action != "remove"); err != nil {
 		return err
 	}

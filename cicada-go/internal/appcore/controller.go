@@ -27,6 +27,8 @@ type Config struct {
 	HTTP              HTTPDoer
 	OpenVault         VaultOpener
 	DiscoverVaults    func(context.Context) ([]appvault.Scope, error)
+	UserRoot          string
+	VaultLocation     func(appvault.Scope) (string, bool)
 	AllowLoopbackHTTP bool
 	Now               func() time.Time
 }

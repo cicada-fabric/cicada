@@ -257,10 +257,11 @@ func TestCicadaPublishEndpointKeyCandidateRejectsModelSuppliedIdentity(t *testin
 	}
 }
 
-func TestCicadaPublishEndpointKeyCandidateRequiresExplicitNodeStateDir(t *testing.T) {
+func TestCicadaPublishEndpointKeyCandidateRequiresValidNodeStateDir(t *testing.T) {
 	fixture := newMCPEndpointKeyFixture(t)
 	t.Setenv("CICADA_NODE_STATE_DIR", "")
 	t.Setenv("CICADA_STATE_DIR", "")
+	t.Setenv("CICADA_USER_ROOT", "relative-invalid-root")
 	if _, err := fixture.mcp.callTool("cicada_publish_endpoint_key_candidate", nil); err == nil || !strings.Contains(err.Error(), "requires CICADA_NODE_STATE_DIR or CICADA_STATE_DIR") {
 		t.Fatalf("missing state directory error = %v", err)
 	}

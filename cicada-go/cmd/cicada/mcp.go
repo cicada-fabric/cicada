@@ -116,7 +116,7 @@ func runMCP(args []string) error {
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
-	statePath := mcpSessionStatePath()
+	statePath := ""
 	hubStateDir := ""
 	writerRoot := ""
 	pqtlsSelected := strings.TrimSpace(os.Getenv("CICADA_NODE_PQTLS_CONFIG")) != ""
@@ -145,6 +145,12 @@ func runMCP(args []string) error {
 		}
 		if hubStateDir == "" {
 			return errors.New("selected Hub ID is absent from local registry")
+		}
+	} else {
+		var err error
+		statePath, err = mcpSessionStatePath()
+		if err != nil {
+			return err
 		}
 	}
 	server := newMCPServer(strings.TrimRight(*apiURL, "/"), *endpointID, statePath)

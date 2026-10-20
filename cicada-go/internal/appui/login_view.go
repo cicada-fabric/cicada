@@ -50,6 +50,7 @@ func PresentScreen(s appcore.Snapshot, now time.Time) ScreenPresentation {
 	copy.Account = appcore.AccountSnapshot{State: s.Account.State, DeviceEnrolled: s.Account.DeviceEnrolled}
 	copy.Node = appcore.NodeSetupSnapshot{Pending: s.Node.Pending}
 	copy.Pair = appcore.PairSetupSnapshot{Pending: s.Pair.Pending}
+	copy.Storage = appcore.StorageSnapshot{}
 	copy.Authorization = appcore.AuthorizationSnapshot{}
 	copy.Management, copy.Canvas = appcore.ManagementUnavailable, appcore.CanvasSnapshot{}
 	copy.Setup.ExpectedOwnerKeyID = ""

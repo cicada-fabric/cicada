@@ -183,7 +183,7 @@ func endpointKeyNodeStateBase() string {
 	if value := strings.TrimSpace(os.Getenv("CICADA_NODE_STATE_DIR")); value != "" {
 		return value
 	}
-	return strings.TrimSpace(os.Getenv("CICADA_STATE_DIR"))
+	return machineAgentStateDir()
 }
 
 func (m *mcpServer) endpointKeyNodeStateBase() string {

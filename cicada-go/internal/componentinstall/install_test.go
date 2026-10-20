@@ -96,6 +96,9 @@ type fixture struct {
 func newFixture(t *testing.T, target platform, component string) fixture {
 	t.Helper()
 	root := t.TempDir()
+	if err := os.Chmod(root, 0700); err != nil {
+		t.Fatal(err)
+	}
 	f := fixture{prefix: filepath.Join(root, "installation"), binary: filepath.Join(root, "artifact"), licenses: filepath.Join(root, "notices"), target: target}
 	data := syntheticBinary(t, target, component)
 	f.sha = digest(data)
@@ -494,4 +497,17 @@ func TestComponentRootSurvivesParentReplacementAndLockRelease(t *testing.T) {
 		t.Fatal("rooted removal changed the other component", err)
 	}
 	requireBytes(t, filepath.Join(outside, "components", "node", "bin", "cicada"), "OUTSIDE_MUST_SURVIVE")
+}
+
+func TestInstallUsesSelectedUserRootWhenPrefixIsOmitted(t *testing.T) {
+	f := newFixture(t, platform{"linux", "amd64"}, "node")
+	t.Setenv("CICADA_USER_ROOT", f.prefix)
+	args := f.installArgs("node")
+	args = append(args[:1], args[3:]...)
+	if err := command(args, io.Discard, f.target); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(f.prefix, "components", "node", "INSTALL-MANIFEST.json")); err != nil {
+		t.Fatal("default selected-root installation missing", err)
+	}
 }
