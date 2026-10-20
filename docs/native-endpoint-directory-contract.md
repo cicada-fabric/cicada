@@ -296,3 +296,38 @@ under the same UID. Inherited parent context without a distinct native record
 cannot be promoted into a proven child identity. Real per-call Hook/MCP Runtime,
 TUI/desktop, Windows IPC and subagent lifecycle coverage remain separately
 attributed and are not established by these deterministic tests.
+
+## Operator command client persistence
+
+The consumer uses `openCodexOperatorIntent(path)` with the existing selected
+MCP session-state root and `scopes/<mcpSessionScope>/operator-intent.json`.
+It retains legacy/component overrides; the helper neither discovers SID nor
+parses prompts. The path is absolute and protected through existing App-path,
+private directory, atomic secret-file and existing cross-process flock
+primitives. One scope has one pending command and one bounded last-ack marker;
+there is no new service, queue, dependency or MCP session schema.
+
+`prepare(q,nodeID)` persists the original full request before IPC and returns it.
+With an existing pending command, matching full command semantics and Node
+always reuse the original ID/time, including when the caller supplied a new
+candidate ID. A different API, Node, SID, cwd, operation or business argument
+cannot overwrite it. The recommended template leaves ID/time empty so the
+shared time-bound factory runs once at initial preparation.
+
+`call(socketPath,q,nodeID)` performs preparation and validates the returned
+request ID, complete original digest, Node, Hub, operation and expected result
+shape. The digest binds API/SID/cwd and all business arguments. A completed Join
+also requires its original SID/cwd/Node, Endpoint/Group/Principal, binding/epoch
+and nonempty local session credential. Only complete success or a known
+operation-specific terminal refusal is saved as an acknowledgeable result.
+Unknown replies, missing credentials, arbitrary errors and mismatched replies
+leave the original pending intact. Received Join credentials remain private;
+the cached result proves its recorded completion, not a fresh current lease.
+
+The consumer first persists a Join in the existing MCP session store, or emits
+the verified non-Join output, then explicitly calls `ack(requestID,digest)`.
+Acknowledgment is an atomic compare-and-swap and requires the retained verified
+result. Its own repeated acknowledgment is idempotent; an old acknowledgment
+cannot delete a later pending command. Process restart, IPC response loss and
+local result-save failure preserve the original request. Current server Guard,
+native-scope and lease checks continue to govern use of a restored session.

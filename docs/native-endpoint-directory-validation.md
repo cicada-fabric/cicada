@@ -259,3 +259,52 @@ Downward binary compatibility and automatic downgrade/migration are not claimed;
 refusal must preserve the original state and identity, never initialize a
 replacement identity to bypass it. This checkpoint did not deploy or downgrade
 a resident Node.
+
+## Follow-up: operator command client persistence
+
+The client helper is limited to two new Go files plus this contract/evidence
+update. It does not parse prompts, detect SID, modify Hook/MCP/App implementation,
+change the MCP session schema, or add a service, queue or dependency. All input
+contexts/keys/credentials in its tests are visibly synthetic and disposable.
+
+`operator-intent-focused-20261020T164650Z` reported 15/0/0 on base
+`97d8a1d22643ddf911c8842ac9f95802928189df` plus dirty manifest
+`67ddefb122ecf27911a29dc8ab7438d2f1b6308026aae60d97e1b5c3701b2db9`.
+After adding the explicit same-command/new-candidate-ID recovery assertion,
+`operator-intent-final-race-20261020T164817Z` reported 15/0/0 with `-race`, and
+`operator-intent-final-vet-20261020T164817Z` exited 0. Both use dirty manifest
+`e136dd4ca999248986a85fd953c913b420b5194f5f99d18e9114a7c8174ed6c8` on the
+same base. Those counts comprise six substantive top-level tests, eight nested
+response cases, and one subprocess-harness selector which returns without work
+outside its child role. The harness return is not a separate product pass.
+
+After those gates were sealed, one additional missing-Join-credential negative
+case changed only the test file. Its narrow response-binding selector,
+`operator-intent-credential-correction-20261020T165014Z`, reported 10/0/0
+(one top-level test plus nine cases), manifest
+`0bf7a70ef34285b560d0554cddbc34f0cdd3e8d68ed372aad2fd7b9fe72f3ad3`.
+Production Go remained byte-identical to the race/vet source. Each final gate's
+source-after receipt checks all manifest files before documentation was added;
+the candidate maps final blobs to their actual tested sources. These are scoped,
+separately attributed results, not a new aggregate count on a clean commit.
+
+The deterministic cases cover persistence before IPC, lost replies and exact
+restart retry, injected prepare/result durable-writer failures, different
+command/API/Node/SID/cwd refusal, incomplete/unknown/forged response refusal,
+malformed intent hashes and nonprivate/symlink paths. A genuine pair of isolated
+OS subprocesses prepares the same file concurrently and receives one identical
+original request. Acknowledgment is idempotent for its own result and cannot
+clear a later command. Unknown or missing-credential results cannot be acked.
+
+The actual existing private IPC/Hub/SQLite/PQ test deliberately loses a committed
+named Join response, reopens the client, recovers the same intent, persists its
+Join in the existing MCP session store, then acknowledges it. It uses the
+production store and socket; no real Codex Runtime, model call or new native
+Thread is run. The pinned Go 1.27.3 Docker image, no-container-network policy,
+task cache and source/module read-only mounts are the same as earlier gates.
+
+Actual user-command Hook/MCP dispatch, native Runtime consumption, hostile
+same-UID isolation, Windows ACL/IPC/GUI, Android, physical devices, public HTTPS
+and resident deployment remain **NOT_RUN** for this helper checkpoint. A
+privately cached completion is historical evidence; current authorization and
+lease renewal still require the existing Guard and native-scope paths.
