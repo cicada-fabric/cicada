@@ -1,4 +1,6 @@
 {
+  "account_scope": "ACTUAL_ACCOUNT_SESSION_OWNER_AND_DEVICE_COORDINATES_WITHOUT_LEGACY_CLIENT_OR_N3_HEAD",
+  "approval_receipt_digest": "EXACT_RAW_HUB_TO_SAME_ADMISSION_POLL_RESPONSE",
   "availability_gate": "HUB_NODE_APP_ACTUAL_CARRIER_REQUIRED",
   "bounds": {
     "MaxInstallationBodyBytes": 98304,
@@ -19,7 +21,7 @@
     "HUB",
     "NODE"
   ],
-  "contract_revision": "installation-registration-v1",
+  "contract_revision": "installation-registration-v1.1",
   "discovery": {
     "method": "GET",
     "path": "/v2/installations/capabilities"
@@ -53,8 +55,8 @@
     "LEGACY_NODE"
   ],
   "fixture": {
-    "path": "cicada-go/internal/hubaccountwire/testdata/installation-registration-v1.json",
-    "sha256": "43472cd3940be21f24adb5b6b624134019bb81b990b2f475f2b5a047af3d79d9",
+    "path": "cicada-go/internal/hubaccountwire/testdata/installation-registration-v1.1.json",
+    "sha256": "80b1e9fd325111dadedb14c7c90ae68aca83603b865eb0b29201191d401a0577",
     "synthetic_only": true
   },
   "format": "cicada.installation-registration.v1",
@@ -74,6 +76,15 @@
     "cicada-go/internal/store/hub_app_lease_v1.go": "df7dfccb0521878e27935b0baaa9e9ff6da8b03efecd1fed3511bf57a7b3d68f"
   },
   "grant_limit_semantics": "CONCURRENTLY_EFFECTIVE_ONLY_NOT_HISTORY",
+  "grant_ref_origins": [
+    "installation-registration-v1.1"
+  ],
+  "grant_ref_states": [
+    "PREPARED",
+    "ACTIVE",
+    "EXPIRED",
+    "REVOKED"
+  ],
   "historical_original_api": "AuthenticateInstallationOriginal_NEVER_FRESH_ADMISSION",
   "implementation_phase": "CONTRACT_CANDIDATE",
   "legacy_adoption": "ORIGINAL_KEY_AND_CURRENT_RAW_BEARER_INSIDE_HUB_PQ_BODY_WITH_ORIGINAL_BINDING_VERSION",
@@ -86,6 +97,16 @@
     "owner_registration_proof_and_accept": 300,
     "read_cache": 300,
     "read_grant": 900
+  },
+  "new_node": {
+    "binding_id": "ACTUAL_SUBJECT_REGISTRATION_ID",
+    "business_authority": [],
+    "credential_commitment": "",
+    "credential_version": 0,
+    "heartbeat_source": "store.hub_installation_subjects_v1.last_heartbeat",
+    "legacy_coordinates": "EMPTY_STRINGS_AND_ZERO_VERSIONS",
+    "legacy_node_binding": null,
+    "node_credential": null
   },
   "operations": [
     {
@@ -173,10 +194,25 @@
       "path": "/v2/owner/connections/read"
     }
   ],
+  "own_projection": "ACTUAL_ACCOUNT_APP_PUBLIC_AND_EXACT_PARENT_OWNER_INSTALLATION_BINDING",
+  "owner_inventory": "INSTALLATIONS_PARENTS_SUBJECTS_PENDING_ATTEMPT_REFS_AND_GRANTED_REAL_RETAINED_HISTORY",
   "packet_format": "cicada.installation-packet.v1",
   "pagination": "COUNT_AND_ENCODED_BYTES_WITH_CURSOR_TRUNCATED_PQ_SEAL_ONCE",
   "production_changes_in_C0": [],
   "public_available": false,
+  "query_kinds": [
+    "INSTALLATIONS",
+    "GRANTED",
+    "NODE_STATUS",
+    "PAIR_STATUS"
+  ],
+  "query_target_ids": {
+    "GRANTED_OWNER": "RECIPIENT_SUBJECT_REGISTRATION_IDS",
+    "GRANTED_RECIPIENT": [],
+    "INSTALLATIONS": "INSTALLATION_IDS",
+    "NODE_STATUS": "ACTUAL_BINDING_IDS_NOT_NODE_ALIASES",
+    "PAIR_STATUS": "ACTUAL_PAIR_IDS"
+  },
   "read_authorization": [
     "OWNER_READ_PROOF",
     "RECIPIENT_GRANTS"
@@ -257,6 +293,23 @@
       "node_key_epoch",
       "pair_id"
     ],
+    "InstallationAccountScope": [
+      "version",
+      "origin",
+      "hub_id",
+      "hub_fingerprint",
+      "account_id",
+      "account_session_id",
+      "account_session_expires_at",
+      "owner_id",
+      "owner_public_identity",
+      "owner_key_version",
+      "device_id",
+      "device_public_identity",
+      "account_epoch",
+      "device_epoch",
+      "transport_policy"
+    ],
     "InstallationAppRef": [
       "device_id",
       "public_identity",
@@ -329,10 +382,13 @@
       "request_id",
       "request_packet_digest",
       "snapshot_revision",
+      "actor_scope",
       "own_parent,omitempty",
       "own_subject,omitempty",
       "grants",
       "parents",
+      "subjects",
+      "pending_attempts",
       "nodes",
       "pairs",
       "next_cursor",
@@ -502,6 +558,16 @@
       "state",
       "revision"
     ],
+    "InstallationPendingAttemptRef": [
+      "attempt_id",
+      "candidate_digest",
+      "installation_id",
+      "subject_kind",
+      "subject_fingerprint",
+      "state",
+      "revision",
+      "expires_at"
+    ],
     "InstallationPoll": [
       "format",
       "candidate_digest"
@@ -643,6 +709,8 @@
       "subject_registration_id",
       "subject_registration_epoch",
       "parent_registration_id",
+      "installation_id",
+      "owner_id",
       "kind",
       "instance_id",
       "public_identity",
@@ -670,10 +738,23 @@
     ]
   },
   "serve_mode": "--hub-nodes-only",
+  "snapshot_count_lists": [
+    "grants",
+    "parents",
+    "subjects",
+    "pending_attempts",
+    "nodes",
+    "pairs"
+  ],
   "subjects": [
     "NODE_CONTROL",
     "APP_DEVICE"
   ],
+  "supersedes": {
+    "contract_revision": "installation-registration-v1",
+    "manifest_sha256": "4d2b15eb31b9a9d28e0755d72e08fcd57ead1eeeca6867f650f01e3d5d23339a",
+    "old_scope_proofs_compatible": false
+  },
   "target_domains": {
     "grant_target": "cicada/installation-registration/grant-target/v1\u0000",
     "revoke_target": "cicada/installation-registration/revoke-target/v1\u0000"

@@ -3552,3 +3552,105 @@ Exact owned container
 is confirmed absent; inspect exit/diagnostic is retained in its summary.
 The new contract checker, frozen native-pair checker and whitespace checks pass.
 Availability remains **false**; the preceding C0 NOT_RUN gates remain unchanged.
+
+## 2026-10-20 C0.1 installation registration v1.1 consumer contract repair
+
+This is a pure crypto/wire/DTO checkpoint on dirty parent
+`33ccb08e8551544b869b6c5561a22054f8896b95` plus the exact C0.1 source below.
+Contract revision is **installation-registration-v1.1**; wire version and both
+format identifiers remain v1. The original C0 v1 contract, **51/0/0** normal
+variant and **136/0/0** clock-review variant keep their original source/hashes.
+Their results are not relabelled as v1.1 and the incompatible old Owner scope
+is not presented as a supported registration carrier.
+
+The revision uses actual InstallationAccountScope coordinates, with no fabricated
+ClientSessionEpoch/N3 head. Mandatory own ActorScope discovery, Owner-only subject
+and pending-attempt references, true parent OwnerID/InstallationID, closed query
+filters and exact target projection checks make the consumer sequence executable.
+NEW_NODE has no old candidate, bearer or binding; ADOPT_EXISTING still requires
+the complete original tuple and current actual bearer validation. Poll-to-admission
+raw bytes, rather than the Owner-only completion response, are the exact Accept
+approval receipt. All of these remain protocol/codec facts, not completed Store,
+HTTP, Node-local pin or App UI behavior.
+
+The final relevant normal gate completed **186 pass / 0 fail / 0 skip** events,
+including **26** top-level tests (**148** e2ee events, **38** wire events), default
+vet and exit 0. It ran both pure packages with `-run ^TestInstallation -count=1`
+and `-timeout=120s`, without rerunning the old unrelated product matrices.
+Evidence is `device-registration-c01/final-normal-v11-20261020T103620Z` under the
+workspace-local evidence root. Its summary SHA-256 is
+`c6075b81ef4b21287873a14d79c382644084436d90d7fc6f7806a0b906e5919b`;
+the source manifest SHA-256 is
+`ed77a9b2313295f1b23eafb878fc0e0ad67508d0d271da37b805eb254d5a5928`.
+All **2,309** selected inputs match before/after and at final candidate review.
+Only this append-only non-input ledger is excluded. The previously tested prose
+was restored byte-for-byte after a transient post-gate clarification, so no
+documentation-only source difference is hidden or attributed to the test.
+
+Pinned image is
+`sha256:5c3e9b43cfd3bb95c7937462e29d87ada57b481a96fa23ad0eb61778d7a00110`
+(Go **1.27.3**), network disabled, source/module mounts read-only, offline module
+resolution and read-only module mode. The C0.1 build cache is separate and locked;
+the container runs as the current task OS UID/GID. Actual executed binary hashes
+before/after match: e2ee
+`db2949b2391149561254cd33db953cbda69349cd22bee69a2151830aa226906d`
+and wire
+`e2c17b0fa64a794f7d9676dbbeac1b9d3ca0878fc5a45438fe154e1ee4076dd0`.
+Only identities/logs are retained, not the disposable binaries. Exact container
+`4879dae7e26dcd3c66dee428687c4e4ca2b55895df38b334fc1536713d155c48`
+is confirmed absent; its inspect exit/diagnostic is retained in the summary.
+
+Actual v1.1 production-crypto encoded sizes:
+
+| Synthetic case | Complete encoded bytes |
+| --- | ---: |
+| Maximum legal compact ticket | **959 / 1,024** |
+| Maximum metadata new-Node Start | **72,905 / 131,072** |
+| Maximum metadata Owner completion | **123,866 / 131,072** |
+| Its Owner proof / capsule | **15,646 / 29,313** |
+| Reconcile carrying that original completion | **311,117 / 655,360** |
+| One real maximum-field PQ Pair with full ActorScope | **95,443 / 262,144** |
+| Pair page with separate 16-KiB-cap size-only buffers | **228,999 / 262,144**, **2 of 16** rows |
+| Mixed Owner inventory with actual independent public keys | **255,267 / 262,144**, **41 of 50** rows |
+
+The mixed page contains **9** parents, **24** subjects and **8** pending refs.
+Its complete own-context/registration/cursor-reservation footer is **17,467**
+plaintext bytes; the total plaintext budget is **140,747**. All six list kinds
+count toward the request page ceiling, and the full footer counts toward encoded
+bytes. The size model equals actual Seal. The real Pair attestations are each
+**9,336** bytes; the separate 16-KiB buffers are explicitly size stress, not valid
+proofs. These measurements establish codec bounds, not true registrations/grants.
+
+Additional coverage rejects foreign own Owner/App public/parent/install metadata,
+foreign subject/pending installation filters, NodeID aliases in place of exact
+binding IDs, a real foreign Pair row, foreign recipient refs, unknown grant
+origin/profile/state and mixed-list overflow. It keeps ±1-second issuance tolerance,
+the exact 30-second boundary, strict expiry/late first pin, real signature/KEM PoP,
+independent existing pins, exact original authentication and current legacy bearer
+checks. Owner scope discovery is context only; none of these tests grants Root,
+general management, execution or peer authority.
+
+A separate public-vector producer ran **1/0/0**, process exit 0, source manifest
+`7a2218c45be1737dce0191e9761822bbe2d0d403e6e289b6092cc5662574fa95`:
+`device-registration-c01/vector-producer-20261020T102810Z`. Its input hashes and
+actual binary before/after identities match, and its owned container is absent.
+That original summary's `generated_vector:null` is retained: the runner's last
+existence check still named the old v1 file. The actual argv/environment and
+test used `CICADA_INSTALLATION_VECTOR_OUTPUT` with the v1.1 filename. A separate
+`vector-copy-receipt.json` records the real output/copy and this metadata defect;
+no original summary was rewritten and this was not counted as a complete artifact
+handoff by itself. No ownership/permission correction was needed. The final normal
+gate verifies the copied v1.1 fixture and exact revision; its SHA-256 is
+`80b1e9fd325111dadedb14c7c90ae68aca83603b865eb0b29201191d401a0577`.
+It contains visibly synthetic public material only, no private keys or actual
+NodeCredential, and says never to initialize a deployment.
+
+New v1.1 checker, frozen native-pair checker, Go formatting and whitespace checks
+pass. Default public availability remains **false**. H1/H2 Store migrations,
+same-transaction effects/receipt/fences, target/grant runtime filtering (including
+status-attached grant refs), issuer-logout-independent grant use, terminal retry
+and conditional durable-pin recovery are **NOT_RUN** here. Race, actual TCP/App/
+Node carriers, Hub restart/restore, standard combined-source Client interop,
+Windows DPAPI/ACL/GUI/uninstall, physical devices, Android, public HTTPS/PQTLS
+and native Runtime also remain separate **NOT_RUN** gates. No real keys/state,
+model/provider, queue/SID or resident deployment was operated.

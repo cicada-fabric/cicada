@@ -132,9 +132,202 @@ func DecodeInstallationCapabilities(raw []byte) (InstallationCapabilities, error
 
 func installationPositive(n uint64) bool { return n > 0 && n < math.MaxInt64 }
 
+func installationSubjectToken(s string) bool {
+	if len(s) == 0 || len(s) > 256 {
+		return false
+	}
+	for _, c := range s {
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_' || c == '-' || c == '.' || c == ':') {
+			return false
+		}
+	}
+	return true
+}
+
 func ValidateInstallationParent(p InstallationParent) error {
 	if !isHex(p.InstallationID, RequestIDBytes) || !isHex(p.RegistrationID, RequestIDBytes) || !installationPositive(p.RegistrationEpoch) || !installationPositive(p.AdmissionCredentialVersion) ||
 		!nativePairToken(p.OwnerID) || !installationPositive(p.Revision) || p.State != InstallationRegistered && p.State != InstallationRevoked {
+		return ErrInvalid
+	}
+	return nil
+}
+
+func ValidateInstallationSubjectBinding(s InstallationSubjectBinding) error {
+	if !isHex(s.SubjectRegistrationID, RequestIDBytes) || !installationPositive(s.SubjectRegistrationEpoch) || !isHex(s.ParentRegistrationID, RequestIDBytes) ||
+		!isHex(s.InstallationID, RequestIDBytes) || !nativePairToken(s.OwnerID) ||
+		!installationSubjectToken(s.InstanceID) || e2ee.ValidatePublicIdentity(s.Public) != nil || !installationPositive(s.Revision) || s.State != InstallationRegistered && s.State != InstallationRevoked ||
+		s.Kind != e2ee.InstallationNodeSubject && s.Kind != e2ee.InstallationAppSubject || s.AuthProvenance != InstallationNewRegisteredOnly && s.AuthProvenance != InstallationLegacyAdopted {
+		return ErrInvalid
+	}
+	if s.AuthProvenance == InstallationNewRegisteredOnly && s.NodeBinding != nil || s.Kind == e2ee.InstallationAppSubject && s.NodeBinding != nil {
+		return ErrInvalid
+	}
+	if s.AuthProvenance == InstallationLegacyAdopted && s.Kind == e2ee.InstallationNodeSubject {
+		b := s.NodeBinding
+		if b == nil || b.OwnerID != s.OwnerID || b.NodeID != s.InstanceID || !reflect.DeepEqual(b.NodePublic, s.Public) || !nativePairToken(b.OwnerBindingID) || !installationPositive(b.BindingVersion) || !installationPositive(b.NodeKeyEpoch) || !installationPositive(b.CredentialVersion) || !nativePairToken(b.ApprovedRequestID) || !installationPositive(b.ApprovedRequestVersion) {
+			return ErrInvalid
+		}
+	}
+	return nil
+}
+
+func ValidateInstallationGrantRef(g InstallationGrantRef) error {
+	if !isHex(g.GrantID, RequestIDBytes) || g.OriginContract != InstallationContractRevision || !isHex(g.SubjectRegistrationID, RequestIDBytes) || !nativePairToken(g.RecipientDeviceID) || !installationPositive(g.Revision) || validateCanonicalTime(g.ExpiresAt) != nil ||
+		!nativePairToken(g.Target.NodeBindingID) || !installationPositive(g.Target.NodeBindingVersion) || !installationPositive(g.Target.NodeKeyEpoch) {
+		return ErrInvalid
+	}
+	switch g.State {
+	case "PREPARED", "ACTIVE", "EXPIRED", "REVOKED":
+	default:
+		return ErrInvalid
+	}
+	switch g.Profile {
+	case e2ee.InstallationNodeReadProfile:
+		if g.Target.PairID != "" {
+			return ErrInvalid
+		}
+	case e2ee.InstallationPairReadProfile:
+		if !isHex(g.Target.PairID, RequestIDBytes) {
+			return ErrInvalid
+		}
+	default:
+		return ErrInvalid
+	}
+	return nil
+}
+
+func ValidateInstallationPendingAttemptRef(p InstallationPendingAttemptRef) error {
+	if !isHex(p.AttemptID, RequestIDBytes) || !isHex(p.CandidateDigest, 32) || !isHex(p.InstallationID, RequestIDBytes) || !isHex(p.SubjectFingerprint, 32) ||
+		p.SubjectKind != e2ee.InstallationNodeSubject && p.SubjectKind != e2ee.InstallationAppSubject || p.State != InstallationPending && p.State != InstallationOwnerApproved || !installationPositive(p.Revision) || validateCanonicalTime(p.ExpiresAt) != nil {
+		return ErrInvalid
+	}
+	return nil
+}
+
+// A new Node's observation refers to its actual registration row, never a
+// fabricated old Node-Control approval or an active Fabric bearer.
+func ValidateInstallationNodeObservation(n AppNodeObservation) error {
+	if !installationSubjectToken(n.NodeID) || !nativePairToken(n.BindingID) || !installationPositive(n.BindingVersion) || !nativePairToken(n.NodeKeyID) || !isHex(n.NodeKeyFingerprint, 32) || !installationPositive(n.NodeKeyEpoch) || validateCanonicalTime(n.ObservedAt) != nil {
+		return ErrInvalid
+	}
+	if n.Source == InstallationHeartbeatSource {
+		if !isHex(n.BindingID, RequestIDBytes) || n.CredentialVersion != 0 || n.BindingState != InstallationRegistered && n.BindingState != InstallationRevoked {
+			return ErrInvalid
+		}
+	} else if n.Source != "store.machines.last_seen" || !installationPositive(n.CredentialVersion) {
+		return ErrInvalid
+	}
+	return nil
+}
+
+// Own context/registration are bounded footer bytes, not inventory rows.
+// H2 counts all six lists together and also enforces complete encoded bytes.
+func InstallationSnapshotRowCount(s InstallationConnectionsSnapshot) int {
+	return len(s.Grants) + len(s.Parents) + len(s.Subjects) + len(s.PendingAttempts) + len(s.Nodes) + len(s.Pairs)
+}
+
+func validateInstallationOwnProjection(s InstallationConnectionsSnapshot) error {
+	if e2ee.ValidateInstallationAccountScope(s.ActorScope) != nil || s.OwnParent != nil && (ValidateInstallationParent(*s.OwnParent) != nil || s.OwnParent.OwnerID != s.ActorScope.OwnerID) {
+		return ErrInvalid
+	}
+	if s.OwnSubject != nil {
+		o, p := s.OwnSubject, s.OwnParent
+		if p == nil || ValidateInstallationSubjectBinding(*o) != nil || o.Kind != e2ee.InstallationAppSubject || o.InstanceID != s.ActorScope.DeviceID || !reflect.DeepEqual(o.Public, s.ActorScope.DevicePublic) || o.OwnerID != s.ActorScope.OwnerID || o.ParentRegistrationID != p.RegistrationID || o.InstallationID != p.InstallationID {
+			return ErrInvalid
+		}
+	}
+	return nil
+}
+
+// Consumers also compare a response against the original plaintext query.
+// This closes projection kinds; current proof/grant authorization is Store's
+// responsibility and is not inferred from this structural check.
+func ValidateInstallationSnapshotQuery(q e2ee.InstallationReadQuery, auth InstallationReadAuthorization, s InstallationConnectionsSnapshot) error {
+	if e2ee.ValidateInstallationReadQuery(q) != nil || ValidateInstallationReadAuthorization(auth) != nil || validateInstallationOwnProjection(s) != nil || InstallationSnapshotRowCount(s) > int(q.PageSize) || s.Truncated != (s.NextCursor != "") ||
+		s.RequestID != q.RequestID || s.ActorScope.HubID != q.HubID || s.ActorScope.AccountID != q.AccountID || s.ActorScope.OwnerID != q.OwnerID || s.ActorScope.DeviceID != q.DeviceID || s.ActorScope.AccountEpoch != q.AccountEpoch || s.ActorScope.DeviceEpoch != q.DeviceEpoch {
+		return ErrInvalid
+	}
+	requested := func(id string) bool {
+		for _, target := range q.TargetIDs {
+			if target == id {
+				return true
+			}
+		}
+		return len(q.TargetIDs) == 0
+	}
+	for _, p := range s.Parents {
+		if ValidateInstallationParent(p) != nil || p.OwnerID != s.ActorScope.OwnerID || !requested(p.InstallationID) {
+			return ErrInvalid
+		}
+	}
+	for _, row := range s.Subjects {
+		if ValidateInstallationSubjectBinding(row) != nil || row.OwnerID != s.ActorScope.OwnerID || !requested(row.InstallationID) {
+			return ErrInvalid
+		}
+	}
+	for _, row := range s.PendingAttempts {
+		if ValidateInstallationPendingAttemptRef(row) != nil || !requested(row.InstallationID) {
+			return ErrInvalid
+		}
+	}
+	for _, n := range s.Nodes {
+		if !requested(n.BindingID) {
+			return ErrInvalid
+		}
+	}
+	for _, p := range s.Pairs {
+		if !requested(p.PairID) {
+			return ErrInvalid
+		}
+	}
+	for _, g := range s.Grants {
+		if ValidateInstallationGrantRef(g) != nil {
+			return ErrInvalid
+		}
+		if auth.Kind == InstallationRecipientGrantsAuth {
+			if s.OwnSubject == nil || g.SubjectRegistrationID != s.OwnSubject.SubjectRegistrationID || g.RecipientDeviceID != s.ActorScope.DeviceID || g.State != "ACTIVE" {
+				return ErrInvalid
+			}
+			end, _ := parseCanonicalUTC(g.ExpiresAt)
+			observed, err := parseCanonicalUTC(s.ObservedAt)
+			if err != nil || !observed.Before(end) {
+				return ErrInvalid
+			}
+			if len(auth.GrantIDs) > 0 {
+				found := false
+				for _, id := range auth.GrantIDs {
+					found = found || id == g.GrantID
+				}
+				if !found {
+					return ErrInvalid
+				}
+			}
+		} else if q.TargetKind == "GRANTED" && !requested(g.SubjectRegistrationID) {
+			return ErrInvalid
+		}
+	}
+	inventory := len(s.Parents) + len(s.Subjects) + len(s.PendingAttempts)
+	if auth.Kind == InstallationRecipientGrantsAuth && inventory != 0 {
+		return ErrInvalid
+	}
+	switch q.TargetKind {
+	case "INSTALLATIONS":
+		if len(s.Grants)+len(s.Nodes)+len(s.Pairs) != 0 {
+			return ErrInvalid
+		}
+	case "GRANTED":
+		if inventory+len(s.Nodes)+len(s.Pairs) != 0 || auth.Kind == InstallationRecipientGrantsAuth && len(q.TargetIDs) != 0 {
+			return ErrInvalid
+		}
+	case "NODE_STATUS":
+		if inventory+len(s.Pairs) != 0 {
+			return ErrInvalid
+		}
+	case "PAIR_STATUS":
+		if inventory+len(s.Nodes) != 0 {
+			return ErrInvalid
+		}
+	default:
 		return ErrInvalid
 	}
 	return nil
@@ -173,7 +366,7 @@ func SelectInstallationRecipientGrants(refs []InstallationGrantRef, subjectID, d
 			continue
 		}
 		end, err := parseCanonicalUTC(g.ExpiresAt)
-		if err != nil || !isHex(g.GrantID, RequestIDBytes) || !installationPositive(g.Revision) {
+		if err != nil || ValidateInstallationGrantRef(g) != nil {
 			return nil, ErrInvalid
 		}
 		if !now.Before(end) {

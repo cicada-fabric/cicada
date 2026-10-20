@@ -113,7 +113,22 @@ func validateInstallationResponse(body any, p InstallationResponsePacket) error 
 		valid = (p.Operation == OperationOwnerInstallationComplete || p.Operation == OperationInstallationPoll) && validateInstallationResult(v.Result, p) && v.Result.AttemptState == InstallationOwnerApproved && len(v.OwnerProof) > 0 && len(v.OwnerProof) <= e2ee.MaxInstallationProofBytes && len(v.TrustCapsule) > 0 && len(v.TrustCapsule) <= MaxInstallationPacketBytes
 	case InstallationConnectionsSnapshot:
 		valid = p.Operation == OperationOwnerConnectionsRead && v.Format == InstallationFormat && match(v.RequestID, v.RequestPacketDigest) && installationPositive(v.SnapshotRevision) && (v.OwnParent == nil || ValidateInstallationParent(*v.OwnParent) == nil) &&
-			len(v.Parents)+len(v.Nodes)+len(v.Pairs) <= MaxInstallationPageSize && len(v.Grants) <= MaxInstallationEffectiveGrants && len(v.NextCursor) <= 512 && validateCanonicalTime(v.ObservedAt) == nil
+			validateInstallationOwnProjection(v) == nil && InstallationSnapshotRowCount(v) <= MaxInstallationPageSize && len(v.Grants) <= MaxInstallationEffectiveGrants && len(v.NextCursor) <= 512 && v.Truncated == (v.NextCursor != "") && validateCanonicalTime(v.ObservedAt) == nil
+		for _, row := range v.Parents {
+			valid = valid && ValidateInstallationParent(row) == nil && row.OwnerID == v.ActorScope.OwnerID
+		}
+		for _, row := range v.Subjects {
+			valid = valid && ValidateInstallationSubjectBinding(row) == nil && row.OwnerID == v.ActorScope.OwnerID
+		}
+		for _, row := range v.PendingAttempts {
+			valid = valid && ValidateInstallationPendingAttemptRef(row) == nil
+		}
+		for _, row := range v.Nodes {
+			valid = valid && ValidateInstallationNodeObservation(row) == nil
+		}
+		for _, row := range v.Grants {
+			valid = valid && ValidateInstallationGrantRef(row) == nil
+		}
 	case InstallationReconciled:
 		valid = p.Operation == OperationInstallationReconcile && v.Format == InstallationFormat && match(v.RequestID, v.RequestPacketDigest) && InstallationHTTPPath(v.OriginalOperation) != "" && v.OriginalOperation != OperationInstallationReconcile && isHex(v.OriginalRequestID, RequestIDBytes) && isHex(v.OriginalPacketDigest, 32) && validateCanonicalTime(v.ObservedAt) == nil
 		if valid {
@@ -147,6 +162,9 @@ func validateInstallationResult(v InstallationResult, p InstallationResponsePack
 	if v.Parent != nil && ValidateInstallationParent(*v.Parent) != nil {
 		return false
 	}
+	if v.Subject != nil && ValidateInstallationSubjectBinding(*v.Subject) != nil {
+		return false
+	}
 	if v.AttemptState == InstallationRegistered && (v.Parent == nil || v.Parent.State != InstallationRegistered || v.Subject == nil || v.Subject.State != InstallationRegistered) {
 		return false
 	}
@@ -159,7 +177,7 @@ func SealInstallationResponse(hub *e2ee.Identity, trusted HubIdentity, original 
 		return nil, ErrInvalid
 	}
 	p := InstallationResponsePacket{Format: InstallationPacketFormat, Version: 1, Operation: request.Operation, RequestID: installationRequestID(request), RequestPacketDigest: e2ee.InstallationPacketDigest(original), ReceiverKeyID: request.SenderPublic.ID}
-	if validateInstallationResponse(body, p) != nil {
+	if validateInstallationResponse(body, p) != nil || installationResponseActorMatches(body, request, trusted) != nil {
 		return nil, ErrInvalid
 	}
 	b, err := json.Marshal(body)
@@ -200,7 +218,20 @@ func OpenInstallationResponse(recipient *e2ee.Identity, trusted HubIdentity, ori
 		return ErrInvalid
 	}
 	defer clear(plain)
-	if installationCanonical(plain, out, installationResponseLimit(request.Operation)) != nil || validateInstallationResponse(out, response) != nil {
+	if installationCanonical(plain, out, installationResponseLimit(request.Operation)) != nil || validateInstallationResponse(out, response) != nil || installationResponseActorMatches(out, request, trusted) != nil {
+		return ErrInvalid
+	}
+	return nil
+}
+
+func installationResponseActorMatches(body any, request InstallationPacket, trusted HubIdentity) error {
+	v, ok := installationBodyValue(body).(InstallationConnectionsSnapshot)
+	if !ok {
+		return nil
+	}
+	s, c := v.ActorScope, request.Account
+	fp, err := HubFingerprint(trusted)
+	if err != nil || c == nil || s.HubID != trusted.HubID || s.HubFingerprint != fp || s.Origin != c.Origin || s.AccountID != c.AccountID || s.OwnerID != c.OwnerID || s.DeviceID != c.DeviceID || s.AccountEpoch != c.AccountEpoch || s.DeviceEpoch != c.DeviceEpoch || !reflect.DeepEqual(s.DevicePublic, request.SenderPublic) {
 		return ErrInvalid
 	}
 	return nil

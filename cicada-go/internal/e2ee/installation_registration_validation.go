@@ -110,7 +110,7 @@ func ValidateInstallationBase(b InstallationCandidateBase) error {
 	if ValidateInstallationOrigin(b.Hub.Origin, b.Hub.TransportPolicy) != nil {
 		return ErrInvalidEnvelope
 	}
-	_, expiry, err := installationWindow(b.IssuedAt, b.ExpiresAt, 10*time.Minute)
+	_, _, err := installationWindow(b.IssuedAt, b.ExpiresAt, 10*time.Minute)
 	if err != nil {
 		return err
 	}
@@ -163,16 +163,16 @@ func ValidateInstallationBase(b InstallationCandidateBase) error {
 	}
 	if n := b.Subject.Node; n != nil {
 		if !tlsGrantToken(n.NodeID) || !installationPositive(n.KeyVersion) || !installationPositive(n.KeyEpoch) || ValidatePublicIdentity(n.HubNodeControlPublic) != nil ||
-			!installationDistinct(n.Public, n.HubNodeControlPublic) || !installationPositive(n.HubNodeControlKeyVersion) || !canonicalSHA256Hex(n.HubNodeControlFingerprint) ||
-			!canonicalSHA256Hex(n.CredentialCommitment) || !tlsGrantToken(n.RequestID) || !installationPositive(n.RequestVersion) || !canonicalSHA256Hex(n.CandidateDigest) {
+			!installationDistinct(n.Public, n.HubNodeControlPublic) || !installationPositive(n.HubNodeControlKeyVersion) || !canonicalSHA256Hex(n.HubNodeControlFingerprint) {
 			return ErrInvalidEnvelope
 		}
 		if b.Subject.Mode == InstallationNewSubject {
-			end, err := parseCanonicalUTC(n.CandidateExpiresAt)
-			if err != nil || expiry.After(end) || n.KeyVersion != 1 || n.KeyEpoch != 1 || n.BindingID != "" || n.BindingVersion != 0 || n.CredentialVersion != 0 {
+			// This registration attempt is the real new candidate. No legacy
+			// request, binding or bearer exists or may be manufactured for it.
+			if n.KeyVersion != 1 || n.KeyEpoch != 1 || n.CredentialCommitment != "" || n.RequestID != "" || n.RequestVersion != 0 || n.CandidateDigest != "" || n.CandidateExpiresAt != "" || n.BindingID != "" || n.BindingVersion != 0 || n.CredentialVersion != 0 {
 				return ErrInvalidEnvelope
 			}
-		} else if n.CandidateExpiresAt != "" || !tlsGrantToken(n.BindingID) || !installationPositive(n.BindingVersion) || !installationPositive(n.CredentialVersion) {
+		} else if !canonicalSHA256Hex(n.CredentialCommitment) || !tlsGrantToken(n.RequestID) || !installationPositive(n.RequestVersion) || !canonicalSHA256Hex(n.CandidateDigest) || n.CandidateExpiresAt != "" || !tlsGrantToken(n.BindingID) || !installationPositive(n.BindingVersion) || !installationPositive(n.CredentialVersion) {
 			return ErrInvalidEnvelope
 		}
 	} else {
@@ -214,7 +214,7 @@ func ValidateInstallationStartAt(b InstallationCandidateBase, now time.Time) err
 }
 
 func ValidateInstallationApproval(t InstallationApprovalBase, c InstallationCandidate) error {
-	if ValidateInstallationBase(c.Base) != nil || t.Format != InstallationRegistrationFormat || appNodeProofScope(t.Scope) != nil ||
+	if ValidateInstallationBase(c.Base) != nil || t.Format != InstallationRegistrationFormat || ValidateInstallationAccountScope(t.Scope) != nil ||
 		!canonicalSHA256Hex(t.CandidateDigest) || t.CandidateDigest != c.CandidateDigest || t.OOBCommitment != c.OOBCommitment ||
 		t.InstallationID != c.Base.InstallationID || t.AttemptID != c.Base.AttemptID || !canonicalSHA256Hex(t.PossessionReceiptDigest) ||
 		t.Scope.HubID != c.Base.Hub.HubID || t.Scope.Origin != c.Base.Hub.Origin || t.Scope.HubFingerprint != c.Base.Hub.Fingerprint || t.Scope.TransportPolicy != c.Base.Hub.TransportPolicy ||
@@ -272,6 +272,11 @@ func ValidateInstallationReadQuery(q InstallationReadQuery) error {
 	}
 	switch q.TargetKind {
 	case "INSTALLATIONS", "GRANTED":
+		for _, id := range q.TargetIDs {
+			if !appNodeProofID(id) {
+				return ErrInvalidEnvelope
+			}
+		}
 	case "NODE_STATUS", "PAIR_STATUS":
 		if len(q.TargetIDs) == 0 {
 			return ErrInvalidEnvelope
@@ -293,7 +298,7 @@ func ValidateInstallationReadQuery(q InstallationReadQuery) error {
 }
 
 func validateInstallationReadClaims(c InstallationOwnerReadClaims, q InstallationReadQuery) error {
-	if c.Version != 1 || c.Purpose != InstallationReadPurpose || appNodeProofScope(c.Scope) != nil || ValidateInstallationReadQuery(q) != nil ||
+	if c.Version != 1 || c.Purpose != InstallationReadPurpose || ValidateInstallationAccountScope(c.Scope) != nil || ValidateInstallationReadQuery(q) != nil ||
 		c.RequestID != q.RequestID || c.Nonce != q.Nonce || c.Scope.HubID != q.HubID || c.Scope.AccountID != q.AccountID || c.Scope.OwnerID != q.OwnerID || c.Scope.DeviceID != q.DeviceID || c.Scope.AccountEpoch != q.AccountEpoch || c.Scope.DeviceEpoch != q.DeviceEpoch {
 		return ErrInvalidEnvelope
 	}
@@ -308,7 +313,7 @@ func validateInstallationReadClaims(c InstallationOwnerReadClaims, q Installatio
 
 func validateInstallationAccessClaims(c InstallationAccessClaims) error {
 	r := c.Recipient
-	if c.Version != 1 || c.Purpose != InstallationAccessPurpose || appNodeProofScope(c.Scope) != nil || !appNodeProofID(c.GrantID) || !appNodeProofID(r.SubjectRegistrationID) ||
+	if c.Version != 1 || c.Purpose != InstallationAccessPurpose || ValidateInstallationAccountScope(c.Scope) != nil || !appNodeProofID(c.GrantID) || !appNodeProofID(r.SubjectRegistrationID) ||
 		!installationPositive(r.SubjectRegistrationEpoch) || !tlsGrantToken(r.DeviceID) || ValidatePublicIdentity(r.DevicePublic) != nil || !installationPositive(r.DeviceEpoch) ||
 		!installationDistinct(r.DevicePublic, c.Scope.OwnerPublic) || !installationPositive(c.ExpectedRevision) || !appNodeProofID(c.PrepareRequestID) || !canonicalSHA256Hex(c.PreparePacketDigest) || !canonicalSHA256Hex(c.ServerNonce) ||
 		!tlsGrantToken(c.Target.NodeBindingID) || !installationPositive(c.Target.NodeBindingVersion) || !installationPositive(c.Target.NodeKeyEpoch) {

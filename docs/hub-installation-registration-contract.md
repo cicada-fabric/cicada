@@ -1,13 +1,13 @@
-# Controlled installation registration v1
+# Controlled installation registration v1.1
 
-**CONTRACT_CANDIDATE / C0. Public availability is false.** The Go DTOs, pure
+**CONTRACT_CANDIDATE / C0.1. Public availability is false.** The Go DTOs, pure
 cryptographic helpers, canonical vectors and checker are reviewable code. No
 registration HTTP handler, Store migration, ingress authorization change or
 three-component integration is enabled by this checkpoint. Implementation and
 validation results belong to the existing native App validation/plan records;
 this document defines the boundary, not a second acceptance ledger.
 
-The separate identifier is `installation-registration-v1`; its format is
+The separate contract revision is `installation-registration-v1.1`; its format is
 `cicada.installation-registration.v1`. Existing Owner/account identities, public
 keys, credentials, epochs, receipts and authorization histories remain intact.
 Wire 1, catalog 55 / `client-hub-v1.6.5`, `owner-activation-v1`,
@@ -137,7 +137,7 @@ returns its decrypted challenge, admission returns its own challenge plus the
 exact subject receipt digest. The verified receipt precedes Owner prepare.
 Poll remains a read; it never implicitly completes PoP.
 
-Node starts carry the actual original/new `NodeCredential` only inside the
+Only ADOPT_EXISTING Node starts carry the actual original `NodeCredential` inside the
 Hub-addressed encrypted Start body. It is absent from B, tickets, Owner
 challenges and diagnostics. Public commitment equality is not possession.
 For adoption, Hub must compare the actual token's existing
@@ -147,11 +147,48 @@ start invalidates a fresh accept. Do not persist plaintext bearers; retain the
 original protected ciphertext and clear transient decrypted fields. An old key
 with a stale bearer cannot adopt the current binding.
 
+NEW_SUBJECT Node registration has no old device-code prerequisite. Its actual
+locally generated NodeID, complete public identity, key version/epoch 1 and Hub
+Node-Control pin are fixed in B. The installation attempt's own AttemptID/C and
+local immutable expiry identify the real pending candidate. The old NodeRef
+RequestID/RequestVersion/CandidateDigest/CandidateExpiresAt, BindingID/version
+and CredentialCommitment/version are all empty/zero. Start.NodeCredential is
+strictly nil. Original Node private keys, admission key, S and the exact Start
+packet must be saved before the first HTTP write. Signature and dual KEM PoP
+remain mandatory; no old-code request is made and no fake old tuple is accepted.
+
+Accept creates the actual identity binding only in the new registration Store.
+SubjectRegistrationID is that new Node binding's ID; its own immutable subject
+epoch and current revision identify the registered instance. The optional old
+OwnerAppNodeBinding is nil. No old ACTIVE Fabric credential/Client enrollment,
+approved request history or legacy bearer permission is manufactured. New Node
+liveness uses the admission-authenticated installation heartbeat. Status reads
+identify Source=`store.hub_installation_subjects_v1.last_heartbeat`,
+BindingID=SubjectRegistrationID, BindingVersion=subject revision and the actual
+Node key epoch. CredentialVersion=0 explicitly means **no legacy credential**.
+The fixed Node read grant can target that exact registered binding; it conveys
+no Join/execution permission. For ADOPT_EXISTING, the target instead refers to
+the real original legacy binding/version/key epoch and its complete actual
+NodeBinding projection. Pair read grants require an existing real Pair and its
+original Node binding. Server resolves each target through its actual stored
+provenance; a client-supplied mode cannot select a weaker Guard.
+
 After local trust is durably saved, accept returns capsule-only X inside PQ
 encryption, together with the original subject's signed/PQ acknowledgement of
 C/t/e/Owner-proof digest/X/accept request/current tuple. Hub checks signed a,
 both key PoPs, current original coordinates and revision CAS. Reporting public
 digests alone cannot prove capsule decryption. S is never echoed to Hub.
+
+Accept.ApprovalReceiptDigest is InstallationPacketDigest of the **complete raw
+Hub-to-admission Poll response** carrying InstallationApproved, exactly as saved
+and authenticated by that recipient. The OwnerComplete response is addressed to
+the Owner App and cannot substitute for this Poll receipt. Admission durably
+saves its Poll raw response, verified capsule and local pin before saving/sending
+the exact Accept packet. Hub verifies its retained Poll record for that same
+actor/attempt and exact C/t/e/Owner-proof digest plus the current deadline. That
+delivery receipt survives ordinary rolling diagnostic-cache eviction until its
+accept/reconciliation window closes. Exact recovery returns original bytes;
+it never re-signs a receipt, changes its times or renews permission.
 
 ## Short ticket and time rules
 
@@ -180,6 +217,48 @@ approval; current key/device/epoch revocation still applies.
 
 ## Closed operations and shared-object reads
 
+Revision v1.1 repairs the pre-carrier C0 v1 scope/new-Node/inventory gaps. Wire
+version 1 and both format identifiers remain unchanged, as do all N2/N3/Client
+identifiers. A v1 proof carrying the old OwnerAppNodeScope is incompatible with
+this revision; consumers match the exact revision. Historical v1 fixtures and
+test evidence retain their original attribution. No deployed v1 registration
+state or production carrier is claimed or migrated here.
+
+Every new registration intent, approval T, Owner read and finite-access proof
+uses InstallationAccountScope. Its field sources are:
+
+| Coordinates | Authoritative source |
+| --- | --- |
+| Version=1, canonical origin/HubID/policy | Actual current Hub setup and pinned Hub identity |
+| Full Hub fingerprint | Existing HubFingerprint of the trusted complete Hub public identity |
+| AccountID/OwnerID | Current immutable Hub account/setup association |
+| AccountSessionID/expiry | Actual current session selected by its protected token, not a derived/fabricated ID |
+| OwnerPublic/OwnerKeyVersion | Exact stored Owner signing-key record; Owner actions separately require it ACTIVE and genuinely signed |
+| DeviceID/DevicePublic/DeviceEpoch | Actual current account-device registration |
+| AccountEpoch | Actual account epoch after restore/revocation fences |
+
+ClientSessionEpoch and HeadVersion are absent: an ordinary registered App has
+no Client/N2/N3 enrollment to project. The installation-only validator never
+changes the frozen N3 validator. Target CAS uses each existing ExpectedRevision.
+All discovery responses include the actual requestor's ActorScope, even for a
+qualified old App with no new registration or zero grants. This is only public
+security context for its own authenticated session, never business authority.
+The App uses a zero-grant RECIPIENT_GRANTS/GRANTED query with empty TargetIDs to
+obtain it before signing any Owner intent/read. No Owner inventory is returned.
+APP_DEVICE acceptance adds only that exact account device for ordinary existing
+account login, not a legacy Client row/N2 lease. AccountID comes from the
+authenticated approval capsule T; no old App state/private key is copied.
+
+Start and verified PoP retain attempt revision 1. For the first Owner preview,
+the App signs the exact ticket AttemptID/C and ExpectedRevision=1, using its
+fresh own account scope. This preview only resolves the pending request; it
+does not approve registration. Only after the real PoP receipt exists does Hub
+return InstallationOwnerChallenge with full B/T. App recomputes C/O and matches
+the ticket or actual local-pin source before signing Owner completion. Prepare
+has one persisted winner, immutable nonce/scope/deadline and exact receipt;
+repeating it cannot extend deadlines. Complete moves to revision 2 and accept
+to revision 3. A lost response recovers its exact original, never a new prepare.
+
 All operations below are separate typed POSTs. Only GET capabilities is public.
 The explicit Hub Nodes composition is the intended future carrier; no Control
 inference instance, Worker API, broad snapshot or arbitrary RPC is attached.
@@ -207,8 +286,9 @@ binding), with fixed 15-minute absolute expiry. They reuse bounded N3/Pair
 observations. They cannot Join, consent, revoke a Pair, sign Group key grants,
 launch native work, read transcripts or mint other grants. All original
 Owner-signed writes stay genuinely Owner-signed. Existing N3 and fixed Pair
-permissions retain their original contracts and may be projected as tagged
-references, never copied to another App.
+permissions retain their original contracts. This revision's GrantRef lists
+accept only actual v1.1 grants and the two fixed profiles; an old grant is not
+relabeled or copied into a new App's v1.1 permission.
 
 `connections/read.authorization` is exactly one branch:
 
@@ -231,6 +311,46 @@ another App never receives an old App's private keys, session, counters or outbo
 Uninstalling an App must not delete Hub/Node state or revoke existing rights.
 Deleting the only Owner signing key still has no automatic password-only recovery.
 
+The exact query-kind set remains INSTALLATIONS, GRANTED, NODE_STATUS and
+PAIR_STATUS. Snapshot has a mandatory ActorScope, optional own parent/subject,
+and six paginated lists. INSTALLATIONS with genuine fresh Owner proof returns
+Parents, Subjects and lightweight PendingAttempts; optional sorted TargetIDs
+filter actual InstallationIDs. Subject rows supply the real recipient ID,
+public key and epoch for a later separate grant, plus their actual InstallationID
+and OwnerID from the same parent. Each independent page can check this relationship
+without depending on earlier Parent pages. Pending refs supply only
+AttemptID/C/InstallationID, subject kind/full-public fingerprint, state, revision
+and expiry; full candidate data is returned by prepare. An existing-local-pin
+append is discoverable this way without inventing a new OOB secret.
+
+GRANTED with genuine fresh Owner proof lists that Owner's actual retained grant
+references, including PREPARED/ACTIVE/EXPIRED/REVOKED history, with optional
+recipient SubjectRegistrationID filters. Owner history is paginated, not capped
+at 16 total records. RECIPIENT_GRANTS/GRANTED requires empty TargetIDs and returns
+only that recipient's current effective refs. INSTALLATIONS under the recipient
+branch returns only own context/registration and empty inventory. NODE_STATUS
+and PAIR_STATUS return only their exact authorized object kinds; they never
+include Owner inventory. ValidateInstallationSnapshotQuery checks this closed
+projection against the original plaintext request; it does not verify grants.
+NODE_STATUS TargetIDs are exact actual binding IDs: the new SubjectRegistrationID
+or the original adopted legacy binding ID. A reusable NodeID alias cannot select
+another binding. PAIR_STATUS TargetIDs are exact PairIDs. Each returned Node's
+BindingID or Pair's PairID must belong to the request set. Own parent OwnerID
+matches ActorScope.OwnerID; own subject is only that current APP_DEVICE with the
+same InstanceID/public identity and exact parent/installation link. Owner subject
+rows match the Owner scope. Recipient grant refs match only its own subject and
+device, current effective state and selected grant IDs. GrantRef origin/profile/
+state/target/version/expiry formats are closed; actual authority still comes
+from Store signatures and current epoch/binding checks.
+
+The six lists Grants/Parents/Subjects/PendingAttempts/Nodes/Pairs together obey
+the requested PageSize <= 50; Grants also obeys <= 16 per page. Own parent/subject
+and the complete ActorScope are footer bytes included in the encoded byte cap.
+Pages use stable kind+ID ordering and a cursor bound to the actual actor,
+authorization branch and stable query filters/page size. Each page rechecks
+current grant expiry/revocation/epochs and exact targets. An empty page with a
+cursor must advance; a cursor cannot authorize or resurrect cached permission.
+
 ## Recovery, bounds and paging
 
 Before each mutation, preserve its exact ciphertext/request ID/nonce/digest in
@@ -239,6 +359,19 @@ persist the exact response, nonce consumption and target/revision provenance.
 Concurrent claims/approvals/accepts have one CAS winner. Changed bytes under the
 same ID conflict; no key/identity replacement, epoch reset or deadline extension.
 Lost accept response retries/reconciles the same original; timeout remains UNKNOWN.
+
+After an authenticated terminal EXPIRED/REJECTED_FENCED outcome, an explicit
+new attempt may keep the same InstallationID and exact admission/subject private
+identities while choosing a new AttemptID and FIRST_OOB S. UNKNOWN never permits
+changing/clearing the old pending original or generating replacement identities.
+Permanent old receipts/fences/deadlines remain terminal. An existing registered
+parent is retained, not reinstalled or reauthenticated. A late ACK can leave an
+already durable local Owner pin without a registered parent: do not fabricate a
+REGISTERED_PARENT descriptor or clear that pin. A new FIRST_OOB attempt in this
+case must also match the exact independently retained Owner/Hub pin and controlled
+version before its conditional durable writer accepts the capsule. A mismatch
+fails; it never silently replaces trust. Actual persistence/retry/pin-writer
+execution remains an H1/App/Node gate, not a pure C0.1 test claim.
 
 `OpenInstallationRequest` is a fresh entry and requires trusted current time.
 `AuthenticateInstallationOriginal` is separate: it verifies canonical packet,

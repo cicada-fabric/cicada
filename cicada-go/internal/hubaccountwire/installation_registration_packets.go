@@ -133,7 +133,7 @@ func ValidateInstallationRequest(p InstallationPacket, body any, trusted HubIden
 		if valid {
 			b := v.Candidate.Base
 			valid = p.Self.InstallationID == b.InstallationID && p.Self.AttemptID == b.AttemptID && p.Self.IssuedAt == b.IssuedAt && reflect.DeepEqual(p.SenderPublic, b.AdmissionPublic)
-			if b.Subject.Node != nil {
+			if b.Subject.Node != nil && b.Subject.Mode == e2ee.InstallationAdoptExisting {
 				valid = valid && validInstallationNodeCredential(v.NodeCredential) && NativePairCredentialCommitment(string(v.NodeCredential)) == b.Subject.Node.CredentialCommitment
 			} else {
 				valid = valid && v.NodeCredential == nil
@@ -172,6 +172,9 @@ func ValidateInstallationRequest(p InstallationPacket, body any, trusted HubIden
 		if valid {
 			q, a := v.Query, p.Account
 			valid = q.HubID == a.HubID && q.AccountID == a.AccountID && q.OwnerID == a.OwnerID && q.DeviceID == a.DeviceID && q.AccountEpoch == a.AccountEpoch && q.DeviceEpoch == a.DeviceEpoch && q.RequestID == a.RequestID && q.Nonce == hex.EncodeToString(a.ClientNonce)
+			if v.Authorization.Kind == InstallationRecipientGrantsAuth && q.TargetKind == "GRANTED" && len(q.TargetIDs) != 0 {
+				valid = false
+			}
 		}
 	case InstallationReconcile:
 		valid = p.Operation == OperationInstallationReconcile && v.OriginalOperation != OperationInstallationReconcile && InstallationHTTPPath(v.OriginalOperation) != "" && isHex(v.OriginalRequestID, RequestIDBytes) && v.OriginalRequestID != installationRequestID(p) && len(v.OriginalPacket) > 0 && len(v.OriginalPacket) <= MaxInstallationOriginalBytes && v.OriginalPacketDigest == e2ee.InstallationPacketDigest(v.OriginalPacket)

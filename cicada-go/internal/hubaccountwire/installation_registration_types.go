@@ -3,7 +3,7 @@ package hubaccountwire
 import "github.com/cicada-ai/cicada/internal/e2ee"
 
 const (
-	InstallationContractRevision        = "installation-registration-v1"
+	InstallationContractRevision        = "installation-registration-v1.1"
 	InstallationImplementationPhase     = "CONTRACT_CANDIDATE"
 	InstallationPublicAvailable         = false
 	InstallationFormat                  = e2ee.InstallationRegistrationFormat
@@ -35,6 +35,7 @@ const (
 	InstallationRecipientGrantsAuth     = "RECIPIENT_GRANTS"
 	InstallationNewRegisteredOnly       = "NEW_REGISTERED_ONLY"
 	InstallationLegacyAdopted           = "VERIFIED_LEGACY_ADOPTED"
+	InstallationHeartbeatSource         = "store.hub_installation_subjects_v1.last_heartbeat"
 	MaxInstallationTicketBytes          = 1024
 	MaxInstallationBodyBytes            = 96 * 1024
 	MaxInstallationPacketBytes          = 128 * 1024
@@ -125,8 +126,8 @@ type InstallationStart struct {
 	Format                string                `json:"format"`
 	Candidate             InstallationCandidate `json:"candidate"`
 	SubjectSignatureProof []byte                `json:"subject_signature_proof"`
-	// Encrypted inside InstallationPacket, addressed to Hub only. Never put
-	// this bearer in Candidate, Owner challenge, ticket or diagnostics.
+	// ADOPT_EXISTING Node only; NEW_SUBJECT and App require nil. Encrypted
+	// to Hub only, never Candidate, Owner challenge, ticket or diagnostics.
 	NodeCredential []byte `json:"node_credential,omitempty"`
 }
 
@@ -290,6 +291,8 @@ type InstallationSubjectBinding struct {
 	SubjectRegistrationID    string                    `json:"subject_registration_id"`
 	SubjectRegistrationEpoch uint64                    `json:"subject_registration_epoch"`
 	ParentRegistrationID     string                    `json:"parent_registration_id"`
+	InstallationID           string                    `json:"installation_id"`
+	OwnerID                  string                    `json:"owner_id"`
 	Kind                     string                    `json:"kind"`
 	InstanceID               string                    `json:"instance_id"`
 	Public                   e2ee.PublicIdentity       `json:"public_identity"`
@@ -297,6 +300,19 @@ type InstallationSubjectBinding struct {
 	Revision                 uint64                    `json:"revision"`
 	AuthProvenance           string                    `json:"auth_provenance"`
 	NodeBinding              *e2ee.OwnerAppNodeBinding `json:"node_binding,omitempty"`
+}
+
+// Owner inventory references disclose no secret or fabricated legacy candidate.
+// The full candidate is returned only by the authenticated Owner preview.
+type InstallationPendingAttemptRef struct {
+	AttemptID          string `json:"attempt_id"`
+	CandidateDigest    string `json:"candidate_digest"`
+	InstallationID     string `json:"installation_id"`
+	SubjectKind        string `json:"subject_kind"`
+	SubjectFingerprint string `json:"subject_fingerprint"`
+	State              string `json:"state"`
+	Revision           uint64 `json:"revision"`
+	ExpiresAt          string `json:"expires_at"`
 }
 
 type InstallationResult struct {
@@ -322,19 +338,22 @@ type InstallationApproved struct {
 }
 
 type InstallationConnectionsSnapshot struct {
-	Format              string                      `json:"format"`
-	RequestID           string                      `json:"request_id"`
-	RequestPacketDigest string                      `json:"request_packet_digest"`
-	SnapshotRevision    uint64                      `json:"snapshot_revision"`
-	OwnParent           *InstallationParent         `json:"own_parent,omitempty"`
-	OwnSubject          *InstallationSubjectBinding `json:"own_subject,omitempty"`
-	Grants              []InstallationGrantRef      `json:"grants"`
-	Parents             []InstallationParent        `json:"parents"`
-	Nodes               []AppNodeObservation        `json:"nodes"`
-	Pairs               []NativePairResult          `json:"pairs"`
-	NextCursor          string                      `json:"next_cursor"`
-	Truncated           bool                        `json:"truncated"`
-	ObservedAt          string                      `json:"observed_at"`
+	Format              string                          `json:"format"`
+	RequestID           string                          `json:"request_id"`
+	RequestPacketDigest string                          `json:"request_packet_digest"`
+	SnapshotRevision    uint64                          `json:"snapshot_revision"`
+	ActorScope          e2ee.InstallationAccountScope   `json:"actor_scope"`
+	OwnParent           *InstallationParent             `json:"own_parent,omitempty"`
+	OwnSubject          *InstallationSubjectBinding     `json:"own_subject,omitempty"`
+	Grants              []InstallationGrantRef          `json:"grants"`
+	Parents             []InstallationParent            `json:"parents"`
+	Subjects            []InstallationSubjectBinding    `json:"subjects"`
+	PendingAttempts     []InstallationPendingAttemptRef `json:"pending_attempts"`
+	Nodes               []AppNodeObservation            `json:"nodes"`
+	Pairs               []NativePairResult              `json:"pairs"`
+	NextCursor          string                          `json:"next_cursor"`
+	Truncated           bool                            `json:"truncated"`
+	ObservedAt          string                          `json:"observed_at"`
 }
 
 type InstallationReconcile struct {

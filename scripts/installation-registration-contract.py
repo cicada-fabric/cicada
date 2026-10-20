@@ -32,7 +32,7 @@ def source_contract():
 def check():
     manifest = json.loads((WIRE / "installation-registration-contract.json").read_text())
     strings, schemas, source = source_contract()
-    assert manifest["contract_revision"] == strings["InstallationContractRevision"] == "installation-registration-v1"
+    assert manifest["contract_revision"] == strings["InstallationContractRevision"] == "installation-registration-v1.1"
     assert manifest["format"] == strings["InstallationRegistrationFormat"] == "cicada.installation-registration.v1"
     assert manifest["packet_format"] == strings["InstallationPacketFormat"]
     assert manifest["implementation_phase"] == strings["InstallationImplementationPhase"] == "CONTRACT_CANDIDATE"
@@ -51,6 +51,12 @@ def check():
     assert "node_credential,omitempty" in schemas["InstallationStart"]
     assert not any("credential" in name for name in schemas["InstallationCandidateBase"])
     assert schemas["InstallationExistingTrust"][0] == "source"
+    assert schemas["InstallationAccountScope"] == ["version", "origin", "hub_id", "hub_fingerprint", "account_id", "account_session_id", "account_session_expires_at", "owner_id", "owner_public_identity", "owner_key_version", "device_id", "device_public_identity", "account_epoch", "device_epoch", "transport_policy"]
+    assert "actor_scope" in schemas["InstallationConnectionsSnapshot"]
+    assert "subjects" in schemas["InstallationConnectionsSnapshot"]
+    assert "pending_attempts" in schemas["InstallationConnectionsSnapshot"]
+    assert {"installation_id", "owner_id"}.issubset(schemas["InstallationSubjectBinding"])
+    assert "OwnerAppNodeScope" not in source
     assert manifest["trust_modes"] == ["FIRST_OOB", "EXISTING_LOCAL_PIN"]
     assert manifest["existing_trust_sources"] == ["REGISTERED_PARENT", "LEGACY_NODE"]
     assert manifest["read_profiles"] == ["N3_NODE_STATUS_READ", "N3_PAIR_STATUS_READ"]
@@ -69,6 +75,23 @@ def check():
     assert manifest["empty_recipient_grant_ids"] == "CURRENT_AUTHENTICATED_RECIPIENT_ONLY"
     assert manifest["historical_original_api"] == "AuthenticateInstallationOriginal_NEVER_FRESH_ADMISSION"
     assert manifest["pagination"] == "COUNT_AND_ENCODED_BYTES_WITH_CURSOR_TRUNCATED_PQ_SEAL_ONCE"
+    assert manifest["snapshot_count_lists"] == ["grants", "parents", "subjects", "pending_attempts", "nodes", "pairs"]
+    assert manifest["query_kinds"] == ["INSTALLATIONS", "GRANTED", "NODE_STATUS", "PAIR_STATUS"]
+    assert manifest["query_target_ids"] == {"INSTALLATIONS": "INSTALLATION_IDS", "GRANTED_OWNER": "RECIPIENT_SUBJECT_REGISTRATION_IDS", "GRANTED_RECIPIENT": [], "NODE_STATUS": "ACTUAL_BINDING_IDS_NOT_NODE_ALIASES", "PAIR_STATUS": "ACTUAL_PAIR_IDS"}
+    assert manifest["grant_ref_states"] == ["PREPARED", "ACTIVE", "EXPIRED", "REVOKED"]
+    assert manifest["grant_ref_origins"] == ["installation-registration-v1.1"]
+    assert manifest["approval_receipt_digest"] == "EXACT_RAW_HUB_TO_SAME_ADMISSION_POLL_RESPONSE"
+    assert manifest["new_node"] == {
+        "binding_id": "ACTUAL_SUBJECT_REGISTRATION_ID",
+        "legacy_coordinates": "EMPTY_STRINGS_AND_ZERO_VERSIONS",
+        "legacy_node_binding": None,
+        "node_credential": None,
+        "credential_commitment": "",
+        "credential_version": 0,
+        "heartbeat_source": strings["InstallationHeartbeatSource"],
+        "business_authority": [],
+    }
+    assert manifest["supersedes"] == {"contract_revision": "installation-registration-v1", "manifest_sha256": "4d2b15eb31b9a9d28e0755d72e08fcd57ead1eeeca6867f650f01e3d5d23339a", "old_scope_proofs_compatible": False}
     assert manifest["time_policy"] == {
         "clock": "ACTUAL_TRUSTED_OS_SYNCHRONIZED_UTC_TIMEZONE_DISPLAY_ONLY",
         "issuance_early_tolerance_seconds": 30,
@@ -85,6 +108,7 @@ def check():
     fixture_path = ROOT / manifest["fixture"]["path"]
     assert hashlib.sha256(fixture_path.read_bytes()).hexdigest() == manifest["fixture"]["sha256"]
     fixture = json.loads(fixture_path.read_text())
+    assert fixture["contract_revision"] == manifest["contract_revision"]
     assert fixture["synthetic_only"] is True and "NEVER INITIALIZE A DEPLOYMENT" in fixture["warning"]
     assert fixture["candidate"]["base"]["hub"]["origin"].endswith(".invalid")
 
@@ -99,11 +123,11 @@ def check():
 
     no_private(fixture)
     prose = (ROOT / "docs/hub-installation-registration-contract.md").read_text()
-    for marker in ["CONTRACT_CANDIDATE", "FIRST_OOB", "LEGACY_NODE", "REGISTERED_PARENT", "OWNER_READ_PROOF", "RECIPIENT_GRANTS", "AuthenticateInstallationOriginal", "NodeCredential", "NextCursor/Truncated", "30 seconds", "no expiry grace"]:
+    for marker in ["CONTRACT_CANDIDATE", "FIRST_OOB", "LEGACY_NODE", "REGISTERED_PARENT", "OWNER_READ_PROOF", "RECIPIENT_GRANTS", "AuthenticateInstallationOriginal", "NodeCredential", "NextCursor/Truncated", "30 seconds", "no expiry grace", "InstallationAccountScope", "ActorScope", "PendingAttempts", "CredentialVersion=0", "Poll response", "installation-registration-v1.1"]:
         assert marker in prose, marker
     assert not (ROOT / "cicada-go/internal/server/hub_installation_registration.go").exists()
     assert not (ROOT / "cicada-go/internal/store/hub_installation_registration_schema_v1.go").exists()
-    print("installation-registration-v1 C0 contract PASS (availability disabled; no Store/three-component/Runtime claim)")
+    print("installation-registration-v1.1 C0.1 contract PASS (availability disabled; no Store/three-component/Runtime claim)")
 
 
 if __name__ == "__main__":

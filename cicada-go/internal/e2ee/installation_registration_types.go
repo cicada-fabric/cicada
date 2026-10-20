@@ -125,23 +125,23 @@ type InstallationCandidate struct {
 // Everything in ApprovalBase precedes capsule creation. In particular, it has
 // no capsule digest, ACK nonce/commitment or final Owner proof/signature.
 type InstallationApprovalBase struct {
-	Format                  string            `json:"format"`
-	CandidateDigest         string            `json:"candidate_digest"`
-	OOBCommitment           string            `json:"oob_commitment"`
-	InstallationID          string            `json:"installation_id"`
-	AttemptID               string            `json:"attempt_id"`
-	PossessionReceiptDigest string            `json:"possession_receipt_digest"`
-	Scope                   OwnerAppNodeScope `json:"scope"`
-	SubjectDigest           string            `json:"subject_digest"`
-	ExpectedRevision        uint64            `json:"expected_revision"`
-	PrepareRequestID        string            `json:"prepare_request_id"`
-	PreparePacketDigest     string            `json:"prepare_packet_digest"`
-	PreviewProofDigest      string            `json:"preview_proof_digest"`
-	ServerNonce             string            `json:"server_nonce"`
-	PreparedAt              string            `json:"prepared_at"`
-	AttemptExpiresAt        string            `json:"attempt_expires_at"`
-	ProofExpiresAt          string            `json:"proof_expires_at"`
-	AcceptBefore            string            `json:"accept_before"`
+	Format                  string                   `json:"format"`
+	CandidateDigest         string                   `json:"candidate_digest"`
+	OOBCommitment           string                   `json:"oob_commitment"`
+	InstallationID          string                   `json:"installation_id"`
+	AttemptID               string                   `json:"attempt_id"`
+	PossessionReceiptDigest string                   `json:"possession_receipt_digest"`
+	Scope                   InstallationAccountScope `json:"scope"`
+	SubjectDigest           string                   `json:"subject_digest"`
+	ExpectedRevision        uint64                   `json:"expected_revision"`
+	PrepareRequestID        string                   `json:"prepare_request_id"`
+	PreparePacketDigest     string                   `json:"prepare_packet_digest"`
+	PreviewProofDigest      string                   `json:"preview_proof_digest"`
+	ServerNonce             string                   `json:"server_nonce"`
+	PreparedAt              string                   `json:"prepared_at"`
+	AttemptExpiresAt        string                   `json:"attempt_expires_at"`
+	ProofExpiresAt          string                   `json:"proof_expires_at"`
+	AcceptBefore            string                   `json:"accept_before"`
 }
 
 type InstallationOwnerClaims struct {
@@ -230,14 +230,14 @@ type InstallationReadQuery struct {
 }
 
 type InstallationOwnerReadClaims struct {
-	Version     int               `json:"version"`
-	Purpose     string            `json:"purpose"`
-	Scope       OwnerAppNodeScope `json:"scope"`
-	RequestID   string            `json:"request_id"`
-	Nonce       string            `json:"nonce"`
-	QueryDigest string            `json:"query_digest"`
-	IssuedAt    string            `json:"issued_at"`
-	ExpiresAt   string            `json:"expires_at"`
+	Version     int                      `json:"version"`
+	Purpose     string                   `json:"purpose"`
+	Scope       InstallationAccountScope `json:"scope"`
+	RequestID   string                   `json:"request_id"`
+	Nonce       string                   `json:"nonce"`
+	QueryDigest string                   `json:"query_digest"`
+	IssuedAt    string                   `json:"issued_at"`
+	ExpiresAt   string                   `json:"expires_at"`
 }
 
 type InstallationOwnerReadProof struct {
@@ -265,7 +265,7 @@ type InstallationAccessTarget struct {
 type InstallationAccessClaims struct {
 	Version             int                      `json:"version"`
 	Purpose             string                   `json:"purpose"`
-	Scope               OwnerAppNodeScope        `json:"scope"`
+	Scope               InstallationAccountScope `json:"scope"`
 	GrantID             string                   `json:"grant_id"`
 	Recipient           InstallationRecipient    `json:"recipient"`
 	Profile             string                   `json:"profile"`

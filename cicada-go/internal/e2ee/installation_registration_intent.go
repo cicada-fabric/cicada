@@ -13,16 +13,16 @@ const (
 // These four exact purposes have no business action list or delegation. A
 // preview resolves only one exact target; a revoke names its immutable revision.
 type InstallationOwnerIntentClaims struct {
-	Version          int               `json:"version"`
-	Purpose          string            `json:"purpose"`
-	Scope            OwnerAppNodeScope `json:"scope"`
-	RequestID        string            `json:"request_id"`
-	Nonce            string            `json:"nonce"`
-	TargetID         string            `json:"target_id"`
-	TargetDigest     string            `json:"target_digest"`
-	ExpectedRevision uint64            `json:"expected_revision"`
-	IssuedAt         string            `json:"issued_at"`
-	ExpiresAt        string            `json:"expires_at"`
+	Version          int                      `json:"version"`
+	Purpose          string                   `json:"purpose"`
+	Scope            InstallationAccountScope `json:"scope"`
+	RequestID        string                   `json:"request_id"`
+	Nonce            string                   `json:"nonce"`
+	TargetID         string                   `json:"target_id"`
+	TargetDigest     string                   `json:"target_digest"`
+	ExpectedRevision uint64                   `json:"expected_revision"`
+	IssuedAt         string                   `json:"issued_at"`
+	ExpiresAt        string                   `json:"expires_at"`
 }
 
 type InstallationOwnerIntentProof struct {
@@ -31,7 +31,7 @@ type InstallationOwnerIntentProof struct {
 }
 
 func validateInstallationIntent(c InstallationOwnerIntentClaims) error {
-	if c.Version != 1 || appNodeProofScope(c.Scope) != nil || !appNodeProofID(c.RequestID) || !canonicalSHA256Hex(c.Nonce) ||
+	if c.Version != 1 || ValidateInstallationAccountScope(c.Scope) != nil || !appNodeProofID(c.RequestID) || !canonicalSHA256Hex(c.Nonce) ||
 		!appNodeProofID(c.TargetID) || !canonicalSHA256Hex(c.TargetDigest) || !installationPositive(c.ExpectedRevision) {
 		return ErrInvalidEnvelope
 	}

@@ -20,7 +20,7 @@ type installationWireFixture struct {
 	now                                        time.Time
 	hub                                        HubIdentity
 	hubKey, owner, app, admission, subject, nc *e2ee.Identity
-	scope                                      e2ee.OwnerAppNodeScope
+	scope                                      e2ee.InstallationAccountScope
 	candidate                                  InstallationCandidate
 	secret, ack, nodeToken                     []byte
 }
@@ -34,15 +34,19 @@ func installationWireKey(t *testing.T) *e2ee.Identity {
 	return i
 }
 
+func installationAccountScopeFixture(s e2ee.OwnerAppNodeScope) e2ee.InstallationAccountScope {
+	return e2ee.InstallationAccountScope{Version: s.Version, Origin: s.Origin, HubID: s.HubID, HubFingerprint: s.HubFingerprint, AccountID: s.AccountID, AccountSessionID: s.AccountSessionID, AccountSessionExpiresAt: s.AccountSessionExpiresAt, OwnerID: s.OwnerID, OwnerPublic: s.OwnerPublic, OwnerKeyVersion: s.OwnerKeyVersion, DeviceID: s.DeviceID, DevicePublic: s.DevicePublic, AccountEpoch: s.AccountEpoch, DeviceEpoch: s.DeviceEpoch, TransportPolicy: s.TransportPolicy}
+}
+
 func installationWire(t *testing.T) installationWireFixture {
 	t.Helper()
 	old := appNodeCrypto(t)
-	f := installationWireFixture{now: time.Date(2026, 10, 20, 8, 0, 0, 123456789, time.UTC), hub: old.hub, hubKey: old.hubPrivate, owner: old.owner, app: old.device, scope: old.scope, secret: bytes.Repeat([]byte{0xa1}, 32), ack: bytes.Repeat([]byte{0xb2}, 32)}
+	f := installationWireFixture{now: time.Date(2026, 10, 20, 8, 0, 0, 123456789, time.UTC), hub: old.hub, hubKey: old.hubPrivate, owner: old.owner, app: old.device, scope: installationAccountScopeFixture(old.scope), secret: bytes.Repeat([]byte{0xa1}, 32), ack: bytes.Repeat([]byte{0xb2}, 32)}
 	f.admission, f.subject, f.nc = installationWireKey(t), installationWireKey(t), installationWireKey(t)
 	f.scope.Origin = "https://synthetic-registration.invalid"
 	f.scope.AccountSessionExpiresAt = f.now.Add(15 * time.Minute).Format(time.RFC3339Nano)
 	f.nodeToken = []byte("cicada_node_" + base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{0xc3}, 32)))
-	b := e2ee.InstallationCandidateBase{Format: InstallationFormat, Hub: e2ee.InstallationHubRef{Origin: f.scope.Origin, HubID: f.hub.HubID, Public: f.hub.Public, KeyVersion: f.hub.KeyVersion, Fingerprint: f.scope.HubFingerprint, TransportPolicy: AppNodeTransportHTTPS}, InstallationID: strings.Repeat("12", 16), AttemptID: strings.Repeat("23", 16), AdmissionPublic: f.admission.Public(), Components: []string{"APP", "HUB", "NODE"}, Subject: e2ee.InstallationSubject{Kind: e2ee.InstallationNodeSubject, Mode: e2ee.InstallationNewSubject, Node: &e2ee.InstallationNodeRef{NodeID: "synthetic-controlled-node", Public: f.subject.Public(), KeyVersion: 1, KeyEpoch: 1, HubNodeControlPublic: f.nc.Public(), HubNodeControlKeyVersion: 1, HubNodeControlFingerprint: nodewire.IdentityFingerprint(f.nc.Public()), CredentialCommitment: NativePairCredentialCommitment(string(f.nodeToken)), RequestID: "synthetic-pending-node-request", RequestVersion: 1, CandidateDigest: strings.Repeat("34", 32), CandidateExpiresAt: f.now.Add(10 * time.Minute).Format(time.RFC3339Nano)}}, Trust: e2ee.InstallationTrustSource{Kind: e2ee.InstallationFirstOOB}, IssuedAt: f.now.Format(time.RFC3339Nano), ExpiresAt: f.now.Add(10 * time.Minute).Format(time.RFC3339Nano)}
+	b := e2ee.InstallationCandidateBase{Format: InstallationFormat, Hub: e2ee.InstallationHubRef{Origin: f.scope.Origin, HubID: f.hub.HubID, Public: f.hub.Public, KeyVersion: f.hub.KeyVersion, Fingerprint: f.scope.HubFingerprint, TransportPolicy: AppNodeTransportHTTPS}, InstallationID: strings.Repeat("12", 16), AttemptID: strings.Repeat("23", 16), AdmissionPublic: f.admission.Public(), Components: []string{"APP", "HUB", "NODE"}, Subject: e2ee.InstallationSubject{Kind: e2ee.InstallationNodeSubject, Mode: e2ee.InstallationNewSubject, Node: &e2ee.InstallationNodeRef{NodeID: "synthetic-controlled-node", Public: f.subject.Public(), KeyVersion: 1, KeyEpoch: 1, HubNodeControlPublic: f.nc.Public(), HubNodeControlKeyVersion: 1, HubNodeControlFingerprint: nodewire.IdentityFingerprint(f.nc.Public())}}, Trust: e2ee.InstallationTrustSource{Kind: e2ee.InstallationFirstOOB}, IssuedAt: f.now.Format(time.RFC3339Nano), ExpiresAt: f.now.Add(10 * time.Minute).Format(time.RFC3339Nano)}
 	var err error
 	f.candidate, err = e2ee.NewInstallationCandidate(b, f.secret)
 	if err != nil {
@@ -87,7 +91,10 @@ func (f installationWireFixture) start(t *testing.T) (InstallationPacket, Instal
 	if err != nil {
 		t.Fatal(err)
 	}
-	q := InstallationStart{Format: InstallationFormat, Candidate: f.candidate, SubjectSignatureProof: s, NodeCredential: append([]byte(nil), f.nodeToken...)}
+	q := InstallationStart{Format: InstallationFormat, Candidate: f.candidate, SubjectSignatureProof: s}
+	if f.candidate.Base.Subject.Mode == e2ee.InstallationAdoptExisting {
+		q.NodeCredential = append([]byte(nil), f.nodeToken...)
+	}
 	raw, err := SealInstallationRequest(f.admission, f.hub, h, q)
 	if err != nil {
 		t.Fatal(err)
@@ -164,19 +171,19 @@ func TestInstallationWireActualPQAndExactRecovery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if OpenInstallationStartSubject(f.hubKey, f.hub, *opened.Self, got.Candidate, got.SubjectSignatureProof) != nil || !bytes.Equal(got.NodeCredential, f.nodeToken) {
+	if OpenInstallationStartSubject(f.hubKey, f.hub, *opened.Self, got.Candidate, got.SubjectSignatureProof) != nil || got.NodeCredential != nil {
 		t.Fatal("start did not bind original subject/bearer")
 	}
 	if bytes.Contains(start, f.nodeToken) {
 		t.Fatal("raw Node bearer leaked to public packet")
 	}
 	ClearInstallationRequestSecrets(&got)
-	if !bytes.Equal(got.NodeCredential, make([]byte, len(f.nodeToken))) {
+	if got.NodeCredential != nil {
 		t.Fatal("transient Node bearer not cleared")
 	}
-	q.NodeCredential = nil
+	q.NodeCredential = append([]byte(nil), f.nodeToken...)
 	if _, err := SealInstallationRequest(f.admission, f.hub, h, q); err == nil {
-		t.Fatal("public credential commitment replaced bearer possession")
+		t.Fatal("new Node created an unused legacy bearer")
 	}
 	approval := f.approval(t)
 	proof, capsule, err := e2ee.SealInstallationOwnerApproval(f.owner, f.candidate, approval, f.secret, f.ack)
@@ -205,7 +212,24 @@ func TestInstallationWireActualPQAndExactRecovery(t *testing.T) {
 	if OpenInstallationResponse(f.app, f.hub, complete, reply, &accepted) != nil {
 		t.Fatal("Owner receipt authentication")
 	}
-	local, err := e2ee.OpenInstallationTrustCapsuleFirstOOB(f.admission, f.candidate, accepted.OwnerProof, accepted.TrustCapsule, f.secret, f.now)
+	ph := f.self(15, OperationInstallationPoll)
+	poll, err := SealInstallationRequest(f.admission, f.hub, ph, InstallationPoll{Format: InstallationFormat, CandidateDigest: f.candidate.CandidateDigest})
+	if err != nil {
+		t.Fatal(err)
+	}
+	polled := accepted
+	polled.Result.Operation = OperationInstallationPoll
+	polled.Result.RequestID = ph.Self.RequestID
+	polled.Result.RequestPacketDigest = e2ee.InstallationPacketDigest(poll)
+	pollReply, err := SealInstallationResponse(f.hubKey, f.hub, poll, polled)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var delivered InstallationApproved
+	if OpenInstallationResponse(f.admission, f.hub, poll, pollReply, &delivered) != nil || OpenInstallationResponse(f.admission, f.hub, poll, reply, &delivered) == nil {
+		t.Fatal("admission Poll receipt replaced by Owner response")
+	}
+	local, err := e2ee.OpenInstallationTrustCapsuleFirstOOB(f.admission, f.candidate, polled.OwnerProof, polled.TrustCapsule, f.secret, f.now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -221,7 +245,7 @@ func TestInstallationWireActualPQAndExactRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 	at, _ := e2ee.InstallationApprovalDigest(approval)
-	ack, err := SealInstallationRequest(f.admission, f.hub, ah, InstallationAccept{Format: InstallationFormat, ApprovalReceiptDigest: e2ee.InstallationPacketDigest(reply), ApprovalDigest: at, CapsuleDigest: claims.CapsuleDigest, OwnerProofDigest: e2ee.InstallationPacketDigest(proof), ACKNonce: local.ACKNonce, SubjectAcceptance: sub})
+	ack, err := SealInstallationRequest(f.admission, f.hub, ah, InstallationAccept{Format: InstallationFormat, ApprovalReceiptDigest: e2ee.InstallationPacketDigest(pollReply), ApprovalDigest: at, CapsuleDigest: claims.CapsuleDigest, OwnerProofDigest: e2ee.InstallationPacketDigest(proof), ACKNonce: local.ACKNonce, SubjectAcceptance: sub})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -230,6 +254,9 @@ func TestInstallationWireActualPQAndExactRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer ClearInstallationRequestSecrets(&ackBody)
+	if ackBody.ApprovalReceiptDigest != e2ee.InstallationPacketDigest(pollReply) || ackBody.ApprovalReceiptDigest == e2ee.InstallationPacketDigest(reply) {
+		t.Fatal("accept did not bind its actual Poll raw bytes")
+	}
 	if e2ee.VerifyInstallationACK(f.owner.Public(), f.candidate, proof, capsule, ackBody.ACKNonce, f.now) != nil {
 		t.Fatal("private ACK nonce not bound")
 	}
@@ -367,9 +394,9 @@ func TestInstallationWireOwnGrantDiscoveryAndParentModel(t *testing.T) {
 	subject, other := strings.Repeat("12", 16), strings.Repeat("23", 16)
 	refs := make([]InstallationGrantRef, 0)
 	for i := 0; i < 30; i++ {
-		refs = append(refs, InstallationGrantRef{GrantID: fmt.Sprintf("%032x", i+1), OriginContract: InstallationContractRevision, Profile: e2ee.InstallationNodeReadProfile, SubjectRegistrationID: subject, RecipientDeviceID: "synthetic-app-two", State: "ACTIVE", Revision: 1, ExpiresAt: now.Add(-time.Minute).Format(time.RFC3339Nano)})
+		refs = append(refs, InstallationGrantRef{GrantID: fmt.Sprintf("%032x", i+1), OriginContract: InstallationContractRevision, Profile: e2ee.InstallationNodeReadProfile, Target: e2ee.InstallationAccessTarget{NodeBindingID: "synthetic-original-binding", NodeBindingVersion: 1, NodeKeyEpoch: 1}, SubjectRegistrationID: subject, RecipientDeviceID: "synthetic-app-two", State: "ACTIVE", Revision: 1, ExpiresAt: now.Add(-time.Minute).Format(time.RFC3339Nano)})
 	}
-	live := InstallationGrantRef{GrantID: strings.Repeat("34", 16), OriginContract: InstallationContractRevision, Profile: e2ee.InstallationNodeReadProfile, SubjectRegistrationID: subject, RecipientDeviceID: "synthetic-app-two", State: "ACTIVE", Revision: 1, ExpiresAt: now.Add(time.Minute).Format(time.RFC3339Nano)}
+	live := InstallationGrantRef{GrantID: strings.Repeat("34", 16), OriginContract: InstallationContractRevision, Profile: e2ee.InstallationNodeReadProfile, Target: e2ee.InstallationAccessTarget{NodeBindingID: "synthetic-original-binding", NodeBindingVersion: 1, NodeKeyEpoch: 1}, SubjectRegistrationID: subject, RecipientDeviceID: "synthetic-app-two", State: "ACTIVE", Revision: 1, ExpiresAt: now.Add(time.Minute).Format(time.RFC3339Nano)}
 	refs = append(refs, live)
 	foreign := live
 	foreign.GrantID = strings.Repeat("45", 16)
@@ -423,6 +450,10 @@ func TestInstallationWireLegacyCredentialRequiresCurrentBearer(t *testing.T) {
 	f := installationWire(t)
 	b := installationWireClone(f.candidate.Base)
 	b.Subject.Mode = e2ee.InstallationAdoptExisting
+	b.Subject.Node.CredentialCommitment = NativePairCredentialCommitment(string(f.nodeToken))
+	b.Subject.Node.RequestID = "synthetic-original-request"
+	b.Subject.Node.RequestVersion = 1
+	b.Subject.Node.CandidateDigest = strings.Repeat("34", 32)
 	b.Subject.Node.CandidateExpiresAt = ""
 	b.Subject.Node.BindingID = "synthetic-original-binding"
 	b.Subject.Node.BindingVersion = 3
@@ -465,15 +496,16 @@ func TestInstallationWireLegacyCredentialRequiresCurrentBearer(t *testing.T) {
 }
 
 type installationPublicVector struct {
-	SyntheticOnly  bool                  `json:"synthetic_only"`
-	Warning        string                `json:"warning"`
-	Candidate      InstallationCandidate `json:"candidate"`
-	OwnerProof     []byte                `json:"owner_proof"`
-	Capsule        []byte                `json:"capsule"`
-	ACKNonce       []byte                `json:"synthetic_ack_nonce"`
-	OOBSecret      []byte                `json:"synthetic_oob_secret"`
-	ApprovalDigest string                `json:"approval_digest"`
-	VerifiedAt     string                `json:"verified_at"`
+	ContractRevision string                `json:"contract_revision"`
+	SyntheticOnly    bool                  `json:"synthetic_only"`
+	Warning          string                `json:"warning"`
+	Candidate        InstallationCandidate `json:"candidate"`
+	OwnerProof       []byte                `json:"owner_proof"`
+	Capsule          []byte                `json:"capsule"`
+	ACKNonce         []byte                `json:"synthetic_ack_nonce"`
+	OOBSecret        []byte                `json:"synthetic_oob_secret"`
+	ApprovalDigest   string                `json:"approval_digest"`
+	VerifiedAt       string                `json:"verified_at"`
 }
 
 func TestInstallationWireSyntheticPublicVector(t *testing.T) {
@@ -487,7 +519,7 @@ func TestInstallationWireSyntheticPublicVector(t *testing.T) {
 			t.Fatal(err)
 		}
 		d, _ := e2ee.InstallationApprovalDigest(a)
-		vector = installationPublicVector{SyntheticOnly: true, Warning: "SYNTHETIC PUBLIC CRYPTOGRAPHIC FIXTURE ONLY. NEVER INITIALIZE A DEPLOYMENT. NO PRIVATE KEYS.", Candidate: f.candidate, OwnerProof: proof, Capsule: capsule, ACKNonce: f.ack, OOBSecret: f.secret, ApprovalDigest: d, VerifiedAt: f.now.Format(time.RFC3339Nano)}
+		vector = installationPublicVector{ContractRevision: InstallationContractRevision, SyntheticOnly: true, Warning: "SYNTHETIC PUBLIC CRYPTOGRAPHIC FIXTURE ONLY. NEVER INITIALIZE A DEPLOYMENT. NO PRIVATE KEYS.", Candidate: f.candidate, OwnerProof: proof, Capsule: capsule, ACKNonce: f.ack, OOBSecret: f.secret, ApprovalDigest: d, VerifiedAt: f.now.Format(time.RFC3339Nano)}
 		b, err := json.MarshalIndent(vector, "", "  ")
 		if err != nil {
 			t.Fatal(err)
@@ -496,7 +528,7 @@ func TestInstallationWireSyntheticPublicVector(t *testing.T) {
 			t.Fatal(err)
 		}
 	} else {
-		b, err := os.ReadFile("testdata/installation-registration-v1.json")
+		b, err := os.ReadFile("testdata/installation-registration-v1.1.json")
 		if err != nil {
 			t.Fatal("public fixture absent", err)
 		}
@@ -504,7 +536,7 @@ func TestInstallationWireSyntheticPublicVector(t *testing.T) {
 			t.Fatal("public fixture encoding")
 		}
 	}
-	if !vector.SyntheticOnly || !strings.Contains(vector.Warning, "NEVER INITIALIZE A DEPLOYMENT") || !strings.Contains(vector.Candidate.Base.Hub.Origin, ".invalid") {
+	if vector.ContractRevision != InstallationContractRevision || !vector.SyntheticOnly || !strings.Contains(vector.Warning, "NEVER INITIALIZE A DEPLOYMENT") || !strings.Contains(vector.Candidate.Base.Hub.Origin, ".invalid") {
 		t.Fatal("fixture is not visibly synthetic")
 	}
 	var p e2ee.InstallationOwnerProof
@@ -546,7 +578,7 @@ func TestInstallationWireMaximumLegalPQMetadataAndBounds(t *testing.T) {
 	f.scope.DeviceID = strings.Repeat("d", 128)
 	f.scope.AccountSessionID = strings.Repeat("s", 256)
 	b.Subject.Node.NodeID = strings.Repeat("n", 256)
-	b.Subject.Node.RequestID = strings.Repeat("r", 256)
+	// NEW_SUBJECT has no legacy request coordinates, even at maximum size.
 	var err error
 	f.candidate, err = e2ee.NewInstallationCandidate(b, f.secret)
 	if err != nil {
@@ -653,7 +685,7 @@ func TestInstallationWirePairSnapshotBytePagination(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := NativePairResult{Format: NativePairFormat, Operation: OperationNativePairStatus, RequestID: strings.Repeat("a1", 16), RequestPacketDigest: strings.Repeat("b2", 32), PairID: pair.plan.PairID, State: NativePairWaitingConsent, Outcome: "COMPLETED", ControlRevision: 2, PeerExpiresAt: pair.plan.PeerExpiresAt, SlotA: &pair.plan.SlotA, SlotB: &pair.plan.SlotB, SlotAState: NativePairSlotCandidateReady, SlotBState: NativePairSlotCandidateReady, ObservedAt: formatUTC(pair.f.now)}
-	snapshot := InstallationConnectionsSnapshot{Format: InstallationFormat, RequestID: q.RequestID, RequestPacketDigest: e2ee.InstallationPacketDigest(request), SnapshotRevision: 1, Grants: []InstallationGrantRef{}, Parents: []InstallationParent{}, Nodes: []AppNodeObservation{}, Pairs: []NativePairResult{r}, ObservedAt: f.now.Format(time.RFC3339Nano)}
+	snapshot := InstallationConnectionsSnapshot{Format: InstallationFormat, RequestID: q.RequestID, RequestPacketDigest: e2ee.InstallationPacketDigest(request), SnapshotRevision: 1, ActorScope: f.scope, Subjects: []InstallationSubjectBinding{}, PendingAttempts: []InstallationPendingAttemptRef{}, Grants: []InstallationGrantRef{}, Parents: []InstallationParent{}, Nodes: []AppNodeObservation{}, Pairs: []NativePairResult{r}, ObservedAt: f.now.Format(time.RFC3339Nano)}
 	actual, err := SealInstallationResponse(f.hubKey, f.hub, request, snapshot)
 	if err != nil {
 		t.Fatal("one maximum-field genuine PQ Pair cannot fit", err)
@@ -730,7 +762,7 @@ func TestInstallationWireClosedDiscoveryAndEffectiveGrantLimit(t *testing.T) {
 	subject := strings.Repeat("11", 16)
 	refs := make([]InstallationGrantRef, 0)
 	for i := 0; i < 16; i++ {
-		refs = append(refs, InstallationGrantRef{GrantID: fmt.Sprintf("%032x", i+1), OriginContract: InstallationContractRevision, Profile: e2ee.InstallationNodeReadProfile, SubjectRegistrationID: subject, RecipientDeviceID: "synthetic-app", State: "ACTIVE", Revision: 1, ExpiresAt: now.Add(time.Minute).Format(time.RFC3339Nano)})
+		refs = append(refs, InstallationGrantRef{GrantID: fmt.Sprintf("%032x", i+1), OriginContract: InstallationContractRevision, Profile: e2ee.InstallationNodeReadProfile, Target: e2ee.InstallationAccessTarget{NodeBindingID: "synthetic-original-binding", NodeBindingVersion: 1, NodeKeyEpoch: 1}, SubjectRegistrationID: subject, RecipientDeviceID: "synthetic-app", State: "ACTIVE", Revision: 1, ExpiresAt: now.Add(time.Minute).Format(time.RFC3339Nano)})
 	}
 	if selected, err := SelectInstallationRecipientGrants(refs, subject, "synthetic-app", nil, now); err != nil || len(selected) != 16 {
 		t.Fatal("effective 16-grant boundary", err)

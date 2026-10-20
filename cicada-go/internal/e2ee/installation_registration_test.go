@@ -39,8 +39,8 @@ func installationFixtureAt(t *testing.T) installationFixture {
 	return f
 }
 
-func (f installationFixture) scope() OwnerAppNodeScope {
-	return OwnerAppNodeScope{Version: 1, Origin: f.candidate.Base.Hub.Origin, HubID: f.candidate.Base.Hub.HubID, HubFingerprint: f.candidate.Base.Hub.Fingerprint, AccountID: "synthetic-account", AccountSessionID: "synthetic-admin-session", AccountSessionExpiresAt: f.now.Add(15 * time.Minute).Format(time.RFC3339Nano), OwnerID: "synthetic-owner", OwnerPublic: f.owner.Public(), OwnerKeyVersion: 1, DeviceID: "synthetic-owner-app", DevicePublic: f.app.Public(), AccountEpoch: 1, DeviceEpoch: 1, ClientSessionEpoch: 1, TransportPolicy: "HTTPS_APPLICATION_PQ"}
+func (f installationFixture) scope() InstallationAccountScope {
+	return InstallationAccountScope{Version: 1, Origin: f.candidate.Base.Hub.Origin, HubID: f.candidate.Base.Hub.HubID, HubFingerprint: f.candidate.Base.Hub.Fingerprint, AccountID: "synthetic-account", AccountSessionID: "synthetic-admin-session", AccountSessionExpiresAt: f.now.Add(15 * time.Minute).Format(time.RFC3339Nano), OwnerID: "synthetic-owner", OwnerPublic: f.owner.Public(), OwnerKeyVersion: 1, DeviceID: "synthetic-owner-app", DevicePublic: f.app.Public(), AccountEpoch: 1, DeviceEpoch: 1, TransportPolicy: "HTTPS_APPLICATION_PQ"}
 }
 
 func (f installationFixture) approval(t *testing.T) InstallationApprovalBase {
@@ -62,6 +62,75 @@ func installationClone[T any](v T) T {
 	var out T
 	_ = json.Unmarshal(b, &out)
 	return out
+}
+
+func TestInstallationRegistrationIndependentAccountScope(t *testing.T) {
+	f := installationFixtureAt(t)
+	s := f.scope()
+	if ValidateInstallationAccountScope(s) != nil {
+		t.Fatal("actual independent account scope rejected")
+	}
+	for _, name := range []string{"ClientSessionEpoch", "HeadVersion"} {
+		if _, found := reflect.TypeOf(s).FieldByName(name); found {
+			t.Fatal("registration manufactured legacy Client/N3 context")
+		}
+	}
+	for name, mutate := range map[string]func(*InstallationAccountScope){
+		"unknown session":           func(s *InstallationAccountScope) { s.AccountSessionID = "" },
+		"unknown Owner key version": func(s *InstallationAccountScope) { s.OwnerKeyVersion = 0 },
+		"unknown account epoch":     func(s *InstallationAccountScope) { s.AccountEpoch = 0 },
+		"unknown device epoch":      func(s *InstallationAccountScope) { s.DeviceEpoch = 0 },
+		"same Owner and App":        func(s *InstallationAccountScope) { s.DevicePublic = s.OwnerPublic },
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := installationClone(s)
+			mutate(&bad)
+			if ValidateInstallationAccountScope(bad) == nil {
+				t.Fatal("invented or missing real context accepted")
+			}
+		})
+	}
+	q := InstallationReadQuery{HubID: s.HubID, AccountID: s.AccountID, OwnerID: s.OwnerID, DeviceID: s.DeviceID, AccountEpoch: s.AccountEpoch, DeviceEpoch: s.DeviceEpoch, RequestID: strings.Repeat("84", 16), Nonce: strings.Repeat("94", 32), TargetKind: "INSTALLATIONS", PageSize: 50}
+	d, _ := InstallationReadQueryDigest(q)
+	p, err := SignInstallationOwnerRead(f.owner, InstallationOwnerReadClaims{Version: 1, Purpose: InstallationReadPurpose, Scope: s, RequestID: q.RequestID, Nonce: q.Nonce, QueryDigest: d, IssuedAt: f.now.Format(time.RFC3339Nano), ExpiresAt: f.now.Add(time.Minute).Format(time.RFC3339Nano)}, q)
+	if err != nil {
+		t.Fatal("Owner with no Client/N2/N3 may sign exact read", err)
+	}
+	if _, err := VerifyInstallationOwnerRead(f.owner.Public(), p, q, f.now); err != nil {
+		t.Fatal(err)
+	}
+	// An old scope's extra legacy coordinate cannot silently enter this proof.
+	old := bytes.Replace(p, []byte(`"scope":{`), []byte(`"scope":{"client_session_epoch":1,`), 1)
+	if _, err := VerifyInstallationOwnerRead(f.owner.Public(), old, q, f.now); err == nil {
+		t.Fatal("old scope interpreted as the revised contract")
+	}
+}
+
+func TestInstallationRegistrationNewNodeIsItsOwnCandidate(t *testing.T) {
+	f := installationFixtureAt(t)
+	b := installationClone(f.candidate.Base)
+	b.Subject = InstallationSubject{Kind: InstallationNodeSubject, Mode: InstallationNewSubject, Node: &InstallationNodeRef{NodeID: "synthetic-new-node", Public: f.subject.Public(), KeyVersion: 1, KeyEpoch: 1, HubNodeControlPublic: f.nc.Public(), HubNodeControlKeyVersion: 1, HubNodeControlFingerprint: strings.Repeat("13", 32)}}
+	if _, err := NewInstallationCandidate(b, f.secret); err != nil {
+		t.Fatal("new Node required fabricated legacy history", err)
+	}
+	for name, mutate := range map[string]func(*InstallationNodeRef){
+		"request":            func(n *InstallationNodeRef) { n.RequestID = "fake-legacy-request" },
+		"request version":    func(n *InstallationNodeRef) { n.RequestVersion = 1 },
+		"candidate":          func(n *InstallationNodeRef) { n.CandidateDigest = strings.Repeat("24", 32) },
+		"candidate expiry":   func(n *InstallationNodeRef) { n.CandidateExpiresAt = b.ExpiresAt },
+		"binding":            func(n *InstallationNodeRef) { n.BindingID = "fake-legacy-binding" },
+		"binding version":    func(n *InstallationNodeRef) { n.BindingVersion = 1 },
+		"credential":         func(n *InstallationNodeRef) { n.CredentialCommitment = strings.Repeat("34", 32) },
+		"credential version": func(n *InstallationNodeRef) { n.CredentialVersion = 1 },
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := installationClone(b)
+			mutate(bad.Subject.Node)
+			if _, err := NewInstallationCandidate(bad, f.secret); err == nil {
+				t.Fatal("new Node claimed nonexistent legacy history or bearer")
+			}
+		})
+	}
 }
 
 func installationCheckIssuanceTimes(t *testing.T, issued, expiry time.Time, check func(time.Time) error) {
