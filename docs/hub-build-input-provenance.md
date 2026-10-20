@@ -68,6 +68,32 @@ the checkout are rejected except under `.cicada-data/`, which is excluded by
 both Git and Docker ignore rules. This keeps generated metadata from becoming
 a self-referential source input or changing the captured dirty state.
 
+## Optional standard-build Go module proxy
+
+Standard image builds accept an explicit `CICADA_BUILD_GOPROXY` override, passed
+as one Docker `--build-arg GOPROXY=...` value to both runtime and interop build
+targets. Unset or empty values leave the Dockerfile's official
+`https://proxy.golang.org,direct` default. The host's plain `GOPROXY` is not
+forwarded. Existing HTTP(S) proxy routing is independent. PQTLS's accepted builder
+and dependency environment are unchanged; this override applies only to the
+standard Dockerfile. Source-only capture still needs no Docker or network.
+
+For an owned read-only module-cache proxy already listening on loopback:
+
+```sh
+CICADA_BUILD_GOPROXY=http://127.0.0.1:PORT \
+  scripts/build-hub-image.sh --image TASK_IMAGE \
+  --interop-test-image TASK_TEST_IMAGE --metadata-file /ABSOLUTE/EVIDENCE/build.json
+```
+
+Use the task's allocated port and image names. The existing build uses host
+networking, so the temporary proxy remains a local build input. This changes the
+download source only: pinned modules, `go.sum`, normal Go checksum-database
+verification and the source/inventory stability fences remain unchanged. No
+module-cache mount or new dependency is introduced. Record the chosen proxy,
+its read-only source and actual build/network outcome separately; the inventory
+does not fingerprint environment values or turn a failed download into a pass.
+
 ## Limits and historical evidence
 
 The inventory describes filesystem inputs from the v4 selected scope. It does

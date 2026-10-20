@@ -5,6 +5,7 @@ usage() {
   printf 'usage: %s [--image IMAGE] [--interop-test-image IMAGE] [--metadata-file PATH] [--targetarch amd64|arm64]\n' "$0" >&2
   printf '       %s --source-info-only --metadata-file PATH\n' "$0" >&2
   printf '       optional: --transport pqtls --targetarch amd64|arm64 --pqtls-stage ACCEPTED_PREFIX\n' "$0" >&2
+  printf '       standard build only: CICADA_BUILD_GOPROXY overrides the Go module proxy\n' >&2
   exit 2
 }
 
@@ -293,6 +294,12 @@ build_args=(
   --build-arg "CICADA_BUILD_VERSION=${build_version}"
   --build-arg "CICADA_BUILD_WEBCRYPTO_MANIFEST_SHA256=${webcrypto_manifest_sha256}"
 )
+
+# This opt-in is separate from HTTP(S) proxy routing and the host's GOPROXY.
+# The PQTLS builder keeps its existing accepted dependency environment.
+if [[ "$transport" == standard && -n "${CICADA_BUILD_GOPROXY:-}" ]]; then
+  build_args+=(--build-arg "GOPROXY=${CICADA_BUILD_GOPROXY}")
+fi
 
 add_proxy_args() {
   local http_proxy_value=""
