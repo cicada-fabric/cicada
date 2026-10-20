@@ -15,7 +15,8 @@ elif [[ $# == 1 && "$1" == --endpoint-security-owner-directory ]]; then mode=end
 elif [[ $# == 1 && "$1" == --endpoint-security-owner-directory-recovery ]]; then mode=endpoint-security-owner-directory-recovery
 elif [[ $# == 1 && "$1" == --codex-product-guards ]]; then mode=codex-product-guards
 elif [[ $# == 1 && "$1" == --codex-product-cli ]]; then mode=codex-product-cli
-elif [[ $# != 0 ]]; then printf 'Usage: scripts/test-native-pair.sh [--store-regressions|--a3-core|--a3-http|--a3-size-store|--app-owner|--endpoint-security|--endpoint-security-boundaries|--endpoint-security-app-fixture|--endpoint-security-owner-directory|--endpoint-security-owner-directory-recovery|--codex-product-guards|--codex-product-cli]\n' >&2; exit 2; fi
+elif [[ $# == 1 && "$1" == --codex-product-cold ]]; then mode=codex-product-cold
+elif [[ $# != 0 ]]; then printf 'Usage: scripts/test-native-pair.sh [--store-regressions|--a3-core|--a3-http|--a3-size-store|--app-owner|--endpoint-security|--endpoint-security-boundaries|--endpoint-security-app-fixture|--endpoint-security-owner-directory|--endpoint-security-owner-directory-recovery|--codex-product-guards|--codex-product-cli|--codex-product-cold]\n' >&2; exit 2; fi
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source_root="$repo_root"
 if [[ "$mode" == endpoint-security* && ! -f "$source_root/docs/native-endpoint-directory-contract.md" ]]; then
@@ -37,7 +38,7 @@ module_cache="$local_root/cache/n2-acceptance/gomod-go1.27.2-stable"
 build_cache="$local_root/cache/native-pair-acceptance/go-build-go1.27.3"
 image='golang:1.27.3-bookworm@sha256:5c3e9b43cfd3bb95c7937462e29d87ada57b481a96fa23ad0eb61778d7a00110'
 codex_mount=()
-if [[ "$mode" == codex-product-cli ]]; then
+if [[ "$mode" == codex-product-cli || "$mode" == codex-product-cold ]]; then
  if [[ ! -f "$source_root/.agents/plugins/cicada/hooks/hooks.json" || ! -f "$source_root/.agents/plugins/cicada/.mcp.json" || ! -f "$source_root/.agents/plugins/cicada/.codex-plugin/plugin.json" ]]; then
   printf 'Installed-plugin gate requires the integrated existing-plugin assets; NOT_RUN.\n' >&2; exit 2
  fi
@@ -142,6 +143,7 @@ else
  lane compile-tests go test -mod=readonly -c -o /out/n3.test ./acceptance/n3
  if [[ "$(cat "$evidence/compile-cli.exit")" == 0 && "$(cat "$evidence/compile-tests.exit")" == 0 ]]; then
   python3 "$repo_root/scripts/native_pair_evidence.py" binaries "$artifacts" "$evidence/binaries-before.json"
+  runtime_timeout=4m
   if [[ "$mode" == app-owner ]]; then
    selector='^TestN3AppPairActionsBootstrapDualConsentAndRevoke$'
   elif [[ "$mode" == endpoint-security ]]; then
@@ -158,10 +160,13 @@ else
    selector='^TestN3CodexProduct(ContextRefusesMissingAndForged|MCPRestartRotatesConnectionNonce)$'
   elif [[ "$mode" == codex-product-cli ]]; then
    selector='^TestN3CodexProductInstalledPluginLiteralTUI$'
+  elif [[ "$mode" == codex-product-cold ]]; then
+   selector='^TestN3CodexProductColdLeaseBeforeFirstTool$'
+   runtime_timeout=12m
   else
    selector='^TestN3NativePair(BootstrapAndExactReplay|WrongNodeScopeIsFenced|PrepareLossBeforeForward|CompleteLossAfterCommit|MissingOwnerProofCannotBootstrap)$'
   fi
-  lane harness go tool test2json -t /out/n3.test -test.v -test.count=1 -test.timeout=4m "-test.run=$selector"
+  lane harness go tool test2json -t /out/n3.test -test.v -test.count=1 "-test.timeout=$runtime_timeout" "-test.run=$selector"
   python3 "$repo_root/scripts/native_pair_evidence.py" binaries "$artifacts" "$evidence/binaries-after.json"
  else
   printf 'Required compilation failed; runtime NOT_RUN.\n' >"$evidence/harness.log"

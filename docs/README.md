@@ -27,8 +27,11 @@ actual installed-plugin [PTY/Host context checks](native-app-validation.md#2026-
 now have a bounded Linux PASS: normal trust, visible literal register/peers,
 zero literal provider POSTs and Host `whoami` reaching an unjoined business
 refusal. Earlier seven-event process guards keep their separate source.
-Pair cold lease/faults, real model/queue consumption and physical Windows
-remain unaccepted.
+The separate [actual default-five-minute cold gate](native-app-validation.md#2026-10-20-actual-default-five-minute-cold-lease-and-current-revocation)
+passes named connects, authenticated App identity matching and dual consent,
+Node restart/renewal before the first joined Host tool, and current revocation.
+It requires the existing manual Owner public pin. Operator faults, Leave, real
+model/queue consumption and physical Windows remain unaccepted.
 `bb0644b68627579af470ead52035d42618372c75` integrates native navigation
 and CJK font source; physical Windows review remains NOT_RUN. Broader C0 work is frozen.
 Partial storage-default source `73d6f9ad13c26ad7cf203e2924adcc7a46104213`
@@ -67,7 +70,7 @@ guide's v0.1.x denotes the planned first release line.
 | Hub Owner bootstrap checkpoint | [Operator guide](hub-owner-bootstrap.md), [first-signer contract](hub-owner-bootstrap-contract.md), [validation](hub-owner-bootstrap-validation.md), and [historical UI and retained security-design notes](owner-onboarding-design.md) — historical bounded Hub/account SCOPED PASS; original aggregate failures/timeouts retained. N2 adds [finite activation and exact pending-Owner continuation](hub-owner-activation-contract.md). Lost/revoked Root recovery is not implemented by N2 |
 | Native App | [Architecture](native-app-architecture.md), [plan and matrix](native-app-plan.md), [integration evidence and Windows procedure](native-app-validation.md#n2-hubapp-integration) — earlier N2/N3 Linux scopes and later Core/UI/installer/cross-build records remain source-specific. Dedicated Windows DPAPI/ACL/GUI/uninstall and physical visual review remain unaccepted. Unencrypted existing Owner identities can be vaulted and proved; encrypted PKCS#8 input unsupported |
 | Controlled installation registration | [C0.1 contract](hub-installation-registration-contract.md), [native plan](native-app-plan.md#composable-installation-and-shared-state-acceptance-target), [validation](native-app-validation.md) — v1.1 crypto/wire checkpoint committed; default public availability false and actual INST integration NOT_RUN |
-| Explicit native Endpoint and private Owner directory | [Contract](native-endpoint-directory-contract.md), [producer validation](native-endpoint-directory-validation.md), [actual App read/recovery](native-app-validation.md#2026-10-20-actual-app-owner-directory-integration), [actual installed plugin](native-app-validation.md#2026-10-20-actual-installed-plugin-pty-and-host-mcp-context) — bounded actual register/peers and Host context PASS; Pair cold lease, faults, extended privacy/expiry and native consumption remain separate gates |
+| Explicit native Endpoint and private Owner directory | [Contract](native-endpoint-directory-contract.md), [producer validation](native-endpoint-directory-validation.md), [actual App read/recovery](native-app-validation.md#2026-10-20-actual-app-owner-directory-integration), [actual installed plugin](native-app-validation.md#2026-10-20-actual-installed-plugin-pty-and-host-mcp-context) — bounded actual register/peers and Host context PASS; [actual cold lease/revocation](native-app-validation.md#2026-10-20-actual-default-five-minute-cold-lease-and-current-revocation) passes with manual Owner pin; faults, Leave, extended privacy/expiry and native consumption remain separate gates |
 | Identity/Node-only Hub | [Operator guide](hub-nodes-only.md), [N3 contract](hub-app-node-authority-contract.md), [Hub validation](hub-app-node-authority-validation.md) — standard HTTPS plus application PQ envelopes; strict PQTLS, native Runtime and physical deployment acceptance remain separate |
 | Deployment and platform interfaces | [CLI, legacy Web UI and local components](deployment-interface-design.md) — official-product research and platform delivery plan; the native App is the current user-interface target, and platform build/runtime evidence stays separate |
 | Install and operate | [Distribution](distribution.md), [development setup](../DEVELOPMENT.md), [Hub build provenance](hub-build-input-provenance.md) |

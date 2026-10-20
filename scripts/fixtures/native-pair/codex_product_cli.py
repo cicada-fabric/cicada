@@ -142,6 +142,7 @@ def render_terminal(raw, rows=45, columns=180):
 
 class ActualCLI:
     def __init__(self, config):
+        self.config = config
         self.root = Path(config['root'])
         self.workspace = Path(config['workspace'])
         self.codex_home = Path(config['codex_home'])
@@ -339,6 +340,11 @@ class ActualCLI:
                         frames.append({'stage': 'normal-trust-control', 'screen': plain,
                                        'elapsed_seconds': time.monotonic() - started})
                 if peers_ready_at is not None and time.monotonic() >= peers_ready_at and not sent_peers:
+                    if self.config.get('require_unique_literal_titles'):
+                        assert compact.count('ThisThreadisregistered') == 1, 'ACTUAL_JOIN_RESULT_TITLE_DUPLICATED'
+                        result_body = compact.split('ThisThreadisregistered', 1)[1]
+                        assert 'Syntheticinstalled-pluginThread' in result_body and str(self.workspace) in result_body, 'ACTUAL_JOIN_RESULT_FIELDS_NOT_VISIBLE'
+                    frames.append({'stage': 'literal-join', 'screen': plain})
                     type_command('cicada peers')
                     sent_peers = True
                 if not select.select([master], [], [], .1)[0]:
@@ -366,10 +372,19 @@ class ActualCLI:
                         trust_ready_at = time.monotonic() + 2
                 if 'ThisThreadisregistered' in compact and peers_ready_at is None:
                     peers_ready_at = time.monotonic() + .5
-                    frames.append({'stage': 'literal-join', 'screen': plain})
                 if (sent_peers and 'NodeThreaddirectorysnapshot' in compact and
                         'Syntheticinstalled-pluginThread' in compact and str(self.workspace) in compact and
                         'Offlineatsnapshot' in compact):
+                    if self.config.get('require_unique_literal_titles'):
+                        time.sleep(.4)
+                        while select.select([master], [], [], 0)[0]:
+                            captured.extend(os.read(master, 65536))
+                        plain = render_terminal(captured)
+                        compact = re.sub(r'\s+', '', plain)
+                        assert compact.count('NodeThreaddirectorysnapshot') == 1, 'ACTUAL_PEERS_RESULT_TITLE_DUPLICATED'
+                        result_body = compact.split('NodeThreaddirectorysnapshot', 1)[1]
+                        assert ('Syntheticinstalled-pluginThread' in result_body and str(self.workspace) in result_body and
+                                'Offlineatsnapshot' in result_body), 'ACTUAL_PEERS_RESULT_FIELDS_NOT_VISIBLE'
                     visible = True
                     frames.append({'stage': 'literal-peers', 'screen': plain})
                     type_command('/exit')
@@ -409,8 +424,39 @@ class ActualCLI:
 def run(config):
     cli = ActualCLI(config)
     requests = []
+    # An actual resumed Thread includes prior function outputs. Bind this
+    # static dispatch to a distinct phase ID so only its current result is
+    # considered; history must not satisfy or mask the current Guard check.
+    invocation_suffix = hashlib.sha256(cli.step.encode()).hexdigest()[:16]
+    call_id = 'call_synthetic_actual_whoami_' + invocation_suffix
+    item_id = 'fc_synthetic_actual_whoami_' + invocation_suffix
     stage = {'name': 'literal', 'issues': [], 'whoami_not_joined': False,
-             'context_required': False, 'mcp_environment': []}
+             'context_required': False, 'mcp_environment': [], 'whoami_actor': None, 'guard_denied': False}
+
+    def actor_from_output(value):
+        if isinstance(value, dict):
+            if value.get('endpoint_id') and value.get('binding_epoch'):
+                return value
+            for child in value.values():
+                found = actor_from_output(child)
+                if found is not None:
+                    return found
+        elif isinstance(value, list):
+            for child in value:
+                found = actor_from_output(child)
+                if found is not None:
+                    return found
+        elif isinstance(value, str):
+            for match in re.finditer(r'\{', value):
+                try:
+                    decoded, _ = json.JSONDecoder().raw_decode(value[match.start():])
+                except ValueError:
+                    continue
+                if isinstance(decoded, (dict, list)):
+                    found = actor_from_output(decoded)
+                    if found is not None:
+                        return found
+        return None
 
     class StaticProvider(http.server.BaseHTTPRequestHandler):
         def log_message(self, *args):
@@ -462,7 +508,7 @@ def run(config):
                             stage['issues'].append('ACTUAL_HOST_CONNECTION_NONCE_NOT_ADVERTISED')
                         else:
                             arguments = json.dumps({'_cicada_context': {'connection_nonce': nonce}})
-                            item = {'type': 'function_call', 'id': 'fc_synthetic_actual_whoami', 'call_id': 'call_synthetic_actual_whoami',
+                            item = {'type': 'function_call', 'id': item_id, 'call_id': call_id,
                                     'namespace': namespace, 'name': function['name'], 'arguments': arguments, 'status': 'completed'}
                             argument_events = [
                                 ('response.output_item.added', {'output_index': 0, 'item': {**item, 'arguments': '', 'status': 'in_progress'}}),
@@ -470,7 +516,7 @@ def run(config):
                                 ('response.function_call_arguments.done', {'item_id': item['id'], 'output_index': 0, 'arguments': arguments})]
                 elif count == 2:
                     outputs = [value for value in request.get('input', [])
-                               if value.get('type') == 'function_call_output' and value.get('call_id') == 'call_synthetic_actual_whoami']
+                               if value.get('type') == 'function_call_output' and value.get('call_id') == call_id]
                     text = json.dumps(outputs, ensure_ascii=False)
                     stage['context_required'] = any(value in text for value in
                                                      ('CODEX_CALL_CONTEXT_REQUIRED', 'CODEX_CONTEXT_UNSUPPORTED', 'could not verify this invocation'))
@@ -478,9 +524,13 @@ def run(config):
                                                   any(value in text for value in
                                                       ('requires an active Cicada session; call cicada_join first',
                                                        'Cicada session is not joined; call cicada_join first')))
+                    stage['whoami_actor'] = actor_from_output(outputs)
+                    stage['guard_denied'] = (len(outputs) == 1 and not stage['context_required'] and
+                                             'requires approval' not in text and
+                                             re.search(r'Cicada Hub (?:401|403)', text) is not None)
                 else:
                     stage['issues'].append('UNEXPECTED_HOST_WHOAMI_PROVIDER_REQUEST')
-            response = {'id': 'resp_synthetic_' + stage['name'].replace('-', '_') + '_' + str(count), 'object': 'response', 'status': 'completed', 'created_at': int(time.time()),
+            response = {'id': 'resp_synthetic_' + invocation_suffix + '_' + stage['name'].replace('-', '_') + '_' + str(count), 'object': 'response', 'status': 'completed', 'created_at': int(time.time()),
                         'output': [item], 'usage': {'input_tokens': 0, 'output_tokens': 0, 'total_tokens': 0}}
             self.send_response(200)
             self.send_header('Content-Type', 'text/event-stream')
@@ -500,8 +550,11 @@ def run(config):
               'real_model_turns': 0, 'provider_http_requests': requests}
     try:
         configuration = cli.codex_home / 'config.toml'
-        assert not configuration.exists(), 'FRESH_CLI_HOME_REQUIRED'
-        configuration.write_text('''model = "synthetic-no-model"
+        operation = config.get('operation', 'full')
+        assert operation in ('full', 'literal-setup', 'literal-command', 'host-whoami'), 'UNKNOWN_ACCEPTANCE_PHASE'
+        if operation in ('full', 'literal-setup'):
+            assert not configuration.exists(), 'FRESH_CLI_HOME_REQUIRED'
+            configuration.write_text('''model = "synthetic-no-model"
 model_provider = "qa_static"
 approval_policy = "never"
 sandbox_mode = "read-only"
@@ -516,41 +569,81 @@ stream_max_retries = 0
 [analytics]
 enabled = false
 '''.replace('PORT', str(server.server_port)) + '\n[projects.' + json.dumps(str(cli.workspace)) + ']\ntrust_level = "trusted"\n')
-        cli.command('marketplace-add', ['plugin', 'marketplace', 'add', str(cli.marketplace)])
-        cli.command('plugin-add', ['plugin', 'add', 'cicada@cicada-repo'])
-        hooks = cli.inventory('installed-before')
-        sid = cli.literal_tui(hooks)
-        after = cli.inventory('installed-after')
-        assert all(h['trustStatus'] in ('trusted', 'managed') for h in after), 'NORMAL_PLUGIN_HOOK_TRUST_NOT_CONFIRMED'
-        assert {h['key']: h['currentHash'] for h in hooks} == {h['key']: h['currentHash'] for h in after}
-        record = cli.native_records()[sid]
-        assert record['metadata']['source'] == 'cli', 'ACTUAL_TUI_SOURCE_NOT_CONFIRMED'
-        assert not requests, 'LITERAL_COMMAND_REACHED_PROVIDER'
-        result.update(native_session_id=sid, native_record=record['path'],
-                      name='Synthetic installed-plugin Thread', workspace=str(cli.workspace), presence='offline',
-                      actual_plugin_hook_source=True, literal_join_peers_visible=True, literal_provider_requests=0)
+            cli.command('marketplace-add', ['plugin', 'marketplace', 'add', str(cli.marketplace)])
+            cli.command('plugin-add', ['plugin', 'add', 'cicada@cicada-repo'])
+            hooks = cli.inventory('installed-before')
+            sid = cli.literal_tui(hooks)
+            after = cli.inventory('installed-after')
+            assert all(h['trustStatus'] in ('trusted', 'managed') for h in after), 'NORMAL_PLUGIN_HOOK_TRUST_NOT_CONFIRMED'
+            assert {h['key']: h['currentHash'] for h in hooks} == {h['key']: h['currentHash'] for h in after}
+            record = cli.native_records()[sid]
+            assert record['metadata']['source'] == 'cli', 'ACTUAL_TUI_SOURCE_NOT_CONFIRMED'
+            assert not requests, 'LITERAL_COMMAND_REACHED_PROVIDER'
+            result.update(native_session_id=sid, native_record=record['path'],
+                          name='Synthetic installed-plugin Thread', workspace=str(cli.workspace), presence='offline',
+                          actual_plugin_hook_source=True, literal_join_peers_visible=True, literal_provider_requests=0)
+            if operation == 'literal-setup':
+                result.update(status='SCOPED_PASS', scope='ACTUAL_LITERAL_SETUP_ONLY_NO_MCP_TOOL')
+                return 0
+        else:
+            assert configuration.is_file(), 'ORIGINAL_CLI_PROFILE_REQUIRED'
+            # Replace only this fixture's static provider endpoint. Keep the
+            # actual normal trust entries, native records and product state.
+            updated, count = re.subn(r'base_url = "http://127\.0\.0\.1:[0-9]+/v1"',
+                                    'base_url = "http://127.0.0.1:' + str(server.server_port) + '/v1"', configuration.read_text())
+            assert count == 1, 'ORIGINAL_STATIC_PROVIDER_CONFIGURATION_CHANGED'
+            configuration.write_text(updated)
+            hooks = cli.inventory('installed-before')
+            assert all(h['trustStatus'] in ('trusted', 'managed') for h in hooks), 'ORIGINAL_HOOK_TRUST_REQUIRED'
+        if operation == 'literal-command':
+            prompt = config['prompt']
+            assert prompt.startswith('cicada '), 'LITERAL_COMMAND_REQUIRED'
+            arguments = ['exec', '--json', '--skip-git-repo-check', '--color', 'never', '-C', str(cli.workspace)]
+            if config.get('resume_sid'):
+                arguments += ['resume', config['resume_sid']]
+            out = cli.command('literal-command', [*arguments, prompt], timeout=45)
+            events = [json.loads(line) for line in out.splitlines() if line.startswith(b'{')]
+            ids = [event['thread_id'] for event in events if event.get('type') == 'thread.started']
+            assert len(ids) == 1 and (not config.get('resume_sid') or ids[0] == config['resume_sid']), 'ACTUAL_ORIGINAL_THREAD_NOT_RESUMED'
+            record = cli.native_records()[ids[0]]
+            assert not requests, 'LITERAL_COMMAND_REACHED_PROVIDER'
+            result.update(status='SCOPED_PASS', scope='ACTUAL_LITERAL_COMMAND_ONLY_OUTCOME_REQUIRES_SIGNED_APP_CHECK',
+                          native_session_id=ids[0], native_record=record['path'], literal_provider_requests=0)
+            return 0
         # Normal user policy for exactly one installed-plugin read tool. This
         # changes no MCP transport, Hook trust, context ticket or Cicada grant;
         # global Never still denies unapproved tools. The actual tool must
         # still reach the business not-joined refusal below.
         policy = '\n[plugins."cicada@cicada-repo".mcp_servers.cicada.tools.cicada_whoami]\napproval_mode = "approve"\n'
-        with configuration.open('a') as stream:
-            stream.write(policy)
+        if '[plugins."cicada@cicada-repo".mcp_servers.cicada.tools.cicada_whoami]' not in configuration.read_text():
+            with configuration.open('a') as stream:
+                stream.write(policy)
         private_json(cli.state / 'host-single-tool-policy.json', {
             'configuration': policy, 'global_approval_policy': 'never',
             'official_documentation': 'https://learn.chatgpt.com/docs/extend/mcp#plugin-provided-mcp-servers',
             'official_source_commit': '83086188ae0614bd882818ff1aa23f3194962012',
             'scope': 'normal host approval for this read tool only; no Cicada authorization'})
         stage['name'] = 'host-whoami'
-        cli.command('host-whoami', ['exec', '--json', '--skip-git-repo-check', '--color', 'never', '-C', str(cli.workspace),
-                                  'Synthetic acceptance: call the installed Cicada cicada_whoami tool once.'], timeout=45)
+        arguments = ['exec', '--json', '--skip-git-repo-check', '--color', 'never', '-C', str(cli.workspace)]
+        if config.get('resume_sid'):
+            arguments += ['resume', config['resume_sid']]
+        cli.command('host-whoami', [*arguments, 'Synthetic acceptance: call the installed Cicada cicada_whoami tool once.'], timeout=45)
         result['host_whoami_not_joined'] = stage['whoami_not_joined']
         result['host_context_required'] = stage['context_required']
         result['host_whoami_provider_requests'] = sum(item['stage'] == 'host-whoami' for item in requests)
         result['host_mcp_configuration_matches'] = stage['mcp_environment']
         assert not stage['issues'], ','.join(stage['issues'])
         assert result['host_whoami_provider_requests'] == 2, 'HOST_WHOAMI_DISPATCH_NOT_CONFIRMED'
-        assert stage['whoami_not_joined'] and not stage['context_required'], 'HOST_WHOAMI_EXPECTED_NOT_JOINED'
+        expected = config.get('expected_actor')
+        if expected:
+            actor = stage['whoami_actor']
+            assert actor and not stage['context_required'] and all(actor.get(key) == value for key, value in expected.items()), 'HOST_WHOAMI_ORIGINAL_ACTOR_MISMATCH'
+            result['host_actor'] = {key: actor[key] for key in expected}
+        elif config.get('expect_guard_denied'):
+            assert stage['guard_denied'] and not stage['context_required'], 'HOST_WHOAMI_EXPECTED_CURRENT_GUARD_DENIAL'
+            result['host_current_guard_denied'] = True
+        else:
+            assert stage['whoami_not_joined'] and not stage['context_required'], 'HOST_WHOAMI_EXPECTED_NOT_JOINED'
         # Context-mode MCP receives native identity from its verified Node
         # ticket, not CODEX_HOME history. Keep CODEX_HOME as an observation;
         # only Node/Hook must share that actual record root. Hub/Node/state
@@ -559,7 +652,8 @@ enabled = false
                                   'CICADA_NODE_STATE_DIR', 'CICADA_STATE_DIR', 'CICADA_MCP_SESSION_STATE_FILE')
         assert stage['mcp_environment'] and all(all(row.get(key) is True for key in required_configuration)
                                                for row in stage['mcp_environment']), 'HOST_MCP_CONFIGURATION_NOT_PRESERVED'
-        assert len(cli.native_records()) == 2, 'HOST_WHOAMI_NATIVE_EXEC_RECORD_NOT_CONFIRMED'
+        if operation == 'full':
+            assert len(cli.native_records()) == 2, 'HOST_WHOAMI_NATIVE_EXEC_RECORD_NOT_CONFIRMED'
         result['status'] = 'SCOPED_PASS'
     except Exception as error:
         result['failure_category'] = str(error)[:180]

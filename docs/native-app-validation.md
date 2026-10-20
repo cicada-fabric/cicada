@@ -4434,3 +4434,186 @@ Node restart/revocation, A/B late heartbeat and original-intent faults remain
 **NOT_RUN** here, pending the next isolated group. Windows DPAPI/ACL/GUI,
 CJK/DPI, Android, real model/queue and public deployment remain **NOT_RUN**.
 The five current-status documents are post-run edits, not retested inputs.
+
+## 2026-10-20 actual default-five-minute cold lease and current revocation
+
+The strict cold gate is **SCOPED_PASS**, one required event with zero failures
+or skips. Run `run-20261020T193448Z-NXDrR3/result.json` SHA-256:
+`06beeb9dd944cdaf19a8c60a39725ea730b12dda95a31684d744512b6958bd5c`.
+Version, CLI compilation, test compilation, harness and vet each exit **0**;
+source and executed binaries match before/after, and the exact owned container
+is absent. Original cold interval starts at `2026-10-20T19:35:41.407315976Z`;
+the later original cache deadline is `2026-10-20T19:40:29.987521521Z`. The first
+tool starts only after 300 seconds, crossing both original deadlines plus ten
+seconds; the later 352-second log includes the Host/revocation checks.
+
+| Artifact | SHA-256 |
+| --- | --- |
+| Complete input manifest, 1,415 files | `929e5e9bc1d3b66cf80fe96024e0a27b58f1d451a37b699b247e7d3ce5ffffaa` |
+| Identical before/after source JSON | `8d1eb861b6d33e2697d52637576332914f99209dd666afac2a52b104e0b8922e` |
+| Read-only actual Codex 0.163.0 | `399ff69c431c066e40de318fba45c2b07f45a76b19939d247ee4828fc70c4215` |
+| Executed CLI, 37,126,662 bytes | `e83e27930ded1010ac8e89055be6b285ade6fc689f774d9e8720c663a2d25454` |
+| Executed test binary, 23,011,311 bytes | `64c737aa8b620bc379492299263740d94630b97993156e882d1c1e3ba7f5b8ca` |
+| Actual join/peers viewport frames | `d9d6249094ab29d113eab9a4e1d021def8cd65251c31c1ad027068d173923c6a` |
+| First actual Host phase result | `777a902a3daa9830b66a51e2d7bdb848c26c323e6846f914d68ffe46ee526c8b` |
+| Current revoked Host phase result | `436b6aa1ae4c6a13c16e7ec91383721da3e14a9c9623f1e3fdd670de35630ad0` |
+| Revoked provider request with one exact current output | `e0495b7f2e64068a0eac042a13c5e68810a6b307a4788ca2894029b470b943ef` |
+| Post-run independent private check | `c4b6bf0b9a5ae434c911e36976f46e4bebb4c376c10d1f80ed258376c1e79263` |
+
+Private CLI diagnostics are retained only under the owned run's
+`private-cold-diagnostics` directory in task state, without App vaults, Node
+credentials or raw environment exports. The post-run verification JSON is a
+separate immutable check, not retroactively added to the gate receipt's hashes.
+A single cold-interval Docker sample reports 3.16% CPU, 76.98 MiB and 59 PIDs;
+`cold-resource-sample.json` SHA-256
+`55048e9592dcd714e260d05c4d39bd4e954dcf3febffd1f98c2b731617bff435`.
+It is one instantaneous sample, not a long-run idle/resource benchmark.
+
+
+Reproduction uses `scripts/test-native-pair.sh --codex-product-cold` from the
+QA task branch, not a shared Hub or public deployment. The strict single-event
+scope uses the existing installed plugin, actual Codex 0.163.0, actual App Core
+child, real resident Node, PQ crypto, loopback TCP and persistent SQLite inside
+one disposable network-none Docker container. The pinned builder and read-only
+module cache/CLI mounts and exclusive task build cache remain as in the prior
+consumer gate. This does not start a real model or add another product daemon.
+
+The source is `fcea942b75ae2ee197053026e9d5c1b5c8866f59` plus four dirty QA
+acceptance/driver paths. The later checkpoint docs are post-test edits. Never
+attribute this dirty run solely to fcea942 or upgrade the earlier guards/basic
+CLI results to this source. The old source's duplicated literal-body observation
+remains unchanged. New actual current-viewport join and peers title counts are
+one each, with the complete name/cwd and snapshot presence after the relevant
+heading; SDK's `Blocked by hook` warning heading remains a UX limitation.
+
+The actual App exports its public Owner identity. The test verifies its complete
+displayed key ID/fingerprint and uses only the existing public
+`machine trust-owner-key` channel against the original stopped Node/state/writer
+root. The original Node restarts with its approved binding and keys. This is a
+manual FB-03 prerequisite, not automatic Owner-key delivery. The parent opens no
+App vault, owns no Owner signer and injects no SQL authority.
+
+The actual App first bootstraps WAITING_JOIN. A normally trusted installed-plugin
+TUI creates real Thread A; actual CLI creates distinct Thread B. Both original
+Threads enter named literal connect with explicit A/B slots and zero provider
+POSTs. A fresh authenticated App Pair snapshot independently matches the actual
+native/cache SID, Endpoint, binding ID and epoch for each candidate before
+consent. App then separately reviews and approves A and B to ACTIVE. No Pair,
+slot, native record, candidate key or grant is synthesized by the driver.
+
+Before the first business MCP tool, the test restarts the same Node within its
+known lease and waits in real wall time past the later of both original default
+five-minute cache deadlines plus ten seconds. No shortened lease or test clock
+is used. During that interval, actual `/v2/fabric/heartbeat` responses advance
+both original frozen managed records; join/op/frozen identity remains unchanged,
+both scope files stay byte-identical and no `/v2/fabric/whoami` is issued. Relay
+liveness is not counted as an Endpoint lease. The first real resumed-Thread Host
+whoami then uses its newly advertised connection nonce, real Hook and Node ticket,
+and must match the complete original public actor tuple through the current Hub.
+
+Finally the actual App revokes the original Pair; both Node lease records must
+be STOPPED after the keeper interval. A new actual Host invocation must return
+exactly one current call's explicit Hub 401/403 refusal, with no context or Host
+approval failure. The original native files and workspace canary must survive.
+The static provider dispatch is a transport fixture, not native conversation,
+queue consumption or model reasoning evidence.
+
+The first complete attempt remains FAIL, one failed event and no skips:
+`run-20261020T192639Z-6pZOJ3/result.json`, SHA-256
+`931abd21a49bcdef0b1c988ebd45612e8eb1d0703c1346b6dfb991f8ba363224`.
+Compilation/version/vet all exit 0, harness exits 1, inputs/binaries are stable
+and the owned container is absent. It reaches the cold interval, first actual
+whoami, App revoke and both STOPPED markers. The final parser fails because the
+QA static provider reused a call ID across resumed-Thread stages: the actual
+request contains a historical successful result and the current precise
+`Cicada Hub 403 Forbidden: fabric permission denied`. Root and QA independently
+read that owned output. The correction gives each phase its own call/item/
+response ID, retains exact current-ID filtering and the strict 401/403 condition,
+and repeats the entire original cold gate. The failed receipt is never rewritten.
+
+A/B late-heartbeat switching/cancellation, ticket replay/fork/expiry, original
+operator-intent response-loss recovery, literal Leave and same-SID non-revival,
+App-process closure during the cold interval, real native ASK/Reply/model/queue,
+automatic wake, Windows DPAPI/ACL/GUI, physical CJK/DPI, Android and public HTTPS
+remain NOT_RUN in this scope. Broader C0.1 installation/registration remains
+frozen. There is no public deployment update or uninstall implementation here.
+
+Root's separate clean-92ad standard client interop result remains independently
+attributed: `native-ux-root/client-interop-final-92ad-20261020T1900/result.json`,
+SHA-256 `629a69b3f8f4f79830ab7dc4339360a2aae3671bdf1e43cdf61efbda2e689ffa`,
+exit 0. QA independently counts seven lowercase terminal test events in its
+`test.log`, 7/0/0, SHA-256
+`11937b6f69af2b18b5500055413f5b6b82703708d1471283dc6c319b48cb04c0`.
+The exact three containers, two images and scratch directory are absent in
+`cleanup.json`, SHA-256
+`7186ffd961a1f02663c87b4dda65d4186a14272fa1e726d32ee36d5d0e4e5d4e`.
+This is the existing smoke/headless/Owner/recovery fixture, not the cold gate,
+real native model/queue consumption, or an aggregate with these QA events.
+
+## 2026-10-20 consolidated user acceptance batch — NOT_RUN
+
+This is one ordered manual batch for the later user handoff. No step below
+has been executed by this record. Use the exact package/source/hash identified
+by Root's delivery receipt and keep existing Hub, Owner, Node, App profile and
+Codex account identities. Do not uninstall, clear state, copy a signing key,
+replace a pin or paste internal SID/Endpoint/Group/token/ticket values to make a
+step work. Record each observation as PASS, FAIL or NOT_RUN, with the package
+hash and platform; keep private fields out of shared screenshots/logs.
+
+1. Install/update the trusted reviewed package using its documented entry
+   point and selected user-data root. Confirm the displayed source/version
+   against the receipt. FB-09 is partial: new App/Node/MCP roots and installer
+   prefix are implemented; unified Hub/workspace/cache defaults and migration
+   are pending. Do not call this a completed clean-install/migration test.
+2. Open the native App. Before login, check that private Owner/Node/workspace
+   details are hidden. Unlock the original profile and verify Chinese text,
+   actual display scaling, navigation, useful errors and copy of public fields.
+   A second App window must recover the same existing profile safely. Windows
+   DPAPI, ACL and GUI remain NOT_RUN until separately executed and evidenced.
+3. Select the original Node in App; verify its actual candidate and approve
+   only the intended current binding. For the present Pair implementation,
+   FB-03 still requires the existing independent public Owner pin channel:
+   actual App public export, independently checked full displayed key ID and
+   full fingerprint, then the documented `machine trust-owner-key` command
+   against the original stopped Node/state/writer root. Resume that Node.
+   This manual prerequisite is not automatic Owner-key delivery or completed
+   automatic onboarding. Do not create another Owner key or use shortened IDs.
+4. Create two genuine native Codex Threads in their intended original
+   workspaces. In each, enter `cicada join "<distinct human name>"`; then
+   `cicada peers`. Use the normal plugin trust control. Check one complete
+   visible result with human name, full workspace, Node and snapshot presence.
+   App's authenticated own-Node directory must show the same original cards.
+   Registration alone conveys zero Group/Network/peer/execution rights.
+   A remaining SDK `Blocked by hook` heading is a presentation limitation;
+   do not mistake a generic blocked/error message for successful registration.
+5. In App prepare and create one named Pair, initially WAITING_JOIN. In the
+   original two Threads enter `cicada connect "<Pair name>" A` and
+   `cicada connect "<Pair name>" B`. App refresh must show the matching actual
+   names/workspaces and separate original candidates. Review and confirm each
+   slot separately; the first consent alone cannot authorize communication.
+   Only a fresh ACTIVE result after both consents permits the next step.
+6. Use the installed `$cicada-network` skill with the peer's human name for an ASK and
+   the original request's Reply, then reverse direction. Resolve ambiguity
+   through the documented explicit selection; do not copy internal identities
+   into environment variables or tool arguments. Check request/answer exactly
+   once and record whether wake was automatic or manually resumed. Model
+   availability, native queue consumption and automatic wake need their own
+   real evidence; a local static tool-dispatch test does not prove them.
+7. Close App; leave both original Threads idle beyond the original default
+   five-minute lease. Restart the original Node within its last known valid
+   lease, preserving state. Resume the same Threads, repeat the by-name ASK/
+   Reply and reopen App for current Hub status. Explicitly revoke the Pair
+   and verify the next attempted communication is denied under the current
+   Guard. Closing App alone must not manufacture a revoke or new authority.
+8. Perform Leave last, using the original Thread's documented `cicada leave`
+   command. Refresh its directory status and try the documented registration
+   again in that same original Thread. It must not silently revive the LEFT
+   identity or obtain rights. Confirm the original native conversation file
+   and workspace remain available; do not delete or recreate either to obtain
+   a passing result. Record any uncertain outcome and recover the original
+   operation rather than issuing a fresh identity/request.
+
+Encrypted PKCS#8 import, total Owner-key-loss recovery, uninstall scripts,
+full uninstall/reinstall, Android and public HTTPS are outside this batch's
+executed scope and remain NOT_RUN. This batch does not authorize modifying a
+public deployment or running paid model turns; Root/user controls execution.

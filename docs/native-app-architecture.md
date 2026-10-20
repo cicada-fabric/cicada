@@ -125,8 +125,12 @@ a new GET or Owner signature. These have [source-bound independent scopes](nativ
 with no general management/canvas or communication authority. Bounded actual
 installed-plugin register/peers and Host context now have independent Linux
 [execution evidence](native-app-validation.md#2026-10-20-actual-installed-plugin-pty-and-host-mcp-context).
-Pair cold leases, operator faults, extended expiry/privacy, native model/queue
-consumption and physical Windows remain separate pending scopes.
+A separate [actual cold-lease gate](native-app-validation.md#2026-10-20-actual-default-five-minute-cold-lease-and-current-revocation)
+passes named connects and signed App identity matching, dual consent, original
+default-five-minute Node lease renewal/restart before the first joined Host
+tool, and current revocation. It uses an explicit manual Owner public pin;
+automatic delivery is pending. Operator faults, Leave, extended expiry/privacy,
+native model/queue consumption and physical Windows remain separate pending scopes.
 This does not activate
 the frozen broader C0 installation-registration family. Zero-right registration
 does not require an existing Pair; reserved-Pair communication retains its
@@ -137,8 +141,8 @@ validate its native record/workspace and retain the existing Node-side check.
 The tested manual exact-resume procedure is a bounded workaround: connected MCP
 tools alone do not prove a SID, Join or authority. Current literal registration
 and directory actions use the actual native record and Node bridge without a
-model decision. Reserved-Pair connect/leave and their recovery still require
-their own actual gates. No new installed launcher, daemon, guessed SID or
+model decision. Named reserved-Pair connect now has the bounded actual cold
+gate above; Leave and original-intent recovery still require their own actual gates. No new installed launcher, daemon, guessed SID or
 unrestricted model-provided identity field is implied by this target.
 
 Owned probes of actual Codex 0.163.0 establish a narrower host mechanism:
@@ -158,9 +162,11 @@ per-call ticket and reaches the unjoined business refusal. The actual App
 independently signs the matching name/cwd/offline directory card. Missing or
 forged context and restart nonce refusal have a separate seven-event scope.
 These do not prove valid-ticket replay/expiry, A/B heartbeat switching,
-clear/subagent behavior or a joined conversation. The host currently renders
-literal results in duplicated `Blocked by hook` warnings; this is a recorded
-UX limitation, not a native picker acceptance.
+clear/subagent behavior or a joined conversation. After the presentation fix at
+`fcea942`, the actual cold gate verifies that each literal result body appears
+once in the current viewport. The SDK still displays a `Blocked by hook` heading;
+that remains a UX limitation, not a native picker acceptance. The earlier
+duplicated-body observation retains its original source in validation.
 
 Cicada-owned installed user files default to `~/.cicada`, with an installation-
 selected custom root. Existing platform vault and Node locations are not

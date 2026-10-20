@@ -60,7 +60,10 @@ remain separately attributed. Actual installed Codex 0.163 plugin
 now pass their bounded Linux scope: normal Hook trust, visible literal
 registration/directory with zero provider POSTs, and a real Host `whoami` call
 that verifies context then refuses an unjoined Thread. Seven direct-process
-refusal events retain their earlier source. Pair cold leases, operator faults,
+refusal events retain their earlier source. A separate [actual cold-lease gate](docs/native-app-validation.md#2026-10-20-actual-default-five-minute-cold-lease-and-current-revocation)
+passes real named connects, App dual consent, original default-five-minute lease
+renewal through Node restart, first joined Host identity and current revocation,
+with an explicit manual Owner public-pin prerequisite. Operator faults, Leave,
 real model/queue consumption and physical Windows remain separate gates.
 Native navigation/CJK source at
 `bb0644b68627579af470ead52035d42618372c75` is integrated; physical Windows review
