@@ -723,3 +723,52 @@ README is a later documentation-only delta. Actual installed-plugin loading,
 configuration forwarding, human-visible feedback and managed `whoami` remain
 independent QA gates. No new Windows Runtime, GUI, Docker, Android, physical
 device or public HTTPS result is claimed by these asset checks.
+
+
+### 2026-10-20 Codex 0.163 supported Hook package
+
+The next independent actual Host run on `c3a1517` installed and enabled
+`cicada@cicada-repo` successfully, with the expected source and version 0.0.5.
+Its `hooks/list` response nevertheless contained no hooks, errors or warnings.
+The original **FAIL** remains at
+`/home/zyf/Cicada/.local/evidence/native-pair-acceptance/run-20261020T180658Z-HsgwHR/result.json`
+(SHA-256 `6faa7704b61d22a074181dd7510e33a70ebbca5c80701fa8ee35643d5f2028fc`).
+That run stopped before TUI feedback or a managed tool call. It does not establish
+configuration forwarding or successful business admission.
+
+Official `rust-v0.163.0`, source commit
+`83086188ae0614bd882818ff1aa23f3194962012`, explains this behavior.
+The [manifest selector](https://github.com/openai/codex/blob/83086188ae0614bd882818ff1aa23f3194962012/codex-rs/utils/plugins/src/plugin_namespace.rs#L43)
+prefers a schema-declared root `plugin.json`. The
+[manifest cache](https://github.com/openai/codex/blob/83086188ae0614bd882818ff1aa23f3194962012/codex-rs/core-plugins/src/manifest/manifest_cache.rs#L60)
+classifies that selected root as `AgentPlugin`. The
+[loader](https://github.com/openai/codex/blob/83086188ae0614bd882818ff1aa23f3194962012/codex-rs/core-plugins/src/loader.rs#L966)
+explicitly returns empty Hook sources and warnings for that format; it loads
+bundled hooks for the supported legacy format instead. This target-version
+implementation result takes precedence over assuming a feature flag can enable
+portable hooks.
+
+The current single Cicada bundle therefore uses `.codex-plugin/plugin.json`
+and `.mcp.json` directly. The shadowing portable root `plugin.json` and unused
+root `mcp.json` are removed; their previous contents remain in Git history.
+The plugin identity, version, shared Hook/skill, marketplace source, managed
+command/arguments and 17-name configuration-only environment list are retained.
+The existing config check rejects a shadowing portable entry and verifies the
+single supported manifest/server. Version checks and the public Go metadata
+collector now require the selected legacy manifest alongside the existing
+VERSION and wire/OpenAPI metadata. Other metadata, mount and privacy checks
+remain in place. This is a package compatibility correction; shipping Go
+behavior, Hub wire, Owner identities and stored requests are unchanged.
+
+Evidence is retained at `/home/zyf/.cicada/acceptance/codex-context-checks/hook-format-checks/run-20261020T181310Z`.
+Config and version checks each passed **1/1** in normal and race modes, with
+zero failures/skips; three related Python metadata/envelope tests, two Python
+AST checks, scoped vet and skill validation passed. The source was dirty
+`c3a1517c7b47864a5d9d9a20c6de9ee444799622`; 2,372 existing inputs and the
+two explicit deletions remained stable across the gate. Before/after manifests
+both hash to `c185f03d32a9329f7a2d6a39d0fb89e6c9b91e89a9fcc1905438abbcc85f81a2`.
+The later README edit is a documentation-only delta. Earlier portable-package
+and asset results retain their original source attribution. Actual installed
+legacy Hook discovery/trust, human-visible literal feedback and a verified
+managed tool call remain independent QA gates; Windows Runtime and other
+physical/public acceptance results are not added by these checks.

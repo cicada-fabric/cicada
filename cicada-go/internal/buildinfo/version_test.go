@@ -24,7 +24,6 @@ func TestVersionMatchesRepositoryMetadata(t *testing.T) {
 		t.Fatalf("root VERSION = %q, buildinfo.Version = %q", version, Version)
 	}
 	for _, path := range []string{
-		".agents/plugins/cicada/plugin.json",
 		".agents/plugins/cicada/.codex-plugin/plugin.json",
 	} {
 		data, err := os.ReadFile(filepath.Join(repositoryRoot, path))

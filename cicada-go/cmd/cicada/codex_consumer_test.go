@@ -471,14 +471,18 @@ func TestCodexSinglePluginManagedConfiguration(t *testing.T) {
 		}
 		return d
 	}
-	portable, legacy := read("plugin.json"), read(".codex-plugin/plugin.json")
-	ext := portable["extensions"].(map[string]any)["com.openai"].(map[string]any)
-	for _, config := range []map[string]any{ext, legacy} {
-		if config["hooks"] != "./hooks/hooks.json" || config["skills"] != "./skills/" {
-			t.Fatal("plugin dropped or duplicated shared entry")
+	// Codex 0.163 deliberately omits hooks for the schema-declared portable
+	// format. A root portable entry would shadow this supported legacy bundle.
+	for _, path := range []string{"plugin.json", "mcp.json"} {
+		if _, err := os.Lstat(filepath.Join(root, path)); !errors.Is(err, os.ErrNotExist) {
+			t.Fatal("unsupported portable entry shadows the bundled Codex hooks")
 		}
 	}
-	if portable["name"] != "cicada" || legacy["name"] != "cicada" {
+	legacy := read(".codex-plugin/plugin.json")
+	if legacy["hooks"] != "./hooks/hooks.json" || legacy["skills"] != "./skills/" || legacy["mcpServers"] != "./.mcp.json" {
+		t.Fatal("plugin dropped or duplicated its supported shared entries")
+	}
+	if legacy["name"] != "cicada" {
 		t.Fatal("plugin identity changed")
 	}
 	marketplace := read(filepath.Join("..", "marketplace.json"))
@@ -497,10 +501,13 @@ func TestCodexSinglePluginManagedConfiguration(t *testing.T) {
 	if info, err := os.Stat(resolved); err != nil || !info.IsDir() {
 		t.Fatal("marketplace source directory is missing")
 	}
-	modern, compat := read("mcp.json"), read(".mcp.json")
+	compat := read(".mcp.json")
+	if len(compat["mcpServers"].(map[string]any)) != 1 {
+		t.Fatal("plugin no longer selects exactly one Cicada MCP server")
+	}
 	compatServer := compat["mcpServers"].(map[string]any)["cicada"].(map[string]any)
-	// Codex 0.163 loads this same-name compatibility allowlist into the
-	// portable stdio server. Its transport command still comes from mcp.json.
+	// Codex 0.163 launches the supported legacy stdio definition directly,
+	// with this explicit configuration-only environment allowlist.
 	wantEnvironment := []any{
 		"CICADA_API_URL", "CICADA_MACHINE_ID", "CICADA_USER_ROOT",
 		"CICADA_NODE_STATE_DIR", "CICADA_STATE_DIR",
@@ -514,12 +521,7 @@ func TestCodexSinglePluginManagedConfiguration(t *testing.T) {
 	if !reflect.DeepEqual(compatServer["env_vars"], wantEnvironment) {
 		t.Fatal("plugin did not retain the reviewed configuration-only environment allowlist")
 	}
-	delete(compatServer, "env_vars")
-	if !reflect.DeepEqual(modern["mcpServers"], compat["mcpServers"]) {
-		t.Fatal("portable/legacy MCP transport configuration diverged")
-	}
-	server := modern["mcpServers"].(map[string]any)["cicada"].(map[string]any)
-	if server["command"] != "cicada" || server["type"] != "stdio" || !reflect.DeepEqual(server["args"], []any{"mcp", "--codex-context"}) || server["env"] != nil {
+	if len(compatServer) != 4 || compatServer["command"] != "cicada" || compatServer["type"] != "stdio" || !reflect.DeepEqual(compatServer["args"], []any{"mcp", "--codex-context"}) || compatServer["env"] != nil {
 		t.Fatal("managed MCP missing or static identity configured")
 	}
 	hooks := read("hooks/hooks.json")["hooks"].(map[string]any)

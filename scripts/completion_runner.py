@@ -1194,7 +1194,6 @@ GO_PUBLIC_METADATA = (
     "VERSION",
     "docs/client-hub-wire-v1.md",
     "docs/client-hub-v1.openapi.yaml",
-    ".agents/plugins/cicada/plugin.json",
     ".agents/plugins/cicada/.codex-plugin/plugin.json",
 )
 

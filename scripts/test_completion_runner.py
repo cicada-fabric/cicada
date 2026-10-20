@@ -586,10 +586,9 @@ class CompletionRunnerTests(unittest.TestCase):
         status, _ = json.JSONDecoder().raw_decode(output.getvalue())
         self.assertEqual(status["overall_status"], "UNKNOWN")
 
-    def test_go_metadata_stage_exposes_only_five_pinned_public_files(self) -> None:
+    def test_go_metadata_stage_exposes_only_four_pinned_public_files(self) -> None:
         public_files = (
             "VERSION", "docs/client-hub-wire-v1.md", "docs/client-hub-v1.openapi.yaml",
-            ".agents/plugins/cicada/plugin.json",
             ".agents/plugins/cicada/.codex-plugin/plugin.json",
         )
         source_root = self.root / "source"
