@@ -36,41 +36,36 @@ has [manual independent-Owner installation steps](docs/node-tls-first-install-cl
 Clean amd64/ARM64 package first installation passed its scoped Docker gate;
 standard HTTPS bootstrap and enrolled strict PQ TLS are separate stages.
 
-The development line is **0.0.5**, unreleased on `dev`, with Hub schema 62.
-The account backend and earlier browser/WASM account flow are implemented and
-validated within their recorded scopes, but the current product direction is a
-native Windows App. Hub/App core now implement **N2 finite activation**:
-one trusted local code, exact Owner KEM/signature proof, a separate 15-minute
-App lease, and encrypted-profile restart/reconciliation. Independent Linux
-protocol acceptance is **SCOPED_PASS** (131 events, zero failures/skips) in the
-[native validation record](docs/native-app-validation.md#n2-hubapp-integration).
-Native Windows/DPAPI/ACL/GUI execution and visual review remain NOT_RUN;
-encrypted PKCS#8 input is unsupported. Supported unencrypted existing Owner
-identities can be imported and proved without rekeying. Native App integration
-for the authorized live canvas and Node actions remains N3 work. The Hub/Node APIs and Guard
-already exist for App integration. The App is not a released installer, and
-the Hub public-root 404 target is not yet validated. See the
-[native App architecture](docs/native-app-architecture.md) and
-[native App plan](docs/native-app-plan.md). The independent-Hub Docker account
-gate and standard legacy Client-protocol interop passed their own bounded
-scopes; neither is native Windows acceptance. The Hub bootstrap checkpoint's
-segmented normal and selected race PASS results, Store fixture corrections,
-original A7/R3 aggregate failures/timeouts, vet/build and Python results remain
-in the [Hub bootstrap record](docs/hub-owner-bootstrap-validation.md). The
-[operator guide](docs/hub-owner-bootstrap.md) documents the current Hub-volume
-procedure, not the final App onboarding. Android, native Windows, physical-device
-and public-HTTPS acceptance remain NOT_RUN; Windows custody and lost-Root
-recovery remain unaccepted. N2 pending-Owner continuation cannot recover a
-revoked or lost Root. A main merge or
-0.1.0 release follows the user's actual acceptance and separate authorization.
-Real G1, current CLI sandbox and Worker private-fixture checks passed their
-scoped predicates. C14 also passed its bounded six-turn default-daemon G2/G3
-scope with exact cleanup; this does not close every Native, device or release
-gate. Shipping `a4` ordinary Worker and Joint11's eight Android recovery cases
-passed their stated scopes. Android encrypted status reads and GroupOwnerProof,
-physical-device and public HTTPS acceptance remain NOT_RUN. Historical G2/G3
-failures and later scoped results retain their original attribution in the
-[current closeout](docs/v01-current-closeout-20261009-validation.md#current-20261010).
+The development line is **0.0.5**, unreleased on `dev`. Hub, Node and App are
+composable components; installing or registering one does not confer business
+permissions or Owner authority. The current engineering target is
+[controlled installation registration](docs/hub-installation-registration-contract.md):
+C0 v1 at `c2c3ced` records typed-proof, codec and bounds checks, with default
+public availability **false**. Consumer review found independent session-scope,
+new-Node admission and Owner inventory gaps; C0.1 (contract revision v1.1) is
+being prepared. H1/H2 Hub admission/read grants and actual App/Node integration
+remain NOT_RUN. The [native App architecture](docs/native-app-architecture.md)
+and [current plan](docs/native-app-plan.md#composable-installation-and-shared-state-acceptance-target)
+separate this target from completed source-specific checkpoints.
+
+Existing N2 finite Owner activation, N3 Node status and Pair contracts remain
+separate. Account login is not Root; registration grants no Network/Group/peer
+or Runtime rights. Original identities, current Guards and independent Owner
+signatures remain authoritative. App pre-registration custody, UI/installer
+checks and the empty App2 container adapter have bounded
+[validation records](docs/native-app-validation.md); none establishes the new
+cross-component registration flow or real Codex conversation.
+
+Historical Windows observations include **USER_REPORTED_FAIL** for Chinese
+text and second-instance setup; keep the [original batch](docs/native-app-validation.md#windows-11-eight-step-user-batch)
+and [subsequent profile-recovery source](docs/native-app-validation.md#profile-recovery-follow-up)
+attributed separately. Physical Windows DPAPI/ACL/GUI/uninstall, actual native
+Runtime and current public registration/Pair acceptance remain unaccepted.
+Encrypted PKCS#8 import and recovery after losing all Owner signing-key copies
+are not implemented. Source-bound Hub, Worker and Android outcomes remain in
+the [dated closeout](docs/v01-current-closeout-20261009-validation.md#current-20261010)
+and linked receipts; a main merge or 0.1.0 release needs later user acceptance
+and separate authorization.
 
 The [test automation guide](docs/test-automation.md) covers `scripts/test-architecture-v2-completion.sh`; the default run uses no paid models and reports NOT_RUN/BLOCKED separately from passed checks.
 

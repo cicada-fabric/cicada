@@ -137,7 +137,7 @@ Existing managed Control callers delegate to the same service. All three key
 paths, stable Owner/account IDs, Root history, exact receipt recovery, schema
 60, Client contract 1.6.5 / wire 1 / catalog 55 remain unchanged.
 
-[The extraction audit](architecture-v2-audit.md#2026-10-14-stage-1-hub-identitybootstrap-extraction-candidate)
+[The extraction audit](architecture-v2-audit.md#2026-10-14-stage-1-hub-identitybootstrap-extraction-candidate-earlier-source-capture)
 records segmented normal (85 top-level + 147 subtest PASS, one opt-in OpenSSL
 SKIP), selected race (40 top-level + 13 subtest PASS), vet and contract checks.
 The incorrect A2 test-status assertion and aggregate A3 Control timeout remain
@@ -908,7 +908,7 @@ Client 据此调用不存在的操作。既有固定 `967dbd8` 镜像验收继�
 
 已通过原生任务工具启动用户指定的 Client Thread
 `01a0cc3a-91d2-74f2-9f41-547c9b38fb0d`，执行
-[双 Owner 独立验收任务](client-two-owner-acceptance-task.md)。该任务只修改
+[双 Owner 独立验收原任务（Git 保留）](repository-maintenance.md#retired-development-instructions)。该任务只修改
 Client 仓库、使用独立一次性资源，不重跑付费 Codex 或改动常驻 Hub；收到
 最终回报前不得将双 Owner Android 路径标为通过。
 

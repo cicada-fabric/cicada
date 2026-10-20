@@ -1,9 +1,16 @@
 # Workspace maintenance and retained worktree source
 
+This is the **2026-10-13 historical cleanup record**, using that day's paths,
+worktree inventory and independent Android repository. Its restoration examples
+and dependency descriptions are not the current workspace layout or new cleanup
+authorization. Use [workspace development](workspace-development.md) and
+[repository migration](repository-migration.md) for the canonical monorepo,
+current task worktrees and Android subtree; retain the original evidence below.
+
 The 2026-10-13 local cleanup retired sixteen auxiliary Git worktrees after
-preserving their source and moving their ignored evidence. The registered
-worktrees are `/home/zyf/CICADA` on `dev` and the detached
-`/home/zyf/CICADA_pqtls` toolchain worktree. Android remains in the independent
+preserving their source and moving their ignored evidence. At that checkpoint the registered
+worktrees were `/home/zyf/CICADA` on `dev` and the detached
+`/home/zyf/CICADA_pqtls` toolchain worktree. Android then remained in the independent
 `../CICADA_CLIENT` repository.
 
 ## Local Git retention

@@ -1,5 +1,11 @@
 # Owner 账户、可信设备与首次接入设计
 
+> 本文保留包括 2026-10-14 两页/浏览器 UI 在内的历史交互方案；这些章节中的
+> “当前”按原日期理解。Hub pin、原 Owner 私钥 proof、密钥职责分离和准确授权
+> 等安全目标仍须按有效合同保留。当前原生入口看[App 架构](native-app-architecture.md)，
+> 受控安装接入看[C0 合同](hub-installation-registration-contract.md)；首次 Root
+> 仍遵循[有效 Owner 激活合同](hub-owner-activation-contract.md)，不由普通登记替代。
+
 ## 当前用户决定：普通 Owner 首次设置为两页（2026-10-14）
 
 **两页账户设置/登录产品仍 NOT_IMPLEMENTED；阶段 A 已实现并完成限定测试。**
