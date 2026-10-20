@@ -772,3 +772,32 @@ and asset results retain their original source attribution. Actual installed
 legacy Hook discovery/trust, human-visible literal feedback and a verified
 managed tool call remain independent QA gates; Windows Runtime and other
 physical/public acceptance results are not added by these checks.
+
+
+### 2026-10-20 local Hook feedback presentation
+
+Actual Codex 0.163 TUI feedback on the earlier source displayed the complete
+literal result twice: `systemMessage` and the identical blocking `reason` were
+rendered separately. Local operator responses now keep the complete bilingual
+result in `systemMessage`, while `reason` is the short neutral explanation that
+Cicada handled the input locally. That statement covers help, refusal and
+unconfirmed outcomes; it does not claim that a Hub operation or authorization
+succeeded. `decision:block` remains. The SDK still labels this status
+`Blocked by hook`; this correction does not claim a native success widget.
+
+Command parsing, transport, original-intent persistence, credential handoff,
+output-before-ACK order and per-call tool tickets retain their existing behavior.
+The existing entry/framing test checks the complete help result, unverified
+command feedback and ordinary skill pass-through. Focused normal/race checks also exercise literal Join save and
+output failure recovery, the CLI dispatcher and existing PreTool replacement.
+
+Evidence is retained at `/home/zyf/.cicada/acceptance/codex-context-checks/feedback-checks-20261020T191729Z/final/`.
+Both modes recorded **13 PASS, 0 FAIL, 0 SKIP**; scoped vet, Linux CLI build and
+actual CLI help/unverified-input smoke passed, with no private-HOME writes.
+The tested source was dirty `29c3997b9f1850466ba5dfc5b5c1fd3a3be983dc`,
+with 2,378 inputs stable across the before/after manifests
+`85f88e6227df4fea5d69cf15a65b1680eef73cc3268efdee19235d6ca8126108`.
+Earlier pre-review evidence remains separately retained in the parent directory.
+This README is a later documentation-only delta. New installed-plugin TUI
+presentation and Host acceptance remain QA-owned; no new Windows Runtime,
+Docker, Android, physical-device or public HTTPS result is added here.

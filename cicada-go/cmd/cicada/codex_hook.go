@@ -14,6 +14,8 @@ import (
 
 const maxCodexHookInput = 2 << 20
 
+const codexHookLocalHandlingReason = "Cicada 已在本地处理此输入；请查看完整结果。 / Cicada handled this input locally; see the full result."
+
 type codexHookInput struct {
 	SessionID      string         `json:"session_id"`
 	CWD            string         `json:"cwd"`
@@ -57,8 +59,8 @@ func codexCicadaToolName(full string) (string, bool) {
 
 func codexHookOutput(output io.Writer, value any) error { return json.NewEncoder(output).Encode(value) }
 
-func codexHookBlock(output io.Writer, reason string) error {
-	return codexHookOutput(output, map[string]any{"decision": "block", "reason": reason, "systemMessage": reason})
+func codexHookBlock(output io.Writer, message string) error {
+	return codexHookOutput(output, map[string]any{"decision": "block", "reason": codexHookLocalHandlingReason, "systemMessage": message})
 }
 
 func codexHookDeny(output io.Writer) error {

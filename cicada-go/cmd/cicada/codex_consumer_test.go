@@ -436,8 +436,15 @@ func TestCodexHookFramingAndVisibleBlock(t *testing.T) {
 		t.Fatal(err)
 	}
 	var response map[string]any
-	if json.Unmarshal(output.Bytes(), &response) != nil || response["decision"] != "block" || response["systemMessage"] != response["reason"] || response["reason"] == "" {
+	if json.Unmarshal(output.Bytes(), &response) != nil || response["decision"] != "block" || response["systemMessage"] != codexOperatorHelp || response["reason"] != codexHookLocalHandlingReason {
 		t.Fatal("literal help did not produce human feedback and block")
+	}
+	output.Reset()
+	if err := runCodexHook(nil, strings.NewReader(`{"hook_event_name":"UserPromptSubmit","prompt":"cicada join Synthetic Thread"}`), &output); err != nil {
+		t.Fatal(err)
+	}
+	if json.Unmarshal(output.Bytes(), &response) != nil || response["decision"] != "block" || response["reason"] != codexHookLocalHandlingReason || !strings.Contains(response["systemMessage"].(string), "could not verify") {
+		t.Fatal("unverified command lost its full refusal or changed into success")
 	}
 	output.Reset()
 	if err := runCodexHook(nil, strings.NewReader(`{"hook_event_name":"UserPromptSubmit","prompt":"$cicada-network ask Alice"}`), &output); err != nil || strings.TrimSpace(output.String()) != "{}" {
