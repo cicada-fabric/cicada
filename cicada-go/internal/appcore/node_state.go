@@ -18,6 +18,7 @@ const (
 	nodeRecoveryNamespace     = "appcore.node-recovery.v1"
 	nodeConfirmationNamespace = "appcore.node-confirmation.v1"
 	nodeStateFormat           = "cicada.native-node-state.v1"
+	maxNodeStateRecordBytes   = 1 << 20
 )
 
 // Each record is encrypted by the existing vault. Recovery and the immutable
@@ -26,24 +27,26 @@ const (
 // Recovery is persisted before applying its outcome; startup can idempotently
 // finish either side of an interrupted record update.
 type nodeAuthorityState struct {
-	Format               string                       `json:"format"`
-	Scope                appvault.Scope               `json:"scope"`
-	DeviceID             string                       `json:"device_id"`
-	DeviceKeyID          string                       `json:"device_key_id"`
-	OwnerKeyID           string                       `json:"owner_key_id"`
-	Proposal             *nodeProposal                `json:"proposal,omitempty"`
-	Grant                *wire.AppNodeChallenge       `json:"grant,omitempty"`
-	Pending              *nodeOperation               `json:"pending,omitempty"`
-	Current              *wire.AppNodeResult          `json:"current,omitempty"`
-	Context              *wire.AppNodeResult          `json:"context,omitempty"`
-	HighestHead          uint64                       `json:"highest_head"`
-	LatestGrantID        string                       `json:"latest_grant_id,omitempty"`
-	ProvenanceID         string                       `json:"provenance_id,omitempty"`
-	Client               nodeClientState              `json:"client"`
-	LastSettlementDigest string                       `json:"last_settlement_digest,omitempty"`
-	LastSettlement       string                       `json:"last_settlement,omitempty"`
-	SelfCancelledGrantID string                       `json:"self_cancelled_grant_id,omitempty"`
-	Diagnostics          *wire.AppNodeReconcileResult `json:"diagnostics,omitempty"`
+	Format                string                       `json:"format"`
+	Scope                 appvault.Scope               `json:"scope"`
+	DeviceID              string                       `json:"device_id"`
+	DeviceKeyID           string                       `json:"device_key_id"`
+	OwnerKeyID            string                       `json:"owner_key_id"`
+	Proposal              *nodeProposal                `json:"proposal,omitempty"`
+	Grant                 *wire.AppNodeChallenge       `json:"grant,omitempty"`
+	Pending               *nodeOperation               `json:"pending,omitempty"`
+	Current               *wire.AppNodeResult          `json:"current,omitempty"`
+	Context               *wire.AppNodeResult          `json:"context,omitempty"`
+	HighestHead           uint64                       `json:"highest_head"`
+	LatestGrantID         string                       `json:"latest_grant_id,omitempty"`
+	ProvenanceID          string                       `json:"provenance_id,omitempty"`
+	Client                nodeClientState              `json:"client"`
+	LastSettlementDigest  string                       `json:"last_settlement_digest,omitempty"`
+	LastSettlement        string                       `json:"last_settlement,omitempty"`
+	SelfCancelledGrantID  string                       `json:"self_cancelled_grant_id,omitempty"`
+	Diagnostics           *wire.AppNodeReconcileResult `json:"diagnostics,omitempty"`
+	OwnerDirectory        *nodeOperation               `json:"owner_directory,omitempty"`
+	OwnerDirectoryUnknown []ownerEndpointUnknownRecord `json:"owner_directory_unknown,omitempty"`
 }
 
 type nodeProposal struct {
@@ -61,16 +64,17 @@ type nodeClientState struct {
 }
 
 type nodeOperation struct {
-	Kind                     string                        `json:"kind"`
-	Operation                string                        `json:"operation"`
-	GrantID                  string                        `json:"grant_id"`
-	Request                  []byte                        `json:"request"`
-	Response                 []byte                        `json:"response,omitempty"`
-	CreatedAt                string                        `json:"created_at"`
-	ExpectedResponseSequence uint64                        `json:"expected_response_sequence,omitempty"`
-	Settlement               string                        `json:"settlement,omitempty"`
-	Applied                  bool                          `json:"applied"`
-	GrantClaims              *e2ee.OwnerAppNodeGrantClaims `json:"grant_claims,omitempty"`
+	Kind                     string                         `json:"kind"`
+	Operation                string                         `json:"operation"`
+	GrantID                  string                         `json:"grant_id"`
+	Request                  []byte                         `json:"request"`
+	Response                 []byte                         `json:"response,omitempty"`
+	CreatedAt                string                         `json:"created_at"`
+	ExpectedResponseSequence uint64                         `json:"expected_response_sequence,omitempty"`
+	Settlement               string                         `json:"settlement,omitempty"`
+	Applied                  bool                           `json:"applied"`
+	GrantClaims              *e2ee.OwnerAppNodeGrantClaims  `json:"grant_claims,omitempty"`
+	OwnerEndpointRead        *wire.OwnerEndpointReadRequest `json:"owner_endpoint_read,omitempty"`
 }
 
 type nodeConfirmationRecord struct {
@@ -101,7 +105,7 @@ func (c *nativeController) persistNodeRecord(namespace string, version *uint64, 
 	var err error
 	if value != nil {
 		data, err = json.Marshal(value)
-		if err != nil || len(data) > 1<<20 {
+		if err != nil || len(data) > maxNodeStateRecordBytes {
 			c.storageFault = true
 			return errors.New("encrypted Node state exceeds its bound")
 		}
@@ -220,6 +224,9 @@ func (c *nativeController) loadNodeState() error {
 			return appvault.ErrScopeMismatch
 		}
 	}
+	if err := c.restoreOwnerDirectory(); err != nil {
+		return err
+	}
 	return c.restoreNodeReceipts()
 }
 
@@ -248,7 +255,7 @@ func (c *nativeController) validateNodeStoredPacket(p *nodeOperation) error {
 	var route clientwire.Route
 	if p.Kind == wire.AppNodeOriginalAuthority {
 		packet, err := wire.DecodePacket(p.Request)
-		if err != nil || wire.AppNodeHTTPPath(p.Operation) == "" || packet.Packet.Route.Operation != p.Operation ||
+		if err != nil || nodePacketHTTPPath(p.Operation) == "" || packet.Packet.Route.Operation != p.Operation ||
 			c.device == nil || !reflect.DeepEqual(packet.SenderPublicIdentity, c.device.Public()) {
 			return wire.ErrInvalid
 		}
@@ -270,14 +277,28 @@ func (c *nativeController) validateNodeStoredPacket(p *nodeOperation) error {
 		route.DeviceID != c.state.DeviceID || route.SenderKeyID != c.state.DeviceKeyID || route.ReceiverKeyID != c.hub.Public.ID {
 		return wire.ErrInvalid
 	}
+	if p.Operation == wire.OperationOwnerEndpointRead {
+		return c.validateOwnerEndpointOperation(p)
+	}
+	if p.OwnerEndpointRead != nil {
+		return wire.ErrInvalid
+	}
 	return nil
 }
 
 func (c *nativeController) clearNodeRuntime() {
-	for _, p := range []*nodeOperation{c.node.Pending, c.nodeRecovery} {
+	operations := []*nodeOperation{c.node.Pending, c.nodeRecovery, c.node.OwnerDirectory}
+	for i := range c.node.OwnerDirectoryUnknown {
+		operations = append(operations, &c.node.OwnerDirectoryUnknown[i].Original)
+	}
+	for _, p := range operations {
 		if p != nil {
 			clear(p.Request)
 			clear(p.Response)
+			if p.OwnerEndpointRead != nil {
+				clear(p.OwnerEndpointRead.SessionToken)
+				clear(p.OwnerEndpointRead.OwnerProof)
+			}
 		}
 	}
 	if p := c.node.Proposal; p != nil {
@@ -293,6 +314,7 @@ func (c *nativeController) clearNodeRuntime() {
 	c.nodeVer, c.nodeRecoveryVer, c.nodeConfirmationVer = 0, 0, 0
 	c.nodeAvailable, c.nodeChecked, c.nodeContextChecked, c.nodeDiscoveryTried = false, false, false, false
 	c.nodeReadRequestID, c.nodeError = "", ""
+	c.ownerEndpointResult, c.ownerEndpointAvailable, c.ownerEndpointError = nil, false, ""
 }
 
 func earlierNodeDeadline(values ...string) string {

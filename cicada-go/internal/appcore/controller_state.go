@@ -508,9 +508,11 @@ func (c *nativeController) publish() {
 	c.populateSetup(&view)
 	c.populateNode(&view)
 	c.populatePair(&view)
+	c.populateOwnerEndpoints(&view)
 	if !c.profileRecoveryRequired {
 		view.AvailableActions = append(view.AvailableActions, c.nodeActions()...)
 		view.AvailableActions = append(view.AvailableActions, c.pairActions()...)
+		view.AvailableActions = append(view.AvailableActions, c.ownerEndpointActions()...)
 	}
 	if c.storageFault {
 		view.Phase = PhaseError
@@ -625,6 +627,7 @@ func cloneSnapshot(source Snapshot) Snapshot {
 	copy.Authorization.AllowedOperations = append([]string(nil), source.Authorization.AllowedOperations...)
 	copy.Canvas.Objects = append([]CanvasObject(nil), source.Canvas.Objects...)
 	copy.Node = cloneNodeSnapshot(source.Node)
+	copy.OwnerEndpoints.Endpoints = append([]OwnerEndpointView(nil), source.OwnerEndpoints.Endpoints...)
 	return copy
 }
 

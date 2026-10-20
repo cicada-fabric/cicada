@@ -51,6 +51,7 @@ func PresentScreen(s appcore.Snapshot, now time.Time) ScreenPresentation {
 	copy.Node = appcore.NodeSetupSnapshot{Pending: s.Node.Pending}
 	copy.Pair = appcore.PairSetupSnapshot{Pending: s.Pair.Pending}
 	copy.Storage = appcore.StorageSnapshot{}
+	copy.OwnerEndpoints = appcore.OwnerEndpointSnapshot{Pending: s.OwnerEndpoints.Pending}
 	copy.Authorization = appcore.AuthorizationSnapshot{}
 	copy.Management, copy.Canvas = appcore.ManagementUnavailable, appcore.CanvasSnapshot{}
 	copy.Setup.ExpectedOwnerKeyID = ""
@@ -96,6 +97,9 @@ func preLoginFlow(s appcore.Snapshot) SetupFlow {
 	}
 	if has(appcore.ActionSessionInspect) {
 		return SetupFlow{Stage: "session-check", Primary: appcore.ActionSessionInspect}
+	}
+	if s.OwnerEndpoints.Pending && has(appcore.ActionRecoverOwnerEndpoints) {
+		return SetupFlow{Stage: "recovery", Primary: appcore.ActionRecoverOwnerEndpoints}
 	}
 	// First connection and Owner initialization keep their existing decisions.
 	s.Node = appcore.NodeSetupSnapshot{}

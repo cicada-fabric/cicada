@@ -522,3 +522,83 @@ before/after manifest
 `a5c81131f8f6aab005c63b24efdf0dca9ff706d7ea4730e31c1c00112d1608f4`.
 The older normal/race matrices above retain their original sources. This paths
 checkpoint does not yet consume the new Owner directory operation.
+
+## Owner Thread directory and retained unknown reads (2026-10-20)
+
+Sessions & communication now offers a native, explicit read of the original
+approved Node's own Threads. The Core first verifies the bounded availability
+document at `GET /v2/owner/endpoints/read`; an old/disabled/wrong-Hub response
+creates no new directory proof, durable request or secret POST. Each page then
+uses the current authenticated account and the existing vaulted Owner key to
+sign the separate `owner.endpoints.read` purpose. The native read/next-page
+gesture binds the exact original Node, current local session, cursor and limit.
+There is no manual signing, browser or external crypto-tool step.
+
+The old N2 operation TTL is not renewed or expanded. General management and live
+canvas remain unavailable. Returned rows are always `SNAPSHOT_ONLY`, with an
+explicit capture time; a recent lease does not establish current Thread
+consumption or communication permission. Names and complete selectable workspace
+paths are primary, with IDs in details. Both English and Chinese are available.
+Account expiry, logout, unverified restored login and known Root/epoch mismatch
+hide directory metadata and signing controls.
+
+The original Node outbox holds the exact request and its typed signed context,
+inside the existing encrypted vault, before POST. Response bytes are verified
+against that original packet and persisted before application. Recovery retries
+the original bytes even when public availability subsequently disappears.
+Unsigned HTTP errors and a validly encrypted foreign-target response cannot
+settle or replace it. Authenticated historical receipts remain snapshots.
+
+If the original account session has also expired, the current wire does not
+provide a new reconciliation purpose for that old packet. Its unsigned failure
+remains unknown. After the original read proof expires, an explicit native
+“Retain the unconfirmed read and continue” gesture can instead retain its full
+original packet/proof/response as local **UNKNOWN** and release the active slot.
+One existing Node-state CAS performs both changes; a failed CAS preserves the
+previous pending request and history. This is local retention, not a Hub
+settlement, and it is unavailable for authorization, Join, Leave or other
+mutations. The gesture binds the current packet digest, proof and request ID;
+an old click cannot dispose of a later read.
+
+Unknown history permits at most four records and 384 KiB, also respecting the
+existing complete Node-record limit. Capacity is checked before a new directory request
+is persisted/sent; unknown records are neither evicted nor replayed
+automatically. Full history blocks further directory reads while independent
+Node operations remain available. New reads still require current login and a
+new exact Owner gesture/proof. Before login, the UI shows the account step
+without historical counts, Nodes or cards. A pure clock projection plus the
+existing Gio deadline scheduler exposes the local retention option at proof
+expiry, without a network poll or vault write.
+
+Evidence is retained at
+`/home/zyf/.cicada/acceptance/owner-read-checks/run-20261020T160425Z/`.
+The initial dirty `73d6f9ad13c26ad7cf203e2924adcc7a46104213` source
+(`source-final-before.json`, `8ccf68b3…`) passed scoped Core **26/26**,
+complete appui **135/135** and portable native **28/28** normal/race events,
+with zero failures/skips, Linux/Windows vet and Windows native-test/App
+cross-compilation. These results precede local UNKNOWN retention and retain
+their own source. All 19 WIP source paths are preserved under
+`pre-park-passed-sources/`.
+
+After Root's dependency fast-forward, the final dirty
+`794de08590c015ed68ad641eac01f695b3bf34ec` source passed the narrow
+Core **13/13**, UI/privacy/catalog **4/4**, and native deadline **1/1**
+normal/race events, all zero failures/skips. Scoped Linux/Windows vet, Windows
+native test compilation and App cross-build passed. Its before/after 1,323-input
+manifest is
+`a02b6b64ce0f078991a0d7d935e0f0ca6c82fa03fad491936248617a492e1060`;
+`park-gate-receipt.json` records commands, exits and retained binary hashes.
+Checks include a real failed vault CAS, unchanged originals across restart,
+old/changed gesture rejection, live-proof and mutating-operation refusal,
+bounded retention, restored original epochs and clock-only expiry.
+
+The initial preflight's **10 passed / 1 failed** remains recorded. Its restart
+assertion incorrectly expected visible rows after an unpersisted synthetic
+account session had disappeared; diagnostics confirmed LOGIN_REQUIRED while
+the authenticated original receipt was restored. The corrected test checks
+receipt persistence and the login boundary, without manufacturing a login.
+All fixtures are visibly synthetic Core/PQ actors; logical-clock tests are not
+wall-clock Hub or Windows acceptance. The pinned Go 1.27.3 toolchain and offline
+module resolution were reused. Independent actual Hub/process acceptance is
+QA-owned; native Windows GUI/DPAPI/ACL/CJK/DPI, physical devices, public HTTPS,
+Android, real model/queue and product Hook integration remain **NOT_RUN** here.

@@ -138,6 +138,7 @@ type Snapshot struct {
 	Node             NodeSetupSnapshot     `json:"node"`
 	Pair             PairSetupSnapshot     `json:"pair"`
 	Storage          StorageSnapshot       `json:"storage"`
+	OwnerEndpoints   OwnerEndpointSnapshot `json:"owner_endpoints"`
 }
 
 // StorageSnapshot describes local file locations only. It is not Hub state or
@@ -209,8 +210,9 @@ const (
 // Action carries one closed native interaction. Secret-bearing fields are
 // deliberately omitted from its String/GoString representations.
 type Action struct {
-	Kind ActionKind
-	Pair PairAction
+	Kind           ActionKind
+	Pair           PairAction
+	OwnerEndpoints OwnerEndpointReadAction
 
 	// Exactly one connection material field may be set for ActionConnect.
 	ConnectionCard string

@@ -254,6 +254,9 @@ func (c *nativeController) nodeActions() []ActionKind {
 		return nil
 	}
 	if c.hasNodePending() {
+		if c.hasOwnerEndpointPending() {
+			return nil
+		}
 		return []ActionKind{ActionRecoverNode}
 	}
 	if !c.canBeginOperation() {
@@ -304,7 +307,7 @@ func (c *nativeController) nodeActions() []ActionKind {
 }
 
 func (c *nativeController) populateNode(view *Snapshot) {
-	n := NodeSetupSnapshot{Available: c.nodeAvailable || c.nodeVer != 0, Pending: c.hasNodePending(), ErrorCode: c.nodeError,
+	n := NodeSetupSnapshot{Available: c.nodeAvailable || c.nodeVer != 0, Pending: c.hasNodePending() && !c.hasOwnerEndpointPending(), ErrorCode: c.nodeError,
 		Access: NodeAccessSnapshot{State: "UNCONFIRMED"}}
 	if r := c.node.Current; r != nil {
 		n.Access.State = r.Authority.State

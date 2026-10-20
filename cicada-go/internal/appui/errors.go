@@ -5,6 +5,14 @@ package appui
 func ErrorText(locale Locale, code string) string {
 	id := msgRequestFailed
 	switch code {
+	case "APP_OWNER_DIRECTORY_UNAVAILABLE":
+		id = "directory.unavailable"
+	case "APP_OWNER_DIRECTORY_REQUEST_UNKNOWN":
+		id = "directory.unknown_result"
+	case "APP_OWNER_DIRECTORY_RETAINED_UNKNOWN":
+		id = "directory.retained_body"
+	case "APP_OWNER_DIRECTORY_HISTORY_FULL":
+		id = "directory.history_full"
 	case "APP_OWNER_PUBLIC_EXPORT_FAILED":
 		id = msgExportOwnerPublicFailed
 	case "APP_PAIR_UNAVAILABLE":

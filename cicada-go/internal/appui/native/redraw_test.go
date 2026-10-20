@@ -35,6 +35,22 @@ func redrawFrame(snapshot appcore.Snapshot, now time.Time) (time.Time, bool) {
 	return router.WakeupTime()
 }
 
+func TestNativeRedrawOwnerReadParkDeadlineResamplesOnce(t *testing.T) {
+	now := time.Date(2026, 10, 20, 12, 0, 0, 0, time.UTC)
+	deadline := now.Add(time.Minute)
+	s := appcore.Snapshot{OwnerEndpoints: appcore.OwnerEndpointSnapshot{Pending: true, ParkAfter: deadline.Format(time.RFC3339Nano)}}
+	if at, wake := redrawFrame(s, now); !wake || !at.Equal(deadline) {
+		t.Fatal("pending readonly expiry has no native wakeup")
+	}
+	if at, wake := redrawFrame(s, deadline); !wake || !at.IsZero() {
+		t.Fatal("crossed snapshot boundary did not request a fresh frame")
+	}
+	s.AvailableActions = []appcore.ActionKind{appcore.ActionParkOwnerEndpoints}
+	if _, wake := redrawFrame(s, deadline); wake {
+		t.Fatal("already exposed local retention creates an idle redraw loop")
+	}
+}
+
 func TestNativeRedrawRetainsHeartbeatDeadlineAcrossSnapshotBoundary(t *testing.T) {
 	now := time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)
 	snapshot := redrawFixture(now)

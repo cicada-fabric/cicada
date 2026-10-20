@@ -89,6 +89,9 @@ type nativeController struct {
 	nodeContextChecked        bool
 	nodeReadRequestID         string
 	nodeError                 string
+	ownerEndpointAvailable    bool
+	ownerEndpointError        string
+	ownerEndpointResult       *wire.OwnerEndpointReadResult
 }
 
 func NewController(config Config) (Controller, error) {
@@ -150,6 +153,7 @@ func (c *nativeController) Snapshot() Snapshot {
 	}
 	expireNodeView(&view, c.cfg.Now().UTC())
 	expirePairView(&view, c.cfg.Now().UTC())
+	expireOwnerEndpointView(&view, c.cfg.Now().UTC())
 	return view
 }
 
@@ -198,7 +202,7 @@ func (c *nativeController) Dispatch(ctx context.Context, action Action) (dispatc
 	stop := context.AfterFunc(c.lifetime, cancel)
 	defer func() { stop(); cancel() }()
 	defer func() {
-		if dispatchErr == nil && !nodeActionKind(action.Kind) && !pairActionKind(action.Kind) && action.Kind != ActionExportOwnerPublic {
+		if dispatchErr == nil && !nodeActionKind(action.Kind) && !pairActionKind(action.Kind) && !ownerEndpointActionKind(action.Kind) && action.Kind != ActionExportOwnerPublic {
 			c.initializeNode(operationCtx)
 		}
 	}()
@@ -212,6 +216,12 @@ func (c *nativeController) Dispatch(ctx context.Context, action Action) (dispatc
 	}
 
 	switch action.Kind {
+	case ActionReadOwnerEndpoints:
+		return c.readOwnerEndpoints(operationCtx, action.OwnerEndpoints)
+	case ActionRecoverOwnerEndpoints:
+		return c.recoverOwnerEndpoints(operationCtx)
+	case ActionParkOwnerEndpoints:
+		return c.parkOwnerEndpoints(action.OwnerEndpoints)
 	case ActionPreparePair:
 		return c.preparePair(operationCtx, action.Pair)
 	case ActionCompletePair:

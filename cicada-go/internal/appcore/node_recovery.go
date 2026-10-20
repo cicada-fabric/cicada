@@ -8,6 +8,9 @@ import (
 )
 
 func (c *nativeController) recoverNode(ctx context.Context) error {
+	if c.hasOwnerEndpointPending() {
+		return c.recoverOwnerEndpoints(ctx)
+	}
 	if c.device == nil || c.vault == nil || !c.connected || !c.hasNodePending() {
 		return ErrInvalidAction
 	}

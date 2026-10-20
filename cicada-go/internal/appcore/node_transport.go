@@ -63,7 +63,7 @@ func (c *nativeController) postNodePacket(ctx context.Context, p *nodeOperation)
 	if p == nil || len(p.Request) == 0 || c.cfg.HTTP == nil {
 		return nil, ErrInvalidAction
 	}
-	path := wire.AppNodeHTTPPath(p.Operation)
+	path := nodePacketHTTPPath(p.Operation)
 	if p.Kind == wire.AppNodeOriginalClient && p.Operation == "nodes.confirm" {
 		path = "/v2/client/rpc"
 	}

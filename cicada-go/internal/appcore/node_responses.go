@@ -12,6 +12,9 @@ import (
 )
 
 func (c *nativeController) openNodeAuthorityResponse(p *nodeOperation, raw []byte) (any, error) {
+	if p.Operation == wire.OperationOwnerEndpointRead {
+		return c.openOwnerEndpointResponse(p, raw)
+	}
 	device, err := c.device.E2EE()
 	if err != nil {
 		return nil, err
@@ -75,6 +78,8 @@ func (c *nativeController) applyNodeResponse(p *nodeOperation, fresh bool) error
 		return err
 	}
 	switch result := value.(type) {
+	case *wire.OwnerEndpointReadResult:
+		return c.applyOwnerEndpointResponse(p, result)
 	case *wire.AppNodeChallenge:
 		c.node.Proposal.Challenge = result
 		c.nodeError = ""

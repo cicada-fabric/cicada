@@ -112,10 +112,17 @@ func (v *view) workspaceRows(s appcore.Snapshot, flow appui.SetupFlow) []layout.
 		}
 		return []layout.Widget{v.sectionCard(v.labelRow(appui.Text(v.locale, "workspace.devices_unavailable")))}
 	case "sessions":
-		if appui.PairFlow(s, time.Now()).Visible {
-			return []layout.Widget{v.sectionCard(v.pairSection(s))}
+		rows := []layout.Widget{}
+		if appui.OwnerEndpointDirectoryVisible(s, time.Now()) {
+			rows = append(rows, v.sectionCard(v.ownerEndpointSection(s)))
 		}
-		return []layout.Widget{v.sectionCard(v.labelRow(appui.Text(v.locale, "workspace.sessions_unavailable")))}
+		if appui.PairFlow(s, time.Now()).Visible {
+			rows = append(rows, v.sectionCard(v.pairSection(s)))
+		}
+		if len(rows) == 0 {
+			rows = append(rows, v.sectionCard(v.labelRow(appui.Text(v.locale, "workspace.sessions_unavailable"))))
+		}
+		return rows
 	case "identity":
 		rows := []layout.Widget{v.labelRow(appui.Text(v.locale, "workspace.identity_body")), func(gtx layout.Context) layout.Dimensions { return v.statusCard(gtx, s) }}
 		if flow.Stage != "ready" && !strings.HasPrefix(flow.Stage, "node-") && flow.Stage != "pair-recovery" {
@@ -197,6 +204,8 @@ func (v *view) workspaceAttention(s appcore.Snapshot, flow appui.SetupFlow) layo
 	}
 	page, message := "", ""
 	switch {
+	case s.OwnerEndpoints.Pending:
+		page, message = "sessions", "directory.pending"
 	case s.Pair.Pending:
 		page, message = "sessions", "pair.recovery"
 	case s.Node.Pending:

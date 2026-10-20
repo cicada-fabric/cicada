@@ -244,23 +244,23 @@ func (c *nativeController) sendNodePending(ctx context.Context, fresh bool) erro
 	if !p.unresolved() {
 		return ErrInvalidAction
 	}
-	if !fresh {
+	if !fresh && p.Operation != wire.OperationOwnerEndpointRead {
 		c.nodeChecked, c.nodeReadRequestID = false, ""
 	}
 	if len(p.Response) != 0 {
 		if err := c.applyNodeResponse(p, false); err != nil {
-			return c.failNode("APP_NODE_RESPONSE_INVALID", err)
+			return c.failNodePending(p, "APP_NODE_RESPONSE_INVALID", err)
 		}
 		c.publish()
 		return nil
 	}
 	raw, err := c.postNodePacket(ctx, p)
 	if err != nil {
-		return c.failNode("APP_NODE_REQUEST_UNKNOWN", err)
+		return c.failNodePending(p, "APP_NODE_REQUEST_UNKNOWN", err)
 	}
 	defer clear(raw)
 	if err := c.verifyNodeResponse(p, raw); err != nil {
-		return c.failNode("APP_NODE_RESPONSE_INVALID", err)
+		return c.failNodePending(p, "APP_NODE_RESPONSE_INVALID", err)
 	}
 	p.Response = append([]byte(nil), raw...)
 	if err := c.persistNode(); err != nil {
@@ -268,16 +268,23 @@ func (c *nativeController) sendNodePending(ctx context.Context, fresh bool) erro
 	}
 	if ctx.Err() != nil {
 		if err := c.applyNodeResponse(p, false); err != nil {
-			return c.failNode("APP_NODE_RESPONSE_INVALID", err)
+			return c.failNodePending(p, "APP_NODE_RESPONSE_INVALID", err)
 		}
 		c.publish()
 		return ctx.Err()
 	}
 	if err := c.applyNodeResponse(p, fresh); err != nil {
-		return c.failNode("APP_NODE_RESPONSE_INVALID", err)
+		return c.failNodePending(p, "APP_NODE_RESPONSE_INVALID", err)
 	}
 	c.publish()
 	return nil
+}
+
+func (c *nativeController) failNodePending(p *nodeOperation, code string, err error) error {
+	if p != nil && p.Operation == wire.OperationOwnerEndpointRead {
+		return c.failOwnerEndpoints("APP_OWNER_DIRECTORY_REQUEST_UNKNOWN", err)
+	}
+	return c.failNode(code, err)
 }
 
 func (c *nativeController) failNode(code string, err error) error {
