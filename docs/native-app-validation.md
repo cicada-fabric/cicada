@@ -3411,3 +3411,144 @@ account-vault convergence, real Node/services/queues/Runtime, public HTTPS,
 external rollback resistance and host-power-loss acceptance remain **NOT_RUN**.
 No public protocol, server, deployment, global Codex configuration, real key or
 grant changed, and no management authority is inferred from these storage tests.
+
+
+## 2026-10-20 controlled installation registration C0 (availability false)
+
+This checkpoint implements the new `installation-registration-v1` contract,
+Go DTOs, pure proof/codecs, public synthetic vector and checker on
+`73d48ad297ec21eb1fb480e97c1b7b4e6057912a` plus exact dirty C0 inputs. It does
+not add a Store migration/HTTP handler, change existing ingress authorization,
+or advertise availability. The authoritative boundary is
+[controlled installation registration](hub-installation-registration-contract.md).
+Node/App consumer integration and H1/H2 persistence/guards remain separate work.
+
+The earlier producer variant completed **37/0/0**, default vet, exit 0:
+`device-registration-c0/candidate-tests-20261020T091626Z/summary.json` under the
+workspace-local evidence root. Its source manifest SHA-256 is
+`4c8a9f73baf7dac98c00be9490134b87c105228565afbec29adcbaa3fdce4250`;
+all **2,300** inputs match before/after. That variant used the earlier
+`709531966b90aabedc80ee619922a589b991d20d` dirty source and generated the visibly
+synthetic public vector outside the repository. Its results are not relabelled
+as the later source. Only the exact synthetic vector file's ownership was
+corrected to allow the producer to copy it; its bytes remained SHA-256
+`43472cd3940be21f24adb5b6b624134019bb81b990b2f475f2b5a047af3d79d9`.
+No private key is in that public vector; its wrapper explicitly says never to
+initialize a deployment from it.
+
+The final C0 source completed **51/0/0**, default vet, exit 0:
+`device-registration-c0/final-normal-20261020T094617Z/summary.json`, SHA-256
+`53cc5000aed276042275243439d709839c58b6498751cf35eb58b2e2aed1b165`.
+Its source manifest SHA-256 is
+`07f019d1c88b0ddb9f07be8da70c8ad0fa5b7661d5023a162bdb6cc5221df889`;
+all **2,308** selected inputs match before/after. Only this append-only,
+non-input validation document is excluded. The committed synthetic vector is
+verified in this run, rather than generated again. The pinned offline image is
+`sha256:5c3e9b43cfd3bb95c7937462e29d87ada57b481a96fa23ad0eb61778d7a00110`
+(Go **1.27.3**). Source/module cache are read-only; the historically named
+`n2-acceptance/gomod-go1.27.2-stable` cache contains the unchanged current module
+closure. The separate task Go 1.27.3 build cache is locked. Exact argv, environment,
+JSON logs and actual executed binaries' before/after identities are retained.
+
+The final actual e2ee test binary is
+`a883acf329b2282bc5fb10928f82d616e87946758ef3673f56e1428229792f3b`;
+the wire test binary is
+`b1b139daf981681eac2da27439b627e21fd84dfa28f8525b59605daa5c4c8f83`.
+Both hashes match after execution. Exact owned container ID
+`d14552b8aa2a692c5e2b343cf336d06ea45f3f2a22da5cc919702916debd7b48`
+is confirmed absent by `docker container inspect`; its diagnostic/exit status
+is retained in the summary. Temporary files use the disposable container
+filesystem, not a resident Hub or power-loss fixture.
+
+Actual production-crypto measurements on that final source:
+
+| Synthetic case | Encoded bytes |
+| --- | ---: |
+| Maximum legal compact ticket (origin 256 / HubID 96 / full 64+64 pins / nanosecond UTC) | **959 / 1,024** |
+| Maximum metadata PQ start | **73,817 / 131,072** |
+| Maximum metadata PQ Owner completion | **124,102 / 131,072** |
+| Its actual Owner proof / trust capsule | **15,688 / 29,369** |
+| Reconcile carrying that original completion | **311,681 / 655,360** |
+| Maximum-field real PQ slot attestations (A/B) | **9,336 / 9,336** |
+| One such complete Pair snapshot response | **79,207 / 262,144** |
+| Byte-budgeted page with separate 16-KiB attestation-cap buffers | **212,771 / 262,144**, **2 of 16** rows |
+
+The 16-KiB buffers are explicitly a DTO upper-size stress case, **not** valid
+peer proofs or SQL-made authorization. The separate real-attestation fixture
+passes the existing complete slot verifier. The computed plaintext page budget
+is **140,747** bytes; tests reserve worst-case Go JSON escaping for the bounded
+cursor, encode row bytes once, set cursor/truncated and PQ-seal the final page
+once. The size model equals actual Seal output. Ordinary request/reconcile
+limits, complete encoded expansion and malformed/oversize rejection are checked;
+no legacy limit was enlarged. HTML/Unicode URI reg-names and bare-query origins
+are rejected by the new validator, rather than truncated to make a QR fit.
+
+Coverage includes noncyclic B/T framing, capsule-only ACK nonce, independent
+admission/subject signature **and KEM** proofs, a valid signature advertising
+someone else's KEM key, Hub Owner-key substitution, first-pin expiry/zero-time
+rejection, FIRST_OOB versus actual-local EXISTING_LOCAL_PIN, registered-parent
+append and legacy Node first adoption, current bearer/digest/version checks,
+original packet authentication distinct from fresh admission, exact nested
+receipt recovery, fixed read profiles, Owner-read-proof XOR recipient grants,
+own-only grant discovery, concurrently effective 16-grant limit and liveness
+without registration/permission renewal. The original Node tuple is preserved
+in the pure adoption model; durable Store preservation remains an H1 gate.
+
+Two build-only precursor failures retain their own source/result. The first,
+`syntax-20261020T083817Z`, source
+`65b17424ac6fc88c0924da61c859ea8bd881ca66f58f6d13d831d95cc0a15695`,
+selected the incomplete old default module cache and failed setup offline/RO.
+The second, `syntax-20261020T084002Z`, source
+`be6576854ece1f37bb003b42f810632c1e781a0ad3f9c262a1ca1e59589dd295`,
+used the correct cache but failed compilation on a wrong HubIdentity field name
+in new code, subsequently corrected. Both ran **zero assertions**, both exact
+owned containers are absent, and neither is counted as a compile/test PASS.
+
+The new contract checker, existing native-pair checker and `git diff --check`
+pass. C0 availability stays **false**. Race, Store/real TCP, three-component
+actual carrier, standard combined-source Client interop, Node local durable
+pin/ACK execution, Windows GUI/DPAPI/ACL, physical-device/Android, public HTTPS,
+strict PQTLS and native Runtime remain separate **NOT_RUN** gates here.
+No real credential/key, model/provider, queue/SID or resident deployment was
+operated. This scoped checkpoint does not authorize deployment or public readiness.
+
+### C0 final review: bounded issuance clock tolerance
+
+Root's final review identified that strict `now >= issued_at` prevents an
+ordinary Node/Hub exchange when their trusted OS UTC clocks differ slightly.
+The revised C0 source uses one **30-second issuance lower-bound tolerance**
+for Start, self/account fresh headers, ticket matching, KEM challenge/receipt,
+Owner proof/intent/read and finite-grant admission. Hub challenge issuance and
+approval preparation may also precede the installation's issuance by at most
+30 seconds. All original expiry/session/accept deadlines and the at-most-60s
+fresh request age are unchanged. There is **no expiry grace**, original rewrite,
+historical-clock substitution or new time service. Time zones only affect display.
+
+The preceding **51/0/0** full C0 result and its maximum-size measurements remain
+attributed to source manifest `07f019d1...21df889`; they are not relabelled as
+this revised source. Its original candidate/summary evidence is unchanged.
+The targeted final review run completed **136/0/0** events, including **11**
+top-level time-related tests and their subtests, default vet, exit 0:
+`device-registration-c0/issuance-skew-20261020T095650Z/summary.json`, SHA-256
+`7533db61474de959cb855ec488c56973756acfe232c36e93624285a3c04e14cf`.
+Its source manifest SHA-256 is
+`795c59f590d26ddb1b8b2c74b114fb5dad1f0e96990c7760c7775ca2dd478690`.
+All **2,308** selected source hashes match before/after, with only this
+append-only non-input ledger excluded, on dirty parent
+`73d48ad297ec21eb1fb480e97c1b7b4e6057912a` plus the exact revised C0 files.
+
+The run checks both ±1-second directions, exactly 30 seconds early, rejection
+at 30 seconds plus one nanosecond, zero-clock rejection, exact expiry and late
+first pin rejection, immutable original packet bytes, and historical recovery
+without renewed admission. Existing pin/legacy adoption time paths are included.
+The pinned offline Go **1.27.3** image, read-only source/module mounts, locked
+task build cache and no-network policy are the same as recorded above.
+Executed binary hashes before/after match:
+e2ee `9bebc59842aab60c68ad92f4035004ee0492459693784c1cdd2895635777ef9a`
+and wire `06bad83d02d83fa62a1a2c00c36e43e11ef6e7e488d903d25c039fb39eb4f16d`.
+Only their identities/logs are retained; the binary files were disposable.
+Exact owned container
+`6941f6a6aeedcf3e58bf2b7acec27559168e9084ed88a33c63df801eb89ab319`
+is confirmed absent; inspect exit/diagnostic is retained in its summary.
+The new contract checker, frozen native-pair checker and whitespace checks pass.
+Availability remains **false**; the preceding C0 NOT_RUN gates remain unchanged.

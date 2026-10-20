@@ -1,0 +1,695 @@
+{
+  "availability_gate": "HUB_NODE_APP_ACTUAL_CARRIER_REQUIRED",
+  "bounds": {
+    "MaxInstallationBodyBytes": 98304,
+    "MaxInstallationEffectiveGrants": 16,
+    "MaxInstallationHubIDBytes": 96,
+    "MaxInstallationOriginBytes": 256,
+    "MaxInstallationOriginalBytes": 131072,
+    "MaxInstallationPacketBytes": 131072,
+    "MaxInstallationPageSize": 50,
+    "MaxInstallationProofBytes": 65536,
+    "MaxInstallationReceiptBytes": 262144,
+    "MaxInstallationReconcileBodyBytes": 360448,
+    "MaxInstallationReconcilePacketBytes": 655360,
+    "MaxInstallationTicketBytes": 1024
+  },
+  "components": [
+    "APP",
+    "HUB",
+    "NODE"
+  ],
+  "contract_revision": "installation-registration-v1",
+  "discovery": {
+    "method": "GET",
+    "path": "/v2/installations/capabilities"
+  },
+  "domains": {
+    "installationACKDomain": "cicada/installation-registration/ack/v1\u0000",
+    "installationAccessDomain": "cicada/owner/installation-app-access/v1\u0000",
+    "installationAdmissionKEMDomain": "cicada/installation-registration/admission-kem-receipt/v1\u0000",
+    "installationApprovalDomain": "cicada/installation-registration/approval-base/v1\u0000",
+    "installationCandidateDomain": "cicada/installation-registration/candidate/v1\u0000",
+    "installationCapsuleAAD": "cicada/installation-registration/capsule-aad/v1\u0000",
+    "installationCapsuleDomain": "cicada/installation-registration/capsule-digest/v1\u0000",
+    "installationIntentDomain": "cicada/owner/installation-intent/v1\u0000",
+    "installationKEMDomain": "cicada/installation-registration/kem-challenge/v1\u0000",
+    "installationKEMNonceDomain": "cicada/installation-registration/kem-nonce/v1\u0000",
+    "installationOOBDomain": "cicada/installation-registration/oob/v1\u0000",
+    "installationOwnerDomain": "cicada/owner/installation-register/v1\u0000",
+    "installationPacketAAD": "cicada/installation-registration/request-aad/v1\u0000",
+    "installationPacketDomain": "cicada/installation-registration/packet/v1\u0000",
+    "installationQueryDomain": "cicada/installation-registration/read-target/v1\u0000",
+    "installationReadDomain": "cicada/owner/installation-read/v1\u0000",
+    "installationResponseAAD": "cicada/installation-registration/response-aad/v1\u0000",
+    "installationStartSubjectAAD": "cicada/installation-registration/start-subject/v1\u0000",
+    "installationSubjectAcceptDomain": "cicada/installation-registration/subject-accept/v1\u0000",
+    "installationSubjectDomain": "cicada/installation-registration/subject/v1\u0000",
+    "installationSubjectKEMDomain": "cicada/installation-registration/subject-kem-receipt/v1\u0000"
+  },
+  "empty_recipient_grant_ids": "CURRENT_AUTHENTICATED_RECIPIENT_ONLY",
+  "existing_trust_sources": [
+    "REGISTERED_PARENT",
+    "LEGACY_NODE"
+  ],
+  "fixture": {
+    "path": "cicada-go/internal/hubaccountwire/testdata/installation-registration-v1.json",
+    "sha256": "43472cd3940be21f24adb5b6b624134019bb81b990b2f475f2b5a047af3d79d9",
+    "synthetic_only": true
+  },
+  "format": "cicada.installation-registration.v1",
+  "frozen_artifacts": {
+    "cicada-go/internal/clientcontract/catalog.json": "a4ba36df0690e15dbaad36ea93d79586b25380bf31ebc5e0da5c3c1122e14db9",
+    "cicada-go/internal/e2ee/owner_app_node_claims.go": "75f4c0e9331761a1cf93a98dfab97bab6278cc985d968dba7a50ca11caac933e",
+    "cicada-go/internal/e2ee/owner_device_grant.go": "5cb455b4fd03681208df9857850cb0e7283aa9caa8320ade9ac9634f3d07b6aa",
+    "cicada-go/internal/e2ee/owner_native_pair_claims.go": "8871dd758720f8b143925f72d7bc9293adf4e4d9b1a547c9b375f10d6f2d049f",
+    "cicada-go/internal/e2ee/pq.go": "c1228b60a2c288b24814f55d010019699dbc3acbea3c82636765241f15be6d27",
+    "cicada-go/internal/fabric/credential.go": "edc4c2c0fd2771c0cd796c1e3cb564470d47ed641bddbe7091db1c62452555a7",
+    "cicada-go/internal/hubaccountwire/app_node_authority.go": "4a8c4b9ad99d83bdfe7d4a40a85d410ac25c391b9990e16b1d2156cf3d9d3760",
+    "cicada-go/internal/hubaccountwire/app_node_packets.go": "9e8330b6765517ef3029979c1046dc4fb6c66f7b0f628107e4c074d86808d771",
+    "cicada-go/internal/hubaccountwire/native_pair_packets.go": "aa3002b7e2360690d4732f4d7cb6e109d955bb6b2cb5f63e72aefcb6d7675881",
+    "cicada-go/internal/hubaccountwire/native_pair_types.go": "8b76844bbe2615bc8c6cd34d9b258786450e7656246ddb44485d47984b68eb63",
+    "cicada-go/internal/hubaccountwire/packet.go": "72cf99d337e6d47879af47fcef7c23df0d95705bc9965ac124716b4fad2760d7",
+    "cicada-go/internal/hubaccountwire/types.go": "8cf6b225ca3906b3025c324bcbe362f3cb950fbef1a6330f176d5d55ec5ff81c",
+    "cicada-go/internal/store/hub_app_lease_v1.go": "df7dfccb0521878e27935b0baaa9e9ff6da8b03efecd1fed3511bf57a7b3d68f"
+  },
+  "grant_limit_semantics": "CONCURRENTLY_EFFECTIVE_ONLY_NOT_HISTORY",
+  "historical_original_api": "AuthenticateInstallationOriginal_NEVER_FRESH_ADMISSION",
+  "implementation_phase": "CONTRACT_CANDIDATE",
+  "legacy_adoption": "ORIGINAL_KEY_AND_CURRENT_RAW_BEARER_INSIDE_HUB_PQ_BODY_WITH_ORIGINAL_BINDING_VERSION",
+  "lifetimes_seconds": {
+    "attempt": 600,
+    "fresh_request_and_preview": 60,
+    "heartbeat_freshness": 120,
+    "kem_challenge": 120,
+    "owner_read_proof": 60,
+    "owner_registration_proof_and_accept": 300,
+    "read_cache": 300,
+    "read_grant": 900
+  },
+  "operations": [
+    {
+      "actor": "INSTALLATION",
+      "method": "POST",
+      "operation": "installation.register.start",
+      "path": "/v2/installations/start"
+    },
+    {
+      "actor": "INSTALLATION",
+      "method": "POST",
+      "operation": "installation.register.prove",
+      "path": "/v2/installations/prove"
+    },
+    {
+      "actor": "INSTALLATION",
+      "method": "POST",
+      "operation": "installation.register.poll",
+      "path": "/v2/installations/poll"
+    },
+    {
+      "actor": "INSTALLATION",
+      "method": "POST",
+      "operation": "installation.register.accept",
+      "path": "/v2/installations/accept"
+    },
+    {
+      "actor": "INSTALLATION",
+      "method": "POST",
+      "operation": "installation.self.status",
+      "path": "/v2/installations/self"
+    },
+    {
+      "actor": "INSTALLATION",
+      "method": "POST",
+      "operation": "installation.self.heartbeat",
+      "path": "/v2/installations/heartbeat"
+    },
+    {
+      "actor": "SAME_ORIGINAL_ACTOR",
+      "method": "POST",
+      "operation": "installation.reconcile",
+      "path": "/v2/installations/reconcile"
+    },
+    {
+      "actor": "OWNER",
+      "method": "POST",
+      "operation": "owner.installation.prepare",
+      "path": "/v2/owner/installations/prepare"
+    },
+    {
+      "actor": "OWNER",
+      "method": "POST",
+      "operation": "owner.installation.complete",
+      "path": "/v2/owner/installations/complete"
+    },
+    {
+      "actor": "OWNER",
+      "method": "POST",
+      "operation": "owner.installation.revoke",
+      "path": "/v2/owner/installations/revoke"
+    },
+    {
+      "actor": "OWNER",
+      "method": "POST",
+      "operation": "owner.app_access.prepare",
+      "path": "/v2/owner/app-access/prepare"
+    },
+    {
+      "actor": "OWNER",
+      "method": "POST",
+      "operation": "owner.app_access.complete",
+      "path": "/v2/owner/app-access/complete"
+    },
+    {
+      "actor": "OWNER",
+      "method": "POST",
+      "operation": "owner.app_access.revoke",
+      "path": "/v2/owner/app-access/revoke"
+    },
+    {
+      "actor": "OWNER_READ_PROOF_XOR_RECIPIENT_GRANTS",
+      "method": "POST",
+      "operation": "owner.connections.read",
+      "path": "/v2/owner/connections/read"
+    }
+  ],
+  "packet_format": "cicada.installation-packet.v1",
+  "pagination": "COUNT_AND_ENCODED_BYTES_WITH_CURSOR_TRUNCATED_PQ_SEAL_ONCE",
+  "production_changes_in_C0": [],
+  "public_available": false,
+  "read_authorization": [
+    "OWNER_READ_PROOF",
+    "RECIPIENT_GRANTS"
+  ],
+  "read_profiles": [
+    "N3_NODE_STATUS_READ",
+    "N3_PAIR_STATUS_READ"
+  ],
+  "registration_default_business_grants": [],
+  "schema_fields": {
+    "InstallationAccept": [
+      "format",
+      "approval_receipt_digest",
+      "approval_digest",
+      "capsule_digest",
+      "owner_proof_digest",
+      "ack_nonce",
+      "subject_acceptance"
+    ],
+    "InstallationAccessChallenge": [
+      "format",
+      "request_id",
+      "request_packet_digest",
+      "claims"
+    ],
+    "InstallationAccessClaims": [
+      "version",
+      "purpose",
+      "scope",
+      "grant_id",
+      "recipient",
+      "profile",
+      "target",
+      "expected_revision",
+      "prepare_request_id",
+      "prepare_packet_digest",
+      "server_nonce",
+      "prepared_at",
+      "proof_expires_at",
+      "expires_at"
+    ],
+    "InstallationAccessComplete": [
+      "format",
+      "session_token",
+      "owner_proof"
+    ],
+    "InstallationAccessPrepare": [
+      "format",
+      "session_token",
+      "grant_id",
+      "target",
+      "owner_intent"
+    ],
+    "InstallationAccessProof": [
+      "claims",
+      "signature"
+    ],
+    "InstallationAccessResult": [
+      "format",
+      "operation",
+      "request_id",
+      "request_packet_digest",
+      "grant",
+      "outcome",
+      "error_code",
+      "observed_at"
+    ],
+    "InstallationAccessRevoke": [
+      "format",
+      "session_token",
+      "grant_id",
+      "expected_revision",
+      "owner_proof"
+    ],
+    "InstallationAccessTarget": [
+      "node_binding_id",
+      "node_binding_version",
+      "node_key_epoch",
+      "pair_id"
+    ],
+    "InstallationAppRef": [
+      "device_id",
+      "public_identity",
+      "key_version",
+      "device_epoch"
+    ],
+    "InstallationApprovalBase": [
+      "format",
+      "candidate_digest",
+      "oob_commitment",
+      "installation_id",
+      "attempt_id",
+      "possession_receipt_digest",
+      "scope",
+      "subject_digest",
+      "expected_revision",
+      "prepare_request_id",
+      "prepare_packet_digest",
+      "preview_proof_digest",
+      "server_nonce",
+      "prepared_at",
+      "attempt_expires_at",
+      "proof_expires_at",
+      "accept_before"
+    ],
+    "InstallationApproved": [
+      "result",
+      "owner_proof",
+      "trust_capsule"
+    ],
+    "InstallationCandidate": [
+      "base",
+      "candidate_digest",
+      "oob_commitment"
+    ],
+    "InstallationCandidateBase": [
+      "format",
+      "hub",
+      "installation_id",
+      "attempt_id",
+      "admission_public_identity",
+      "components",
+      "subject",
+      "trust",
+      "issued_at",
+      "expires_at"
+    ],
+    "InstallationCapabilities": [
+      "format",
+      "contract_revision",
+      "available",
+      "serve_mode",
+      "transport_policy",
+      "operations",
+      "trust_modes",
+      "read_profiles"
+    ],
+    "InstallationChallengeEnvelope": [
+      "header",
+      "packet"
+    ],
+    "InstallationConnectionsRead": [
+      "format",
+      "session_token",
+      "query",
+      "authorization"
+    ],
+    "InstallationConnectionsSnapshot": [
+      "format",
+      "request_id",
+      "request_packet_digest",
+      "snapshot_revision",
+      "own_parent,omitempty",
+      "own_subject,omitempty",
+      "grants",
+      "parents",
+      "nodes",
+      "pairs",
+      "next_cursor",
+      "truncated",
+      "observed_at"
+    ],
+    "InstallationExistingTrust": [
+      "source",
+      "parent_registration_id",
+      "registration_epoch",
+      "admission_credential_version",
+      "owner_id",
+      "owner_key_id",
+      "owner_public_digest",
+      "local_trust_version"
+    ],
+    "InstallationGrantRef": [
+      "grant_id",
+      "origin_contract",
+      "profile",
+      "subject_registration_id",
+      "recipient_device_id",
+      "target",
+      "state",
+      "revision",
+      "expires_at"
+    ],
+    "InstallationGrantTarget": [
+      "recipient",
+      "profile",
+      "target",
+      "expected_revision"
+    ],
+    "InstallationHeartbeat": [
+      "format"
+    ],
+    "InstallationHubRef": [
+      "origin",
+      "hub_id",
+      "public_identity",
+      "key_version",
+      "fingerprint",
+      "transport_policy"
+    ],
+    "InstallationKEMChallenge": [
+      "format",
+      "purpose",
+      "candidate_digest",
+      "oob_commitment",
+      "hub_id",
+      "installation_id",
+      "attempt_id",
+      "start_packet_digest",
+      "challenge_id",
+      "recipient_key_id",
+      "nonce",
+      "issued_at",
+      "expires_at"
+    ],
+    "InstallationKEMReceipt": [
+      "format",
+      "challenge",
+      "prove_request_id",
+      "subject_receipt_digest"
+    ],
+    "InstallationNodeRef": [
+      "node_id",
+      "public_identity",
+      "key_version",
+      "key_epoch",
+      "hub_node_control_public_identity",
+      "hub_node_control_key_version",
+      "hub_node_control_fingerprint",
+      "credential_commitment",
+      "request_id",
+      "request_version",
+      "candidate_digest",
+      "candidate_expires_at",
+      "binding_id",
+      "binding_version",
+      "credential_version"
+    ],
+    "InstallationOwnerChallenge": [
+      "format",
+      "request_id",
+      "request_packet_digest",
+      "candidate",
+      "approval"
+    ],
+    "InstallationOwnerClaims": [
+      "version",
+      "purpose",
+      "approval",
+      "capsule_digest",
+      "ack_commitment"
+    ],
+    "InstallationOwnerComplete": [
+      "format",
+      "session_token",
+      "owner_proof",
+      "trust_capsule"
+    ],
+    "InstallationOwnerIntentClaims": [
+      "version",
+      "purpose",
+      "scope",
+      "request_id",
+      "nonce",
+      "target_id",
+      "target_digest",
+      "expected_revision",
+      "issued_at",
+      "expires_at"
+    ],
+    "InstallationOwnerIntentProof": [
+      "claims",
+      "signature"
+    ],
+    "InstallationOwnerPrepare": [
+      "format",
+      "session_token",
+      "attempt_id",
+      "candidate_digest",
+      "owner_intent"
+    ],
+    "InstallationOwnerProof": [
+      "claims",
+      "signature"
+    ],
+    "InstallationOwnerReadClaims": [
+      "version",
+      "purpose",
+      "scope",
+      "request_id",
+      "nonce",
+      "query_digest",
+      "issued_at",
+      "expires_at"
+    ],
+    "InstallationOwnerReadProof": [
+      "claims",
+      "signature"
+    ],
+    "InstallationOwnerRevoke": [
+      "format",
+      "session_token",
+      "parent_registration_id",
+      "subject_registration_id",
+      "expected_revision",
+      "owner_proof"
+    ],
+    "InstallationPacket": [
+      "format",
+      "version",
+      "operation",
+      "sender_public_identity",
+      "self,omitempty",
+      "account,omitempty",
+      "packet"
+    ],
+    "InstallationParent": [
+      "installation_id",
+      "registration_id",
+      "registration_epoch",
+      "admission_credential_version",
+      "owner_id",
+      "state",
+      "revision"
+    ],
+    "InstallationPoll": [
+      "format",
+      "candidate_digest"
+    ],
+    "InstallationPossession": [
+      "candidate_digest",
+      "oob_commitment",
+      "challenge_id",
+      "start_packet_digest",
+      "admission_key_id",
+      "subject_key_id",
+      "prove_request_id",
+      "verified_at"
+    ],
+    "InstallationProve": [
+      "format",
+      "challenge_id",
+      "start_packet_digest",
+      "admission_receipt",
+      "subject_receipt"
+    ],
+    "InstallationReadAuthorization": [
+      "kind",
+      "owner_read_proof,omitempty",
+      "grant_ids,omitempty"
+    ],
+    "InstallationReadQuery": [
+      "hub_id",
+      "account_id",
+      "owner_id",
+      "device_id",
+      "account_epoch",
+      "device_epoch",
+      "request_id",
+      "nonce",
+      "target_kind",
+      "target_ids",
+      "page_size",
+      "cursor"
+    ],
+    "InstallationRecipient": [
+      "subject_registration_id",
+      "subject_registration_epoch",
+      "device_id",
+      "device_public_identity",
+      "device_epoch"
+    ],
+    "InstallationReconcile": [
+      "format",
+      "original_operation",
+      "original_request_id",
+      "original_packet_digest",
+      "original_packet"
+    ],
+    "InstallationReconciled": [
+      "format",
+      "request_id",
+      "request_packet_digest",
+      "original_operation",
+      "original_request_id",
+      "original_packet_digest",
+      "state",
+      "receipt_packet",
+      "observed_at"
+    ],
+    "InstallationResponsePacket": [
+      "format",
+      "version",
+      "operation",
+      "request_id",
+      "request_packet_digest",
+      "receiver_key_id",
+      "packet"
+    ],
+    "InstallationResult": [
+      "format",
+      "operation",
+      "request_id",
+      "request_packet_digest",
+      "attempt_id",
+      "attempt_state",
+      "revision",
+      "parent,omitempty",
+      "subject,omitempty",
+      "outcome",
+      "error_code",
+      "grants",
+      "observed_at"
+    ],
+    "InstallationSelfContext": [
+      "hub_id",
+      "installation_id",
+      "attempt_id",
+      "parent_registration_id",
+      "registration_epoch",
+      "admission_credential_version",
+      "request_id",
+      "nonce",
+      "issued_at"
+    ],
+    "InstallationSelfRequest": [
+      "format"
+    ],
+    "InstallationStart": [
+      "format",
+      "candidate",
+      "subject_signature_proof",
+      "node_credential,omitempty"
+    ],
+    "InstallationStartResult": [
+      "format",
+      "request_id",
+      "request_packet_digest",
+      "candidate_digest",
+      "attempt_id",
+      "selector",
+      "state",
+      "expires_at",
+      "admission_challenge",
+      "subject_challenge"
+    ],
+    "InstallationSubject": [
+      "kind",
+      "mode",
+      "node,omitempty",
+      "app,omitempty"
+    ],
+    "InstallationSubjectAccept": [
+      "format",
+      "candidate_digest",
+      "approval_digest",
+      "capsule_digest",
+      "owner_proof_digest",
+      "ack_nonce",
+      "accept_request_id",
+      "subject_digest"
+    ],
+    "InstallationSubjectBinding": [
+      "subject_registration_id",
+      "subject_registration_epoch",
+      "parent_registration_id",
+      "kind",
+      "instance_id",
+      "public_identity",
+      "state",
+      "revision",
+      "auth_provenance",
+      "node_binding,omitempty"
+    ],
+    "InstallationTrustCapsule": [
+      "format",
+      "approval",
+      "owner_public_identity",
+      "oob_secret",
+      "ack_nonce"
+    ],
+    "InstallationTrustSource": [
+      "kind",
+      "existing,omitempty"
+    ],
+    "installationStartSubjectBinding": [
+      "format",
+      "context",
+      "candidate_digest",
+      "oob_commitment"
+    ]
+  },
+  "serve_mode": "--hub-nodes-only",
+  "subjects": [
+    "NODE_CONTROL",
+    "APP_DEVICE"
+  ],
+  "target_domains": {
+    "grant_target": "cicada/installation-registration/grant-target/v1\u0000",
+    "revoke_target": "cicada/installation-registration/revoke-target/v1\u0000"
+  },
+  "time_policy": {
+    "clock": "ACTUAL_TRUSTED_OS_SYNCHRONIZED_UTC_TIMEZONE_DISPLAY_ONLY",
+    "cross_issuer_lower_bound": "BASE_ISSUED_AT_MINUS_30_SECONDS",
+    "expiry_grace_seconds": 0,
+    "fresh_age_seconds": 60,
+    "issuance_early_tolerance_seconds": 30,
+    "original_times": "IMMUTABLE"
+  },
+  "trust_modes": [
+    "FIRST_OOB",
+    "EXISTING_LOCAL_PIN"
+  ],
+  "validation_owner": "Existing native-app-validation.md / native-app-plan.md, QA owned; no parallel validation ledger",
+  "wire_version": 1
+}
