@@ -380,3 +380,48 @@ own interrupted records, including the `final` directory's normal RED of
 unconfigured optional-fixture skip. Those results do not transfer to this source.
 Standard disposable interop and Windows two-window GUI acceptance remain
 separate integration/native scopes.
+
+## Workspace navigation and CJK source checkpoint (2026-10-20)
+
+The native window now separates Overview, Devices, Sessions & communication,
+Identity & access, and Settings. The account display boundary remains
+`PresentScreen`: signed-out and expired sessions have no device/session
+navigation or protected content. Pending operations show a persistent link to
+their original recovery controls, without forcing the selected page. Account
+steps stay on Identity; Node and Pair controls stay on their respective pages.
+Overview shows names, current status and the next review step. Full identifiers
+remain selectable/copyable in details. Exact Node and Pair approval targets,
+permissions and expiry remain directly visible during consent; no renderer
+creates authority or treats registration as communication permission.
+
+The window uses a light palette, existing Gio dp/sp sizing, and startup-only
+bounded loading of Windows' own `Fonts/msyh.ttc` or `Fonts/simsun.ttc` through
+`opentype.ParseCollection`. The default family is selected explicitly only from
+a successfully parsed CJK face. Missing, changed, oversized or invalid files
+leave Gio's system fallback in place; no font is bundled or downloaded. The
+prior implementation only relied on implicit system font discovery. This is
+an explicit loading change, not a proven diagnosis of every reported glyph
+failure. Actual Windows font loading, missing-font fallback, Chinese glyphs,
+DPI, clipboard and GUI behavior are still **NOT_RUN** for this source.
+
+Scoped evidence is retained at
+`/home/zyf/.cicada/acceptance/app-ui-checks/run-20261020T135022Z/`.
+`source-before.json` attributes the first source to dirty
+`9866cf3ad6c0513539f67bde292368f1b344bca7` plus the ten frozen earlier WIP inputs
+and this UI change. The actual retained UI binaries produced **133/0/0** in
+normal and race runs, and scoped vet exited **0**. Initial Windows compilation
+failed on an unused import; that source and failure remain under
+`first-tested-ui/` and `first-result.json`. Removing that import closed both
+Windows compile lanes (`ui-validation.json`). The subsequent Windows-only CJK
+change was checked by compiling the native UI test package and GUI executable,
+both exit **0**; its exact source inventory and artifacts are recorded in
+`ui-cjk-compile-validation.json` and `source-cjk-before.json`. The earlier
+normal/race executions are not reattributed to that later source.
+
+All checks used the pinned Go 1.27.3 builder with external networking disabled.
+This scoped UI checkpoint does not execute a real Hub, native Runtime, model,
+queue or physical Windows App. Disposable protocol interop belongs to the
+subsequent clean integration gate. The HTML information-architecture prototype
+is a design artifact and is not a Gio or Windows runtime acceptance result.
+User-file root selection, Owner directory access and automatic Codex context
+binding remain separate checkpoints; this change does not migrate any vault.

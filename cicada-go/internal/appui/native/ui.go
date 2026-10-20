@@ -7,7 +7,10 @@ import (
 	"errors"
 	"image"
 	"image/color"
+	"io"
 	"math"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -16,17 +19,21 @@ import (
 
 	"gioui.org/app"
 	"gioui.org/f32"
+	"gioui.org/font"
+	"gioui.org/font/opentype"
 	"gioui.org/io/event"
 	"gioui.org/io/pointer"
 	"gioui.org/layout"
 	"gioui.org/op"
 	"gioui.org/op/clip"
 	"gioui.org/op/paint"
+	"gioui.org/text"
 	"gioui.org/unit"
 	"gioui.org/widget"
 	"gioui.org/widget/material"
 	"github.com/cicada-ai/cicada/internal/appcore"
 	"github.com/cicada-ai/cicada/internal/appui"
+	"golang.org/x/sys/windows"
 )
 
 // RunWindow serves one native Gio window. The process main function must call
@@ -76,6 +83,9 @@ type view struct {
 	profileButtons       map[string]*widget.Clickable
 	pairButtons          map[string]*widget.Clickable
 	publicFields         map[string]*publicFieldState
+	workspacePage        string
+	workspaceButtons     map[string]*widget.Clickable
+	disclosures          map[string]*disclosureState
 	pairLabel            widget.Editor
 	pairBootstrapConsent widget.Bool
 	pairSlotAConsent     widget.Bool
@@ -125,12 +135,12 @@ func newView(controller appcore.Controller, ctx context.Context, cancel context.
 		pairButtons:    make(map[string]*widget.Clickable),
 		publicFields:   make(map[string]*publicFieldState),
 	}
-	// Keep Gio system-font fallback enabled for Windows CJK fonts. Layout
-	// dimensions use dp/sp so Windows scaling applies to text and controls.
-	v.theme.Bg = color.NRGBA{R: 18, G: 25, B: 35, A: 255}
-	v.theme.Fg = color.NRGBA{R: 229, G: 237, B: 245, A: 255}
-	v.theme.ContrastBg = color.NRGBA{R: 100, G: 224, B: 191, A: 255}
-	v.theme.ContrastFg = color.NRGBA{R: 13, G: 36, B: 33, A: 255}
+	configureNativeFonts(v.theme)
+	// Layout dimensions use dp/sp so Windows scaling applies to text and controls.
+	v.theme.Bg = color.NRGBA{R: 246, G: 248, B: 250, A: 255}
+	v.theme.Fg = color.NRGBA{R: 26, G: 49, B: 61, A: 255}
+	v.theme.ContrastBg = color.NRGBA{R: 11, G: 127, B: 112, A: 255}
+	v.theme.ContrastFg = color.NRGBA{R: 255, G: 255, B: 255, A: 255}
 	v.contentList.Axis = layout.Vertical
 	v.activation.Mask = '•'
 	v.activation.SingleLine, v.username.SingleLine, v.password.SingleLine = true, true, true
@@ -143,6 +153,78 @@ func newView(controller appcore.Controller, ctx context.Context, cancel context.
 	v.password.Mask = '•'
 	v.password.InputHint = 2
 	return v
+}
+
+var nativeFonts struct {
+	once   sync.Once
+	faces  []font.FontFace
+	family font.Typeface
+}
+
+// Load a bounded OS-provided CJK collection explicitly rather than relying on
+// implicit system-family discovery. Failure leaves Gio's system fallback intact.
+// Font loading happens during window construction, never in the frame loop.
+func configureNativeFonts(theme *material.Theme) {
+	nativeFonts.once.Do(func() {
+		system, err := windows.GetWindowsDirectory()
+		if err != nil || !filepath.IsAbs(system) || filepath.Clean(system) != system {
+			return
+		}
+		const maxBytes = 64 << 20
+		for _, name := range []string{"msyh.ttc", "simsun.ttc"} {
+			path := filepath.Join(system, "Fonts", name)
+			before, err := os.Lstat(path)
+			if err != nil || !before.Mode().IsRegular() || before.Mode()&os.ModeSymlink != 0 || before.Size() <= 0 || before.Size() > maxBytes {
+				continue
+			}
+			wide, err := windows.UTF16PtrFromString(path)
+			if err != nil {
+				continue
+			}
+			attributes, err := windows.GetFileAttributes(wide)
+			if err != nil || attributes&windows.FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+				continue
+			}
+			file, err := os.Open(path)
+			if err != nil {
+				continue
+			}
+			opened, statErr := file.Stat()
+			data, readErr := io.ReadAll(io.LimitReader(file, maxBytes+1))
+			closeErr := file.Close()
+			after, afterErr := os.Lstat(path)
+			if statErr != nil || readErr != nil || closeErr != nil || afterErr != nil || !os.SameFile(before, opened) || !os.SameFile(before, after) || int64(len(data)) != before.Size() {
+				continue
+			}
+			faces, err := opentype.ParseCollection(data)
+			if err != nil || len(faces) == 0 || len(faces) > 32 {
+				continue
+			}
+			for _, face := range faces {
+				if face.Face == nil {
+					continue
+				}
+				parsed := face.Face.Face()
+				if parsed == nil {
+					continue
+				}
+				if _, ok := parsed.NominalGlyph('中'); !ok {
+					continue
+				}
+				nativeFonts.faces, nativeFonts.family = faces, face.Font.Typeface
+				if strings.EqualFold(string(face.Font.Typeface), "Microsoft YaHei UI") {
+					break
+				}
+			}
+			if len(nativeFonts.faces) != 0 {
+				return
+			}
+		}
+	})
+	if len(nativeFonts.faces) != 0 {
+		theme.Shaper = text.NewShaper(text.WithCollection(nativeFonts.faces))
+		theme.Face = nativeFonts.family
+	}
 }
 
 func (v *view) layout(gtx layout.Context) {
@@ -162,6 +244,9 @@ func (v *view) layout(gtx layout.Context) {
 		return layout.Flex{Axis: layout.Vertical, Spacing: layout.SpaceBetween}.Layout(gtx,
 			layout.Rigid(v.header),
 			layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
+				if presentation.InformationVisible {
+					return v.workspaceLayout(gtx, snapshot, v.updates.accountFlow(snapshot, now))
+				}
 				flow := presentation.Flow
 				var rows []layout.Widget
 				if presentation.InformationVisible {
@@ -276,9 +361,6 @@ func (v *view) statusCard(gtx layout.Context, s appcore.Snapshot) layout.Dimensi
 			if s.Node.Available && s.Setup.Purpose != "" {
 				rows = append(rows, layout.Rigid(v.labelRow(appui.Text(v.locale, "authorization.initial")+": "+v.authorizationLabel(s.Authorization.State))))
 			}
-			if s.Node.Available && hasAction(s, appcore.ActionRefresh) {
-				rows = append(rows, layout.Rigid(v.actionButton(appcore.ActionRefresh, appui.Text(v.locale, "account.refresh"), s)))
-			}
 		}
 		return layout.Flex{Axis: layout.Vertical}.Layout(gtx, rows...)
 	})
@@ -338,7 +420,7 @@ func (v *view) contentRows(s appcore.Snapshot, flow appui.SetupFlow, information
 				v.window.Invalidate()
 			}
 			style := material.Button(v.theme, &v.cancelReplacement, appui.Text(v.locale, "setup.back_to_activation"))
-			style.Background = color.NRGBA{R: 42, G: 56, B: 72, A: 255}
+			style.Background = workspaceMutedSurface
 			style.Color = v.theme.Fg
 			return style.Layout(gtx)
 		})
@@ -366,10 +448,10 @@ func (v *view) contentRows(s appcore.Snapshot, flow appui.SetupFlow, information
 		}
 		rows = append(rows, v.actionButton(flow.Primary, label, s, flow))
 	}
-	if informationVisible && appui.NodeCardVisible(s, flow) {
+	if informationVisible && v.workspacePage == "devices" && appui.NodeCardVisible(s, flow) {
 		rows = append(rows, v.nodeSection(s))
 	}
-	if informationVisible && appui.PairFlow(s, time.Now()).Visible {
+	if informationVisible && v.workspacePage == "sessions" && appui.PairFlow(s, time.Now()).Visible {
 		rows = append(rows, v.pairSection(s))
 	}
 	for _, kind := range flow.Secondary {
@@ -409,6 +491,9 @@ func (v *view) publicStatusRows(s appcore.Snapshot) []layout.Widget {
 
 func (v *view) resetPresentationInputs() {
 	v.publicFields = make(map[string]*publicFieldState)
+	v.workspacePage = "overview"
+	v.workspaceButtons = make(map[string]*widget.Clickable)
+	v.disclosures = make(map[string]*disclosureState)
 	v.activation.SetText("")
 	v.username.SetText("")
 	v.password.SetText("")
@@ -473,7 +558,7 @@ func (v *view) actionButton(kind appcore.ActionKind, label string, s appcore.Sna
 				gtx = gtx.Disabled()
 			}
 			style := material.Button(v.theme, button, label)
-			style.Background = color.NRGBA{R: 42, G: 56, B: 72, A: 255}
+			style.Background = workspaceMutedSurface
 			style.Color = v.theme.Fg
 			style.CornerRadius = 10
 			style.Inset = layout.Inset{Top: 12, Bottom: 12, Left: 20, Right: 20}
@@ -695,8 +780,8 @@ func (v *view) button(gtx layout.Context, button *widget.Clickable, label string
 	style.Inset = layout.Inset{Top: 12, Bottom: 12, Left: 20, Right: 20}
 	if !enabled {
 		gtx = gtx.Disabled()
-		style.Background = color.NRGBA{R: 49, G: 61, B: 75, A: 255}
-		style.Color = color.NRGBA{R: 210, G: 210, B: 210, A: 255}
+		style.Background = color.NRGBA{R: 230, G: 236, B: 239, A: 255}
+		style.Color = color.NRGBA{R: 103, G: 124, B: 134, A: 255}
 	}
 	return style.Layout(gtx)
 }
@@ -1017,7 +1102,7 @@ func (v *view) card(gtx layout.Context, content layout.Widget) layout.Dimensions
 	return layout.Stack{}.Layout(gtx,
 		layout.Expanded(func(gtx layout.Context) layout.Dimensions {
 			defer clip.UniformRRect(image.Rectangle{Max: gtx.Constraints.Min}, gtx.Dp(16)).Push(gtx.Ops).Pop()
-			paint.Fill(gtx.Ops, color.NRGBA{R: 27, G: 37, B: 50, A: 255})
+			paint.Fill(gtx.Ops, color.NRGBA{R: 255, G: 255, B: 255, A: 255})
 			return layout.Dimensions{Size: gtx.Constraints.Min}
 		}),
 		layout.Stacked(func(gtx layout.Context) layout.Dimensions { return layout.UniformInset(20).Layout(gtx, content) }),

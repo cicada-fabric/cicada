@@ -3,7 +3,6 @@
 package native
 
 import (
-	"image/color"
 	"io"
 	"strings"
 	"time"
@@ -69,7 +68,7 @@ func (v *view) publicFieldRow(id string, field appui.PublicField) layout.Widget 
 							key = "common.copied"
 						}
 						button := material.Button(v.theme, &state.copy, appui.Text(v.locale, key))
-						button.Background = color.NRGBA{R: 42, G: 56, B: 72, A: 255}
+						button.Background = workspaceMutedSurface
 						button.Color, button.TextSize = v.theme.ContrastBg, unit.Sp(13)
 						button.Inset = layout.Inset{Top: unit.Dp(8), Bottom: unit.Dp(8), Left: unit.Dp(12), Right: unit.Dp(12)}
 						return button.Layout(gtx)

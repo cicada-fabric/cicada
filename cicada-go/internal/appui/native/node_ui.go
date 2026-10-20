@@ -37,16 +37,24 @@ func (v *view) nodeSection(s appcore.Snapshot) layout.Widget {
 				name = appui.Text(v.locale, "node.section")
 			}
 			rows = append(rows, layout.Rigid(v.headingRow(name)),
-				layout.Rigid(v.nodeCaption(appui.Text(v.locale, "node.saved_connection")+" · "+safeDisplay(b.NodeID, 128))),
+				layout.Rigid(v.nodeCaption(appui.Text(v.locale, "node.saved_connection"))),
 				layout.Rigid(v.nodeCaption(appui.Text(v.locale, "node.saved_connection_body"))))
 		} else {
 			rows = append(rows, layout.Rigid(v.headingRow(appui.Text(v.locale, "node.section"))))
 		}
+		var identityRows []layout.FlexChild
 		for _, field := range appui.NodePublicFields(s, time.Now()) {
 			if field.Key == "node.fingerprint" || field.Key == "node.hub_fingerprint" {
 				continue // Shown under the existing fingerprint detail control.
 			}
-			rows = append(rows, layout.Rigid(v.publicFieldRow("node/"+field.Key, field)))
+			identityRows = append(identityRows, layout.Rigid(v.publicFieldRow("node/"+field.Key, field)))
+		}
+		if flow.Consent {
+			rows = append(rows, identityRows...)
+		} else if len(identityRows) != 0 {
+			rows = append(rows, layout.Rigid(v.disclosure("node-identity/"+reviewID, func(gtx layout.Context) layout.Dimensions {
+				return layout.Flex{Axis: layout.Vertical}.Layout(gtx, identityRows...)
+			})))
 		}
 		if s.Node.ErrorCode != "" {
 			rows = append(rows, layout.Rigid(v.labelRow(appui.ErrorText(v.locale, s.Node.ErrorCode))))
@@ -84,7 +92,7 @@ func (v *view) nodeSection(s appcore.Snapshot) layout.Widget {
 				style.Background, style.Color = color.NRGBA{}, v.theme.ContrastBg
 				return style.Layout(gtx)
 			}))
-			if v.nodePinDetails {
+			if v.nodePinDetails || flow.Consent {
 				for _, field := range appui.NodePublicFields(s, time.Now()) {
 					if field.Key == "node.fingerprint" || field.Key == "node.hub_fingerprint" {
 						rows = append(rows, layout.Rigid(v.publicFieldRow("node/"+field.Key, field)))
@@ -121,11 +129,11 @@ func (v *view) nodeSection(s appcore.Snapshot) layout.Widget {
 				label := material.Body1(v.theme, appui.Text(v.locale, key))
 				switch key {
 				case "node.online":
-					label.Color = color.NRGBA{R: 100, G: 224, B: 191, A: 255}
+					label.Color = color.NRGBA{R: 25, G: 119, B: 84, A: 255}
 				case "node.stale", "node.offline":
-					label.Color = color.NRGBA{R: 242, G: 193, B: 111, A: 255}
+					label.Color = color.NRGBA{R: 145, G: 103, B: 39, A: 255}
 				default:
-					label.Color = color.NRGBA{R: 169, G: 184, B: 202, A: 255}
+					label.Color = color.NRGBA{R: 103, G: 127, B: 140, A: 255}
 				}
 				return label.Layout(gtx)
 			}))
@@ -189,7 +197,7 @@ func (v *view) nodeSection(s appcore.Snapshot) layout.Widget {
 func (v *view) nodeCaption(label string) layout.Widget {
 	return func(gtx layout.Context) layout.Dimensions {
 		style := material.Body2(v.theme, label)
-		style.Color = color.NRGBA{R: 169, G: 184, B: 202, A: 255}
+		style.Color = color.NRGBA{R: 103, G: 127, B: 140, A: 255}
 		return style.Layout(gtx)
 	}
 }

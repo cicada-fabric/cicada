@@ -44,7 +44,14 @@ func (v *view) pairSection(s appcore.Snapshot) layout.Widget {
 				layout.Rigid(v.pairButton(s, appcore.ActionPreparePair, "", appui.Text(v.locale, "pair.prepare"), validPairLabel(v.pairLabel.Text()))))
 		}
 		if s.Pair.PairID != "" {
-			rows = append(rows, v.publicFieldRows("pair/", appui.PairPublicFields(s, time.Now()))...)
+			identity := func(gtx layout.Context) layout.Dimensions {
+				return layout.Flex{Axis: layout.Vertical}.Layout(gtx, v.publicFieldRows("pair/", appui.PairPublicFields(s, time.Now()))...)
+			}
+			if flow.BootstrapConsent || flow.SlotAConsent || flow.SlotBConsent || flow.Revoke {
+				rows = append(rows, layout.Rigid(identity))
+			} else {
+				rows = append(rows, layout.Rigid(v.disclosure("pair/"+s.Pair.PairID, identity)))
+			}
 			for _, field := range []struct{ key, value string }{
 				{"pair.label", safeDisplay(s.Pair.Label, 128)},
 				{"pair.join_until", displayNodeTime(s.Pair.JoinUntil)}, {"pair.until", displayNodeTime(s.Pair.PeerExpiresAt)},
@@ -79,7 +86,14 @@ func (v *view) pairSection(s appcore.Snapshot) layout.Widget {
 					letter, consent, allowed = "B", &v.pairSlotBConsent, flow.SlotBConsent
 				}
 				rows = append(rows, layout.Rigid(v.headingRow(appui.Text(v.locale, "pair.slot")+" "+letter)))
-				rows = append(rows, v.publicFieldRows("pair/"+letter+"/", appui.PairSlotPublicFields(s, index, allowed, time.Now()))...)
+				identity := func(gtx layout.Context) layout.Dimensions {
+					return layout.Flex{Axis: layout.Vertical}.Layout(gtx, v.publicFieldRows("pair/"+letter+"/", appui.PairSlotPublicFields(s, index, allowed, time.Now()))...)
+				}
+				if allowed {
+					rows = append(rows, layout.Rigid(identity))
+				} else {
+					rows = append(rows, layout.Rigid(v.disclosure("pair/"+s.Pair.PairID+"/"+letter, identity)))
+				}
 				if slot.ConsentRecorded && s.Pair.State != "ACTIVE" {
 					rows = append(rows, layout.Rigid(v.labelRow(appui.Text(v.locale, "pair.recorded"))))
 				}
