@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import queue
 import re
 import subprocess
 import sys
@@ -18,6 +19,39 @@ import time
 sys.dont_write_bytecode = True
 from codex_domain_host import DomainHostCLI, StaticHostProvider, output_objects, require_successful_output, unique_output_field
 from codex_product_cli import digest, private_json
+
+
+NATIVE_PHASES = frozenset(('SETUP', 'ORIGINAL_DAEMON', 'WAIT_OWNER_POLICY', 'PLUGIN_UPDATE',
+                          'LITERAL_AB', 'HOST_APP_CLOSED', 'WAIT_LOGIN_EXPIRY',
+                          'HOST_POST_LOGIN_EXPIRY', 'LITERAL_C_AFTER_LOGIN_EXPIRY',
+                          'HOST_NEW_C_AFTER_LOGIN_EXPIRY', 'WAIT_OWNER_REVOKE',
+                          'HOST_AFTER_REVOKE', 'CLEANUP'))
+NATIVE_TOOL_LABELS = {'cicada_whoami': 'WHOAMI', 'cicada_peers': 'PEERS', 'cicada_ask': 'ASK',
+                      'cicada_receive': 'RECEIVE', 'cicada_reply': 'REPLY',
+                      'cicada_operation_status': 'OPERATION_STATUS'}
+NATIVE_LABELS = frozenset(('NONE', 'DAEMON_START', 'TUI_INITIALIZE', 'HOST_CONNECT',
+                          'MARKETPLACE_REMOVE', 'MARKETPLACE_ADD', 'PLUGIN_ADD', 'PLUGIN_INVENTORY', 'DAEMON_STOP')) | frozenset(
+    actor + '_' + action for actor in 'ABC'
+    for action in (*NATIVE_TOOL_LABELS.values(), 'JOIN', 'MCP_STATUS', 'RECEIVE_QUESTION', 'RECEIVE_ANSWER'))
+NATIVE_FAILURE_KINDS = frozenset(('', 'ASSERTION', 'TIMEOUT', 'IO', 'DRIVER', 'OTHER', 'CLEANUP'))
+
+
+def native_stage_summary(phase, label, status='IN_PROGRESS', failure_kind=''):
+    # Location is diagnostic only. It cannot establish a successful measurement.
+    assert phase in NATIVE_PHASES and label in NATIVE_LABELS and status in ('IN_PROGRESS', 'FAIL')
+    assert failure_kind in NATIVE_FAILURE_KINDS
+    return {'scope': 'NATIVE_DOMAIN_LOCATION_ONLY_NOT_ACCEPTANCE', 'status': status,
+            'phase': phase, 'label': label, 'failure_kind': failure_kind}
+
+
+def native_failure_kind(error):
+    if isinstance(error, AssertionError):
+        return 'ASSERTION'
+    if isinstance(error, (TimeoutError, subprocess.TimeoutExpired, queue.Empty)):
+        return 'TIMEOUT'
+    if isinstance(error, OSError):
+        return 'IO'
+    return 'DRIVER' if isinstance(error, RuntimeError) else 'OTHER'
 
 
 def run(config):
@@ -33,6 +67,24 @@ def run(config):
              'native_queue_automatic_wake_real_model_Windows': 'NOT_RUN'}
     daemon_started = False
     summaries = []
+    public_path = config.get('public_summary')
+    assert public_path in (None, '', '/state/domain-native-public-summary.json'), 'OWNED_PUBLIC_SUMMARY_PATH_REQUIRED'
+    location = native_stage_summary('SETUP', 'NONE')
+
+    def publish_location():
+        if public_path:
+            path = Path(public_path)
+            assert not path.is_symlink(), 'OWNED_PUBLIC_SUMMARY_SYMLINK_REFUSED'
+            pending = path.with_name(path.name + '.next')
+            private_json(pending, location)
+            os.replace(pending, path)
+
+    def locate(phase, label='NONE'):
+        location.clear()
+        location.update(native_stage_summary(phase, label))
+        publish_location()
+
+    locate('SETUP')
 
     def checkpoint(step, values):
         assert cli.daemon_identity() == cli.original_daemon, 'ORIGINAL_0002_DAEMON_CHANGED'
@@ -50,6 +102,10 @@ def run(config):
         raise RuntimeError('NATIVE_DOMAIN_PARENT_CHECKPOINT_TIMEOUT')
 
     def call(index, label, tool, arguments):
+        action = NATIVE_TOOL_LABELS[tool]
+        if tool == 'cicada_receive':
+            action = 'RECEIVE_QUESTION' if '-receive-question-' in label else 'RECEIVE_ANSWER'
+        locate(location['phase'], 'ABC'[index] + '_' + action)
         cli.workspace = workspaces[index]
         output, summary = cli.host_call(provider, ids[index], label, tool, arguments)
         summaries.append(summary)
@@ -137,8 +193,11 @@ enabled = false
             text += '\n[plugins."cicada@cicada-repo".mcp_servers.cicada.tools.' + tool + ']\napproval_mode = "approve"\n'
         configuration.write_text(text)
         cli.workspace = workspaces[0]
+        locate('SETUP', 'MARKETPLACE_ADD')
         cli.command('old-marketplace-add', ['plugin', 'marketplace', 'add', str(cli.marketplace)])
+        locate('SETUP', 'PLUGIN_ADD')
         cli.command('old-plugin-add', ['plugin', 'add', 'cicada@cicada-repo'])
+        locate('ORIGINAL_DAEMON', 'DAEMON_START')
         started = json.loads(cli.command('original-0002-daemon-start', ['app-server', 'daemon', 'start']))
         cli.control_socket = started['socketPath']
         assert Path(cli.control_socket).is_relative_to(cli.codex_home)
@@ -146,28 +205,38 @@ enabled = false
         daemon_started = True
         cli.original_daemon = cli.daemon_identity()
         cli.config['startup_only'] = True
+        locate('ORIGINAL_DAEMON', 'TUI_INITIALIZE')
         cli.literal_tui([])  # Real native TUI initializes the original daemon first.
         cli.config.pop('startup_only')
+        locate('ORIGINAL_DAEMON', 'HOST_CONNECT')
         cli.connect()
+        locate('ORIGINAL_DAEMON', 'PLUGIN_INVENTORY')
         cli.inventory('original-before-file-install')
         checkpoint(0, {'original_daemon_before_plugin_update': True})
 
+        locate('WAIT_OWNER_POLICY')
         expected = await_command(1)
+        locate('PLUGIN_UPDATE', 'MARKETPLACE_REMOVE')
         cli.command('old-marketplace-remove', ['plugin', 'marketplace', 'remove', 'cicada-repo'])
         cli.marketplace = Path(expected['marketplace'])
+        locate('PLUGIN_UPDATE', 'MARKETPLACE_ADD')
         cli.command('installed-marketplace-add', ['plugin', 'marketplace', 'add', str(cli.marketplace)])
+        locate('PLUGIN_UPDATE', 'PLUGIN_ADD')
         cli.command('installed-plugin-add', ['plugin', 'add', 'cicada@cicada-repo'])
         ids, metadata = [], []
         for index in range(2):
             cli.workspace = workspaces[index]
+            locate('LITERAL_AB', 'AB'[index] + '_JOIN')
             sid, record = cli.literal_admit(provider, 'domain-native-' + 'ab'[index], names[index])
             assert sid not in ids
             ids.append(sid)
             metadata.append(record)
+            locate('LITERAL_AB', 'AB'[index] + '_MCP_STATUS')
             status = cli.tool_status(sid)
             assert status['tools_count'] > 0 and not status['tools_error'], 'CURRENT_NATIVE_MCP_NOT_READY'
         checkpoint(1, {'native_session_ids': ids, 'names': names[:2], 'native_metadata': metadata})
 
+        locate('HOST_APP_CLOSED')
         await_command(2)  # The actual App has completed normal Controller.Close.
         actors = [whoami(index, expected, 'initial-whoami-' + 'ab'[index]) for index in range(2)]
         assert actors[0]['endpoint_id'] != actors[1]['endpoint_id']
@@ -176,6 +245,7 @@ enabled = false
         first = roundtrip('app-closed')
         checkpoint(2, {'actors': actors, 'roundtrip': first, 'actual_Host_MCP': True, 'App_closed': True})
 
+        locate('WAIT_LOGIN_EXPIRY')
         timer = await_command(3)
         waited = timer.get('wait_login_expiry') is True
         if waited:
@@ -186,15 +256,19 @@ enabled = false
                 assert cli.daemon_identity() == cli.original_daemon, 'ORIGINAL_0002_DAEMON_CHANGED'
                 if time.monotonic() >= next_status:
                     cli.workspace = workspaces[0]
+                    locate('WAIT_LOGIN_EXPIRY', 'A_MCP_STATUS')
                     cli.tool_status(ids[0])  # Local catalog health only, no model/tool call.
                     next_status = time.monotonic() + 30
                 time.sleep(min(1, max(.01, end - time.time())))
+            locate('HOST_POST_LOGIN_EXPIRY')
             second = roundtrip('after-original-login-expiry')
             cli.workspace = workspaces[2]
+            locate('LITERAL_C_AFTER_LOGIN_EXPIRY', 'C_JOIN')
             sid, record = cli.literal_admit(provider, 'domain-native-c-after-expiry', names[2])
             assert sid not in ids
             ids.append(sid)
             metadata.append(record)
+            locate('HOST_NEW_C_AFTER_LOGIN_EXPIRY')
             actors.append(whoami(2, expected, 'after-expiry-whoami-c'))
             third = roundtrip('new-c-after-original-login-expiry', sender=2, receiver=1)
             expiry_results = {'post_login_expiry': second, 'new_thread_after_login_expiry': third}
@@ -203,8 +277,10 @@ enabled = false
         checkpoint(3, {'native_session_ids': ids, 'actors': actors, 'native_metadata': metadata,
                        'actual_wall_clock_expiry': waited, **expiry_results})
 
+        locate('WAIT_OWNER_REVOKE')
         await_command(4)  # Real App re-login and explicit revoke, not window close.
         cli.workspace = workspaces[0]
+        locate('HOST_AFTER_REVOKE', 'A_ASK')
         denied, summary = cli.host_call(provider, ids[0], 'after-current-policy-revoke', 'cicada_ask',
                                        {'target': names[1], 'question': 'SYNTHETIC_NEW_REQUEST_AFTER_REVOKE',
                                         'idempotency_key': 'synthetic-new-after-revoke-' + provider.scope})
@@ -219,7 +295,10 @@ enabled = false
                      tool_summaries=summaries, provider_requests=provider.requests)
     except Exception as error:
         reply['failure_category'] = (type(error).__name__ + ': ' + str(error))[:180]
+        reply.update(failure_phase=location['phase'], failure_label=location['label'], failure_kind=native_failure_kind(error))
     finally:
+        if reply['status'] == 'SCOPED_PASS':
+            locate('CLEANUP')
         if hasattr(cli, 'proxy'):
             cli.proxy.stdin.close()
             try:
@@ -230,12 +309,20 @@ enabled = false
             cli.proxy_log.close()
         if daemon_started:
             try:
+                if reply['status'] == 'SCOPED_PASS':
+                    locate('CLEANUP', 'DAEMON_STOP')
                 cli.command('owned-daemon-stop', ['app-server', 'daemon', 'stop'])
             except Exception:
+                if reply['status'] == 'SCOPED_PASS':
+                    reply.update(failure_phase='CLEANUP', failure_label='DAEMON_STOP', failure_kind='CLEANUP')
                 reply['status'] = 'FAIL'
                 reply['cleanup_failed'] = True
         provider.close()
         assert digest(Path(cli.binary)) == cli.expected_binary
+        if reply['status'] != 'SCOPED_PASS':
+            location.clear()
+            location.update(native_stage_summary(reply['failure_phase'], reply['failure_label'], 'FAIL', reply['failure_kind']))
+            publish_location()
         private_json(Path(config['result']), reply)
     return 0 if reply['status'] == 'SCOPED_PASS' else 1
 

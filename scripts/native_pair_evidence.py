@@ -350,7 +350,9 @@ def finish(run, artifacts, image, owned, mode='protocol'):
         summary['native_domain_measurement_valid'] = native_valid
         summary['host_turns_started'] = native.get('host_turns_started') if native else None
         summary['model_turns_started'] = 0  # Static local provider; no real model.
-        summary['native_daemon_touched'] = True if native else False if domain_not_run else 'UNKNOWN'
+        summary['native_daemon_touched'] = True if native and native.get('status') == 'SCOPED_PASS' else False if domain_not_run else 'UNKNOWN'
+        summary['native_failure_location'] = ({key: native.get(key) for key in ('phase', 'label', 'failure_kind')}
+                                              if native and native.get('status') in ('FAIL', 'IN_PROGRESS') else None)
         summary['not_run'] = ([] if passed else ['actual_native_domain_main']) + (
             [] if passed and native.get('actual_wall_clock_login_expiry') is True else
             ['actual_Hub_login_expiry_AB_communication_and_new_C']) + [

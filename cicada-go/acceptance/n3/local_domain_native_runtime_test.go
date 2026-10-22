@@ -79,7 +79,8 @@ func TestN3LocalDomainNativeOriginalDaemonAB(t *testing.T) {
 		"codex_home": v.codexHome, "environment": environment, "codex_binary": "/tools/codex-package/bin/codex",
 		"codex_sha256": "399ff69c431c066e40de318fba45c2b07f45a76b19939d247ee4828fc70c4215", "marketplace": "/repo",
 		"step": "domain-native", "persistent_daemon": true, "allow_test_termination": true,
-		"daemon_umask": "0002", "preparation": "none", "selected_root": prefix, "control": control, "result": result})
+		"daemon_umask": "0002", "preparation": "none", "selected_root": prefix, "control": control, "result": result,
+		"public_summary": os.Getenv("CICADA_N3_DOMAIN_PUBLIC_SUMMARY")})
 	log := must(os.OpenFile(filepath.Join(v.root, "private-domain-native.log"), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600))
 	t.Cleanup(func() { log.Close() })
 	cmd := exec.Command("/usr/bin/python3", "/qa/scripts/fixtures/native-pair/codex_domain_native.py", config)
@@ -110,12 +111,14 @@ func TestN3LocalDomainNativeOriginalDaemonAB(t *testing.T) {
 			}
 			if !client.running() {
 				var failure struct {
-					Category string `json:"failure_category"`
+					Phase string `json:"failure_phase"`
+					Label string `json:"failure_label"`
+					Kind  string `json:"failure_kind"`
 				}
 				if _, err := os.Stat(result); err == nil {
 					readJSON(t, result, &failure)
 				}
-				t.Fatalf("actual native driver stopped: %s", failure.Category)
+				t.Fatalf("actual native driver stopped: phase=%s label=%s category=%s", failure.Phase, failure.Label, failure.Kind)
 			}
 			time.Sleep(25 * time.Millisecond)
 		}
