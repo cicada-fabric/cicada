@@ -111,14 +111,19 @@ func TestN3LocalDomainNativeOriginalDaemonAB(t *testing.T) {
 			}
 			if !client.running() {
 				var failure struct {
-					Phase string `json:"failure_phase"`
-					Label string `json:"failure_label"`
-					Kind  string `json:"failure_kind"`
+					Phase        string `json:"failure_phase"`
+					Label        string `json:"failure_label"`
+					Kind         string `json:"failure_kind"`
+					Code         string `json:"failure_code"`
+					Hook         string `json:"hook_result"`
+					LiteralPosts int    `json:"literal_provider_posts"`
+					Posts        int    `json:"provider_posts"`
 				}
-				if _, err := os.Stat(result); err == nil {
-					readJSON(t, result, &failure)
+				if _, err := os.Stat(result); err != nil {
+					t.Fatal("actual native driver stopped before its final safe diagnostics")
 				}
-				t.Fatalf("actual native driver stopped: phase=%s label=%s category=%s", failure.Phase, failure.Label, failure.Kind)
+				readJSON(t, result, &failure)
+				t.Fatalf("actual native driver stopped: phase=%s label=%s category=%s code=%s hook=%s literal_posts=%d provider_posts=%d", failure.Phase, failure.Label, failure.Kind, failure.Code, failure.Hook, failure.LiteralPosts, failure.Posts)
 			}
 			time.Sleep(25 * time.Millisecond)
 		}

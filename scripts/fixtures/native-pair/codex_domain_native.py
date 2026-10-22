@@ -17,7 +17,7 @@ import sys
 import time
 
 sys.dont_write_bytecode = True
-from codex_domain_host import DomainHostCLI, StaticHostProvider, output_objects, require_successful_output, unique_output_field
+from codex_domain_host import DOMAIN_ADMISSION_TITLE, DomainHostCLI, StaticHostProvider, output_objects, require_successful_output, unique_output_field
 from codex_product_cli import digest, private_json
 
 
@@ -34,14 +34,71 @@ NATIVE_LABELS = frozenset(('NONE', 'DAEMON_START', 'TUI_INITIALIZE', 'HOST_CONNE
     actor + '_' + action for actor in 'ABC'
     for action in (*NATIVE_TOOL_LABELS.values(), 'JOIN', 'MCP_STATUS', 'RECEIVE_QUESTION', 'RECEIVE_ANSWER'))
 NATIVE_FAILURE_KINDS = frozenset(('', 'ASSERTION', 'TIMEOUT', 'IO', 'DRIVER', 'OTHER', 'CLEANUP'))
+NATIVE_ASSERTION_CODES = frozenset((
+    'LITERAL_ADMISSION_REACHED_PROVIDER', 'CURRENT_LITERAL_PROMPT_NOT_VISIBLE',
+    'DOMAIN_ADMISSION_TITLE_OR_ORIGINAL_FIELDS_MISSING', 'ORIGINAL_NATIVE_RECORD_MISMATCH',
+    'ACTUAL_JOIN_RESULT_TITLE_DUPLICATED', 'ACTUAL_JOIN_RESULT_FIELDS_NOT_VISIBLE',
+    'TERMINAL_OUTPUT_BOUND_EXCEEDED', 'ACTUAL_NATIVE_RECORD_REFUSED',
+    'ACTUAL_PEERS_RESULT_TITLE_DUPLICATED', 'ACTUAL_PEERS_RESULT_FIELDS_NOT_VISIBLE',
+    'ACTUAL_PTY_FOREGROUND_NOT_CONFIRMED', 'ACTUAL_TUI_LITERAL_RESULT_NOT_VISIBLE',
+    'ACTUAL_TUI_EXIT_NONZERO', 'ACTUAL_ORIGINAL_THREAD_NOT_RESUMED', 'ACTUAL_TUI_NATIVE_IDENTITY_UNCONFIRMED',
+    'ORIGINAL_DAEMON_REPLACED', 'INSTALLED_PLUGIN_ID_CHANGED', 'INSTALLED_HOOK_STALE_SOURCE',
+    'NORMAL_NEW_HOOK_TRUST_REQUIRED'))
+NATIVE_HOOK_MARKERS = {
+    'domain_saved': (DOMAIN_ADMISSION_TITLE, '当前 Thread 的本地协作接入结果已保存；后续通信由当前 Hub Guard 验证。'),
+    'registered_zero': ('This Thread is registered; registration does not add or renew communication permission.',
+                        '当前 Thread 登记已确认；登记本身不新增或延长通信权限。'),
+    'context_refused': ('CODEX_NATIVE_COORDINATES_INVALID', 'CODEX_NATIVE_RECORD_UNVERIFIED',
+                        'CODEX_TOOL_INPUT_MISSING', 'CODEX_CALL_CONTEXT_MISSING', 'CODEX_CONNECTION_NONCE_INVALID',
+                        'CODEX_TOOL_ARGUMENTS_INVALID', 'CODEX_ARGUMENT_DIGEST_UNAVAILABLE', 'CODEX_NODE_TICKET_UNAVAILABLE',
+                        'Cicada could not verify the current scope.') + tuple(
+                            'CODEX_NATIVE_RECORD_' + stage + ':' for stage in
+                            ('ROOT', 'PATH', 'OWNERSHIP', 'PERMISSION', 'INODE', 'METADATA', 'SOURCE', 'SESSION', 'WORKSPACE')),
+    'command_unconfirmed': ('This Cicada result is unconfirmed; retry the same command without substituting an identity.',
+                            'This Cicada command was refused; no connection or authorization success is claimed.',
+                            'The original Cicada result needs recovery; success is unconfirmed.',
+                            'Cicada connection state is not safely saved; the original command is retained for retry.',
+                            'Cicada has not confirmed this result.'),
+    'local_config_error': ('The original Cicada state location needs recovery; no replacement was created.',
+                           'Cicada local state is unavailable.', 'Restore the original Cicada cache; no replacement state was created.',
+                           'The Node for this installation is not running; start the original Node manually.',
+                           'The Node is not ready; no replacement identity was created.',
+                           'Multiple Nodes were found; select an exact Hub and Node.',
+                           'The original Node binding or configuration changed; the original request is retained without switching identity.',
+                           "Restore the original Node configuration; no other deployment's environment configuration was used.",
+                           'Local Node discovery material could not be verified.',
+                           'Local Node discovery is unavailable; restore the original Node and retry.',
+                           'Local Node discovery exceeded its limit; no other Node was guessed.')}
 
 
-def native_stage_summary(phase, label, status='IN_PROGRESS', failure_kind=''):
+def native_assertion_code(error):
+    if isinstance(error, AssertionError) and len(error.args) == 1 and isinstance(error.args[0], str) and error.args[0] in NATIVE_ASSERTION_CODES:
+        return error.args[0]
+    return 'UNCLASSIFIED'
+
+
+def classify_literal_hook(text, prompt):
+    compact = re.sub(r'\s+', '', text)
+    echo = '›' + re.sub(r'\s+', '', prompt)
+    if echo not in compact:
+        return 'none'
+    result = compact.rsplit(echo, 1)[1]
+    matches = {kind for kind, markers in NATIVE_HOOK_MARKERS.items()
+               if any(re.sub(r'\s+', '', marker) in result for marker in markers)}
+    return matches.pop() if len(matches) == 1 else 'none'
+
+
+def native_stage_summary(phase, label, status='IN_PROGRESS', failure_kind='', failure_code='UNCLASSIFIED',
+                         hook_result='none', literal_provider_posts=None, provider_posts=None):
     # Location is diagnostic only. It cannot establish a successful measurement.
     assert phase in NATIVE_PHASES and label in NATIVE_LABELS and status in ('IN_PROGRESS', 'FAIL')
     assert failure_kind in NATIVE_FAILURE_KINDS
+    assert failure_code == 'UNCLASSIFIED' or failure_code in NATIVE_ASSERTION_CODES
+    assert hook_result == 'none' or hook_result in NATIVE_HOOK_MARKERS
+    assert all(value is None or type(value) is int and value >= 0 for value in (literal_provider_posts, provider_posts))
     return {'scope': 'NATIVE_DOMAIN_LOCATION_ONLY_NOT_ACCEPTANCE', 'status': status,
-            'phase': phase, 'label': label, 'failure_kind': failure_kind}
+            'phase': phase, 'label': label, 'failure_kind': failure_kind, 'failure_code': failure_code,
+            'hook_result': hook_result, 'literal_provider_posts': literal_provider_posts, 'provider_posts': provider_posts}
 
 
 def native_failure_kind(error):
@@ -67,6 +124,7 @@ def run(config):
              'native_queue_automatic_wake_real_model_Windows': 'NOT_RUN'}
     daemon_started = False
     summaries = []
+    active_literal = None
     public_path = config.get('public_summary')
     assert public_path in (None, '', '/state/domain-native-public-summary.json'), 'OWNED_PUBLIC_SUMMARY_PATH_REQUIRED'
     location = native_stage_summary('SETUP', 'NONE')
@@ -83,6 +141,22 @@ def run(config):
         location.clear()
         location.update(native_stage_summary(phase, label))
         publish_location()
+
+    def admit(index, label):
+        nonlocal active_literal
+        active_literal = (label, 'cicada join ' + json.dumps(names[index]))
+        return cli.literal_admit(provider, label, names[index])
+
+    def failed_hook_result():
+        if active_literal is None or location['phase'] not in ('LITERAL_AB', 'LITERAL_C_AFTER_LOGIN_EXPIRY'):
+            return 'none'
+        label, prompt = active_literal
+        try:
+            with (cli.root / ('cli-' + label) / 'tui.txt').open() as stream:
+                text = stream.read(65537)
+        except (OSError, UnicodeError):
+            return 'none'
+        return classify_literal_hook(text, prompt) if len(text) <= 65536 else 'none'
 
     locate('SETUP')
 
@@ -227,7 +301,7 @@ enabled = false
         for index in range(2):
             cli.workspace = workspaces[index]
             locate('LITERAL_AB', 'AB'[index] + '_JOIN')
-            sid, record = cli.literal_admit(provider, 'domain-native-' + 'ab'[index], names[index])
+            sid, record = admit(index, 'domain-native-' + 'ab'[index])
             assert sid not in ids
             ids.append(sid)
             metadata.append(record)
@@ -264,7 +338,7 @@ enabled = false
             second = roundtrip('after-original-login-expiry')
             cli.workspace = workspaces[2]
             locate('LITERAL_C_AFTER_LOGIN_EXPIRY', 'C_JOIN')
-            sid, record = cli.literal_admit(provider, 'domain-native-c-after-expiry', names[2])
+            sid, record = admit(2, 'domain-native-c-after-expiry')
             assert sid not in ids
             ids.append(sid)
             metadata.append(record)
@@ -295,7 +369,8 @@ enabled = false
                      tool_summaries=summaries, provider_requests=provider.requests)
     except Exception as error:
         reply['failure_category'] = (type(error).__name__ + ': ' + str(error))[:180]
-        reply.update(failure_phase=location['phase'], failure_label=location['label'], failure_kind=native_failure_kind(error))
+        reply.update(failure_phase=location['phase'], failure_label=location['label'], failure_kind=native_failure_kind(error),
+                     failure_code=native_assertion_code(error), hook_result=failed_hook_result())
     finally:
         if reply['status'] == 'SCOPED_PASS':
             locate('CLEANUP')
@@ -314,14 +389,19 @@ enabled = false
                 cli.command('owned-daemon-stop', ['app-server', 'daemon', 'stop'])
             except Exception:
                 if reply['status'] == 'SCOPED_PASS':
-                    reply.update(failure_phase='CLEANUP', failure_label='DAEMON_STOP', failure_kind='CLEANUP')
+                    reply.update(failure_phase='CLEANUP', failure_label='DAEMON_STOP', failure_kind='CLEANUP',
+                                 failure_code='UNCLASSIFIED', hook_result='none')
                 reply['status'] = 'FAIL'
                 reply['cleanup_failed'] = True
         provider.close()
         assert digest(Path(cli.binary)) == cli.expected_binary
         if reply['status'] != 'SCOPED_PASS':
+            reply.update(provider_posts=len(provider.requests),
+                         literal_provider_posts=sum(row['phase'] == 'literal' for row in provider.requests))
             location.clear()
-            location.update(native_stage_summary(reply['failure_phase'], reply['failure_label'], 'FAIL', reply['failure_kind']))
+            location.update(native_stage_summary(reply['failure_phase'], reply['failure_label'], 'FAIL', reply['failure_kind'],
+                                                reply['failure_code'], reply['hook_result'],
+                                                reply['literal_provider_posts'], reply['provider_posts']))
             publish_location()
         private_json(Path(config['result']), reply)
     return 0 if reply['status'] == 'SCOPED_PASS' else 1

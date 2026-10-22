@@ -351,7 +351,8 @@ def finish(run, artifacts, image, owned, mode='protocol'):
         summary['host_turns_started'] = native.get('host_turns_started') if native else None
         summary['model_turns_started'] = 0  # Static local provider; no real model.
         summary['native_daemon_touched'] = True if native and native.get('status') == 'SCOPED_PASS' else False if domain_not_run else 'UNKNOWN'
-        summary['native_failure_location'] = ({key: native.get(key) for key in ('phase', 'label', 'failure_kind')}
+        summary['native_failure_location'] = ({key: native.get(key) for key in ('phase', 'label', 'failure_kind', 'failure_code',
+                                                                              'hook_result', 'literal_provider_posts', 'provider_posts')}
                                               if native and native.get('status') in ('FAIL', 'IN_PROGRESS') else None)
         summary['not_run'] = ([] if passed else ['actual_native_domain_main']) + (
             [] if passed and native.get('actual_wall_clock_login_expiry') is True else
