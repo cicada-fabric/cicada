@@ -24,6 +24,19 @@ const maxLocalCodexContexts = 512
 
 var errLocalCodexContext = errors.New("CODEX_CONTEXT_UNSUPPORTED: current local Codex context could not be verified")
 
+// LocalCodexContextError describes a local verification stage without including
+// native identifiers, paths or record contents. The public error stays generic.
+type LocalCodexContextError struct {
+	Stage string
+}
+
+func (e *LocalCodexContextError) Error() string { return errLocalCodexContext.Error() }
+func (e *LocalCodexContextError) Unwrap() error { return errLocalCodexContext }
+
+func localCodexContextFailure(stage string) error {
+	return &LocalCodexContextError{Stage: stage}
+}
+
 type localCodexContextIssue struct {
 	Version         int    `json:"version"`
 	Operation       string `json:"operation"`
@@ -203,26 +216,26 @@ func verifyCodexContextTranscript(path, sid, workspace string) error {
 	if root == "" {
 		home, err := os.UserHomeDir()
 		if err != nil {
-			return errLocalCodexContext
+			return localCodexContextFailure("ROOT")
 		}
 		root = filepath.Join(home, ".codex")
 	}
 	root, err := filepath.Abs(filepath.Join(root, "sessions"))
 	if err != nil || !filepath.IsAbs(path) || filepath.Clean(path) != path || !filepath.IsAbs(workspace) || filepath.Clean(workspace) != workspace {
-		return errLocalCodexContext
+		return localCodexContextFailure("PATH")
 	}
 	rel, err := filepath.Rel(root, path)
 	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return errLocalCodexContext
+		return localCodexContextFailure("PATH")
 	}
 	uid, err := machineAgentJoinSocketCurrentUID()
 	if err != nil {
-		return errLocalCodexContext
+		return localCodexContextFailure("OWNERSHIP")
 	}
 	for ancestor := filepath.Dir(root); ; ancestor = filepath.Dir(ancestor) {
 		info, err := os.Lstat(ancestor)
 		if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
-			return errLocalCodexContext
+			return localCodexContextFailure("ROOT")
 		}
 		if filepath.Dir(ancestor) == ancestor {
 			break
@@ -235,30 +248,36 @@ func verifyCodexContextTranscript(path, sid, workspace string) error {
 			current = filepath.Join(current, part)
 		}
 		info, err := os.Lstat(current)
+		if err != nil || info.Mode()&os.ModeSymlink != 0 {
+			return localCodexContextFailure("PATH")
+		}
 		owner, ok := machineAgentJoinSocketOwnerOrZero(info)
-		if err != nil || !ok || owner != uid || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0o022 != 0 {
-			return errLocalCodexContext
+		if !ok || owner != uid {
+			return localCodexContextFailure("OWNERSHIP")
+		}
+		if info.Mode().Perm()&0o022 != 0 {
+			return localCodexContextFailure("PERMISSION")
 		}
 		if current != path && !info.IsDir() {
-			return errLocalCodexContext
+			return localCodexContextFailure("PATH")
 		}
 	}
 	before, err := os.Lstat(path)
 	if err != nil || !before.Mode().IsRegular() {
-		return errLocalCodexContext
+		return localCodexContextFailure("PATH")
 	}
 	f, err := os.Open(path)
 	if err != nil {
-		return errLocalCodexContext
+		return localCodexContextFailure("PERMISSION")
 	}
 	defer f.Close()
 	opened, err := f.Stat()
 	if err != nil || !opened.Mode().IsRegular() || !os.SameFile(before, opened) {
-		return errLocalCodexContext
+		return localCodexContextFailure("INODE")
 	}
 	actualCWD, err := filepath.EvalSymlinks(workspace)
 	if err != nil || actualCWD != workspace {
-		return errLocalCodexContext
+		return localCodexContextFailure("WORKSPACE")
 	}
 	scanner := bufio.NewScanner(io.LimitReader(f, 1<<20))
 	scanner.Buffer(make([]byte, 4096), 1<<20)
@@ -281,16 +300,19 @@ func verifyCodexContextTranscript(path, sid, workspace string) error {
 		// vscode/codex-tui tuple. Other vscode origins remain unsupported.
 		// A fork's ancestry never supplies its ID; structured subagent and
 		// missing/unknown sources remain unsupported.
-		if json.Unmarshal(meta.Payload.Source, &source) != nil || (source != "cli" && (source != "exec" || meta.Payload.Originator != "codex_exec") && (source != "vscode" || meta.Payload.Originator != "codex-tui")) || meta.Payload.ID != sid || (meta.Payload.SessionID != "" && meta.Payload.SessionID != sid) {
-			return errLocalCodexContext
+		if json.Unmarshal(meta.Payload.Source, &source) != nil || (source != "cli" && (source != "exec" || meta.Payload.Originator != "codex_exec") && (source != "vscode" || meta.Payload.Originator != "codex-tui")) {
+			return localCodexContextFailure("SOURCE")
+		}
+		if meta.Payload.ID != sid || (meta.Payload.SessionID != "" && meta.Payload.SessionID != sid) {
+			return localCodexContextFailure("SESSION")
 		}
 		cwd, err := filepath.EvalSymlinks(meta.Payload.CWD)
 		if err != nil || cwd != workspace {
-			return errLocalCodexContext
+			return localCodexContextFailure("WORKSPACE")
 		}
 		return nil
 	}
-	return errLocalCodexContext
+	return localCodexContextFailure("METADATA")
 }
 
 func machineAgentJoinSocketOwnerOrZero(info os.FileInfo) (uint32, bool) {

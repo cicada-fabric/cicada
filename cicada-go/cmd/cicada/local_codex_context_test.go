@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +11,64 @@ import (
 	"testing"
 	"time"
 )
+
+func TestLocalCodexContextDiagnosticStagesPreserveRefusal(t *testing.T) {
+	for _, tc := range []struct {
+		name, stage string
+		mutate      func(t *testing.T, path, workspace string) (string, string, string)
+	}{
+		{"permission", "PERMISSION", func(t *testing.T, p, w string) (string, string, string) {
+			if err := os.Chmod(p, 0o660); err != nil {
+				t.Fatal(err)
+			}
+			return p, "synthetic-diagnostic-thread", w
+		}},
+		{"session", "SESSION", func(t *testing.T, p, w string) (string, string, string) {
+			return p, "synthetic-other-thread", w
+		}},
+		{"workspace", "WORKSPACE", func(t *testing.T, p, w string) (string, string, string) {
+			return p, "synthetic-diagnostic-thread", t.TempDir()
+		}},
+		{"source", "SOURCE", func(t *testing.T, p, w string) (string, string, string) {
+			data, _ := json.Marshal(map[string]any{"type": "session_meta", "payload": map[string]any{"id": "synthetic-diagnostic-thread", "cwd": w, "source": "unknown"}})
+			if err := os.WriteFile(p, append(data, '\n'), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			return p, "synthetic-diagnostic-thread", w
+		}},
+		{"metadata", "METADATA", func(t *testing.T, p, w string) (string, string, string) {
+			if err := os.WriteFile(p, []byte("{invalid}\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			return p, "synthetic-diagnostic-thread", w
+		}},
+		{"containment", "PATH", func(t *testing.T, p, w string) (string, string, string) {
+			return filepath.Join(w, "outside-record-tree"), "synthetic-diagnostic-thread", w
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			home, workspace := t.TempDir(), t.TempDir()
+			t.Setenv("CODEX_HOME", home)
+			path := filepath.Join(home, "sessions", "synthetic.jsonl")
+			if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			data, _ := json.Marshal(map[string]any{"type": "session_meta", "payload": map[string]any{"id": "synthetic-diagnostic-thread", "cwd": workspace, "source": "cli"}})
+			if err := os.WriteFile(path, append(data, '\n'), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			path, sid, workspace := tc.mutate(t, path, workspace)
+			err := verifyCodexContextTranscript(path, sid, workspace)
+			var diagnostic *LocalCodexContextError
+			if !errors.Is(err, errLocalCodexContext) || !errors.As(err, &diagnostic) || diagnostic.Stage != tc.stage {
+				t.Fatalf("want generic refusal and stage %s, got %#v", tc.stage, err)
+			}
+			if err.Error() != errLocalCodexContext.Error() || strings.Contains(err.Error(), path) || strings.Contains(err.Error(), sid) {
+				t.Fatal("diagnostic changed the public error or disclosed native context")
+			}
+		})
+	}
+}
 
 func syntheticCodexContextIssue() localCodexContextIssue {
 	return localCodexContextIssue{Version: 1, Operation: "codex_context_issue", APIOrigin: "https://synthetic.invalid", Harness: "codex", NativeSessionID: "synthetic-thread", Workspace: "/synthetic/work", ConnectionNonce: strings.Repeat("a", 64), ToolName: "cicada_endpoint_register", ArgumentsDigest: strings.Repeat("b", 64), TurnID: "synthetic-turn", ToolUseID: "synthetic-tool-call"}

@@ -580,3 +580,47 @@ only this validation append follows those checks. The new candidate contains
 exactly the shared verifier, its tests and existing contract/validation files.
 QA must rerun the actual installed-plugin/shared-daemon chain on the integrated
 fix before that original actual scope can acquire a separate passed receipt.
+
+## 2026-10-22 local Codex context diagnostic stages
+
+The bounded change adds `*LocalCodexContextError{Stage string}` to the shared
+local transcript verifier. `errors.Is(err, errLocalCodexContext)` and the generic
+public error text are preserved. `errors.As` exposes only one fixed stage:
+ROOT, PATH, OWNERSHIP, PERMISSION, INODE, METADATA, SOURCE, SESSION or WORKSPACE.
+It includes no native SID, path, record body or credentials. No IPC field or
+permission rule changes. In particular mode-022 records remain refused by this
+legacy verifier; the proposed local-domain profile is separate and unimplemented.
+
+Validation on 2026-10-22 used a dirty tree based on
+`96dcbe0fee8dc41644039f222933de777bb7e78c`, with full source manifest SHA-256
+`ebdd38710098a8791c697fc2dc1ab529ce5d1cea6f5ce19747873b58c1a3cd8a`.
+The manifest also contains the non-executable, uncommitted local-domain proposal;
+that proposal is outside this checkpoint. This validation record is a subsequent
+documentation-only overlay. The implementation SHA-256 values are:
+
+* `cmd/cicada/local_codex_context.go`:
+  `766d4e7b8824666a5753e16970570493f619d8ad81a436232ac9bbbcce1f9cf5`
+* `cmd/cicada/local_codex_context_test.go`:
+  `6a7dbcbbc74f840fe114fd61188f4d1c94bba3e39c37b59e2df0d21cb6a3c715`
+
+All checks ran in a disposable network-disabled Docker container as UID 1000,
+with Go 1.27.3 and pinned image
+`sha256:5c3e9b43cfd3bb95c7937462e29d87ada57b481a96fa23ad0eb61778d7a00110`.
+Source and module-cache mounts were read-only. Post-check hashes confirmed every
+manifest file unchanged throughout each gate.
+
+| Command (under `cicada-go`) | Result | External evidence directory |
+| --- | --- | --- |
+| `go test -json -count=1 ./cmd/cicada -run '^TestLocalCodexContext'` | 11 pass, 0 fail, 0 skip; 5 top-level tests | `local-context-stages-20261022-20261022T172356Z` |
+| Same selection with `-race` | 11 pass, 0 fail, 0 skip | `local-context-stages-race-20261022-20261022T172428Z` |
+| `go vet ./cmd/cicada` | Exit 0 | `local-context-stages-vet-20261022-20261022T172428Z` |
+
+Evidence directories are under
+`/home/zyf/Cicada/.local/evidence/node-endpoint-registration/`, each retaining
+`source-manifest.json`, `receipt.json`, `source-after-check.json` and test output.
+The new synthetic tests distinguish permission, source, SID, cwd, metadata and
+containment failures while asserting the unchanged refusal and public error.
+Existing context tests cover HMAC binding, one-use concurrency, expiry, restart,
+source whitelist and symlink/mode refusal. No real credentials or native records
+were used. Actual App consumption, remote issuer diagnosis, real Codex Runtime,
+Windows, Android, physical devices and public HTTPS are NOT_RUN by this checkpoint.
