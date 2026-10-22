@@ -17,10 +17,15 @@ import (
 	"time"
 	"unicode"
 	"unicode/utf8"
+
+	wire "github.com/cicada-ai/cicada/internal/hubaccountwire"
 )
 
 const localCodexContextTTL = 30 * time.Second
 const maxLocalCodexContexts = 512
+
+const LocalCodexContextProfileLegacy = "LEGACY_STRICT"
+const LocalCodexContextProfileDomain = "LOCAL_DOMAIN"
 
 var errLocalCodexContext = errors.New("CODEX_CONTEXT_UNSUPPORTED: current local Codex context could not be verified")
 
@@ -68,11 +73,14 @@ type localCodexContextConsume struct {
 }
 
 type localCodexContext struct {
-	Harness         string `json:"harness"`
-	NativeSessionID string `json:"native_session_id"`
-	Workspace       string `json:"workspace"`
-	TurnID          string `json:"turn_id"`
-	ToolUseID       string `json:"tool_use_id"`
+	Harness             string                    `json:"harness"`
+	NativeSessionID     string                    `json:"native_session_id"`
+	Workspace           string                    `json:"workspace"`
+	TurnID              string                    `json:"turn_id"`
+	ToolUseID           string                    `json:"tool_use_id"`
+	VerificationProfile string                    `json:"verification_profile,omitempty"`
+	LocalDomainVersion  int                       `json:"local_domain_version,omitempty"`
+	LocalDomain         wire.LocalDomainSelection `json:"local_domain,omitzero"`
 }
 
 type localCodexContextConsumeResult struct {
@@ -137,7 +145,7 @@ func (a *localCodexContextAuthority) issue(q localCodexContextIssue, binding str
 		return nil, errLocalCodexContext
 	}
 	id := hex.EncodeToString(idBytes)
-	r := localCodexContextRecord{Context: localCodexContext{q.Harness, q.NativeSessionID, q.Workspace, q.TurnID, q.ToolUseID}, Origin: q.APIOrigin, Binding: binding, Nonce: q.ConnectionNonce, Tool: q.ToolName, Arguments: q.ArgumentsDigest, Expires: now.Add(localCodexContextTTL)}
+	r := localCodexContextRecord{Context: localCodexContext{Harness: q.Harness, NativeSessionID: q.NativeSessionID, Workspace: q.Workspace, TurnID: q.TurnID, ToolUseID: q.ToolUseID}, Origin: q.APIOrigin, Binding: binding, Nonce: q.ConnectionNonce, Tool: q.ToolName, Arguments: q.ArgumentsDigest, Expires: now.Add(localCodexContextTTL)}
 	a.live[id] = r
 	return &localCodexContextIssueResult{Ticket: id + "." + a.sign(id, r), ExpiresAt: r.Expires.UTC().Format(time.RFC3339Nano)}, nil
 }

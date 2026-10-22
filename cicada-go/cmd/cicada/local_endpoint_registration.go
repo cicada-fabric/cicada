@@ -17,19 +17,21 @@ import (
 )
 
 type localEndpointRequest struct {
-	Version         int    `json:"version"`
-	Operation       string `json:"operation"`
-	RequestID       string `json:"request_id"`
-	IssuedAt        string `json:"issued_at"`
-	APIOrigin       string `json:"api_origin"`
-	Harness         string `json:"harness,omitempty"`
-	NativeSessionID string `json:"native_session_id,omitempty"`
-	Workspace       string `json:"workspace,omitempty"`
-	Name            string `json:"name,omitempty"`
-	PairLabel       string `json:"pair_label,omitempty"`
-	Slot            string `json:"slot,omitempty"`
-	Cursor          string `json:"cursor,omitempty"`
-	Limit           int    `json:"limit,omitempty"`
+	Version            int                       `json:"version"`
+	Operation          string                    `json:"operation"`
+	RequestID          string                    `json:"request_id"`
+	IssuedAt           string                    `json:"issued_at"`
+	APIOrigin          string                    `json:"api_origin"`
+	Harness            string                    `json:"harness,omitempty"`
+	NativeSessionID    string                    `json:"native_session_id,omitempty"`
+	Workspace          string                    `json:"workspace,omitempty"`
+	Name               string                    `json:"name,omitempty"`
+	PairLabel          string                    `json:"pair_label,omitempty"`
+	Slot               string                    `json:"slot,omitempty"`
+	Cursor             string                    `json:"cursor,omitempty"`
+	Limit              int                       `json:"limit,omitempty"`
+	LocalDomainVersion int                       `json:"local_domain_version,omitempty"`
+	LocalDomain        wire.LocalDomainSelection `json:"local_domain,omitzero"`
 }
 
 type localEndpointResult struct {
@@ -44,6 +46,7 @@ type localEndpointResult struct {
 	Pairs              *nodewire.AvailableNativePairs        `json:"pairs,omitempty"`
 	Join               *fabric.JoinResult                    `json:"join,omitempty"`
 	NativeContextScope *nodeinbox.NativeContextScopeDecision `json:"native_context_scope,omitempty"`
+	LocalDomain        *wire.LocalDomainNodeKeyResult        `json:"local_domain,omitempty"`
 }
 
 func localEndpointOperation(operation string) bool {
@@ -52,6 +55,13 @@ func localEndpointOperation(operation string) bool {
 
 func (q localEndpointRequest) validate() error {
 	if q.Version != localJoinProtocolVersion || !localEndpointOperation(q.Operation) || !localContextHex(q.RequestID, 32) || !localContextText(q.IssuedAt, 64) {
+		return nodewire.ErrEndpointContext
+	}
+	if q.LocalDomain != (wire.LocalDomainSelection{}) {
+		if q.Operation != "endpoint_register" || q.LocalDomainVersion != 1 || wire.ValidateLocalDomainSelection(q.LocalDomain) != nil {
+			return nodewire.ErrEndpointContext
+		}
+	} else if q.LocalDomainVersion != 0 {
 		return nodewire.ErrEndpointContext
 	}
 	if _, err := localEndpointIssuedAt(q); err != nil {
@@ -108,6 +118,11 @@ func localNamedJoinRefusalEligible(err error) bool {
 func (b *machineAgentJoinBridge) endpointOperation(q localEndpointRequest) (*localEndpointResult, error) {
 	if err := q.validate(); err != nil {
 		return nil, err
+	}
+	// A selected domain must never silently downgrade to zero/legacy admission.
+	// The delegated path is connected below with the rest of the Node service.
+	if q.LocalDomain != (wire.LocalDomainSelection{}) {
+		return nil, nodewire.ErrEndpointUnavailable
 	}
 	origin, err := normalizeMCPAPIOrigin(q.APIOrigin)
 	expected, expectedErr := normalizeMCPAPIOrigin(b.baseURL)

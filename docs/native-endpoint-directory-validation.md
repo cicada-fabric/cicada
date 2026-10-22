@@ -624,3 +624,42 @@ Existing context tests cover HMAC binding, one-use concurrency, expiry, restart,
 source whitelist and symlink/mode refusal. No real credentials or native records
 were used. Actual App consumption, remote issuer diagnosis, real Codex Runtime,
 Windows, Android, physical devices and public HTTPS are NOT_RUN by this checkpoint.
+
+## 2026-10-22 domain context IPC producer dependency
+
+The small producer checkpoint adds comparable value fields
+`LocalDomainVersion` and `LocalDomain` to `localEndpointRequest` and the consumed
+`localCodexContext`, with `VerificationProfile` on the latter. A zero selection
+omits all new fields from legacy JSON. Only explicit `endpoint_register` can
+carry a complete version-1 selection; Pair/Leave/directory requests refuse it.
+The HMAC covers the consumed context, so modifying its profile/policy metadata
+invalidates the original ticket. Persistent request equality survives JSON
+reload because selection is a value, not a pointer. `localEndpointResult` gains
+an optional typed `LocalDomain` result. Default verification remains strict;
+selected domain registration deliberately refuses until its backend is connected.
+There is no caller-selected issue profile and no relaxed native-record check in
+this checkpoint. Hook/MCP consumption and operator-ticket support are separate
+implementation work; no business availability is established.
+
+Normal and race commands each passed 13 tests (7 top-level), with no failure or
+skip, and `go vet ./cmd/cicada` exited 0. The test selection was
+`TestLocalCodexContext|TestLocalDomainEndpointRequest`. These ran in the same
+pinned Go 1.27.3, UID-1000, network-disabled Docker environment described above,
+on dirty base `79e789b7eb5ada0d60b13a5618ab4ad3b0d54ab1`. Full source manifest
+SHA-256 was `6221c4d8d3ae5eb8e439a28633041f2ac6a2914037be78bac7bfd8c10f3c1edd`.
+Every manifest file stayed unchanged through each gate. That source includes
+uncommitted Store/Server work, compiled as dependencies but **not executed or
+accepted as a service** by these tests; it is outside this small checkpoint.
+This appended section is a documentation-only overlay.
+
+Evidence under `/home/zyf/Cicada/.local/evidence/node-endpoint-registration/`:
+
+* `local-domain-ipc-producer-pass-20261022-20261022T185349Z`
+* `local-domain-ipc-producer-race-20261022-20261022T185349Z`
+* `local-domain-ipc-producer-vet-20261022-20261022T185349Z`
+
+The first attempt retained 12 pass/1 fail because the new test fixture used a
+request ID without the required timestamp binding. Reusing the existing proper
+synthetic request constructor fixed the fixture; no production guard was relaxed.
+Actual App/Node domain communication, permission-mode diagnostics, external
+interop, other-UID domain signing, Windows/Android and public HTTPS are NOT_RUN.
