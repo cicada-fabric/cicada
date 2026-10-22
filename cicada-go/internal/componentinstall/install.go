@@ -18,7 +18,7 @@ import (
 	"github.com/cicada-ai/cicada/internal/apppaths"
 )
 
-const Usage = "usage: cicada components install [--prefix ABS] --components hub,node --binary FILE --sha256 HEX --licenses DIR | remove [--prefix ABS] --components hub,node | list [--prefix ABS]\nThe default user-file root is ~/.cicada (or CICADA_USER_ROOT); --prefix selects a custom absolute root. Only local component files are installed or removed. Services, enrollment, grants and existing state are unchanged. Linux amd64/arm64 supports hub,node; Windows amd64 supports app. Only self-contained standard CGO_ENABLED=0 builds are supported; Linux ELF must not require an external loader or dynamic libraries. Install supports a new component or an identical repeat; changed installations are refused. An I/O failure may leave earlier selected components completed; multi-component rollback is not promised."
+const Usage = "usage: cicada components install [--prefix ABS] --components hub,node --binary FILE --sha256 HEX --licenses DIR [--codex-plugin-assets ABS --codex-plugin-sha256 HEX] | remove [--prefix ABS] --components hub,node | list [--prefix ABS]\nThe default user-file root is ~/.cicada (or CICADA_USER_ROOT); --prefix selects a custom absolute root. Only local component files are installed or removed. Services, enrollment, grants and existing state are unchanged. Optional Codex assets accompany Linux node only: the five reviewed .agents/plugins files are checked and materialized under components/node/share/codex, without running Codex or Node. Linux amd64/arm64 supports hub,node; Windows amd64 supports app. Only self-contained standard CGO_ENABLED=0 builds are supported; Linux ELF must not require an external loader or dynamic libraries. Install supports a new component or an identical repeat; changed installations are refused. An I/O failure may leave earlier selected components completed; multi-component rollback is not promised."
 
 type plan struct {
 	manifest manifest
@@ -57,6 +57,8 @@ func command(args []string, output io.Writer, target platform) error {
 	binary := flags.String("binary", "", "existing local component executable")
 	expected := flags.String("sha256", "", "independently checked executable SHA-256")
 	licenses := flags.String("licenses", "", "matching compiled-dependency license directory")
+	codexAssets := flags.String("codex-plugin-assets", "", "absolute package root containing the five reviewed .agents/plugins assets")
+	codexDigest := flags.String("codex-plugin-sha256", "", "independently checked canonical five-asset manifest SHA-256")
 	if flags.Parse(args[1:]) != nil || len(flags.Args()) != 0 {
 		return errors.New(Usage)
 	}
@@ -82,11 +84,17 @@ func command(args []string, output io.Writer, target platform) error {
 			components = append(components, name)
 		}
 	}
-	if action != "list" && len(components) == 0 || action != "install" && (*binary != "" || *expected != "" || *licenses != "") {
+	if action != "list" && len(components) == 0 || action != "install" && (*binary != "" || *expected != "" || *licenses != "" || *codexAssets != "" || *codexDigest != "") {
 		return errors.New(Usage)
 	}
 	if action == "install" && (*binary == "" || *licenses == "" || !validDigest(*expected)) {
 		return errors.New(Usage)
+	}
+	if (*codexAssets == "") != (*codexDigest == "") {
+		return errors.New("Codex plugin assets require both --codex-plugin-assets and --codex-plugin-sha256")
+	}
+	if *codexAssets != "" && (target.os != "linux" || !containsComponent(components, "node")) {
+		return errors.New("Codex plugin material is available only with the Node component")
 	}
 	if action == "list" && len(components) == 0 {
 		for _, name := range []string{"hub", "node", "app"} {
@@ -101,6 +109,14 @@ func command(args []string, output io.Writer, target platform) error {
 	}
 	plans := make([]plan, 0, len(components))
 	if action == "install" {
+		var codexFiles map[string][]byte
+		var codexRecord *codexPluginRecord
+		if *codexAssets != "" {
+			codexFiles, codexRecord, err = prepareCodexPlugin(*codexAssets, *codexDigest, *prefix)
+			if err != nil {
+				return err
+			}
+		}
 		binaryPath, err := filepath.Abs(*binary)
 		if err != nil {
 			return err
@@ -128,6 +144,12 @@ func command(args []string, output io.Writer, target platform) error {
 				GOARCH: target.arch, GoVersion: info.GoVersion, BinarySHA256: *expected}, files: map[string][]byte{binaryName(name): data}}
 			for relative, bytes := range notices {
 				p.files["licenses/"+relative] = bytes
+			}
+			if name == "node" && codexRecord != nil {
+				p.manifest.CodexPlugin = codexRecord
+				for relative, bytes := range codexFiles {
+					p.files[relative] = bytes
+				}
 			}
 			for relative, bytes := range p.files {
 				mode := uint32(0644)
@@ -206,6 +228,15 @@ func command(args []string, output io.Writer, target platform) error {
 	return json.NewEncoder(output).Encode(r)
 }
 
+func containsComponent(components []string, name string) bool {
+	for _, component := range components {
+		if component == name {
+			return true
+		}
+	}
+	return false
+}
+
 func sameManifest(a, b manifest) bool {
 	x, _ := json.Marshal(a)
 	y, _ := json.Marshal(b)
@@ -272,14 +303,18 @@ func readInstalledAt(base *os.Root, name string, target platform) (manifest, err
 	d := json.NewDecoder(bytes.NewReader(data))
 	d.DisallowUnknownFields()
 	if d.Decode(&m) != nil || d.Decode(new(any)) != io.EOF || m.Format != "cicada.component-files.v1" || m.Component != name ||
-		m.GOOS != target.os || m.GOARCH != target.arch || !validDigest(m.BinarySHA256) || len(m.Files) < 4 || len(m.Files) > 1025 {
+		m.GOOS != target.os || m.GOARCH != target.arch || !validDigest(m.BinarySHA256) || len(m.Files) < 4 || len(m.Files) > 1030 {
 		return manifest{}, errors.New("invalid installed component manifest")
+	}
+	if err := validateCodexPluginRecord(m.CodexPlugin, m.Component, target, filepath.Dir(base.Name())); err != nil {
+		return manifest{}, err
 	}
 	seen := make(map[string]bool)
 	for _, file := range m.Files {
 		binary := file.Path == binaryName(name)
+		codexAsset := m.CodexPlugin != nil && installedCodexAssetPath(file.Path)
 		if seen[file.Path] || !validDigest(file.SHA256) ||
-			(!binary && (!strings.HasPrefix(file.Path, "licenses/") || !licensePath(strings.TrimPrefix(file.Path, "licenses/")))) ||
+			(!binary && !codexAsset && (!strings.HasPrefix(file.Path, "licenses/") || !licensePath(strings.TrimPrefix(file.Path, "licenses/")))) ||
 			binary && (file.Mode != 0755 || file.SHA256 != m.BinarySHA256) || !binary && file.Mode != 0644 {
 			return manifest{}, errors.New("installed component manifest contains an unsafe path or record")
 		}
@@ -296,6 +331,13 @@ func readInstalledAt(base *os.Root, name string, target platform) (manifest, err
 	for _, required := range []string{binaryName(name), "licenses/cicada/LICENSE", "licenses/go/LICENSE", "licenses/go/MODULES.json"} {
 		if !seen[required] {
 			return manifest{}, errors.New("installed component manifest omits a required owned file")
+		}
+	}
+	if m.CodexPlugin != nil {
+		for _, source := range codexAssetPaths {
+			if !seen[codexMaterialPath(source)] {
+				return manifest{}, errors.New("installed component omits a Codex plugin asset")
+			}
 		}
 	}
 	return m, nil

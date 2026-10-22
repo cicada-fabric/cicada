@@ -29,13 +29,14 @@ type fileRecord struct {
 }
 
 type manifest struct {
-	Format       string       `json:"format"`
-	Component    string       `json:"component"`
-	GOOS         string       `json:"goos"`
-	GOARCH       string       `json:"goarch"`
-	GoVersion    string       `json:"go_version"`
-	BinarySHA256 string       `json:"binary_sha256"`
-	Files        []fileRecord `json:"files"`
+	Format       string             `json:"format"`
+	Component    string             `json:"component"`
+	GOOS         string             `json:"goos"`
+	GOARCH       string             `json:"goarch"`
+	GoVersion    string             `json:"go_version"`
+	BinarySHA256 string             `json:"binary_sha256"`
+	Files        []fileRecord       `json:"files"`
+	CodexPlugin  *codexPluginRecord `json:"codex_plugin,omitempty"`
 }
 
 type platform struct{ os, arch string }

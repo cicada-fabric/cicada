@@ -801,3 +801,65 @@ Earlier pre-review evidence remains separately retained in the parent directory.
 This README is a later documentation-only delta. New installed-plugin TUI
 presentation and Host acceptance remain QA-owned; no new Windows Runtime,
 Docker, Android, physical-device or public HTTPS result is added here.
+
+### 2026-10-22 formal plugin material installation
+
+The existing file-only component installer accepts optional
+`--codex-plugin-assets ABS --codex-plugin-sha256 HEX` with Linux `node`
+(including a combined `hub,node` selection). `ABS` selects the downloaded
+package root containing the one authoritative `.agents/plugins` bundle.
+Both flags are required together. The installer checks the original bytes of
+exactly these five ASCII-sorted paths:
+
+1. `.agents/plugins/cicada/.codex-plugin/plugin.json`
+2. `.agents/plugins/cicada/.mcp.json`
+3. `.agents/plugins/cicada/hooks/hooks.json`
+4. `.agents/plugins/cicada/skills/cicada-network/SKILL.md`
+5. `.agents/plugins/marketplace.json`
+
+The independently checked package digest is SHA-256 of compact UTF-8 JSON
+`{"files":[["path","lowercase original-bytes SHA256"],...],"format":"cicada.codex-plugin-assets.v1"}`.
+Object keys appear in `files,format` order, file rows in ASCII path order,
+with no spaces or trailing newline. This digest excludes the installation
+root; the installer records the original inventory and digest separately from
+the hashes of installed material in `INSTALL-MANIFEST.json`.
+
+Materials live under `<selected-root>/components/node/share/codex/.agents/plugins`.
+The MCP launch uses the absolute installed Node executable and
+`mcp --codex-context --user-root <selected-root>`, without `env_vars`.
+Both Hook commands use that executable and selected root, with POSIX shell
+quoting. The other three source files retain their original bytes. There is
+no second maintained plugin source. Fresh installation and identical repeats
+are supported; changing the binary, assets or selected-root record refuses
+replacement. Adding assets to an existing older installation also refuses
+an in-place upgrade. Removal retains unowned files and original state.
+
+This is stage one, preparing component files. It never executes Codex or Node,
+starts a service, initializes an account, or migrates existing Node state.
+The user separately starts their Node with its original configuration, then
+uses the normal Codex marketplace/plugin commands for stage three. The
+repository marketplace remains a developer/legacy explicit-configuration
+entry; the formal installed marketplace root is
+`<selected-root>/components/node/share/codex`. Changing the root of an already
+registered `cicada-repo` marketplace requires normal marketplace removal,
+addition of the new root, then `codex plugin add cicada@cicada-repo` and normal
+Host trust. This checkpoint alone does not claim a working discovery consumer
+or actual Codex acceptance.
+
+Scoped component-installer verification used pinned Go 1.27.3 on dirty
+`25cca3a9764cf485da2242efc03d92f594a465ae`, with all four implementation/test
+inputs stable before and after. Normal and race each recorded **54 PASS,
+0 FAIL, 0 SKIP**; scoped vet passed. The suite uses visibly synthetic binaries
+which panic if executed, and checks quoted paths containing spaces, an
+apostrophe and shell expansion syntax, paired flags, original asset hashes,
+changed-install refusal, unsafe inputs, material/manifest tampering and
+preservation of unowned files. An initial run failed the existing directory
+ownership fixture under host umask `002`; that failure is retained separately.
+The reported runs used subprocess umask `077`, without changing product code
+or existing directory permissions. Evidence is retained at
+`/home/zyf/.cicada/acceptance/codex-context-checks/formal-assets-20261022T145844Z/`,
+with result SHA-256
+`3b84bb88a26c85599e9af1e4e59267a19c10f458169fbbab369599027b435d3e`.
+This README is a later documentation delta. Docker interop, actual installed
+Codex/Node integration, Windows Runtime, Android, physical devices and public
+HTTPS are **NOT_RUN** for this checkpoint.
