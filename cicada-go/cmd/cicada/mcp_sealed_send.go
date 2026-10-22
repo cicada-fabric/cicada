@@ -104,6 +104,10 @@ func (m *mcpServer) currentMCPDeliveryRequest(operation mcpOutboxOperation,
 	boundContextSet := m.sessionContextSet
 	storedScope := strings.TrimSpace(m.sessionScope)
 	cached := m.sessionPublic
+	domain := codexOutboxBinding{}
+	if m.sessionDomain.LocalDomainVersion != 0 {
+		domain = codexOutboxBinding{codexDomainBinding: m.sessionDomain, NativeBindingID: cached.BindingID, NativeBindingEpoch: cached.BindingEpoch}
+	}
 	m.sessionMu.RUnlock()
 	if token == "" || !boundContextSet || boundContext != trusted {
 		return localSealedSendRequest{}, errors.New("cicada_send requires the explicitly joined current native session")
@@ -127,7 +131,7 @@ func (m *mcpServer) currentMCPDeliveryRequest(operation mcpOutboxOperation,
 		!mcpOutboxScopeMatches(operation, mcpOutboxScope{
 			APIOrigin: origin, Scope: currentScope, Harness: trusted.Harness,
 			NativeSessionID: trusted.NativeSessionID, NodeID: trusted.NodeID, Workspace: trusted.Workspace,
-			EndpointID: endpointID, GroupID: groupID,
+			EndpointID: endpointID, GroupID: groupID, codexOutboxBinding: domain,
 		}) {
 		return localSealedSendRequest{}, errMCPOutboxContext
 	}

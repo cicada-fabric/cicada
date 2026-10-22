@@ -29,6 +29,7 @@ func (m *mcpServer) receiveMCPInbox(cursor string, limit int) (any, error) {
 		APIOrigin: scope.APIOrigin, Scope: scope.Scope, Harness: scope.Harness,
 		NativeSessionID: scope.NativeSessionID, NodeID: scope.NodeID,
 		Workspace: scope.Workspace, EndpointID: scope.EndpointID, GroupID: scope.GroupID,
+		codexOutboxBinding: scope.codexOutboxBinding,
 	}
 	trusted, err := m.currentMCPDeliveryRequest(operation, mcpOutboxInput{}, trustedContext)
 	if err != nil {

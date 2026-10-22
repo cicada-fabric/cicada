@@ -92,6 +92,7 @@ func (m *mcpServer) localGroupRequestControl(operation, requestID, reason string
 		APIOrigin: scope.APIOrigin, Scope: scope.Scope, Harness: scope.Harness,
 		NativeSessionID: scope.NativeSessionID, NodeID: scope.NodeID,
 		Workspace: scope.Workspace, EndpointID: scope.EndpointID, GroupID: scope.GroupID,
+		codexOutboxBinding: scope.codexOutboxBinding,
 	}
 	trusted, err := m.currentMCPDeliveryRequest(operationScope, mcpOutboxInput{}, trustedContext)
 	if err != nil {

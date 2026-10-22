@@ -1256,3 +1256,48 @@ separately in that directory. This README is a later documentation delta.
 Actual Hub/Node IPC loss/revocation, installed Host/model communication,
 Docker interop, Windows Runtime and public HTTPS are **NOT_RUN** here and keep
 their separate backend/QA attribution. No EXE was built or delivered.
+
+### 2026-10-22 domain delivery scope and control projection correction
+
+A real Hook/MCP/Relay producer gate reached ASK with a correctly saved domain
+outbox operation, then failed with a different-authorized-session-context
+error before Node dispatch. `currentMCPOutboxScope` already retained the policy
+selection and original native binding, but `currentMCPDeliveryRequest` rebuilt
+that scope without its `codexOutboxBinding`, so its strict comparison rejected
+every matching domain operation.
+
+Delivery now snapshots `sessionDomain` and the cached native binding ID/epoch
+under the same existing session read lock and carries them into that comparison.
+Empty legacy/Pair binding semantics and exact equality remain unchanged. The
+receive, same-Group request status/cancel, and sealed RPC status/cancel temporary
+operation projections also carry the existing scope binding unchanged. No SQL,
+historical outbox rows, Node, protocol or authorization checks are changed.
+The constructor audit included the common outbox, delivery, local receive and
+control paths. Network uses its separate Network session scope; Monitor,
+Space and Task behavior is outside these domain rights and is not extended.
+
+A regression executes real MCP SEND/ASK/REPLY dispatch, SQLite persistence,
+fresh HTTP session/card probes and private Node sockets with scripted cards
+and receipts. It first fails against the old delivery comparison. Corrected
+matching operations reach Node IPC and persist SENT; receive, status/cancel
+and sealed control projections also pass. Changed domain version, policy ID,
+epoch, digest, legacy profile, native binding ID or native epoch all fail
+before HTTP, with the original outbox row unchanged. The tests retain the
+current Group and native tuple and reject plaintext HTTP fallback. These are
+consumer dispatch/projection checks, not Hub Guard, Relay cryptography or
+real native callback acceptance.
+
+Pinned Go 1.27.3 scoped normal checks recorded **48 PASS, 0 FAIL, 0 SKIP**,
+including the affected domain/outbox and legacy immutable-route regressions.
+The new dispatch/mismatch tests under race recorded **17 PASS, 0 FAIL, 0 SKIP**
+including subtests; CLI vet exited 0. Tested source is dirty
+`cdc056162a032922e3e3e1fe4ead0ee362fb68d9` plus the four consumer files and new test,
+with a stable Go/C/header/module manifest
+`d2f75de8408a1afb718ce01d24c38293575c938b64cb48aaf537f68a78b12786`.
+Evidence: `/home/zyf/.cicada/acceptance/codex-context-checks/domain-delivery-binding-20261022T222152Z/`;
+behavioral red receipt SHA-256 `36c4e5cd80a1a5ee9e27f2327553342c744a67979fe5019d1f45a474764fb0ea`;
+final receipt SHA-256 `dfd324db751d9c3310595ebc4a703fd346ed0a848832fa4d3aa3418ccfb25d61`.
+This README is a later documentation delta. The actual Hook/MCP/Relay/native
+callback gate, Docker interop, real Windows Runtime and public HTTPS remain
+**NOT_RUN** for this producer checkpoint and retain their separate Hub/QA
+attribution. No executable was built or delivered.

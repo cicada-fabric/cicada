@@ -108,7 +108,7 @@ func (m *mcpServer) currentSealedRPCControlRequest(operation, requestID, linkID,
 		APIOrigin: scope.APIOrigin, Scope: scope.Scope, Harness: scope.Harness,
 		NativeSessionID: scope.NativeSessionID, NodeID: scope.NodeID,
 		Workspace: scope.Workspace, EndpointID: scope.EndpointID,
-		GroupID: scope.GroupID,
+		GroupID: scope.GroupID, codexOutboxBinding: scope.codexOutboxBinding,
 	}, mcpOutboxInput{})
 	if err != nil {
 		return localSealedRPCRequest{}, err
