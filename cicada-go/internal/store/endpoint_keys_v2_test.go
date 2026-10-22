@@ -17,6 +17,38 @@ type endpointKeyCandidateFixture struct {
 	binding  *SessionBinding
 }
 
+func TestEndpointKeyCandidateFractionalAdmissionBoundaries(t *testing.T) {
+	f := newEndpointKeyCandidateFixture(t)
+	at := time.Date(2026, 10, 22, 12, 0, 0, 500000000, time.UTC)
+	for _, tc := range []struct {
+		name               string
+		effective, expires time.Time
+		want               bool
+	}{
+		{"already effective in same second", at.Add(-time.Nanosecond), at.Add(time.Second), true},
+		{"effective exactly now", at, at.Add(time.Second), true},
+		{"future in same second", at.Add(time.Nanosecond), at.Add(time.Second), false},
+		{"before fractional expiry", at.Add(-time.Second), at.Add(time.Nanosecond), true},
+		{"expiry exactly now", at.Add(-time.Second), at, false},
+		{"expired in same second", at.Add(-time.Second), at.Add(-time.Nanosecond), false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tx, err := f.store.db.Begin()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer tx.Rollback()
+			if _, err = tx.Exec(`UPDATE memberships SET effective_at=?,expires_at=? WHERE principal_id=? AND group_id=?`, tc.effective.Format(time.RFC3339Nano), tc.expires.Format(time.RFC3339Nano), f.binding.PrincipalID, f.binding.GroupID); err != nil {
+				t.Fatal(err)
+			}
+			got, err := endpointKeyCandidateHasActiveJoin(tx, f.binding.PrincipalID, f.binding.EndpointID, at)
+			if err != nil || got != tc.want {
+				t.Fatalf("same precise admission instant: got=%v want=%v err=%v", got, tc.want, err)
+			}
+		})
+	}
+}
+
 func newEndpointKeyCandidateFixture(t *testing.T) *endpointKeyCandidateFixture {
 	t.Helper()
 	persistence, err := New(filepath.Join(t.TempDir(), "cicada.sqlite3"))

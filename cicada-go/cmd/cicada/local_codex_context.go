@@ -91,15 +91,17 @@ type localCodexContextConsumeResult struct {
 // This key and its bounded live set belong to one Node process. Tickets carry
 // no readable SID/path and never grant Hub rights or prove human intent.
 type localCodexContextAuthority struct {
-	mu   sync.Mutex
-	key  []byte
-	live map[string]localCodexContextRecord
+	mu     sync.Mutex
+	key    []byte
+	live   map[string]localCodexContextRecord
+	native map[string]localCodexContextRecord
 }
 
 type localCodexContextRecord struct {
 	Context                                 localCodexContext
 	Origin, Binding, Nonce, Tool, Arguments string
 	Expires                                 time.Time
+	TranscriptPath                          string
 }
 
 func localContextText(s string, max int) bool {
@@ -123,6 +125,10 @@ func (a *localCodexContextAuthority) sign(id string, r localCodexContextRecord) 
 }
 
 func (a *localCodexContextAuthority) issue(q localCodexContextIssue, binding string, now time.Time) (*localCodexContextIssueResult, error) {
+	return a.issueVerified(q, binding, now, localCodexContext{Harness: q.Harness, NativeSessionID: q.NativeSessionID, Workspace: q.Workspace, TurnID: q.TurnID, ToolUseID: q.ToolUseID})
+}
+
+func (a *localCodexContextAuthority) issueVerified(q localCodexContextIssue, binding string, now time.Time, verified localCodexContext) (*localCodexContextIssueResult, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	for id, r := range a.live {
@@ -145,8 +151,19 @@ func (a *localCodexContextAuthority) issue(q localCodexContextIssue, binding str
 		return nil, errLocalCodexContext
 	}
 	id := hex.EncodeToString(idBytes)
-	r := localCodexContextRecord{Context: localCodexContext{Harness: q.Harness, NativeSessionID: q.NativeSessionID, Workspace: q.Workspace, TurnID: q.TurnID, ToolUseID: q.ToolUseID}, Origin: q.APIOrigin, Binding: binding, Nonce: q.ConnectionNonce, Tool: q.ToolName, Arguments: q.ArgumentsDigest, Expires: now.Add(localCodexContextTTL)}
+	r := localCodexContextRecord{Context: verified, TranscriptPath: q.TranscriptPath, Origin: q.APIOrigin, Binding: binding, Nonce: q.ConnectionNonce, Tool: q.ToolName, Arguments: q.ArgumentsDigest, Expires: now.Add(localCodexContextTTL)}
 	a.live[id] = r
+	if a.native == nil {
+		a.native = make(map[string]localCodexContextRecord)
+	}
+	for id, v := range a.native {
+		if !now.Before(v.Expires) {
+			delete(a.native, id)
+		}
+	}
+	if len(a.native) < maxLocalCodexContexts {
+		a.native[q.NativeSessionID+"\x00"+q.Workspace] = r
+	}
 	return &localCodexContextIssueResult{Ticket: id + "." + a.sign(id, r), ExpiresAt: r.Expires.UTC().Format(time.RFC3339Nano)}, nil
 }
 
@@ -193,17 +210,21 @@ func (b *machineAgentJoinBridge) localContextBinding(origin string) (string, err
 }
 
 func (b *machineAgentJoinBridge) codexContextIssue(q localCodexContextIssue) (*localCodexContextIssueResult, error) {
-	if q.Version != localJoinProtocolVersion || q.Operation != "codex_context_issue" || q.Harness != "codex" || !localContextText(q.NativeSessionID, 128) || strings.ContainsAny(q.NativeSessionID, "/\\") || !localContextHex(q.ConnectionNonce, 64) || !localContextHex(q.ArgumentsDigest, 64) || !localContextText(q.ToolName, 256) || !localContextText(q.TurnID, 256) || !localContextText(q.ToolUseID, 256) {
+	if q.Version != localJoinProtocolVersion || q.Operation != "codex_context_issue" || q.Harness != "codex" || !localContextText(q.NativeSessionID, 128) || strings.ContainsAny(q.NativeSessionID, "/\\") || !localContextHex(q.ConnectionNonce, 64) || !localContextHex(q.ArgumentsDigest, 64) || !localContextText(q.ToolName, 256) || !localCodexContextEventIDs(q) {
 		return nil, errLocalCodexContext
 	}
 	binding, err := b.localContextBinding(q.APIOrigin)
 	if err != nil {
 		return nil, err
 	}
-	if err := verifyCodexContextTranscript(q.TranscriptPath, q.NativeSessionID, q.Workspace); err != nil {
+	verified, err := b.localCodexVerificationProfile(q)
+	if err != nil {
 		return nil, err
 	}
-	return b.codexContexts.issue(q, binding, time.Now())
+	if err := verifyCodexContextTranscriptProfile(q.TranscriptPath, q.NativeSessionID, q.Workspace, verified.VerificationProfile == LocalCodexContextProfileDomain); err != nil {
+		return nil, err
+	}
+	return b.codexContexts.issueVerified(q, binding, time.Now(), verified)
 }
 
 func (b *machineAgentJoinBridge) codexContextConsume(q localCodexContextConsume) (*localCodexContextConsumeResult, error) {
@@ -220,6 +241,10 @@ func (b *machineAgentJoinBridge) codexContextConsume(q localCodexContextConsume)
 // The path locates one native record; only the open record's metadata supplies
 // identity. This deliberately avoids a per-tool walk through session history.
 func verifyCodexContextTranscript(path, sid, workspace string) error {
+	return verifyCodexContextTranscriptProfile(path, sid, workspace, false)
+}
+
+func verifyCodexContextTranscriptProfile(path, sid, workspace string, domain bool) error {
 	root := strings.TrimSpace(os.Getenv("CODEX_HOME"))
 	if root == "" {
 		home, err := os.UserHomeDir()
@@ -263,7 +288,7 @@ func verifyCodexContextTranscript(path, sid, workspace string) error {
 		if !ok || owner != uid {
 			return localCodexContextFailure("OWNERSHIP")
 		}
-		if info.Mode().Perm()&0o022 != 0 {
+		if !domain && info.Mode().Perm()&0o022 != 0 {
 			return localCodexContextFailure("PERMISSION")
 		}
 		if current != path && !info.IsDir() {

@@ -221,6 +221,17 @@ func (s *CryptoState) RememberLocalDomainLocalAttestation(ctx context.Context, p
 		if _, err = localDomainTrust(ctx, conn, *p, now); err != nil {
 			return err
 		}
+		for _, table := range []string{"node_local_domain_attestations_v1", "node_native_pair_attestations"} {
+			var binding string
+			var epoch uint64
+			err = conn.QueryRowContext(ctx, `SELECT binding_id,binding_epoch FROM `+table+` WHERE endpoint_id=? ORDER BY binding_epoch DESC LIMIT 1`, c.EndpointID).Scan(&binding, &epoch)
+			if err == nil && (c.BindingEpoch < epoch || (c.BindingEpoch == epoch && c.BindingID != binding)) {
+				return ErrLocalDomainConflict
+			}
+			if err != nil && !errors.Is(err, sql.ErrNoRows) {
+				return err
+			}
+		}
 		public, err := json.Marshal(c.PublicIdentity)
 		if err != nil {
 			return err

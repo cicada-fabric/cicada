@@ -135,6 +135,7 @@ func localJoinRecoveryFromError(err error) (*localJoinRecoveryStatus, bool) {
 }
 
 type machineAgentJoinBridge struct {
+	managedDomainNext         int
 	localDomainMu             sync.Mutex
 	localDomainReportsEnabled atomic.Bool
 	discoveryMu               sync.Mutex

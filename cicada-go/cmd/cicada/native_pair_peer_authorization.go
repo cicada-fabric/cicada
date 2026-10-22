@@ -125,12 +125,31 @@ func verifyNativePairDeliveryTarget(ctx context.Context, stateDir, nodeID string
 		return false, err
 	}
 	defer state.Close()
+	domain, err := verifyLocalDomainPeerTarget(ctx, state, machinePinnedHubID(ctx), authorization.Receiver.GroupID, authorization.Sender, authorization.Receiver, authorization.LocalDomainCurrent, "native_delivery", authorization.AttemptID)
+	if err != nil {
+		return false, err
+	}
+	if domain && (authorization.NativePairEvidence != nil || authorization.NativePairCurrent != nil) {
+		return false, nodekeys.ErrLocalDomainPolicy
+	}
 	return verifyNativePairPeerTarget(ctx, state, machinePinnedHubID(ctx), authorization.Receiver.GroupID, authorization.NativePairEvidence, authorization.NativePairCurrent, authorization.Sender, authorization.Receiver)
 }
 
 // A fresh live observation has a new timestamp. All authority coordinates still
 // match exactly; each observation is independently verified before comparison.
 func sameNativePairDeliveryAuthority(a, b crossNodeGroupDeliveryAuthorization) bool {
+	if a.LocalDomainCurrent != nil {
+		c := *a.LocalDomainCurrent
+		c.ObservedAt = ""
+		c.ExpiresAt = ""
+		a.LocalDomainCurrent = &c
+	}
+	if b.LocalDomainCurrent != nil {
+		c := *b.LocalDomainCurrent
+		c.ObservedAt = ""
+		c.ExpiresAt = ""
+		b.LocalDomainCurrent = &c
+	}
 	if a.NativePairCurrent != nil {
 		current := *a.NativePairCurrent
 		current.ObservedAt = ""

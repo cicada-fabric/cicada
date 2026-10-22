@@ -52,9 +52,10 @@ func LocalDomainGroupBindingDigest(m LocalDomainKeyManifest) (string, error) {
 	return NativePairGroupBindingDigest(existing)
 }
 
-// trustedOwner must come from the existing independent Node-local Owner pin.
-// This authenticates a delegated key; it does not assert live server authority.
-func VerifyLocalDomainEndpointKeyGrant(g LocalDomainEndpointKeyGrant, hub HubIdentity, expectedOwnerID string, trustedOwner e2ee.PublicIdentity, now time.Time) (e2ee.LocalDomainPolicy, error) {
+// ValidateLocalDomainEndpointKeyProjection validates the complete public body
+// before a delegated Node signs it. It does not authenticate a Node signature
+// or authorize use of a grant. trustedOwner is an independent original pin.
+func ValidateLocalDomainEndpointKeyProjection(g LocalDomainEndpointKeyGrant, hub HubIdentity, expectedOwnerID string, trustedOwner e2ee.PublicIdentity, now time.Time) (e2ee.LocalDomainPolicy, error) {
 	invalid := func() (e2ee.LocalDomainPolicy, error) { return e2ee.LocalDomainPolicy{}, ErrInvalid }
 	p, err := e2ee.VerifyOwnerLocalDomainPolicy(trustedOwner, g.PolicyProof, now)
 	if err != nil || g.ContractRevision != LocalDomainContractRevision || p.OwnerID != expectedOwnerID || ValidateLocalDomainPolicy(p, hub, now) != nil {
@@ -96,6 +97,22 @@ func VerifyLocalDomainEndpointKeyGrant(g LocalDomainEndpointKeyGrant, hub HubIde
 	if err != nil || digest != k.Digest {
 		return invalid()
 	}
+	return p, nil
+}
+
+// trustedOwner must come from the existing independent Node-local Owner pin.
+// This authenticates a delegated key; it does not assert live server authority.
+func VerifyLocalDomainEndpointKeyGrant(g LocalDomainEndpointKeyGrant, hub HubIdentity, expectedOwnerID string, trustedOwner e2ee.PublicIdentity, now time.Time) (e2ee.LocalDomainPolicy, error) {
+	invalid := func() (e2ee.LocalDomainPolicy, error) { return e2ee.LocalDomainPolicy{}, ErrInvalid }
+	p, err := ValidateLocalDomainEndpointKeyProjection(g, hub, expectedOwnerID, trustedOwner, now)
+	if err != nil {
+		return invalid()
+	}
+	selection, err := LocalDomainSelectionForPolicy(p)
+	if err != nil {
+		return invalid()
+	}
+	m, k := g.Member, g.Manifest
 	claims, err := e2ee.VerifyLocalDomainEndpointKey(p, g.NodeProof, now)
 	memberDigest, mdErr := LocalDomainMemberDigest(m)
 	if err != nil || claims.PolicyID != p.PolicyID || claims.PolicyEpoch != p.Epoch || claims.PolicyDigest != selection.PolicyDigest || claims.MemberID != m.MemberID || claims.MemberRevision != m.Revision ||

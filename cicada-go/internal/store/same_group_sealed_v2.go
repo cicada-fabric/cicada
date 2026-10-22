@@ -665,6 +665,12 @@ func reverseSameGroupSealedV1Pair(pair sameGroupEndpointPair) sameGroupEndpointP
 		current.Sender, current.Receiver = current.Receiver, current.Sender
 		reverse.nativeCurrent = &current
 	}
+	if pair.domainCurrent != nil {
+		current := *pair.domainCurrent
+		current.Sender, current.Receiver = current.Receiver, current.Sender
+		current.AttemptID = reverse.sender.EndpointID + ":" + reverse.receiver.EndpointID
+		reverse.domainCurrent = &current
+	}
 	return reverse
 }
 

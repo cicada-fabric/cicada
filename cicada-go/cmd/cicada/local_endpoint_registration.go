@@ -122,19 +122,41 @@ func (b *machineAgentJoinBridge) endpointOperation(q localEndpointRequest) (*loc
 	// A selected domain must never silently downgrade to zero/legacy admission.
 	// The delegated path is connected below with the rest of the Node service.
 	if q.LocalDomain != (wire.LocalDomainSelection{}) {
-		return nil, nodewire.ErrEndpointUnavailable
+		return b.localDomainEndpointOperation(q)
 	}
 	origin, err := normalizeMCPAPIOrigin(q.APIOrigin)
 	expected, expectedErr := normalizeMCPAPIOrigin(b.baseURL)
 	if err != nil || expectedErr != nil || origin != expected || origin != q.APIOrigin {
 		return nil, nodewire.ErrEndpointContext
 	}
+	if result, handled, err := b.replaySettledLocalLeave(q); handled {
+		return result, err
+	}
 	if q.Harness != "" {
 		cwd, err := filepath.EvalSymlinks(q.Workspace)
 		if err != nil || cwd != q.Workspace {
 			return nil, nodewire.ErrEndpointContext
 		}
-		if err := verifyCodexSessionRecord(q.NativeSessionID, q.Workspace); err != nil {
+		if record, ok := b.codexContexts.verifiedNative(q.NativeSessionID, q.Workspace, time.Now()); ok && record.Context.VerificationProfile == LocalCodexContextProfileDomain {
+			if q.Operation == "endpoint_register" {
+				return nil, nodewire.ErrEndpointContext
+			}
+			client, e := openMachineNodeControlClientMode(b.stateDir, b.baseURL, b.nodeID, true)
+			if e != nil {
+				return nil, e
+			}
+			p, e := client.currentLocalDomainPolicy(b.ctx, b.nodeToken, time.Now().UTC())
+			if e != nil || p == nil {
+				return nil, nodewire.ErrEndpointContext
+			}
+			selection, e := wire.LocalDomainSelectionForPolicy(p.Policy)
+			if e != nil || selection != record.Context.LocalDomain {
+				return nil, nodewire.ErrEndpointContext
+			}
+			if e = verifyCodexContextTranscriptProfile(record.TranscriptPath, q.NativeSessionID, q.Workspace, true); e != nil {
+				return nil, e
+			}
+		} else if err := verifyCodexSessionRecord(q.NativeSessionID, q.Workspace); err != nil {
 			return nil, err
 		}
 	}
@@ -245,10 +267,14 @@ func (b *machineAgentJoinBridge) localEndpointLeave(client *machineNodeControlCl
 		leave = nodewire.EndpointLeave{Harness: q.Harness, NativeSessionID: q.NativeSessionID, StateDigest: self.Endpoints[0].StateDigest}
 	}
 	var result nodewire.EndpointRegistrationResult
+	targets, err := client.prepareLocalLeaveTargets(q, digest)
+	if err != nil {
+		return err
+	}
 	if err := client.callLocalEndpoint(b.ctx, b.nodeToken, q.RequestID, digest, "leave", nodewire.EndpointLeaveOperation, leave, &result); err != nil {
 		return err
 	}
-	if err := client.stopManagedPairLeasesForNative(q.Harness, q.NativeSessionID, q.Workspace); err != nil {
+	if err := client.stopLocalLeaveTargets(targets); err != nil {
 		return err
 	}
 	r.Registration = &result

@@ -395,6 +395,50 @@ func TestLocalDomainStoreLeaveExplicitRejoinRetainsSIDAndHistory(t *testing.T) {
 	if got, err := f.f.f.db.ProcessHubLocalDomainNode(original, func(HubLocalDomainNodeOutput) ([]byte, error) { t.Fatal("exact retry reexecuted"); return nil, nil }); err != nil || !bytes.Equal(got, receipt) {
 		t.Fatal("original terminal retry changed", err)
 	}
+	// A fresh signed packet from an old worker is different from exact receipt
+	// recovery. Its retained old AttemptID must not even renew the new member.
+	readLeases := func() [2]string {
+		var leases [2]string
+		if err := f.f.f.db.db.QueryRow(`SELECT b.lease_expires_at,a.lease_expires_at FROM session_bindings b JOIN network_access_sessions_v2 a ON a.id=? WHERE b.id=?`, next.Member.NetworkAccessBindingID, next.Member.BindingID).Scan(&leases[0], &leases[1]); err != nil {
+			t.Fatal(err)
+		}
+		return leases
+	}
+	before := readLeases()
+	stale, staleSeal := f.nodeInput(t, wire.OperationLocalDomainNodeJoin, original.Body, f.f.at.Add(2*time.Minute))
+	if _, err := f.f.f.db.ProcessHubLocalDomainNode(stale, staleSeal); err != nil {
+		t.Fatal("stale worker did not receive a durable no-effect receipt", err)
+	}
+	var stalePacket nodewire.Packet
+	if json.Unmarshal(stale.Packet, &stalePacket) != nil {
+		t.Fatal("stale-worker packet fixture")
+	}
+	var outcome string
+	if err := f.f.f.db.db.QueryRow(`SELECT state FROM hub_local_domain_node_operations_v1 WHERE operation_id=?`, stalePacket.Route.OperationID).Scan(&outcome); err != nil || outcome != wire.AppNodeRejectedFenced {
+		t.Fatal("old AttemptID became authority over a newer member", err)
+	}
+	if after := readLeases(); after != before {
+		t.Fatal("stale worker extended the later admission's native or Access lease")
+	}
+}
+
+func TestLocalDomainStoreExplicitRejoinReattestsOriginalEndpointKey(t *testing.T) {
+	f := localDomainStore(t)
+	d := f.activate(t)
+	first, _ := f.join(t, d, "synthetic-key-rejoin")
+	key, err := e2ee.NewIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := f.keyReady(t, d, first, key)
+	if err = f.f.f.db.LeaveEndpointAllGroups(first.Member.EndpointID, first.Member.BindingID, first.Member.BindingEpoch, "synthetic explicit key rejoin"); err != nil {
+		t.Fatal(err)
+	}
+	next, _ := f.join(t, d, first.Member.NativeSessionID)
+	current := f.keyReady(t, d, next, key)
+	if current.Member.BindingEpoch <= old.Member.BindingEpoch || current.Member.CandidateKeyID != old.Member.CandidateKeyID || current.Member.CandidateFingerprint != old.Member.CandidateFingerprint {
+		t.Fatal("explicit rejoin changed original Endpoint key identity")
+	}
 }
 
 func TestLocalDomainStorePeerGuardChecksCurrentDomainWithoutPair(t *testing.T) {

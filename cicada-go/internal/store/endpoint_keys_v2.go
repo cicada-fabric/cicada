@@ -43,6 +43,22 @@ type EndpointKeyCandidate struct {
 	UpdatedAt    string              `json:"updated_at"`
 }
 
+func endpointKeyCandidateHasActiveJoin(tx *sql.Tx, principal, endpoint string, at time.Time) (bool, error) {
+	// Both bounds compare against the same real admission instant. A seconds-
+	// truncated clock makes an already effective fractional rejoin look future.
+	stamp := at.UTC().Format(time.RFC3339Nano)
+	var active int
+	err := tx.QueryRow(`SELECT EXISTS (
+ SELECT 1 FROM endpoint_group_memberships eg
+ JOIN memberships m ON m.principal_id=? AND m.group_id=eg.group_id
+ JOIN groups g ON g.id=eg.group_id
+ WHERE eg.endpoint_id=? AND eg.status='active' AND m.status='active'
+ AND g.state='ACTIVE' AND cicada_network_effective_allows(m.effective_at,?)=1
+ AND cicada_network_expiry_allows(m.expires_at,?)=1
+)`, principal, endpoint, stamp, stamp).Scan(&active)
+	return active == 1, err
+}
+
 func (s *Store) initializeEndpointKeyCandidateSchema() error {
 	_, err := s.db.Exec(`
 CREATE TABLE IF NOT EXISTS endpoint_key_candidates_v2 (
@@ -153,18 +169,11 @@ WHERE e.id = ?`, endpointID).Scan(&dbPrincipalID, &ownerID, &endpointNodeID,
 	if ownerID == "" || endpointNodeID == "" {
 		return rollback(ErrMembershipNotActive)
 	}
-	var activeJoin int
-	if err := tx.QueryRow(`SELECT EXISTS (
-  SELECT 1 FROM endpoint_group_memberships eg
-  JOIN memberships m ON m.principal_id = ? AND m.group_id = eg.group_id
-  JOIN groups g ON g.id = eg.group_id
-  WHERE eg.endpoint_id = ? AND eg.status = 'active' AND m.status = 'active'
-    AND g.state = 'ACTIVE' AND cicada_network_effective_allows(m.effective_at, ?)=1
-    AND cicada_network_expiry_allows(m.expires_at, ?)=1
-)`, dbPrincipalID, endpointID, now(), now()).Scan(&activeJoin); err != nil {
+	activeJoin, err := endpointKeyCandidateHasActiveJoin(tx, dbPrincipalID, endpointID, time.Now().UTC())
+	if err != nil {
 		return rollback(err)
 	}
-	if activeJoin != 1 {
+	if !activeJoin {
 		return rollback(ErrMembershipNotActive)
 	}
 

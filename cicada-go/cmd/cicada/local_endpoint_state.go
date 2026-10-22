@@ -139,7 +139,7 @@ func (client *machineNodeControlClient) retainLocalEndpointIntent(q localEndpoin
 				settled = false
 			}
 		}
-		if settled && !now.Before(t.Add(localEndpointIntentTTL)) && client.state.PendingLocalEndpointIntentID != id {
+		if settled && !now.Before(t.Add(localEndpointIntentTTL)) && client.state.PendingLocalEndpointIntentID != id && !client.localDomainIntentRetainedLocked(id) {
 			if t.UnixMilli() > client.state.LocalEndpointAdmissionFloorMS {
 				client.state.LocalEndpointAdmissionFloorMS = t.UnixMilli()
 			}

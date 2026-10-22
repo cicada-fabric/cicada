@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
 	"encoding/json"
@@ -25,6 +26,7 @@ type machineLocalDomainReportState struct {
 	Hub          wire.HubIdentity             `json:"hub_identity"`
 	Current      *wire.LocalDomainDescription `json:"current,omitempty"`
 	ObservedAt   string                       `json:"observed_at,omitempty"`
+	ReportProof  []byte                       `json:"report_proof,omitempty"`
 }
 
 func localDomainNodeBusinessOperation(operation string) bool {
@@ -37,6 +39,13 @@ func localDomainNodeBusinessOperation(operation string) bool {
 }
 
 func cloneMachineLocalDomainState(state machineNodeControlState) machineNodeControlState {
+	if state.ManagedLocalDomainLeases != nil {
+		original := state.ManagedLocalDomainLeases
+		state.ManagedLocalDomainLeases = make(map[string]machineManagedLocalDomainLease, len(original))
+		for id, m := range original {
+			state.ManagedLocalDomainLeases[id] = m
+		}
+	}
 	if state.LocalDomainReport != nil {
 		raw, _ := json.Marshal(state.LocalDomainReport)
 		var copy machineLocalDomainReportState
@@ -142,6 +151,24 @@ func (b *machineAgentJoinBridge) refreshLocalDomainReport(ctx context.Context, c
 	if err != nil {
 		return
 	}
+	// Retain only the latest original public report before I/O. A subsequent
+	// explicit current-policy read reuses its signature and fixed expiry; it
+	// cannot republish a fresh report on every tool or wait for the next tick.
+	client.mu.Lock()
+	beforeProof := cloneMachineNodeControlState(client.state)
+	if client.state.BindingID != actual.BindingID || client.state.NodeKeyEpoch != actual.NodeKeyEpoch {
+		client.mu.Unlock()
+		return
+	}
+	retained := copy
+	retained.Hub, retained.ReportProof = hub, append([]byte(nil), proof...)
+	client.state.LocalDomainReport = &retained
+	if err = client.persistLocked(); err != nil {
+		client.state = beforeProof
+		client.mu.Unlock()
+		return
+	}
+	client.mu.Unlock()
 	var result json.RawMessage
 	if err = client.call(ctx, b.nodeToken, wire.OperationLocalDomainNodeAvailable, wire.LocalDomainNodeAvailable{ContractRevision: wire.LocalDomainContractRevision, LocalUserScope: scope, LocalUserReport: proof}, &result); err != nil {
 		return
@@ -158,6 +185,7 @@ func (b *machineAgentJoinBridge) refreshLocalDomainReport(ctx context.Context, c
 	before := cloneMachineNodeControlState(client.state)
 	fresh := copy
 	fresh.Hub = hub
+	fresh.ReportProof = append([]byte(nil), proof...)
 	fresh.Failures = 0
 	fresh.NextAt = now.Add(2 * time.Minute).Format(time.RFC3339Nano)
 	fresh.ObservedAt = available.ObservedAt
@@ -205,4 +233,63 @@ func (client *machineNodeControlClient) currentLocalDomainPolicy(ctx context.Con
 		return nil, nodekeys.ErrLocalDomainPolicy
 	}
 	return client.acceptLocalDomainPolicy(ctx, token, r.Hub, *r.Current, now)
+}
+
+// A user explicitly registering the current Thread must see an activation
+// committed after the periodic report. Reuse the exact latest report; this is
+// a bounded current read, never another report signature or expiry extension.
+func (b *machineAgentJoinBridge) readLocalDomainCurrent(ctx context.Context, client *machineNodeControlClient) (*nodekeys.LocalDomainPolicy, error) {
+	b.localDomainMu.Lock()
+	defer b.localDomainMu.Unlock()
+	client.mu.Lock()
+	r := cloneMachineLocalDomainState(client.state).LocalDomainReport
+	actual, pub := client.state, client.identity.Public()
+	client.mu.Unlock()
+	if r == nil || r.Hub.HubID == "" {
+		return nil, nil // An optional profile absent from an older Hub.
+	}
+	now := time.Now().UTC()
+	if r.BindingID != actual.BindingID || r.NodeKeyEpoch != actual.NodeKeyEpoch || r.Hub.HubID != actual.HubID {
+		return nil, nodekeys.ErrLocalDomainPolicy
+	}
+	node := e2ee.OwnerAppNodeBinding{HubID: actual.HubID, NodeID: client.nodeID, OwnerBindingID: actual.BindingID, NodeKeyEpoch: actual.NodeKeyEpoch, NodePublic: pub, NodeKeyFingerprint: actual.NodeKeyFingerprint}
+	report, err := e2ee.VerifyLocalDomainUserReport(node, r.ReportProof, now)
+	uid, uidErr := machineAgentJoinSocketCurrentUID()
+	if err != nil || uidErr != nil || report.LocalUserScope != "uid:"+strconv.FormatUint(uint64(uid), 10) {
+		return nil, nodekeys.ErrLocalDomainPolicy
+	}
+	if err = client.recoverPending(ctx, b.nodeToken); err != nil && !errors.Is(err, errLocalEndpointReceiptExpired) && !errors.Is(err, errLocalDomainNodeRejected) {
+		return nil, err
+	}
+	var raw json.RawMessage
+	if err = client.call(ctx, b.nodeToken, wire.OperationLocalDomainNodeAvailable, wire.LocalDomainNodeAvailable{ContractRevision: wire.LocalDomainContractRevision, LocalUserScope: report.LocalUserScope, LocalUserReport: r.ReportProof}, &raw); err != nil {
+		return nil, err
+	}
+	available, err := wire.DecodeLocalDomainNodeAvailable(raw, r.Hub, node, report.LocalUserScope, time.Now().UTC())
+	if err != nil {
+		return nil, err
+	}
+	client.mu.Lock()
+	if client.state.BindingID != actual.BindingID || client.state.NodeKeyEpoch != actual.NodeKeyEpoch || client.state.LocalDomainReport == nil || !bytes.Equal(client.state.LocalDomainReport.ReportProof, r.ReportProof) {
+		client.mu.Unlock()
+		return nil, nodekeys.ErrLocalDomainPolicy
+	}
+	previous := cloneMachineNodeControlState(client.state)
+	fresh := *client.state.LocalDomainReport
+	fresh.Current, fresh.ObservedAt = nil, available.ObservedAt
+	if len(available.Policies) == 1 {
+		d := available.Policies[0]
+		fresh.Current = &d
+	}
+	client.state.LocalDomainReport = &fresh
+	if err = client.persistLocked(); err != nil {
+		client.state = previous
+		client.mu.Unlock()
+		return nil, err
+	}
+	client.mu.Unlock()
+	if fresh.Current == nil {
+		return nil, nil
+	}
+	return client.acceptLocalDomainPolicy(ctx, b.nodeToken, r.Hub, *fresh.Current, time.Now().UTC())
 }

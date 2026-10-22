@@ -1,12 +1,14 @@
 # Native local domain contract
 
-Status: **HUB/NODE RPC, NODE CRYPTO AND USER REPORT IMPLEMENTED;
-NATIVE ISSUER/JOIN ADAPTER NOT YET ACCEPTED**. Root approved
+Status: **HUB/NODE RPC, CRYPTO, REPORT, NATIVE ISSUER, JOIN AND PEER ADAPTERS
+IMPLEMENTED; REAL HOST COMMUNICATION AND LOGIN-EXPIRY ACCEPTANCE INCOMPLETE**. Root approved
 the trust boundary, lifecycle and operations on 2026-10-22. The shared contract
 checkpoint remains attributed to its original source. The subsequent backend
-checkpoint implements the Hub service and Node report/cryptographic components;
-its public capability describes server availability, not completion of a local
-Native adapter or caller authorization. Hub schema migration 66 and Node crypto
+checkpoint implements the Hub service and Node report/cryptographic components.
+The later Node checkpoint below passes scoped synthetic integration/race gates
+and actual original-daemon A/B registration; the first actual Host whoami still
+fails and the login-expiry phase has not run. Public capability describes server
+availability, not complete Native acceptance or caller authorization. Hub schema migration 66 and Node crypto
 schema 7 retain existing identities, public keys, epochs and historical Pair data.
 This does not change `native-pair-v1`,
 the frozen Client wire identifiers, or the installation-registration profile.
@@ -279,6 +281,19 @@ accept an old Codex daemon's umask-002 records without per-record chmod, changin
 daemon ACLs or restarting it. A diagnostic reports writable native-record
 provenance. Root must freeze this profile before that code is enabled.
 
+Root approved the private issuer's exact operator event forms after reviewing
+the pinned Codex 0.163 evidence. Only `codex.operator.endpoint_register`,
+`codex.operator.endpoint_leave`, `codex.operator.endpoint_directory`,
+`codex.operator.native_pair_available` and
+`codex.operator.native_pair_join_named` may carry a valid original TurnID with
+an empty ToolUseID, as real UserPromptSubmit does. Their existing double-empty
+and valid double-present forms remain compatible. Tool-only and malformed IDs
+refuse. The missing-ID exceptions do not apply to unknown operator purposes or
+MCP tool events. The real
+TurnID remains in the HMAC-bound context and exact consumer comparison; no
+replacement ToolUseID is generated. This changes no public DTO, frozen protocol
+identifier or authorization right. Existing Pair verification stays strict.
+
 This deliberately grants the approved local user its scoped domain authority;
 it does not claim isolation between that user's Threads. Another UID able to
 modify the native Runtime/history can corrupt SID/cwd provenance, so this path
@@ -332,8 +347,13 @@ Signing APIs are `e2ee.Sign/VerifyOwnerLocalDomainPolicy`,
 `LocalDomainSelectionForPolicy`. Typed DTOs are defined in
 `internal/hubaccountwire/local_domain_types.go`. Hub service/Store entry points,
 Node cryptographic state and the bounded Node report worker are implemented in
-the backend checkpoint recorded below. The Native issuer and explicit Join /
-delivery adapters remain separate acceptance work. The following shared-contract
+the backend checkpoint recorded below. The later Node checkpoint implements the
+Native issuer and explicit Join/peer/delivery adapters with the acceptance limits
+recorded separately. `ValidateLocalDomainEndpointKeyProjection` validates the
+complete policy/member/candidate/manifest before the local Node signs; it does
+not authenticate an absent Node proof or assert current authority.
+`VerifyLocalDomainEndpointKeyGrant` additionally verifies that exact Node proof
+and complete MemberDigest. The following shared-contract
 validation retains its original, earlier implementation boundary.
 
 Separately approved local diagnostic API is
@@ -511,3 +531,119 @@ domain gate, real Codex Runtime, Windows, Android, physical devices, public HTTP
 and production restore/deployment are **NOT_RUN / NOT_ACCEPTED by this backend
 checkpoint**. Synthetic SIDs in TCP fixtures were never sent to a real Runtime.
 No deployment, real identity/key replacement, push or merge is performed here.
+
+## Node issuer and admission checkpoint, 2026-10-22
+
+This checkpoint connects the selected domain to the existing private Node IPC,
+explicit current-Thread admission, original Endpoint key publication, shared
+managed-lease worker and same-Group sealed transport. The Node selects the
+verification profile from the current approved policy and independent original
+Owner pin. Caller input cannot select the relaxed record-permission profile.
+The retained exact transcript path is bounded private metadata; fresh domain
+admission and outbound verification do not scan native history. An explicit
+registration can reuse the latest original signed report for one current-policy
+read, so activation need not wait for the next periodic report. This creates no
+new report signature, expiry extension or per-tool report publisher.
+
+Admission retains zero-Join, candidate attestation, key-prepare and exact signed
+key-complete originals. The scope decision precedes key-complete. Before signing,
+the Node compares the complete projected member, candidate and manifest with its
+original native tuple and public key. Missing/corrupt retained Endpoint keys
+refuse replacement. A separate bounded managed-domain map shares the existing
+worker/capacity budget with Pair leases; the token remains only in the original
+encrypted zero-Join receipt. Warm renewal uses ordinary heartbeat without a
+per-tick permanent mutation receipt. Cold recovery uses the original AttemptID,
+member and epochs, never an explicit replacement admission or an App session.
+
+Hub Join checks a retained AttemptID's original terminal/member coordinates
+before the current-SID shortcut. A stale worker cannot renew a later admission.
+Leave retains its original lease-ID snapshot before dispatch; exact receipt
+recovery stops those IDs rather than a subsequent same-SID admission. Existing
+Pair stop reason `EXPLICIT_LEAVE` is retained. Candidate admission checks both
+effective-at and expiry against one precise real instant through the existing
+time functions; it neither truncates the clock nor backdates a real rejoin.
+
+Unknown originals settle before fresh policy/native checks. Historical complete
+results reverify the original full chain and own prepare/complete proof at its
+original issue time; returning that history does not restore current rights.
+Only a separate current check may permit renewed use. No-effect fencing refuses
+unknown key-complete outcomes. Actual ACK-loss/restart tests cover zero-Join,
+candidate, prepare and complete, as well as lost Leave followed by fresh rejoin.
+
+Peer transport retains distinct legacy and delegated grant variants. Both domain
+chains, original local key and fresh current operation/attempt are verified.
+Existing carrier locator redaction is preserved: peer-key hides the receiver
+locator and delivery hides the sender locator; every nonempty locator must match
+the signed member, and the actual delivery receiver SID is mandatory exact.
+REPLY reverses the complete domain current snapshot with the original ASK route.
+Native delivery refreshes final authorization after acquiring the physical
+writer, checks local trust again, and carries the current deadline through local
+admission and the executable. No atomic Hub/remote-OS guarantee is added.
+
+### Source-specific deterministic and disposable integration evidence
+
+Artifacts below are under
+`/home/zyf/Cicada/.local/evidence/node-endpoint-registration/`. Tests use the pinned
+Go 1.27.3 Docker image
+`sha256:5c3e9b43cfd3bb95c7937462e29d87ada57b481a96fa23ad0eb61778d7a00110`,
+network disabled, read-only source/module mounts and synthetic disposable keys.
+Each completed gate has `receipt.json`, `source-manifest.json` and a successful
+full `source-after-check.json`. Dirty source is not attributed solely to HEAD.
+
+| Tested source | Gate | Result / artifact prefix |
+|---|---|---|
+| Dirty `a52cf563204f658a31876bcf54832150db6db531`, manifest `030fa5a6ff5707c7674e1b5151bf52a4a4dd4aa476dc535c308c30af10369a25` | Normal Hook/private IPC/v2 cache/shared contextual MCP/Hub/Relay/crypto/inbox/physical writer ASK and REPLY, plus direct Node diagnostic | 2 pass, 0 fail, 0 skip; `local-domain-hook-peer-reverse-current-20261022-20261022T223047Z` |
+| Same source | Scoped normal: cmd/cicada, Store, nodekeys, hubaccountwire; domain, context, managed Pair, existing consumer/Leave/key checks | **NOT_ACCEPTED**, 187 pass, 2 fail, 0 skip (83 top-level pass, 1 top-level fail); `local-domain-node-focused-normal-20261022-20261022T223156Z` |
+| Same source | Focused domain/context/fractional-time race across those four packages | Exit 0, 108 pass, 0 fail, 0 skip (44 top-level); `local-domain-node-focused-race-20261022-20261022T223156Z` |
+| Same source | Vet: cmd/cicada, hubaccountwire, nodekeys, Store, fabric | Exit 0; `local-domain-node-focused-vet-20261022-20261022T223156Z` |
+| Dirty `a52cf563…`, manifest `aab475adad8958af8ff2b03b9f608035f0c6ee387d5fff0b60945b4e8e29aea4` | Restore only Pair stop reason `LEFT` to original `EXPLICIT_LEAVE`; exact failed test and related Leave guards, normal and race | Each 11 pass, 0 fail, 0 skip (3 top-level); `local-domain-pair-leave-code-{normal,race}-20261022-20261022T224218Z` |
+| Dirty `0da74df97453667c1f52ff3790dc5c34d2b1a076`, manifest `fd87f665aa9ed92a21945c1ff9e17dd8165021b86d67168fc97b90d0f08c0f1a` | Exact operator ID forms/negative purposes/HMAC, context guards and real-shape synthetic Hook/MCP ASK/REPLY, normal and race | Each 69 pass, 0 fail, 0 skip (9 top-level); `local-domain-user-prompt-shape-{normal,race}-20261022-20261022T225725Z`; vet cmd/cicada exit 0 in the matching `vet` artifact |
+
+The first scoped normal failure is the existing
+`TestManagedPairLeaseDelayedReplyUsesCurrentClockAndLeaveCAS/leave_before_reply`
+stop-reason assertion, after its STOPPED-state assertion passed. Its later exact
+normal/race gates cover that one-word compatibility correction and related
+Leave guards; they do not relabel the earlier whole gate as passing. Their
+selector is
+`^Test(ManagedPairLeaseDelayedReplyUsesCurrentClockAndLeaveCAS|ManagedPairLeaseLeaveAndCurrentAuthorityStopWithoutResurrection|LocalEndpointLeaveExactRecoveryDoesNotRefreshDigest)$`.
+The final event-shape selector is
+`^Test(LocalDomainContext|LocalDomainHookMCPRelayAndNativeCallbackRealTCP|LocalCodexContext)`.
+
+Frozen candidate `local-domain-node-prompt-shape-candidate-20261022.json` has
+SHA-256 `a41ac230b9eef44d1c2c8ac015646a3119f446aaa8e7693d007bf863257057a9`.
+Relative to Root's prior freeze it changes only the issuer ID-form check and
+two tests. This documentation is a later overlay; production files retain that
+candidate's exact hashes. Earlier failures are retained, including the readonly
+crypto handle used for candidate writes, real-time rejoin denial, the temporary
+overstrict redacted-SID check, consumer outbox projection loss and missing
+reverse domain current. Subsequent accepted gates cover their final corrections;
+no full Store/CLI regression-suite pass or real Runtime pass is inferred.
+
+### Actual Runtime evidence and remaining boundary
+
+QA alone ran the actual pinned original-daemon lane with normal Hook trust and
+`CICADA_NATIVE_PAIR_DOMAIN_WAIT_LOGIN_EXPIRY=1`. The following results remain
+under `/home/zyf/Cicada/.local/evidence/native-pair-acceptance/`:
+
+| Run / source | Actual result | `result.json` SHA-256 |
+|---|---|---|
+| `run-20261022T223355Z-WhxOtu`, dirty `a52cf563…` / original freeze `329af9…` | **FAIL** at `LITERAL_AB/A_JOIN/ASSERTION`; private exception removed by fixture cleanup, cause unproven | `a3b6cdd7e662728d5e19d24027e57c3529cada1a7332a6fd344ee776214123f5` |
+| `run-20261022T225021Z-nghDUR`, dirty `0da74df…` / Root freeze `bb1436…` | **FAIL**, `ACTUAL_TUI_LITERAL_RESULT_NOT_VISIBLE`, Hook `context_refused`, provider POST 0 | `40b216ada516ed60a41f3cc26dcf88a5ea04e1b91d7cc9e10a05a8bcff9efbc5` |
+| `run-20261022T230207Z-3NUe5A`, dirty `0da74df…` / final freeze `a41ac230…` above | A/B literal admission, original SID/cwd/UID/inode, zero literal POST, MCP readiness and actual App Close passed; **FAIL** at `HOST_APP_CLOSED/A_WHOAMI/ASSERTION`, fixed code `UNCLASSIFIED`, static-provider POST 2 | `6219be1790282693cda1dc07477f903152580a8b73a07718e7c5e494c2db4f67` |
+
+Historical raw events from the same pinned Codex 0.163 binary establish the
+UserPromptSubmit TurnID-only shape; they are not this failed run's raw input.
+The App review receipt is
+`/home/zyf/.cicada/acceptance/codex-context-checks/codex-0163-prompt-event-review-20261022T225756Z/result.json`,
+SHA-256 `796d8ad292fe75062ae816bec4bcb16817aa7c9421cc93aefdd4255bd30c32d2`.
+The successful later actual A/B registration supports that compatibility fix.
+The first Host failure remains undiagnosed at this checkpoint; static schema
+agreement is not evidence of a successful live whoami or a proven product cause.
+
+**NOT_ACCEPTED / NOT_RUN:** complete actual Host whoami/ASK/REPLY/receive,
+real login-expiry waiting and subsequent C admission, actual post-revoke Host
+refusal, automatic native queue/model consumption, Windows physical Runtime,
+Android, physical devices, public HTTPS and production restore/deployment.
+Synthetic native queue subprocesses remain separate from actual Runtime
+consumption. No existing daemon/record permissions or real identity were changed
+to bypass proof, and no push, merge or deployment is performed by this task.

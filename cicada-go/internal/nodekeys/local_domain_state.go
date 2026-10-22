@@ -233,5 +233,8 @@ func compareLocalDomainMember(old, m wire.LocalDomainMember) error {
 	if m.BindingEpoch == old.BindingEpoch && (m.MemberID != old.MemberID || m.BindingID != old.BindingID || m.NetworkAccessBindingID != old.NetworkAccessBindingID || m.NetworkAccessEpoch != old.NetworkAccessEpoch || m.Revision < old.Revision || (m.Revision == old.Revision && m != old)) {
 		return ErrLocalDomainConflict
 	}
+	if m.BindingEpoch > old.BindingEpoch && (m.MemberID == old.MemberID || m.BindingID == old.BindingID || m.NetworkAccessBindingID != old.NetworkAccessBindingID || m.NetworkAccessEpoch <= old.NetworkAccessEpoch || m.CandidateKeyID != old.CandidateKeyID || m.CandidateFingerprint != old.CandidateFingerprint) {
+		return ErrLocalDomainConflict
+	}
 	return nil
 }

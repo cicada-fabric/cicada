@@ -24,6 +24,7 @@ import (
 	"github.com/cicada-ai/cicada/internal/hubowner"
 	"github.com/cicada-ai/cicada/internal/nodeinbox"
 	"github.com/cicada-ai/cicada/internal/nodekeys"
+	"github.com/cicada-ai/cicada/internal/nodewire"
 	serverpkg "github.com/cicada-ai/cicada/internal/server"
 	"github.com/cicada-ai/cicada/internal/store"
 )
@@ -58,6 +59,7 @@ type nativePairTCPConsumerFixture struct {
 	nodePackets                              map[string][][]byte
 	posts                                    map[string]int
 	dropJoin, dropCandidate                  int
+	dropDomain                               map[string]int
 	carrierEdit                              func(map[string]json.RawMessage)
 }
 
@@ -291,6 +293,29 @@ func (f *nativePairTCPConsumerFixture) serve(w http.ResponseWriter, r *http.Requ
 	}
 	drop := false
 	if r.URL.Path == "/v2/node/control/rpc" {
+		if packet, err := nodewire.DecodePacket(raw); err == nil && packet.Route.Operation == nodewire.EndpointLeaveOperation {
+			f.nodePackets[packet.Route.Operation] = append(f.nodePackets[packet.Route.Operation], bytes.Clone(raw))
+			if f.dropDomain[packet.Route.Operation] > 0 {
+				f.dropDomain[packet.Route.Operation]--
+				drop = true
+			}
+		}
+		if packet, err := wire.DecodeLocalDomainNodePacket(raw); err == nil {
+			_, path := machineNodeControlPaths(f.nodeRoot, f.nodeID)
+			data, e := os.ReadFile(path)
+			var durable machineNodeControlState
+			if e != nil || json.Unmarshal(data, &durable) != nil || !bytes.Equal(durable.PendingPacket, raw) {
+				f.mu.Unlock()
+				f.t.Error("actual domain POST preceded its durable exact original")
+				w.WriteHeader(500)
+				return
+			}
+			f.nodePackets[packet.Route.Operation] = append(f.nodePackets[packet.Route.Operation], bytes.Clone(raw))
+			if f.dropDomain[packet.Route.Operation] > 0 {
+				f.dropDomain[packet.Route.Operation]--
+				drop = true
+			}
+		}
 		if packet, err := wire.DecodeNativePairNodePacket(raw); err == nil {
 			if nativePairNodeBusinessOperation(packet.Route.Operation) {
 				_, path := machineNodeControlPaths(f.nodeRoot, f.nodeID)

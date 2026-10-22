@@ -100,9 +100,23 @@ func localDomainJoinResultTx(tx *sql.Tx, p *hubLocalDomain, m wire.LocalDomainMe
 }
 
 func localDomainJoinTx(tx *sql.Tx, in HubLocalDomainNodeInput, rpc NodeControlRPCInput, p *hubLocalDomain, q wire.LocalDomainNodeJoin) (any, error) {
+	// A retained AttemptID refers forever to its original member. Check it
+	// before the same-SID current-member shortcut, so a stale cold-recovery
+	// worker cannot renew a later admission created by another explicit intent.
+	var attemptedMember, attemptedState, attemptedSID, attemptedRuntime, attemptedWorkspace string
+	attemptErr := tx.QueryRow(`SELECT member_id,state,native_session_id,runtime,workspace FROM hub_local_domain_members_v1 WHERE policy_id=? AND attempt_id=?`, p.policy.PolicyID, q.AttemptID).Scan(&attemptedMember, &attemptedState, &attemptedSID, &attemptedRuntime, &attemptedWorkspace)
+	if attemptErr == nil && ((attemptedState != wire.LocalDomainMemberJoinedZero && attemptedState != wire.LocalDomainMemberActive) || attemptedSID != q.NativeSessionID || attemptedRuntime != q.Runtime || attemptedWorkspace != q.Workspace) {
+		return nil, ErrSessionBindingConflict
+	}
+	if attemptErr != nil && !errors.Is(attemptErr, sql.ErrNoRows) {
+		return nil, attemptErr
+	}
 	var previous string
 	err := tx.QueryRow(`SELECT member_id FROM hub_local_domain_members_v1 WHERE policy_id=? AND native_session_id=? AND state IN('JOINED_ZERO','ACTIVE')`, p.policy.PolicyID, q.NativeSessionID).Scan(&previous)
 	if err == nil {
+		if attemptedMember != "" && attemptedMember != previous {
+			return nil, ErrSessionBindingConflict
+		}
 		m, e := readLocalDomainMember(tx, previous)
 		if e != nil || m == nil || m.member.Workspace != q.Workspace || m.member.Runtime != q.Runtime {
 			return nil, ErrNetworkPermission

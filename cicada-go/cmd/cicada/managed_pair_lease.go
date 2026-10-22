@@ -59,7 +59,7 @@ func cloneManagedPairLeaseState(state machineNodeControlState) machineNodeContro
 }
 
 func managedPairStateReserve(state machineNodeControlState) int {
-	reserved := 0
+	reserved := localDomainStateReserve(state)
 	for _, m := range state.ManagedPairLeases {
 		if m.State == "RESERVED" {
 			reserved += managedPairLeaseReserveBytes
@@ -397,6 +397,7 @@ func (b *machineAgentJoinBridge) runManagedPairLeaseWorker() {
 			b.refreshLocalDomainReport(b.ctx, time.Now)
 		}
 		b.renewManagedPairLeaseBatch(b.ctx, time.Now)
+		b.renewLocalDomainLeaseBatch(b.ctx)
 		select {
 		case <-b.ctx.Done():
 			return

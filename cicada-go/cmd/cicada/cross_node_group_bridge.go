@@ -41,6 +41,7 @@ type crossNodeGroupEndpointEvidence struct {
 	EndpointJoinRevision int64                             `json:"endpoint_join_revision"`
 	Candidate            store.EndpointKeyCandidate        `json:"candidate"`
 	Grant                *store.OwnerGroupEndpointKeyGrant `json:"grant"`
+	LocalDomainGrant     *wire.LocalDomainEndpointKeyGrant `json:"local_domain_grant,omitempty"`
 }
 
 type crossNodeGroupPeerKey struct {
@@ -51,6 +52,7 @@ type crossNodeGroupPeerKey struct {
 	Receiver           crossNodeGroupEndpointEvidence   `json:"receiver"`
 	NativePairEvidence *wire.NativePairPeerEvidence     `json:"native_pair_evidence,omitempty"`
 	NativePairCurrent  *wire.NativePairPeerCurrent      `json:"native_pair_current,omitempty"`
+	LocalDomainCurrent *wire.LocalDomainCurrent         `json:"local_domain_current,omitempty"`
 }
 
 type crossNodeGroupDeliveryAuthorization struct {
@@ -72,6 +74,7 @@ type crossNodeGroupDeliveryAuthorization struct {
 	TaskHandoff        *store.SealedTaskHandoffDeliveryAuthorization `json:"task_handoff,omitempty"`
 	NativePairEvidence *wire.NativePairPeerEvidence                  `json:"native_pair_evidence,omitempty"`
 	NativePairCurrent  *wire.NativePairPeerCurrent                   `json:"native_pair_current,omitempty"`
+	LocalDomainCurrent *wire.LocalDomainCurrent                      `json:"local_domain_current,omitempty"`
 }
 
 type crossNodeGroupSendReceipt struct {
@@ -117,6 +120,10 @@ func (b *machineAgentJoinBridge) crossNodeGroupWithBroadcastFence(request crossN
 	if required && ((request.Operation != "cross_node_group_ask" && request.Operation != "cross_node_group_reply" && request.Operation != "cross_node_group_status" && request.Operation != "cross_node_group_cancel") || request.ParentRequestID != "" || len(request.Body) > 8192) {
 		return nil, nodekeys.ErrNativePairBudget
 	}
+	domainRequired, err := localDomainGroupRequired(b.ctx, b.stateDir, b.nodeID, request.GroupID)
+	if err != nil {
+		return nil, err
+	}
 	switch request.Operation {
 	case "cross_node_group_send", "cross_node_group_ask":
 		return b.crossNodeGroupSendAsk(request, card, fence)
@@ -126,7 +133,7 @@ func (b *machineAgentJoinBridge) crossNodeGroupWithBroadcastFence(request crossN
 		}
 		return b.crossNodeGroupTaskHandoff(request, card)
 	case "cross_node_group_reply":
-		if required {
+		if required || domainRequired {
 			return b.crossNodeGroupReply(request, card)
 		}
 		// Same-Node requests already have a durable local ledger. Only an exact
@@ -145,7 +152,7 @@ func (b *machineAgentJoinBridge) crossNodeGroupWithBroadcastFence(request crossN
 		}
 		return b.crossNodeGroupReply(request, card)
 	case "cross_node_group_status", "cross_node_group_cancel":
-		if required {
+		if required || domainRequired {
 			return b.crossNodeGroupRequestControl(request, card)
 		}
 		// Status and cancellation consult the Node-local ledger first, then the
@@ -177,7 +184,15 @@ func (b *machineAgentJoinBridge) verifyCrossNodeGroupSource(request crossNodeGro
 	if err := validateCrossNodeGroupRequest(request, b.nodeID); err != nil {
 		return fabric.NetworkCard{}, err
 	}
-	if err := verifyCodexSessionRecord(request.NativeSessionID, request.Workspace); err != nil {
+	domain, err := localDomainGroupRequired(b.ctx, b.stateDir, b.nodeID, request.GroupID)
+	if err != nil {
+		return fabric.NetworkCard{}, err
+	}
+	if domain {
+		if err = b.verifyManagedLocalDomainNativeRecord(request.GroupID, request.EndpointID, request.BindingID, request.BindingEpoch, request.NativeSessionID, request.Workspace); err != nil {
+			return fabric.NetworkCard{}, err
+		}
+	} else if err := verifyCodexSessionRecord(request.NativeSessionID, request.Workspace); err != nil {
 		return fabric.NetworkCard{}, err
 	}
 	card, err := b.verifyCurrentMCPBinding(request.SessionToken, request.GroupID)
@@ -240,6 +255,9 @@ func (b *machineAgentJoinBridge) fetchCrossNodeGroupPeerKeyMode(groupID, sourceE
 	if err := validateNativePairCarrierBounds(data, peerKey, peerKey.NativePairEvidence, peerKey.NativePairCurrent); err != nil {
 		return crossNodeGroupPeerKey{}, err
 	}
+	if err := validateLocalDomainCarrierBounds(data, peerKey, peerKey.Sender, peerKey.Receiver, peerKey.LocalDomainCurrent); err != nil {
+		return crossNodeGroupPeerKey{}, err
+	}
 	if err := validateCrossNodeGroupPeerKeyMode(peerKey, groupID, sourceEndpointID, targetEndpointID, b.nodeID, allowSameNode); err != nil {
 		return crossNodeGroupPeerKey{}, err
 	}
@@ -268,11 +286,11 @@ func validateCrossNodeGroupPeerKeyMode(peerKey crossNodeGroupPeerKey, groupID, s
 		peerKey.Sender.EndpointJoinRevision <= 0 || peerKey.Receiver.EndpointJoinRevision <= 0 ||
 		peerKey.Sender.BindingID == "" || peerKey.Sender.BindingEpoch == 0 ||
 		peerKey.Receiver.BindingID == "" || peerKey.Receiver.BindingEpoch == 0 ||
-		peerKey.Sender.Grant == nil || peerKey.Receiver.Grant == nil {
+		!crossNodeGroupHasGrant(peerKey.Sender) || !crossNodeGroupHasGrant(peerKey.Receiver) {
 		return errors.New("Hub returned incomplete or non-current same-Group route evidence")
 	}
-	if peerKey.Sender.Grant.Manifest.HubID != peerKey.HubID ||
-		peerKey.Receiver.Grant.Manifest.HubID != peerKey.HubID {
+	if crossNodeGroupManifest(peerKey.Sender).HubID != peerKey.HubID ||
+		crossNodeGroupManifest(peerKey.Receiver).HubID != peerKey.HubID {
 		return errors.New("same-Group key grants do not match the current Hub")
 	}
 	return nil
@@ -328,6 +346,10 @@ func (b *machineAgentJoinBridge) crossNodeGroupSendAsk(request crossNodeGroupReq
 	if err != nil {
 		return nil, err
 	}
+	domainRequired, err := localDomainGroupRequired(b.ctx, b.stateDir, b.nodeID, request.GroupID)
+	if err != nil {
+		return nil, err
+	}
 	messageID, derivedRequestID, err := localSealedRPCIDs(request.OperationID)
 	if err != nil {
 		return nil, err
@@ -338,7 +360,7 @@ func (b *machineAgentJoinBridge) crossNodeGroupSendAsk(request crossNodeGroupReq
 	}
 	var legacy *localGroupResult
 	legacyErr := nodelocal.ErrMessageNotFound
-	if !pairRequired {
+	if !pairRequired && !domainRequired {
 		legacy, legacyErr = b.replayLegacyLocalGroupMessage(crossNodeGroupLocalRequest(request, localOperation), fence)
 	}
 	if !errors.Is(legacyErr, nodelocal.ErrMessageNotFound) {
@@ -531,27 +553,24 @@ func (b *machineAgentJoinBridge) pinCrossNodeGroupPeer(peerKey crossNodeGroupPee
 	if err != nil {
 		return closeOnError(err)
 	}
-	identity, err := loadNativePairPeerIdentity(b.ctx, state, machineNodeStateDir(b.stateDir, b.nodeID), local.EndpointID, required)
+	domain, err := verifyLocalDomainPeerTarget(b.ctx, state, peerKey.HubID, peerKey.GroupID, peerKey.Sender, peerKey.Receiver, peerKey.LocalDomainCurrent, "peer_key", peerKey.Sender.EndpointID+":"+peerKey.Receiver.EndpointID)
+	if err != nil {
+		return closeOnError(err)
+	}
+	var identity *e2ee.Identity
+	if domain {
+		identity, err = loadLocalDomainPeerIdentity(b.ctx, state, machineNodeStateDir(b.stateDir, b.nodeID), local.EndpointID)
+	} else {
+		identity, err = loadNativePairPeerIdentity(b.ctx, state, machineNodeStateDir(b.stateDir, b.nodeID), local.EndpointID, required)
+	}
 	if err != nil {
 		return closeOnError(err)
 	}
 	if err := validateCrossNodeGroupLocalKey(local, identity.Public(), b.nodeID); err != nil {
 		return closeOnError(err)
 	}
-	pinEvidence, err := crossNodeGroupPinEvidence(peerKey, local, peerEndpoint)
-	if err != nil {
+	if _, err = pinCurrentSameGroupPeer(b.ctx, state, peerKey, local, peerEndpoint, identity); err != nil {
 		return closeOnError(err)
-	}
-	if _, err := state.PinOwnerGrantedGroupEndpointPeerKey(b.ctx, pinEvidence); err != nil {
-		return closeOnError(fmt.Errorf("verify current same-Group Owner grant and peer key: %w", err))
-	}
-	localGrantEvidence, err := crossNodeGroupPinEvidence(peerKey, peerEndpoint, local)
-	if err != nil {
-		return closeOnError(err)
-	}
-	verifiedLocal, err := state.VerifyGroupEndpointKeyGrant(b.ctx, localGrantEvidence)
-	if err != nil || !machineSamePublicIdentity(verifiedLocal.Public, identity.Public()) {
-		return closeOnError(errors.New("current local Endpoint Owner grant does not match its private key"))
 	}
 	peer := nodekeys.PeerPinIdentity{
 		EndpointID: peerEndpoint.EndpointID, GroupID: peerEndpoint.GroupID,
@@ -792,12 +811,15 @@ func fetchCrossNodeGroupDeliveryAuthorization(ctx context.Context, base, nodeID,
 	if err := json.Unmarshal(raw, &authorization); err != nil {
 		return nil, errors.New("Hub returned invalid same-Group delivery authorization")
 	}
-	if authorization.NativePairEvidence != nil || authorization.NativePairCurrent != nil {
+	if authorization.NativePairEvidence != nil || authorization.NativePairCurrent != nil || authorization.LocalDomainCurrent != nil || authorization.Sender.LocalDomainGrant != nil || authorization.Receiver.LocalDomainGrant != nil {
 		if err := decodeStrictBridgeJSON(raw, &authorization); err != nil {
 			return nil, errors.New("Hub returned invalid native Pair delivery fields")
 		}
 	}
 	if err := validateNativePairCarrierBounds(raw, authorization, authorization.NativePairEvidence, authorization.NativePairCurrent); err != nil {
+		return nil, err
+	}
+	if err := validateLocalDomainCarrierBounds(raw, authorization, authorization.Sender, authorization.Receiver, authorization.LocalDomainCurrent); err != nil {
 		return nil, err
 	}
 	return &authorization, nil
@@ -838,7 +860,7 @@ func verifyCrossNodeGroupDeliveryAuthorization(machineID string, delivery fabric
 	}
 	if authorization.Sender.EndpointID != authorization.Route.SenderEndpointID ||
 		authorization.Receiver.EndpointID != authorization.Route.ReceiverEndpointID ||
-		authorization.Sender.Grant == nil || authorization.Receiver.Grant == nil ||
+		!crossNodeGroupHasGrant(authorization.Sender) || !crossNodeGroupHasGrant(authorization.Receiver) ||
 		authorization.Sender.GroupID != authorization.Receiver.GroupID ||
 		authorization.Sender.OwnerID == "" || authorization.Sender.OwnerID != authorization.Receiver.OwnerID ||
 		authorization.OwnerID != authorization.Receiver.OwnerID ||
@@ -847,8 +869,8 @@ func verifyCrossNodeGroupDeliveryAuthorization(machineID string, delivery fabric
 		authorization.Receiver.BindingID != authorization.BindingID ||
 		authorization.Receiver.BindingEpoch != authorization.BindingEpoch ||
 		authorization.Receiver.NodeID != machineID || authorization.Receiver.NativeSessionID != authorization.NativeSessionID ||
-		authorization.Sender.Grant.Manifest.HubID == "" ||
-		authorization.Sender.Grant.Manifest.HubID != authorization.Receiver.Grant.Manifest.HubID {
+		crossNodeGroupManifest(authorization.Sender).HubID == "" ||
+		crossNodeGroupManifest(authorization.Sender).HubID != crossNodeGroupManifest(authorization.Receiver).HubID {
 		return errors.New("same-Group delivery authorization has inconsistent Endpoint evidence")
 	}
 	if delivery.Route.RequestID != delivery.RequestID ||
@@ -884,9 +906,9 @@ func openMachineCrossNodeGroupDelivery(ctx context.Context, stateDir, machineID 
 		return machineSealedOpenResult{}, errors.New("same-Group sealed ciphertext digest is invalid")
 	}
 	expectedHubID := machinePinnedHubID(ctx)
-	if expectedHubID == "" || authorization.Sender.Grant == nil || authorization.Receiver.Grant == nil ||
-		authorization.Sender.Grant.Manifest.HubID != expectedHubID ||
-		authorization.Receiver.Grant.Manifest.HubID != expectedHubID {
+	if expectedHubID == "" || !crossNodeGroupHasGrant(authorization.Sender) || !crossNodeGroupHasGrant(authorization.Receiver) ||
+		crossNodeGroupManifest(authorization.Sender).HubID != expectedHubID ||
+		crossNodeGroupManifest(authorization.Receiver).HubID != expectedHubID {
 		return machineSealedOpenResult{}, errors.New("current same-Group Owner grants do not match the locally pinned Hub")
 	}
 	var envelope e2ee.EndpointMessageEnvelope
@@ -910,32 +932,25 @@ func openMachineCrossNodeGroupDelivery(ctx context.Context, stateDir, machineID 
 	if err != nil {
 		return machineSealedOpenResult{}, err
 	}
-	localIdentity, err := loadNativePairPeerIdentity(ctx, state, machineNodeStateDir(stateDir, machineID), authorization.Receiver.EndpointID, required)
+	domain, err := verifyLocalDomainPeerTarget(ctx, state, expectedHubID, authorization.Receiver.GroupID, authorization.Sender, authorization.Receiver, authorization.LocalDomainCurrent, "native_delivery", authorization.AttemptID)
+	if err != nil {
+		return machineSealedOpenResult{}, err
+	}
+	var localIdentity *e2ee.Identity
+	if domain {
+		localIdentity, err = loadLocalDomainPeerIdentity(ctx, state, machineNodeStateDir(stateDir, machineID), authorization.Receiver.EndpointID)
+	} else {
+		localIdentity, err = loadNativePairPeerIdentity(ctx, state, machineNodeStateDir(stateDir, machineID), authorization.Receiver.EndpointID, required)
+	}
 	if err != nil {
 		return machineSealedOpenResult{}, err
 	}
 	if err := validateCrossNodeGroupLocalKey(authorization.Receiver, localIdentity.Public(), machineID); err != nil {
 		return machineSealedOpenResult{}, err
 	}
-	pinEvidence, err := crossNodeGroupPinEvidence(crossNodeGroupPeerKey{
-		HubID: expectedHubID, GroupID: authorization.Receiver.GroupID,
-	}, authorization.Receiver, authorization.Sender)
+	pin, err := pinCurrentSameGroupPeer(ctx, state, crossNodeGroupPeerKey{HubID: expectedHubID, GroupID: authorization.Receiver.GroupID, Sender: authorization.Sender, Receiver: authorization.Receiver, NativePairEvidence: authorization.NativePairEvidence, NativePairCurrent: authorization.NativePairCurrent, LocalDomainCurrent: authorization.LocalDomainCurrent}, authorization.Receiver, authorization.Sender, localIdentity)
 	if err != nil {
 		return machineSealedOpenResult{}, err
-	}
-	pin, err := state.PinOwnerGrantedGroupEndpointPeerKey(ctx, pinEvidence)
-	if err != nil {
-		return machineSealedOpenResult{}, fmt.Errorf("verify current Owner-signed sender key grant: %w", err)
-	}
-	localGrantEvidence, err := crossNodeGroupPinEvidence(crossNodeGroupPeerKey{
-		HubID: expectedHubID, GroupID: authorization.Receiver.GroupID,
-	}, authorization.Sender, authorization.Receiver)
-	if err != nil {
-		return machineSealedOpenResult{}, err
-	}
-	verifiedLocal, err := state.VerifyGroupEndpointKeyGrant(ctx, localGrantEvidence)
-	if err != nil || !machineSamePublicIdentity(verifiedLocal.Public, localIdentity.Public()) {
-		return machineSealedOpenResult{}, errors.New("current local Endpoint Owner grant does not match its private key")
 	}
 	peer := nodekeys.PeerPinIdentity{
 		EndpointID: authorization.Sender.EndpointID, GroupID: authorization.Sender.GroupID,
@@ -982,7 +997,7 @@ func openMachineCrossNodeGroupDelivery(ctx context.Context, stateDir, machineID 
 
 func crossNodeGroupDeliveryRouteContextMatches(context e2ee.EndpointMessageContext,
 	authorization crossNodeGroupDeliveryAuthorization) bool {
-	peerKey := crossNodeGroupPeerKey{HubID: authorization.Sender.Grant.Manifest.HubID, GroupID: authorization.Receiver.GroupID}
+	peerKey := crossNodeGroupPeerKey{HubID: crossNodeGroupManifest(authorization.Sender).HubID, GroupID: authorization.Receiver.GroupID}
 	expected := crossNodeGroupEndpointContext(peerKey, authorization.Sender, authorization.Receiver,
 		authorization.MessageID, authorization.Route.RequestID, authorization.Route.ReplyTo,
 		authorization.ParentRequestID, machineCrossNodeGroupEnvelopeKind(authorization.Route.Kind))
@@ -1168,7 +1183,16 @@ func drainMachineCrossNodeGroupRelayClaim(ctx context.Context, base, machineID, 
 	}
 	var pairQueueAuthorization *crossNodeGroupDeliveryAuthorization
 	var pairQueueMessage nodekeys.NativePairMessage
-	queueErr := runMachineNativeDelivery(ctx, claim.SessionID, operation,
+	var domainQueueAuthorization *crossNodeGroupDeliveryAuthorization
+	queueParent, cancelDomainDeadline := context.WithCancel(ctx)
+	defer cancelDomainDeadline()
+	var domainDeadlineTimer *time.Timer
+	defer func() {
+		if domainDeadlineTimer != nil {
+			domainDeadlineTimer.Stop()
+		}
+	}()
+	queueErr := runMachineNativeDelivery(queueParent, claim.SessionID, operation,
 		func(queueCtx context.Context) (string, []nodeinbox.NativeContextScopeInput, error) {
 			// The physical writer is already held. Refresh the exact attempt's Hub
 			// Guard after any lock wait, then compare all cryptographically verified
@@ -1189,6 +1213,16 @@ func drainMachineCrossNodeGroupRelayClaim(ctx context.Context, base, machineID, 
 			if err != nil {
 				return "", nil, &machineNativeDeliveryDeniedError{cause: err}
 			}
+			if current.LocalDomainCurrent != nil {
+				domainQueueAuthorization = current
+				end := parseMachineNativePairTime(current.LocalDomainCurrent.ExpiresAt)
+				if !time.Now().Before(end) {
+					return "", nil, &machineNativeDeliveryDeniedError{cause: nodekeys.ErrLocalDomainPolicy}
+				}
+				// The executable inherits this cancellation even if local scope,
+				// SQLite or durable-writer work delays the eventual OS start.
+				domainDeadlineTimer = time.AfterFunc(time.Until(end), cancelDomainDeadline)
+			}
 			if pairRequired {
 				pairQueueMessage, err = nativePairMessage(delivery.Route.Kind, delivery.MessageID, delivery.Route.RequestID, current.ParentRequestID, current.Sender.EndpointID, current.Receiver.EndpointID, claim.Payload, delivery.Ciphertext)
 				if err != nil {
@@ -1196,15 +1230,15 @@ func drainMachineCrossNodeGroupRelayClaim(ctx context.Context, base, machineID, 
 				}
 				pairQueueAuthorization = current
 			}
-			if current.Sender.Grant == nil || current.Receiver.Grant == nil {
+			if !crossNodeGroupHasGrant(current.Sender) || !crossNodeGroupHasGrant(current.Receiver) {
 				return "", nil, &machineNativeDeliveryDeniedError{cause: errors.New("missing same-Group Owner grant")}
 			}
 			if opened.PeerPin == nil {
 				return "", nil, &machineNativeDeliveryDeniedError{cause: errors.New("missing verified peer pin snapshot")}
 			}
 			if err := checkMachineNativeLocalTrust(queueCtx, stateDir, machineID, opened.PeerPin,
-				machineNativeOwnerTrust{ownerID: current.Sender.Grant.OwnerID, keyID: current.Sender.Grant.OwnerKeyID},
-				machineNativeOwnerTrust{ownerID: current.Receiver.Grant.OwnerID, keyID: current.Receiver.Grant.OwnerKeyID}); err != nil {
+				machineNativeOwnerTrust{ownerID: crossNodeGroupManifest(current.Sender).OwnerID, keyID: crossNodeGroupManifest(current.Sender).OwnerKeyID},
+				machineNativeOwnerTrust{ownerID: crossNodeGroupManifest(current.Receiver).OwnerID, keyID: crossNodeGroupManifest(current.Receiver).OwnerKeyID}); err != nil {
 				return "", nil, err
 			}
 			scope, err := machineNativeContextScopeFromMetadata(queueCtx, delivery.Harness, claim.SessionID,
@@ -1225,6 +1259,14 @@ func drainMachineCrossNodeGroupRelayClaim(ctx context.Context, base, machineID, 
 			}
 			return prompt, []nodeinbox.NativeContextScopeInput{scope}, nil
 		}, func(queueCtx context.Context) error {
+			if domainQueueAuthorization != nil {
+				if _, err := verifyNativePairDeliveryTarget(queueCtx, stateDir, machineID, *domainQueueAuthorization); err != nil {
+					return &machineNativeDeliveryDeniedError{cause: err}
+				}
+				if !time.Now().Before(parseMachineNativePairTime(domainQueueAuthorization.LocalDomainCurrent.ExpiresAt)) {
+					return &machineNativeDeliveryDeniedError{cause: nodekeys.ErrLocalDomainPolicy}
+				}
+			}
 			if pairQueueAuthorization != nil {
 				if err := reserveNativePairQueueAdmission(queueCtx, stateDir, machineID, *pairQueueAuthorization, pairQueueMessage, claim.SessionID); err != nil {
 					return err
