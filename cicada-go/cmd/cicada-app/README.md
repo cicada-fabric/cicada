@@ -1204,3 +1204,55 @@ and QA diagnostic FAIL are retained separately. A fresh actual Hub/Node/App
 process gate, Docker interop, installed Host/model communication, native
 Windows Runtime, Android, physical devices and public HTTPS are **NOT_RUN**
 for this correction. No executable was rebuilt or delivered here.
+
+### 2026-10-22 exact pending domain Join recovery before current context
+
+An accepted literal domain Join could become impossible to reconcile after its
+response was lost and the policy was revoked: the Hook requested a new context
+before reading its persisted operator intent, and the Node's current-policy
+issuer could then select the strict profile and refuse the native record.
+
+The Hook now probes an existing private intent before that issuer gate, only
+for a pinned, saved version-1 domain `endpoint_register`. It compares the
+current native SID/workspace, parsed operation and all parameters, Node ID,
+origin and entire saved connection pin before using the complete original
+request. Request ID, timestamp, policy selector and digest stay unchanged.
+An absent original creates no alternate intent directory, lock or request.
+Unknown IPC outcomes retain the pending original; historical completion and
+refusal keep the existing output/acknowledgment rules.
+
+Historical Join tokens enter the current cache only after an additional fresh,
+matching Node-issued and consumed context, with the connection pin revalidated.
+Without it, output confirms historical completion, restores no communication
+permission and saves no token. The scope is deliberately limited: legacy,
+Pair, directory, Leave and unpinned commands retain their original verification
+order. Directory intents do not contain the complete native tuple, and this
+change does not infer or add it. New literal commands and MCP business calls
+still require their current context. No Node, public wire or shared native
+verifier changes are included.
+
+A real private-socket consumer regression first fails against the original
+Hook. Its scripted Node uses the real HMAC issue/consume authority and pinned
+local discovery, loses the original response, then refuses context issuance
+with no current policy and an `022` native record. Exact replay can still
+receive UNKNOWN without changing the original file, then recover completion
+through another output loss. The saved result is acknowledged only after
+successful historical output; the token never enters the cache or output.
+Changed name, cwd and pin fail before issuer/business IPC. A different SID
+still needs a fresh ticket and creates no replacement scope state on refusal.
+This tests consumer ordering, not the Node's sealed-packet or Owner chain.
+
+Pinned Go 1.27.3 scoped normal checks recorded **84 PASS, 0 FAIL, 0 SKIP**
+for the affected Hook/operator/context/domain/pin paths. The new recovery test
+under race recorded **5 PASS, 0 FAIL, 0 SKIP** including its four subtests;
+CLI vet exited 0. This source is dirty `bd0d90120c042735aba0f627bd01a1b0a0546055`
+plus the two consumer edits and new regression, with a stable Go/C/header/module
+manifest `83d4f96a5d6bd7d0bf24a7556a33da96bcad3fd0a61a173f272915611ddcfa28`.
+Evidence: `/home/zyf/.cicada/acceptance/codex-context-checks/operator-domain-historical-recovery-20261022T220016Z/`;
+behavioral red receipt SHA-256 `d1267c538cafae0a0e2755d5abf257529b67a55d2dcbdf3ffe3852834057f064`;
+final receipt SHA-256 `6e8099d115111379234e6809aa1ba8cf2c8ebf8b0594cab39d80af0d458da575`.
+Earlier fixture compilation and the pre-SID-assertion passing run are retained
+separately in that directory. This README is a later documentation delta.
+Actual Hub/Node IPC loss/revocation, installed Host/model communication,
+Docker interop, Windows Runtime and public HTTPS are **NOT_RUN** here and keep
+their separate backend/QA attribution. No EXE was built or delivered.

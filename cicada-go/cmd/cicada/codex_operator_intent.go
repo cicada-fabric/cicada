@@ -204,10 +204,10 @@ func (c *codexOperatorIntentClient) prepareForConnection(q localEndpointRequest,
 	return c.prepareWithConnectionPin(q, connection.Pin.NodeID, &connection.Pin)
 }
 
-// Only the Hook calls this after consuming fresh Node context for this exact
-// parsed command and native scope. A changed current policy cannot replace the
-// original selector of an uncertain command. Recovery still sends its complete
-// original request; this does not authorize a new request under the old policy.
+// The Hook calls this after fresh Node context or an exact pendingDomainJoin
+// match. A changed current policy cannot replace the original selector of an
+// uncertain command. Recovery sends the complete original request; it does not
+// authorize a new request under the old policy.
 func (c *codexOperatorIntentClient) originalVerifiedCommand(q localEndpointRequest, nodeID string, pin *LocalNodeConnectionPin) (localEndpointRequest, error) {
 	if q.Version == 0 {
 		q.Version = localJoinProtocolVersion
@@ -232,6 +232,38 @@ func (c *codexOperatorIntentClient) originalVerifiedCommand(q localEndpointReque
 	})
 	return original, err
 }
+
+// Only a previously persisted, pinned domain Join carries every coordinate
+// needed for recovery before fresh context issuance. This returns no new
+// request and does not infer coordinates for Pair, directory or legacy intents.
+func (c *codexOperatorIntentClient) pendingDomainJoin(q localEndpointRequest, nodeID string, pin *LocalNodeConnectionPin) (localEndpointRequest, bool, error) {
+	original, found := q, false
+	if q.Operation != "endpoint_register" || pin == nil {
+		return original, false, nil
+	}
+	if info, err := codexOperatorPrivateFile(c.path, true); err != nil || info == nil {
+		return original, false, err
+	}
+	err := c.withLocked(func(disk *codexOperatorIntentDisk) error {
+		p := disk.Pending
+		if p == nil || p.Request.LocalDomainVersion != 1 || p.Request.Operation != "endpoint_register" {
+			return nil
+		}
+		if p.NodeID != nodeID || !sameCodexOperatorConnectionPin(pin, p.ConnectionPin) {
+			return errCodexOperatorIntentConflict
+		}
+		old, current := p.Request, q
+		old.LocalDomainVersion, current.LocalDomainVersion = 0, 0
+		old.LocalDomain, current.LocalDomain = wire.LocalDomainSelection{}, wire.LocalDomainSelection{}
+		if codexOperatorDigest(old, true) != codexOperatorDigest(current, true) {
+			return errCodexOperatorIntentConflict
+		}
+		original, found = p.Request, true
+		return nil
+	})
+	return original, found, err
+}
+
 func (c *codexOperatorIntentClient) validateConnectionPath(connection LocalNodeConnection) error {
 	p := connection.Pin
 	if validateLocalNodePin(p) != nil || !localContextHex(connection.InstanceID, 32) || !localContextHex(connection.LocatorDigest, 64) {

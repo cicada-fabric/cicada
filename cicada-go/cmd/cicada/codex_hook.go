@@ -290,10 +290,6 @@ func codexUserPromptWithSelection(event codexHookInput, output io.Writer, select
 	if err != nil {
 		return codexHookBlock(output, codexHookFailureText(codexHookCoordinatesInvalid))
 	}
-	verifiedDomain, err := verifyCodexOperatorContext(event, coordinates, origin, connection, command)
-	if err != nil {
-		return codexHookBlock(output, codexHookFailureText(codexHookTicketUnavailable))
-	}
 	base := ""
 	if connection != nil {
 		base = connection.Pin.MCPSessionStateFile
@@ -311,19 +307,6 @@ func codexUserPromptWithSelection(event codexHookInput, output io.Writer, select
 	if err != nil {
 		return codexHookBlock(output, "Cicada 无法验证当前范围。 / Cicada could not verify the current scope.")
 	}
-	if connection != nil {
-		cached, loadErr := newMCPSessionStateStore(base).load(origin, coordinates)
-		if loadErr != nil {
-			return codexHookBlock(output, "Cicada 原缓存需要恢复，未创建替代状态。 / Restore the original Cicada cache; no replacement state was created.")
-		}
-		if err := validateCodexCachedConnection(cached, connection); err != nil {
-			return codexHookBlock(output, err.Error())
-		}
-	}
-	client, err := openCodexOperatorIntent(filepath.Join(filepath.Dir(base), "scopes", scope, "operator-intent.json"))
-	if err != nil {
-		return codexHookBlock(output, "Cicada 原命令状态不可用；请重试上一条命令。 / Original Cicada command state is unavailable; retry the previous command.")
-	}
 	q := localEndpointRequest{Version: localJoinProtocolVersion, Operation: command.operation, APIOrigin: origin}
 	if command.operation == "endpoint_directory" {
 		q.Limit = 64
@@ -332,12 +315,59 @@ func codexUserPromptWithSelection(event codexHookInput, output io.Writer, select
 	}
 	if command.operation == "endpoint_register" {
 		q.Name = codexOperatorRegistrationName(command, event)
-		q.LocalDomainVersion, q.LocalDomain = verifiedDomain.LocalDomainVersion, verifiedDomain.LocalDomain
+		// Compare the actual invocation, without trimming a different native
+		// SID or workspace into the coordinates of a saved command.
+		q.Harness, q.NativeSessionID, q.Workspace = coordinates.Harness, coordinates.NativeSessionID, coordinates.Workspace
 	}
 	q.PairLabel, q.Slot = command.label, command.slot
 	var pin *LocalNodeConnectionPin
 	if connection != nil {
 		pin = &connection.Pin
+	}
+	intentPath := filepath.Join(filepath.Dir(base), "scopes", scope, "operator-intent.json")
+	var client *codexOperatorIntentClient
+	recoveringDomain := false
+	if command.operation == "endpoint_register" && pin != nil {
+		// Probe only an existing private file. An absent original must not
+		// create a lock, replacement state or request before the ticket guard.
+		info, probeErr := codexOperatorPrivateFile(intentPath, true)
+		if probeErr != nil {
+			return codexHookBlock(output, "Cicada 原命令状态不可用；请重试上一条命令。 / Original Cicada command state is unavailable; retry the previous command.")
+		}
+		if info != nil {
+			client, err = openCodexOperatorIntent(intentPath)
+			if err == nil {
+				q, recoveringDomain, err = client.pendingDomainJoin(q, trusted.NodeID, pin)
+			}
+			if err != nil {
+				return codexHookBlock(output, "Cicada 原命令需要按原范围恢复，请精确重试上一条命令。 / Retry the exact previous Cicada command in its original scope.")
+			}
+		}
+	}
+	var verifiedDomain codexDomainBinding
+	if !recoveringDomain {
+		verifiedDomain, err = verifyCodexOperatorContext(event, coordinates, origin, connection, command)
+		if err != nil {
+			return codexHookBlock(output, codexHookFailureText(codexHookTicketUnavailable))
+		}
+		if connection != nil {
+			cached, loadErr := newMCPSessionStateStore(base).load(origin, coordinates)
+			if loadErr != nil {
+				return codexHookBlock(output, "Cicada 原缓存需要恢复，未创建替代状态。 / Restore the original Cicada cache; no replacement state was created.")
+			}
+			if err := validateCodexCachedConnection(cached, connection); err != nil {
+				return codexHookBlock(output, err.Error())
+			}
+		}
+		if command.operation == "endpoint_register" {
+			q.LocalDomainVersion, q.LocalDomain = verifiedDomain.LocalDomainVersion, verifiedDomain.LocalDomain
+		}
+	}
+	if client == nil {
+		client, err = openCodexOperatorIntent(intentPath)
+		if err != nil {
+			return codexHookBlock(output, "Cicada 原命令状态不可用；请重试上一条命令。 / Original Cicada command state is unavailable; retry the previous command.")
+		}
 	}
 	q, err = client.originalVerifiedCommand(q, trusted.NodeID, pin)
 	if err != nil {
@@ -375,10 +405,21 @@ func codexUserPromptWithSelection(event codexHookInput, output io.Writer, select
 	if callErr != nil {
 		return codexHookBlock(output, "Cicada 原命令结果需要恢复；未确认成功。 / The original Cicada result needs recovery; success is unconfirmed.")
 	}
+	if recoveringDomain && revalidateCodexLocalNode(context.Background(), connection) == nil {
+		// History can settle without a current policy. A Join token can only
+		// enter the current cache after a separate fresh, matching context.
+		verifiedDomain, _ = verifyCodexOperatorContext(event, coordinates, origin, connection, command)
+	}
 	historicalDomain := result.LocalDomain != nil && (verifiedDomain.LocalDomainVersion != q.LocalDomainVersion || verifiedDomain.LocalDomain != q.LocalDomain)
 	if result.Join != nil && !historicalDomain {
 		joined := result.Join
 		store := newMCPSessionStateStore(base)
+		if recoveringDomain {
+			cached, loadErr := store.load(origin, coordinates)
+			if loadErr != nil || validateCodexCachedConnection(cached, connection) != nil {
+				return codexHookBlock(output, "Cicada 原缓存需要恢复，未创建替代状态。 / Restore the original Cicada cache; no replacement state was created.")
+			}
+		}
 		if err := store.save(mcpCachedSession{ConnectionPin: pin, Scope: scope, APIOrigin: origin, Harness: trusted.Harness, NativeSessionID: trusted.NativeSessionID, NodeID: trusted.NodeID,
 			Workspace: trusted.Workspace, GroupID: joined.Endpoint.GroupID, EndpointID: joined.Endpoint.ID, OwnerID: joined.Endpoint.Owner,
 			BindingID: joined.BindingID, BindingEpoch: joined.BindingEpoch, LeaseExpiresAt: joined.LeaseExpiresAt, SessionToken: joined.SessionToken, codexDomainBinding: codexDomainBinding{LocalDomainVersion: q.LocalDomainVersion, LocalDomain: q.LocalDomain}}); err != nil {
@@ -392,7 +433,7 @@ func codexUserPromptWithSelection(event codexHookInput, output io.Writer, select
 	}
 	message := formatCodexOperatorResult(command, result)
 	if historicalDomain {
-		message = "Cicada 原操作已确认完成；当前策略范围已变化，请重新核对，未恢复旧通信权限。 / The original operation completed; its policy scope changed, so no historical communication permission was restored."
+		message = "Cicada 原操作已确认完成；当前策略范围未重新确认，未恢复旧通信权限。 / The original operation completed; its current policy scope was not reconfirmed, so no historical communication permission was restored."
 	}
 	if err := codexHookBlock(output, message); err != nil {
 		return err
