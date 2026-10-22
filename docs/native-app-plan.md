@@ -174,7 +174,7 @@ requests; closing App must not move that authority into an online UI dependency.
 | DOMAIN-02 — original `0002` writer | Observe the same daemon PID/start ticks and actual `/proc` Umask 0002 before/after installation and each fresh A/B. No per-record chmod, recursive repair or new-shell umask substitutes for the writer's policy. Record actual record/tree metadata and ordinary Hook trust. | Driver parameters prepared; execution NOT_RUN |
 | DOMAIN-03 — other UID, same group | A real UID 1001/GID 1000 process in the exact owned running container cannot read Node private keys, connect to private context/signing IPC, obtain a usable context proof or cause a signed business request. Observe actual denied operations, not only mode helpers. | OS file/IPC boundary SCOPED_PASS on dirty `18c54a6`; new domain context/signing still NOT_RUN. See [bounded run](native-app-validation.md#2026-10-22-actual-other-uid-private-file-and-node-ipc-boundary). |
 | DOMAIN-04 — foreign coordinates | Same Network/different Node; same Node/different Network; different Owner; absent/wrong/forged grant; stale grant or Node epoch all deny by current Guard. Capture redacted typed errors and unchanged unauthorized state. Group boundaries retain their existing contract. | NOT_RUN |
-| DOMAIN-05 — App/session lifetime | Close actual App process and cross a deliberately short account-login/status TTL. Newly created Threads and new permitted operations continue only within the independently granted domain lifetime. Domain expiry itself denies; restart Hub/Node and re-read the original persistent grant. | NOT_RUN; independent lifetimes pending |
+| DOMAIN-05 — App/session lifetime | Close actual App process and cross the real authenticated Hub login deadline (currently 15 minutes), separately from short report/status TTLs. Newly created Threads and new permitted operations continue only within the independently granted domain lifetime. Domain expiry itself denies; restart Hub/Node and re-read the original persistent grant. An App logical-clock offset is not Hub expiry. | NOT_RUN; independent lifetimes pending |
 | DOMAIN-06 — explicit revoke | Actual App revokes the exact domain. New discovery/business operations deny immediately according to the frozen linearization rule, including an already connected MCP client and a fresh Thread. Never confuse App close/logout with domain revoke. | NOT_RUN |
 | DOMAIN-07 — loss and original retry | Reuse existing method-specific barrier for loss before forward, loss after commit, unsigned/corrupt responses and uncertain result. Restart App/Hub/Node as appropriate; retry the original encrypted packet and reconcile the authenticated original outcome without new authority. | NOT_RUN; operation and recovery contract pending |
 | DOMAIN-08 — concurrency and replay | Concurrent exact retries produce one original grant/outcome; conflicting requests cannot claim a different domain. Pre-revoke accepted history may be readable only as the contract permits; retry never renews revoked authority or expands scope. | NOT_RUN |
@@ -223,6 +223,44 @@ the Go fixture receives no Docker socket and needs no root/setuid capability.
 Literal Join's zero-POST sentinel is separate from actual Host ASK/Reply via a
 synthetic static provider. That Host lane is not a real model, native queue
 consumption or automatic wake. No new business row passes until actually run.
+
+The separate `--codex-product-domain-native` entry connects the actual App/Core,
+Node and native Host main line when the backend is available. Its original
+official Codex 0.163.0 daemon starts with umask 0002 before file installation;
+the same PID/start ticks, executable and empty deployment environment remain
+required throughout. Normal plugin update and Hook trust precede distinct fresh
+A/B literal Joins, each with zero provider POSTs and checked native SID/cwd/name.
+An actual App approval creates one persistent policy and dedicated Group. After
+normal App Controller.Close, the original Threads use actual Host MCP for
+identity, by-name peers, ASK, authenticated receive and Reply. No Pair approval,
+manufactured native record or caller-supplied ticket replaces those steps.
+
+Prepared reproduction, **runtime NOT_RUN**:
+
+```sh
+CICADA_NATIVE_PAIR_LICENSES_DIR=/path/to/matching/complete/notices \
+scripts/test-native-pair.sh --codex-product-domain-native
+
+CICADA_NATIVE_PAIR_LICENSES_DIR=/path/to/matching/complete/notices \
+CICADA_NATIVE_PAIR_DOMAIN_WAIT_LOGIN_EXPIRY=1 \
+scripts/test-native-pair.sh --codex-product-domain-native
+```
+
+Default expiry parameter 0 covers the main line without a login-expiry claim.
+Parameter 1 waits past the initial authenticated Hub session expiry in actual
+wall time, repeats A/B communication, then creates fresh native C and tests its
+by-name exchange. It uses no App ClockOffset or shortened server lifetime.
+The runner allows 30 minutes. Finally the same original App profile reopens,
+logs in again if needed and explicitly revokes its authenticated current policy.
+A successful post-revoke Node heartbeat and live Hub/Node qualify the fresh Host
+business denial; a service outage is not the negative oracle. The public result
+requires the independent native measurement, exact expected test, stable inputs
+and binaries, bounded static-provider call counts and cleaned owned containers.
+Typed unsupported capability is NOT_RUN/125, any failed assertion is exit 1,
+and only the complete measured scope returns 0. Invalid parameter values or use
+in another lane return 2 before resources start. Other-UID domain signing,
+cross-scope/epoch faults, original business-request recovery, policy pagination,
+legacy Pair and physical platforms retain separate NOT_RUN rows.
 
 ## Current feedback and acceptance ledger
 

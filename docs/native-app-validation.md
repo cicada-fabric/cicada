@@ -5026,3 +5026,45 @@ remain **NOT_RUN here**, as do real model/native queue/automatic wake, physical
 Windows, Android and public HTTPS. Native positive gates retain the explicitly
 documented manual independent Owner public-pin prerequisite; automatic FB-03
 trust delivery is not claimed.
+
+## 2026-10-22 native local-domain main-line driver: compiled, runtime NOT_RUN
+
+Independent QA prepared `--codex-product-domain-native` on dirty source
+`914250b6b4a281a73feb9a34411f482a70ecdb63` plus five acceptance/driver files.
+This adds the [prepared main-line command](native-app-plan.md#nodeusernetwork-policy-acceptance-preparation),
+not a Hub/App production implementation. The original umask-0002 daemon,
+fresh native A/B literal admission, real Host by-name ASK/Reply after normal
+App Close and authenticated policy revocation with healthy Node/Hub are required
+assertions. Optional `CICADA_NATIVE_PAIR_DOMAIN_WAIT_LOGIN_EXPIRY=1` uses the
+original Hub login's real wall-clock deadline and fresh native C; default 0
+leaves that expiry scope NOT_RUN. Manual independent Owner public pin remains
+an explicit prerequisite. The same daemon is measured without record chmod or
+replacement, and no caller-supplied ticket or fabricated Thread is accepted.
+
+Only pinned offline Docker version, `go test -mod=readonly -c ./acceptance/n3`
+and `go vet -mod=readonly ./acceptance/n3` ran, each exit **0**, with identical
+source-before/source-after and all three owned containers absent. The receipt
+is `/home/zyf/Cicada/.local/evidence/native-pair-acceptance/domain-native-compile-20261022-fafb66rh/compile-result.json`,
+SHA-256 `aaf481abd64082af32e6a61947a1659acaa85b2494047a78edfc918d8b17492b`.
+Both source JSON hashes are
+`04504c035a697175cf5a23781982316cf7e36d51aa8db594e97ca72a3791565b`;
+manifest `d8e2c1754989bd0992e3b5c8a22b0ca28643d5804cc05b80e23996857171015e`.
+The unexecuted `n3.test` is 23,459,134 bytes, SHA-256
+`aeba82072b2707635ef0f4ae89b468fdde5ba429b17da5f49122b6d75ff9fb39`.
+Later evidence-only handling of unknown daemon activity and these documentation
+updates are outside that compiled source snapshot; Go/Host driver bytes match.
+
+The final evidence oracle was exercised separately with **11 synthetic receipt
+cases**, not product tests. Its result is
+`/home/zyf/Cicada/.local/evidence/native-pair-acceptance/domain-native-oracle-20261022-456dgx93/result.json`,
+SHA-256 `b1870773f1b547b9ad363fb47f7c89b2bce628b96fbe170e3d7a938ccaf170cc`.
+Missing native measurement, absent positive binding epoch, literal provider POST,
+missing new C after expiry, logical-clock-only expiry, source drift, untyped skip,
+failed harness and wrong runtime hash all refuse PASS. A fully measured synthetic
+receipt yields 0; the exact typed capability skip yields NOT_RUN/125.
+This proves receipt discrimination only; none of the synthetic actors establish
+native identity, authorization or communication. No real capability preflight,
+Host/Native business flow or 15-minute wait was executed in this checkpoint.
+New-domain other-UID context/signing, foreign scopes/epochs, business recovery,
+policy pagination, legacy Pair and model/queue/wake remain **NOT_RUN**.
+Windows DPAPI, ACL, physical GUI, Android and public HTTPS remain **NOT_RUN**.

@@ -45,6 +45,7 @@ CODEX_PRODUCT_COLD_EXPECTED = {'TestN3CodexProductColdLeaseBeforeFirstTool'}
 CODEX_PRODUCT_THREE_STAGE_EXPECTED = {'TestN3CodexProductThreeStagePersistentDaemon'}
 CODEX_PRODUCT_OTHER_UID_EXPECTED = {'TestN3CodexProductOtherUIDPrivateBoundary'}
 LOCAL_DOMAIN_APP_EXPECTED = {'TestN3LocalDomainActualAppOwnerPolicy'}
+LOCAL_DOMAIN_NATIVE_EXPECTED = {'TestN3LocalDomainNativeOriginalDaemonAB'}
 
 
 def sha(path):
@@ -123,6 +124,8 @@ def snapshot(repo, dest, harness=None):
                     'daemon_umask': os.environ.get('CICADA_NATIVE_PAIR_CODEX_DAEMON_UMASK'),
                     'fresh_threads': os.environ.get('CICADA_NATIVE_PAIR_CODEX_FRESH_THREADS'),
                     'preparation': os.environ.get('CICADA_NATIVE_PAIR_CODEX_PREPARATION')},
+                'native_domain_parameters': {
+                    'wait_actual_login_expiry': os.environ.get('CICADA_NATIVE_PAIR_DOMAIN_WAIT_LOGIN_EXPIRY')},
                 'manifest_sha256': hashlib.sha256(json.dumps(files, sort_keys=True, separators=(',', ':')).encode()).hexdigest(),
                 'files': files})
 
@@ -144,7 +147,7 @@ def terminal_events(path):
 
 
 def finish(run, artifacts, image, owned, mode='protocol'):
-    if mode not in ('protocol', 'store', 'a3', 'a3-http', 'a3-size-store', 'app-owner', 'endpoint-security', 'endpoint-security-boundaries', 'endpoint-security-app-fixture', 'endpoint-security-owner-directory', 'endpoint-security-owner-directory-recovery', 'codex-product-guards', 'codex-product-cli', 'codex-product-cold', 'codex-product-three-stage', 'codex-product-other-uid', 'codex-product-domain-app'):
+    if mode not in ('protocol', 'store', 'a3', 'a3-http', 'a3-size-store', 'app-owner', 'endpoint-security', 'endpoint-security-boundaries', 'endpoint-security-app-fixture', 'endpoint-security-owner-directory', 'endpoint-security-owner-directory-recovery', 'codex-product-guards', 'codex-product-cli', 'codex-product-cold', 'codex-product-three-stage', 'codex-product-other-uid', 'codex-product-domain-app', 'codex-product-domain-native'):
         raise ValueError('Only protocol and isolated core regression modes are active.')
     before, after = [json.loads((run / f'source-{side}.json').read_text()) for side in ('before', 'after')]
     results, diagnostics, metrics = {}, [], []
@@ -176,8 +179,9 @@ def finish(run, artifacts, image, owned, mode='protocol'):
                 'codex-product-three-stage': CODEX_PRODUCT_THREE_STAGE_EXPECTED,
                 'codex-product-other-uid': CODEX_PRODUCT_OTHER_UID_EXPECTED,
                 'codex-product-domain-app': LOCAL_DOMAIN_APP_EXPECTED,
+                'codex-product-domain-native': LOCAL_DOMAIN_NATIVE_EXPECTED,
                 'protocol': EXPECTED}[mode]
-    core = mode not in ('protocol', 'app-owner', 'endpoint-security', 'endpoint-security-boundaries', 'endpoint-security-app-fixture', 'endpoint-security-owner-directory', 'endpoint-security-owner-directory-recovery', 'codex-product-guards', 'codex-product-cli', 'codex-product-cold', 'codex-product-three-stage', 'codex-product-other-uid', 'codex-product-domain-app')
+    core = mode not in ('protocol', 'app-owner', 'endpoint-security', 'endpoint-security-boundaries', 'endpoint-security-app-fixture', 'endpoint-security-owner-directory', 'endpoint-security-owner-directory-recovery', 'codex-product-guards', 'codex-product-cli', 'codex-product-cold', 'codex-product-three-stage', 'codex-product-other-uid', 'codex-product-domain-app', 'codex-product-domain-native')
     owner_directory = mode.startswith('endpoint-security-owner-directory')
     stages = ('version', 'compile-tests', 'compile-race', 'harness', 'race', 'vet') if core else ('version', 'compile-cli', 'compile-tests', 'harness', 'vet')
     if mode == 'codex-product-other-uid':
@@ -202,15 +206,42 @@ def finish(run, artifacts, image, owned, mode='protocol'):
                          'codex-product-three-stage': {'cicada', 'n3.test'},
                          'codex-product-other-uid': {'cicada', 'n3.test'},
                          'codex-product-domain-app': {'cicada', 'n3.test'},
+                         'codex-product-domain-native': {'cicada', 'n3.test'},
                          'protocol': {'cicada', 'n3.test'}}[mode]
     binaries_stable = set(binary_records[0]) == expected_binaries and binary_records[0] == binary_records[1]
     runtime_tools = before.get('external_runtime_tools', {})
-    runtime_tools_valid = (mode not in ('codex-product-cli', 'codex-product-cold', 'codex-product-three-stage') or
+    runtime_tools_valid = (mode not in ('codex-product-cli', 'codex-product-cold', 'codex-product-three-stage', 'codex-product-domain-native') or
                            (set(runtime_tools) == {'codex'} and runtime_tools['codex']['sha256'] ==
                             '399ff69c431c066e40de318fba45c2b07f45a76b19939d247ee4828fc70c4215'))
+    native = None
+    native_valid = mode != 'codex-product-domain-native'
+    if mode == 'codex-product-domain-native' and (run / 'domain-native-public-summary.json').is_file():
+        native = json.loads((run / 'domain-native-public-summary.json').read_text())
+        daemon, actors = native.get('original_daemon', {}), native.get('actors', [])
+        expiry = before.get('native_domain_parameters', {}).get('wait_actual_login_expiry')
+        native_valid = (expiry in ('0', '1') and native.get('status') == 'SCOPED_PASS'
+                        and native.get('actual_wall_clock_login_expiry') is (expiry == '1')
+                        and native.get('literal_provider_posts') == 0
+                        and type(native.get('host_turns_started')) is int and native['host_turns_started'] >= 8
+                        and native.get('static_provider_posts') == 2 * native['host_turns_started']
+                        and native.get('real_model_turns_started') == 0
+                        and native.get('manual_independent_Owner_pin') is True
+                        and native.get('Hub_and_Node_healthy_at_revoke') is True
+                        and native.get('authenticated_policy_state_after_revoke') == 'REVOKED'
+                        and native.get('new_business_denied_after_revoke') is True
+                        and type(daemon.get('pid')) is int and daemon['pid'] > 0
+                        and bool(daemon.get('start_ticks')) and daemon.get('umask') == '0002'
+                        and daemon.get('five_deployment_variables_absent') is True
+                        and daemon.get('executable_sha256') == runtime_tools.get('codex', {}).get('sha256')
+                        and len(actors) == (3 if expiry == '1' else 2)
+                        and all(all(isinstance(a.get(n), str) and a[n] for n in
+                                    ('native_session_id', 'workspace', 'node_id', 'endpoint_id', 'group_id'))
+                                and type(a.get('binding_epoch')) is int and a['binding_epoch'] > 0 for a in actors)
+                        and all(len({a[n] for a in actors}) == len(actors) for n in ('native_session_id', 'workspace', 'endpoint_id'))
+                        and all(len({a[n] for a in actors}) == 1 for n in ('node_id', 'group_id')))
     passed = (all(exits.get(n) == 0 for n in stages)
               and set(results) == expected and all(v == 'pass' for v in results.values())
-              and race_passed and binaries_stable and runtime_tools_valid and matched and owned == 'false')
+              and race_passed and binaries_stable and runtime_tools_valid and native_valid and matched and owned == 'false')
     # WIRE_ONLY + actual 404 is retained as expected RED, with nonzero exit. It
     # cannot turn a missing service, absent scenario, skip, or compiler error green.
     expected_red = (mode == 'protocol' and not passed and set(results) == EXPECTED and all(v == 'fail' for v in results.values())
@@ -218,10 +249,10 @@ def finish(run, artifacts, image, owned, mode='protocol'):
                     and all('HTTP=404 ' in d['reason'] for d in diagnostics)
                     and all(exits.get(n) == 0 for n in ('version', 'compile-cli', 'compile-tests', 'vet'))
                     and exits.get('harness') == 1 and binaries_stable and matched and owned == 'false')
-    domain_not_run = (mode == 'codex-product-domain-app' and set(results) == expected
+    domain_not_run = (mode in ('codex-product-domain-app', 'codex-product-domain-native') and set(results) == expected
                       and all(v == 'skip' for v in results.values()) and len(diagnostics) == len(expected)
                       and all('LOCAL_DOMAIN_NOT_RUN' in d['reason'] for d in diagnostics)
-                      and all(exits.get(n) == 0 for n in stages) and binaries_stable and matched and owned == 'false')
+                      and all(exits.get(n) == 0 for n in stages) and binaries_stable and runtime_tools_valid and matched and owned == 'false')
     code = 0 if passed else 125 if domain_not_run else 1
     scope = {'store': 'FOCUSED_SYNTHETIC_STORE_PQ_CACHE_AND_LEASE_REGRESSIONS_NOT_E2E',
              'a3': 'DISPOSABLE_PRODUCER_CORE_REAL_PQ_TCP_N2_N3_AND_A3_NOT_PUBLIC_SDK_APP_UI_OR_RUNTIME',
@@ -239,6 +270,7 @@ def finish(run, artifacts, image, owned, mode='protocol'):
              'codex-product-three-stage': 'ACTUAL_ORIGINAL_ENV_ZERO_CODEX_DAEMON_FILE_INSTALL_OLD_PLUGIN_UPDATE_NODE_OFFLINE_EXPLICIT_START_AND_SAME_PIN_RESTART_NO_MODEL',
              'codex-product-other-uid': 'ACTUAL_APP_APPROVED_NODE_OTHER_UID1001_GID1000_PRIVATE_FILES_AND_UNIX_IPC_ONLY_NOT_DOMAIN_CONTEXT_OR_SIGNING',
              'codex-product-domain-app': 'ACTUAL_APP_OWNER_LOCAL_POLICY_PREVIEW_ACTIVATE_OFFLINE_NODE_READ_AND_REVOKE_NOT_NATIVE_THREADS',
+             'codex-product-domain-native': 'ACTUAL_ORIGINAL_0002_NATIVE_DAEMON_LITERAL_AB_NAMED_HOST_ASK_REPLY_APP_CLOSED_AND_CURRENT_REVOKE_MANUAL_OWNER_PIN',
              'protocol': 'REAL_TCP_PQ_BOOTSTRAP_AND_RECOVERY_ONLY'}[mode]
     summary = {'scope': scope,
                'status': 'SCOPED_PASS' if passed else 'NOT_RUN' if domain_not_run else ('EXPECTED_RED_SERVICE_UNAVAILABLE' if expected_red else 'FAIL'),
@@ -258,6 +290,7 @@ def finish(run, artifacts, image, owned, mode='protocol'):
                'external_component_licenses': before.get('external_component_licenses'),
                'external_codex_package': before.get('external_codex_package'),
                'codex_daemon_parameters': before.get('codex_daemon_parameters'),
+               'native_domain_parameters': before.get('native_domain_parameters'),
                'diagnostics': diagnostics, 'http_measurements': metrics,
                'artifacts': {p.name: {'sha256': sha(p), 'bytes': p.stat().st_size} for p in artifacts.iterdir() if p.is_file()},
                'evidence_sha256': {p.name: sha(p) for p in run.iterdir() if p.is_file() and p.name != 'result.json'},
@@ -308,6 +341,23 @@ def finish(run, artifacts, image, owned, mode='protocol'):
                               'activation_loss_original_packet_reconcile', 'stale_epoch_and_foreign_scope', 'legacy_Pair',
                               'real_model_provider', 'native_queue_consumption', 'automatic_wake', 'Windows_DPAPI',
                               'Windows_ACL', 'Windows_GUI', 'Android', 'public_HTTPS']
+    elif mode == 'codex-product-domain-native':
+        if domain_not_run:
+            summary['scope'] = 'ACTUAL_HUB_CAPABILITY_PREFLIGHT_ONLY_NATIVE_DOMAIN_WORKFLOW_NOT_RUN'
+        summary['native_domain_measurement'] = native
+        summary['native_domain_measurement_valid'] = native_valid
+        summary['host_turns_started'] = native.get('host_turns_started') if native else None
+        summary['model_turns_started'] = 0  # Static local provider; no real model.
+        summary['native_daemon_touched'] = True if native else False if domain_not_run else 'UNKNOWN'
+        summary['not_run'] = ([] if passed else ['actual_native_domain_main']) + (
+            [] if passed and native.get('actual_wall_clock_login_expiry') is True else
+            ['actual_Hub_login_expiry_AB_communication_and_new_C']) + [
+            'automatic_FB03_Owner_key_delivery', 'new_domain_other_UID_context_and_signing',
+            'cross_Node_Owner_Network_and_stale_epoch', 'original_business_request_response_loss_recovery',
+            'empty_policy_cache_full_pagination_recovery', 'legacy_Pair_compatibility',
+            'graceful_TUI_exit', 'ordinary_prompt_skill_plugin_passthrough', 'real_model_provider',
+            'native_queue_consumption', 'automatic_wake', 'Windows_DPAPI', 'Windows_ACL',
+            'Windows_GUI', 'Android', 'public_HTTPS']
     elif mode == 'codex-product-other-uid':
         summary['not_run'] = ['Node_user_Network_business_policy', 'domain_context_proof', 'domain_signed_business_request',
                               'actual_Codex_native_TUI_and_Host', 'same_UID_isolation', 'legacy_Pair',

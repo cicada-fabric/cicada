@@ -19,7 +19,8 @@ elif [[ $# == 1 && "$1" == --codex-product-cold ]]; then mode=codex-product-cold
 elif [[ $# == 1 && "$1" == --codex-product-three-stage ]]; then mode=codex-product-three-stage
 elif [[ $# == 1 && "$1" == --codex-product-other-uid ]]; then mode=codex-product-other-uid
 elif [[ $# == 1 && "$1" == --codex-product-domain-app ]]; then mode=codex-product-domain-app
-elif [[ $# != 0 ]]; then printf 'Usage: scripts/test-native-pair.sh [--store-regressions|--a3-core|--a3-http|--a3-size-store|--app-owner|--endpoint-security|--endpoint-security-boundaries|--endpoint-security-app-fixture|--endpoint-security-owner-directory|--endpoint-security-owner-directory-recovery|--codex-product-guards|--codex-product-cli|--codex-product-cold|--codex-product-three-stage|--codex-product-other-uid|--codex-product-domain-app]\n' >&2; exit 2; fi
+elif [[ $# == 1 && "$1" == --codex-product-domain-native ]]; then mode=codex-product-domain-native
+elif [[ $# != 0 ]]; then printf 'Usage: scripts/test-native-pair.sh [--store-regressions|--a3-core|--a3-http|--a3-size-store|--app-owner|--endpoint-security|--endpoint-security-boundaries|--endpoint-security-app-fixture|--endpoint-security-owner-directory|--endpoint-security-owner-directory-recovery|--codex-product-guards|--codex-product-cli|--codex-product-cold|--codex-product-three-stage|--codex-product-other-uid|--codex-product-domain-app|--codex-product-domain-native]\n' >&2; exit 2; fi
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source_root="$repo_root"
 if [[ "$mode" == endpoint-security* && ! -f "$source_root/docs/native-endpoint-directory-contract.md" ]]; then
@@ -56,8 +57,17 @@ if [[ "$mode" == codex-product-three-stage ]]; then
 elif [[ -n "${CICADA_NATIVE_PAIR_CODEX_DAEMON_UMASK:-}${CICADA_NATIVE_PAIR_CODEX_FRESH_THREADS:-}${CICADA_NATIVE_PAIR_CODEX_PREPARATION:-}" ]]; then
  printf 'Daemon/preparation parameters require --codex-product-three-stage.\n' >&2; exit 2
 fi
+domain_native_parameters=()
+if [[ "$mode" == codex-product-domain-native ]]; then
+ export CICADA_NATIVE_PAIR_DOMAIN_WAIT_LOGIN_EXPIRY="${CICADA_NATIVE_PAIR_DOMAIN_WAIT_LOGIN_EXPIRY:-0}"
+ case "$CICADA_NATIVE_PAIR_DOMAIN_WAIT_LOGIN_EXPIRY" in 0|1) ;; *) printf 'Native domain login expiry parameter must be 0 or 1.\n' >&2; exit 2;; esac
+ domain_native_parameters=(-e "CICADA_N3_DOMAIN_WAIT_LOGIN_EXPIRY=$CICADA_NATIVE_PAIR_DOMAIN_WAIT_LOGIN_EXPIRY"
+  -e CICADA_N3_DOMAIN_PUBLIC_SUMMARY=/state/domain-native-public-summary.json)
+elif [[ -n "${CICADA_NATIVE_PAIR_DOMAIN_WAIT_LOGIN_EXPIRY:-}" ]]; then
+ printf 'Domain login-expiry parameter requires --codex-product-domain-native.\n' >&2; exit 2
+fi
 codex_mount=()
-if [[ "$mode" == codex-product-cli || "$mode" == codex-product-cold || "$mode" == codex-product-three-stage ]]; then
+if [[ "$mode" == codex-product-cli || "$mode" == codex-product-cold || "$mode" == codex-product-three-stage || "$mode" == codex-product-domain-native ]]; then
  if [[ ! -f "$source_root/.agents/plugins/cicada/hooks/hooks.json" || ! -f "$source_root/.agents/plugins/cicada/.mcp.json" || ! -f "$source_root/.agents/plugins/cicada/.codex-plugin/plugin.json" ]]; then
   printf 'Installed-plugin gate requires the integrated existing-plugin assets; NOT_RUN.\n' >&2; exit 2
  fi
@@ -72,7 +82,7 @@ PY
  codex_mount=(--mount "type=bind,src=$codex_binary,dst=/tools/codex,readonly" -e CICADA_N3_CODEX_BINARY=/tools/codex)
 fi
 license_mount=()
-if [[ "$mode" == codex-product-three-stage ]]; then
+if [[ "$mode" == codex-product-three-stage || "$mode" == codex-product-domain-native ]]; then
  licenses="${CICADA_NATIVE_PAIR_LICENSES_DIR:-}"
  if [[ -z "$licenses" || ! -f "$licenses/go/MODULES.json" || ! -f "$licenses/go/LICENSE" || ! -f "$licenses/cicada/LICENSE" ]]; then
   printf 'Three-stage gate requires matching complete CLI notices through CICADA_NATIVE_PAIR_LICENSES_DIR; NOT_RUN.\n' >&2; exit 2
@@ -134,6 +144,7 @@ common=(docker run --rm --name "$container" --label "cicada.native-pair.run=$run
  "${codex_mount[@]}"
  "${license_mount[@]}"
  "${three_stage_parameters[@]}"
+ "${domain_native_parameters[@]}"
  "${other_uid_parameters[@]}"
  --workdir /repo/cicada-go "$image")
 lane() {
@@ -226,6 +237,9 @@ else
    selector='^TestN3CodexProductOtherUIDPrivateBoundary$'
   elif [[ "$mode" == codex-product-domain-app ]]; then
    selector='^TestN3LocalDomainActualAppOwnerPolicy$'
+  elif [[ "$mode" == codex-product-domain-native ]]; then
+   selector='^TestN3LocalDomainNativeOriginalDaemonAB$'
+   runtime_timeout=30m
   else
    selector='^TestN3NativePair(BootstrapAndExactReplay|WrongNodeScopeIsFenced|PrepareLossBeforeForward|CompleteLossAfterCommit|MissingOwnerProofCannotBootstrap)$'
   fi
@@ -234,6 +248,9 @@ else
    other_uid_worker_pid=$!
   fi
   lane harness go tool test2json -t /out/n3.test -test.v -test.count=1 "-test.timeout=$runtime_timeout" "-test.run=$selector"
+  if [[ "$mode" == codex-product-domain-native && -f "$state/domain-native-public-summary.json" ]]; then
+   cp "$state/domain-native-public-summary.json" "$evidence/domain-native-public-summary.json"
+  fi
   if [[ "$mode" == codex-product-other-uid ]]; then
    set +e
    wait "$other_uid_worker_pid"
