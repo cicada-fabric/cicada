@@ -4965,3 +4965,64 @@ The prior `/tmp noexec` harness refusal remains a distinct exit-1 receipt with
 zero tests executed: `local-domain-root/context-hook-20261022-px7mg9cp/result.json`,
 SHA-256 `8e4fbcc45cbdb16e163274a4d2c2449491e98886ff2c9d41e976ef81389097c3`.
 Neither Root run accepts domain business or physical Windows behavior.
+
+## 2026-10-22 typed local-domain App gate: compiled, backend NOT_RUN
+
+Preparation source is dirty `79e789b7eb5ada0d60b13a5618ab4ad3b0d54ab1`
+plus the QA actor/fixture/driver/plan inputs, not a clean build attributed only
+to that HEAD. The new test directly uses the delivered App Core public
+LocalCollaboration actions. It introduces no replacement actor, parent-held
+Owner signer, SQL authority or production implementation change.
+
+```sh
+scripts/test-native-pair.sh --codex-product-domain-app
+```
+
+**Actual outcome: NOT_RUN, command exit 125, 0 pass / 1 skip.** The real owned
+Hub returns HTTP 404 at the domain capability route. version, compile-cli,
+compile-tests, harness and vet each exit 0. Source/binary inventories match
+before/after, and the exact owned container is absent. This proves that the
+typed fixture compiles and that the driver refuses to count an unavailable
+service as PASS; no domain business assertion executes after that preflight.
+
+The prepared main line is actual App Refresh → explicit friendly private
+Network/dedicated Group preview → activation response lost after Hub commit →
+original-vault App/Hub restart and authenticated recovery → normal
+Controller.Close and reopen → original policy read/revoke with Node offline.
+The existing actual App actor gains an explicit test-only normal-close command;
+the earlier crash boundary remains a deliberate SIGKILL, with distinct meaning.
+An opt-in read-only observer inside the actual App process inspects its opaque
+original-operation record immediately after normal vault open and before
+Controller resume. It emits only ciphertext digests, public route and applied
+state; the parent never opens that vault or Owner identity. These main-line
+assertions, including the record observer's pending-packet branch and normal
+close, are **prepared, not executed by this preflight**.
+
+Evidence: `native-pair-acceptance/run-20261022T185319Z-KRKiHW/`.
+
+| Artifact | SHA-256 |
+| --- | --- |
+| `result.json`, NOT_RUN/125 | `b5c59140875cba60aa17180ead8b897ddcbffff9b4bd5fb839c123fc2495e10a` |
+| Identical before/after source JSON | `f411b931a522a922c964c09b14a0efea12277da6238c8f0800336510c62150d4` |
+| Complete input manifest | `224b7d0814d603d44a75169de3bc3b2e1ebe1a76c0d56a6873d192215df1c648` |
+| Executed CLI precondition, 37,366,836 bytes | `f9aa1240f87bb6a5928c960a8d8b619cc42cd58a5b614e4b8b714b52d227a2a1` |
+| Compiled/executed test preflight, 23,416,089 bytes | `bcd1ab7cefe431e466c0ba9058eaeee90d4e641f56baf1f2c96c701b09f80a42` |
+
+Related source-bound results stay separate from this skipped integration test:
+
+| Executor/source | Reported scope and receipt; QA checks only the cited file hashes |
+| --- | --- |
+| Root, clean `ec9d2ef` | 85 protocol tests pass, 0 fail/skip, exit 0, stable source and owned-container cleanup. `local-domain-root/shared-protocol-20261022-qs2o9v4k/result.json`, SHA-256 `6860077eff02cb6718b22d7bfe687615d79dff23641d685e2691fe5faa6f88ff`. No App/Hub/Node business acceptance. |
+| App producer, dirty `7ff12e8` plus its Core/UI candidate | Full normal Core/UI 361 pass, 0 fail/skip, in `/home/zyf/.cicada/acceptance/codex-context-checks/local-domain-client-20261022T183316Z/result.json`, SHA-256 `d522f46fa02594e52f4032a20950c8d0bc0a12a8a4ab064393da64b83fad28f1`. Its broad race was INTERRUPTED_BY_PRODUCER, exit 1, and is not a PASS. |
+| App producer, final dirty candidate later committed as `79e789b` | Final UI/native normal 170 pass and LocalCollaboration scoped race 20 pass, each 0 fail/skip; Linux/Windows vet and Windows build exit 0. Final Core bytes match the earlier 361 run, but three renderer files changed, so 361 is not a fresh full-source run on the final candidate. `/home/zyf/.cicada/acceptance/codex-context-checks/local-domain-client-final-20261022T184131Z/result.json`, SHA-256 `38b27598cd4a71ed799f2abcb51d06cfabf6d4582ca2836f91db96da1d058479`; final source-before/source-after JSON both `2a7e57430d4e6211ff66f52c31d963e01d081d3cd75ae192c76d7b68728a8d24`. |
+
+Do not add those counts together or attribute their dirty inputs solely to later
+commits. Windows cross-build/vet does not execute DPAPI, ACL or physical GUI.
+Actual new-domain admission for original native A/B without Pair approvals,
+by-name Host ASK/Reply, domain context/signing other-UID refusal, App-close work,
+real login/report expiry, empty-policy-cache full-page recovery, uncertain
+activation recovery, current revoke/foreign scope and legacy-Pair boundaries
+remain **NOT_RUN here**, as do real model/native queue/automatic wake, physical
+Windows, Android and public HTTPS. Native positive gates retain the explicitly
+documented manual independent Owner public-pin prerequisite; automatic FB-03
+trust delivery is not claimed.

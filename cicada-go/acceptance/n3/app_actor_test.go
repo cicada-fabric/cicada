@@ -160,6 +160,7 @@ type appActorCheckpoint struct {
 type appActorCommand struct {
 	Action             *appcore.Action `json:"action,omitempty"`
 	ClockOffsetSeconds int64           `json:"logical_clock_offset_seconds"`
+	Close              bool            `json:"close,omitempty"`
 }
 
 type appActorReply struct {
@@ -167,6 +168,7 @@ type appActorReply struct {
 	ActionError  string           `json:"action_error,omitempty"`
 	Current      appcore.Snapshot `json:"current"`
 	ClockMode    string           `json:"clock_mode"`
+	Closed       bool             `json:"closed,omitempty"`
 }
 
 type appProcess struct {
@@ -220,8 +222,19 @@ func TestN3AppProcess(t *testing.T) {
 	root := filepath.Join(dir, "synthetic-app", "vaults")
 	var clockOffset atomic.Int64
 	barrier := &vaultCommitBarrier{t: t, dir: filepath.Join(dir, "app-vault-gate-"+input.Mailbox)}
+	openVault := syntheticVaultOpenerWithHook(root, barrier.wrap)
+	if os.Getenv("CICADA_N3_LOCAL_DOMAIN_AUDIT") == "1" {
+		base := openVault
+		openVault = func(ctx context.Context, scope appvault.Scope, create bool) (*appvault.Vault, error) {
+			vault, err := base(ctx, scope, create)
+			if err == nil {
+				auditLocalDomainOpen(t, vault, filepath.Join(dir, "domain-open-audit"))
+			}
+			return vault, err
+		}
+	}
 	c := must(appcore.NewController(appcore.Config{HTTP: appProxyDoer{input.Proxy, appcore.NewHTTPClient()},
-		OpenVault: syntheticVaultOpenerWithHook(root, barrier.wrap), DiscoverVaults: appcore.NewProfileDiscovery(root), AllowLoopbackHTTP: true,
+		OpenVault: openVault, DiscoverVaults: appcore.NewProfileDiscovery(root), AllowLoopbackHTTP: true,
 		Now: func() time.Time { return time.Now().UTC().Add(time.Duration(clockOffset.Load()) * time.Second) }}))
 	defer c.Close()
 	ctx := context.Background()
@@ -281,6 +294,9 @@ func TestN3AppProcess(t *testing.T) {
 		}
 		var command appActorCommand
 		readJSON(t, base+".json", &command)
+		if command.Close && (command.Action != nil || command.ClockOffsetSeconds != 0) {
+			t.Fatal("normal App close cannot dispatch an action or change its clock")
+		}
 		// Logical-clock evidence is explicitly labeled; it never establishes a
 		// real 15-minute wall-clock wait or a production Hub clock transition.
 		clockOffset.Store(command.ClockOffsetSeconds)
@@ -301,7 +317,11 @@ func TestN3AppProcess(t *testing.T) {
 			}
 		}
 		reply.Current = c.Snapshot()
+		reply.Closed = command.Close
 		writeJSON(t, base+"-reply.json", reply)
+		if command.Close {
+			return // Run the actual Controller.Close defer, then exit normally.
+		}
 	}
 }
 

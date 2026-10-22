@@ -18,7 +18,8 @@ elif [[ $# == 1 && "$1" == --codex-product-cli ]]; then mode=codex-product-cli
 elif [[ $# == 1 && "$1" == --codex-product-cold ]]; then mode=codex-product-cold
 elif [[ $# == 1 && "$1" == --codex-product-three-stage ]]; then mode=codex-product-three-stage
 elif [[ $# == 1 && "$1" == --codex-product-other-uid ]]; then mode=codex-product-other-uid
-elif [[ $# != 0 ]]; then printf 'Usage: scripts/test-native-pair.sh [--store-regressions|--a3-core|--a3-http|--a3-size-store|--app-owner|--endpoint-security|--endpoint-security-boundaries|--endpoint-security-app-fixture|--endpoint-security-owner-directory|--endpoint-security-owner-directory-recovery|--codex-product-guards|--codex-product-cli|--codex-product-cold|--codex-product-three-stage|--codex-product-other-uid]\n' >&2; exit 2; fi
+elif [[ $# == 1 && "$1" == --codex-product-domain-app ]]; then mode=codex-product-domain-app
+elif [[ $# != 0 ]]; then printf 'Usage: scripts/test-native-pair.sh [--store-regressions|--a3-core|--a3-http|--a3-size-store|--app-owner|--endpoint-security|--endpoint-security-boundaries|--endpoint-security-app-fixture|--endpoint-security-owner-directory|--endpoint-security-owner-directory-recovery|--codex-product-guards|--codex-product-cli|--codex-product-cold|--codex-product-three-stage|--codex-product-other-uid|--codex-product-domain-app]\n' >&2; exit 2; fi
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source_root="$repo_root"
 if [[ "$mode" == endpoint-security* && ! -f "$source_root/docs/native-endpoint-directory-contract.md" ]]; then
@@ -223,6 +224,8 @@ else
    runtime_timeout=7m
   elif [[ "$mode" == codex-product-other-uid ]]; then
    selector='^TestN3CodexProductOtherUIDPrivateBoundary$'
+  elif [[ "$mode" == codex-product-domain-app ]]; then
+   selector='^TestN3LocalDomainActualAppOwnerPolicy$'
   else
    selector='^TestN3NativePair(BootstrapAndExactReplay|WrongNodeScopeIsFenced|PrepareLossBeforeForward|CompleteLossAfterCommit|MissingOwnerProofCannotBootstrap)$'
   fi

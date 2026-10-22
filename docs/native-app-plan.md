@@ -133,6 +133,15 @@ Network uses a dedicated non-Pair Group. The Hub proposal still needs updated
 frozen DTOs and implementation before consumers are connected. These are targets,
 not available product APIs.
 
+The current independent native positive lane retains an explicit manual Owner
+public-pin prerequisite, as frozen by Root. Use the actual App public export and
+the existing operator trust command in the isolated Node; never initialize trust
+from the arriving policy's own public key. Receiver verification uses the existing
+CryptoState OwnerKeyTrust's complete public identity, current ACTIVE state and
+local trust version. Missing/wrong/revoked trust refuses; policy ACTIVE alone
+does not establish communication. Automatic FB-03 trust delivery is still NOT_RUN,
+and the manual prerequisite must remain visible in native acceptance receipts.
+
 Root-frozen supplementary requirements, pending the full shared checkpoint:
 the actual agent automatically publishes a Node-signed local-user report with
 at most five minutes validity. Prepare may leave user scope empty so Hub derives
