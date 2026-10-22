@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/cicada-ai/cicada/internal/apppaths"
+	wire "github.com/cicada-ai/cicada/internal/hubaccountwire"
 	"github.com/cicada-ai/cicada/internal/nodewire"
 	"github.com/gofrs/flock"
 )
@@ -202,6 +203,35 @@ func (c *codexOperatorIntentClient) prepareForConnection(q localEndpointRequest,
 	}
 	return c.prepareWithConnectionPin(q, connection.Pin.NodeID, &connection.Pin)
 }
+
+// Only the Hook calls this after consuming fresh Node context for this exact
+// parsed command and native scope. A changed current policy cannot replace the
+// original selector of an uncertain command. Recovery still sends its complete
+// original request; this does not authorize a new request under the old policy.
+func (c *codexOperatorIntentClient) originalVerifiedCommand(q localEndpointRequest, nodeID string, pin *LocalNodeConnectionPin) (localEndpointRequest, error) {
+	if q.Version == 0 {
+		q.Version = localJoinProtocolVersion
+	}
+	original := q
+	err := c.withLocked(func(disk *codexOperatorIntentDisk) error {
+		p := disk.Pending
+		if p == nil {
+			return nil
+		}
+		if p.NodeID != nodeID || !sameCodexOperatorConnectionPin(pin, p.ConnectionPin) {
+			return errCodexOperatorIntentConflict
+		}
+		old, current := p.Request, q
+		old.LocalDomainVersion, current.LocalDomainVersion = 0, 0
+		old.LocalDomain, current.LocalDomain = wire.LocalDomainSelection{}, wire.LocalDomainSelection{}
+		if codexOperatorDigest(old, true) != codexOperatorDigest(current, true) {
+			return errCodexOperatorIntentConflict
+		}
+		original = p.Request
+		return nil
+	})
+	return original, err
+}
 func (c *codexOperatorIntentClient) validateConnectionPath(connection LocalNodeConnection) error {
 	p := connection.Pin
 	if validateLocalNodePin(p) != nil || !localContextHex(connection.InstanceID, 32) || !localContextHex(connection.LocatorDigest, 64) {
@@ -283,6 +313,12 @@ func validateCodexOperatorResult(p codexOperatorPending, r *localEndpointResult,
 		return errCodexOperatorIntentResponse
 	}
 	if p.ConnectionPin != nil && r.HubID != p.ConnectionPin.HubID {
+		return errCodexOperatorIntentResponse
+	}
+	if q.LocalDomainVersion != 0 && r.State == "COMPLETED" {
+		return validateCodexDomainOperatorResult(p, r, responseErr)
+	}
+	if r.LocalDomain != nil {
 		return errCodexOperatorIntentResponse
 	}
 	payloads := 0

@@ -30,6 +30,8 @@ type codexMCPContextState struct {
 	active      *harness.SessionContext
 	heartbeatMu sync.Mutex
 	heartbeat   *codexFrozenHeartbeat
+
+	activeVerification *localCodexContext
 }
 
 func configuredCodexNodeID() (string, error) {
@@ -158,6 +160,17 @@ func (m *mcpServer) callContextualTool(name string, arguments map[string]any) (a
 	if err != nil || consumed == nil {
 		return nil, errCodexMCPContext
 	}
+	selection, domain, err := codexContextDomain(consumed.Context)
+	if err != nil {
+		return nil, err
+	}
+	if _, pair, _ := parseNativePairJoinSelection(business); pair && domain {
+		return nil, errCodexMCPContext
+	}
+	verifiedDomain := codexDomainBinding{}
+	if domain {
+		verifiedDomain = codexDomainBinding{LocalDomainVersion: 1, LocalDomain: selection}
+	}
 	context := harness.SessionContext{Harness: consumed.Context.Harness, NativeSessionID: consumed.Context.NativeSessionID,
 		MachineID: state.nodeID, Workspace: consumed.Context.Workspace, Capabilities: map[string]any{"fabric_tools": true, "wake": "codex_queue"}}
 	if context.Harness != "codex" || !localContextText(context.NativeSessionID, 256) || !filepath.IsAbs(context.Workspace) || filepath.Clean(context.Workspace) != context.Workspace {
@@ -168,7 +181,7 @@ func (m *mcpServer) callContextualTool(name string, arguments map[string]any) (a
 		return nil, errCodexMCPContext
 	}
 	m.sessionMu.RLock()
-	same := m.sessionContextSet && m.sessionContext == trusted
+	same := m.sessionContextSet && m.sessionContext == trusted && m.sessionDomain == verifiedDomain
 	m.sessionMu.RUnlock()
 	if !same {
 		m.stopCodexHeartbeat()
@@ -176,8 +189,9 @@ func (m *mcpServer) callContextualTool(name string, arguments map[string]any) (a
 	}
 	state.mu.Lock()
 	state.active = &context
+	state.activeVerification = &consumed.Context
 	state.mu.Unlock()
-	defer func() { state.mu.Lock(); state.active = nil; state.mu.Unlock() }()
+	defer func() { state.mu.Lock(); state.active = nil; state.activeVerification = nil; state.mu.Unlock() }()
 	defer m.reconcileCodexHeartbeat()
 	if !m.isJoined() {
 		if err := m.restoreSession(context); err != nil {

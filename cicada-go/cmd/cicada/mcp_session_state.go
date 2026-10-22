@@ -18,6 +18,7 @@ import (
 )
 
 const mcpSessionStateVersion = 1
+const mcpDomainSessionStateVersion = 2
 
 // mcpTrustedContext is the identity boundary used for local session state.
 // Managed Codex values come from a consumed Node ticket; legacy compatibility
@@ -48,6 +49,8 @@ type mcpCachedSession struct {
 	BindingEpoch    uint64                  `json:"binding_epoch,omitempty"`
 	LeaseExpiresAt  string                  `json:"lease_expires_at,omitempty"`
 	SessionToken    string                  `json:"session_token"`
+
+	codexDomainBinding
 }
 
 type mcpSessionStateDisk struct {
@@ -198,6 +201,9 @@ func (s *mcpSessionStateStore) load(origin string, context harness.SessionContex
 	for index := range disk.Sessions {
 		entry := disk.Sessions[index]
 		if entry.matches(normalizedOrigin, scope, trusted) {
+			if entry.codexDomainBinding.validate() != nil {
+				return nil, errCodexMCPContext
+			}
 			if strings.TrimSpace(entry.SessionToken) == "" || strings.TrimSpace(entry.EndpointID) == "" || strings.TrimSpace(entry.GroupID) == "" {
 				return nil, errors.New("cached Cicada session is incomplete")
 			}
@@ -221,6 +227,9 @@ func (s *mcpSessionStateStore) save(entry mcpCachedSession) error {
 		strings.TrimSpace(entry.GroupID) == "" || strings.TrimSpace(entry.EndpointID) == "" || strings.TrimSpace(entry.SessionToken) == "" {
 		return errors.New("incomplete Cicada session state")
 	}
+	if entry.codexDomainBinding.validate() != nil {
+		return errCodexMCPContext
+	}
 	if entry.Workspace != "" {
 		entry.Workspace = filepath.Clean(entry.Workspace)
 	}
@@ -239,6 +248,9 @@ func (s *mcpSessionStateStore) save(entry mcpCachedSession) error {
 		return err
 	}
 	for _, previous := range disk.Sessions {
+		if previous.codexDomainBinding != entry.codexDomainBinding {
+			return errCodexMCPContext
+		}
 		if (entry.ConnectionPin == nil) != (previous.ConnectionPin == nil) {
 			return ErrLocalNodeConfigRequired
 		}
@@ -248,6 +260,9 @@ func (s *mcpSessionStateStore) save(entry mcpCachedSession) error {
 	}
 	disk.Sessions = []mcpCachedSession{entry}
 	disk.Version = mcpSessionStateVersion
+	if entry.LocalDomainVersion != 0 {
+		disk.Version = mcpDomainSessionStateVersion
+	}
 	return s.writeScopeLocked(entry.Scope, disk)
 }
 
@@ -308,8 +323,16 @@ func (s *mcpSessionStateStore) readScopeLocked(scope string) (mcpSessionStateDis
 	if err := json.Unmarshal(data, &disk); err != nil {
 		return disk, false, fmt.Errorf("decode Cicada MCP session state: %w", err)
 	}
-	if disk.Version != mcpSessionStateVersion {
+	if disk.Version != mcpSessionStateVersion && disk.Version != mcpDomainSessionStateVersion {
 		return disk, false, fmt.Errorf("unsupported Cicada MCP session state version %d", disk.Version)
+	}
+	if disk.Version == mcpDomainSessionStateVersion && len(disk.Sessions) != 1 {
+		return disk, false, errCodexMCPContext
+	}
+	for _, entry := range disk.Sessions {
+		if entry.codexDomainBinding.validate() != nil || (disk.Version == mcpDomainSessionStateVersion) != (entry.LocalDomainVersion == 1) {
+			return disk, false, errCodexMCPContext
+		}
 	}
 	return disk, true, nil
 }

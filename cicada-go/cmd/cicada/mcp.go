@@ -46,6 +46,8 @@ type mcpServer struct {
 	stop              chan struct{}
 	codexContext      *codexMCPContextState
 	localNode         *LocalNodeConnection
+
+	sessionDomain codexDomainBinding
 }
 
 var errPeerTaskHandoffRetired = errors.New("Thread-to-Thread plaintext Task handoffs are retired; use sealed cicada_send and explicitly authorized Artifact references. This does not transfer Task responsibility or stop resources.")
@@ -904,6 +906,11 @@ func (m *mcpServer) restoreSession(context harness.SessionContext) error {
 		m.clearSessionMemory()
 		return err
 	}
+	currentDomain, err := m.currentCodexDomainBinding()
+	if err != nil || cached.codexDomainBinding != currentDomain {
+		m.clearSessionMemory()
+		return errCodexMCPContext
+	}
 	if cached.Scope != scope || !cached.matches(origin, scope, trusted) {
 		return nil
 	}
@@ -952,6 +959,7 @@ func (m *mcpServer) restoreSession(context harness.SessionContext) error {
 }
 
 func (m *mcpServer) setSession(token, endpointID, groupID string, context mcpTrustedContext, scope string, public mcpPublicJoinResult) {
+	domain, _ := m.currentCodexDomainBinding()
 	m.sessionMu.Lock()
 	m.sessionToken = strings.TrimSpace(token)
 	m.endpointID = strings.TrimSpace(endpointID)
@@ -960,6 +968,7 @@ func (m *mcpServer) setSession(token, endpointID, groupID string, context mcpTru
 	m.sessionContextSet = true
 	m.sessionScope = strings.TrimSpace(scope)
 	m.sessionPublic = public
+	m.sessionDomain = domain
 	m.sessionMu.Unlock()
 }
 
@@ -972,6 +981,7 @@ func (m *mcpServer) clearSessionMemory() {
 	m.sessionContextSet = false
 	m.sessionScope = ""
 	m.sessionPublic = mcpPublicJoinResult{}
+	m.sessionDomain = codexDomainBinding{}
 	m.sessionMu.Unlock()
 }
 
@@ -1127,6 +1137,17 @@ func (m *mcpServer) join(arguments map[string]any) (any, error) {
 		}
 		return m.joinNativePair(selection)
 	}
+	if binding, err := m.currentCodexDomainBinding(); err != nil {
+		return nil, err
+	} else if binding.LocalDomainVersion != 0 {
+		m.sessionMu.RLock()
+		defer m.sessionMu.RUnlock()
+		group := stringArgument(arguments, "group_id")
+		if m.sessionToken == "" || (group != "" && group != m.sessionGroupID) {
+			return nil, errors.New("Register this Thread explicitly with cicada join NAME before using its local collaboration scope")
+		}
+		return m.sessionPublic, nil
+	}
 	groupID := stringArgument(arguments, "group_id")
 	if groupID == "" && m.localNode == nil {
 		groupID = strings.TrimSpace(os.Getenv("CICADA_GROUP_ID"))
@@ -1250,6 +1271,7 @@ func (m *mcpServer) useGroup(groupID string) (any, error) {
 	m.sessionMu.RLock()
 	originalToken, originalEndpoint, originalGroup, originalScope := m.sessionToken, m.endpointID, m.sessionGroupID, m.sessionScope
 	originalContext, originalContextSet, originalPublic := m.sessionContext, m.sessionContextSet, m.sessionPublic
+	originalDomain := m.sessionDomain
 	m.sessionMu.RUnlock()
 	if originalToken == "" {
 		return nil, errors.New("Cicada session is not joined; call cicada_join first")
@@ -1257,6 +1279,7 @@ func (m *mcpServer) useGroup(groupID string) (any, error) {
 	originalOrigin, originErr := normalizeMCPAPIOrigin(m.baseURL)
 	unchanged := func() bool { // Caller holds sessionMu.
 		return m.sessionToken == originalToken && m.endpointID == originalEndpoint && m.sessionGroupID == originalGroup && m.sessionScope == originalScope &&
+			m.sessionDomain == originalDomain &&
 			m.sessionContext == originalContext && m.sessionContextSet == originalContextSet &&
 			m.sessionPublic.BindingID == originalPublic.BindingID && m.sessionPublic.BindingEpoch == originalPublic.BindingEpoch &&
 			m.sessionPublic.Endpoint.ID == originalPublic.Endpoint.ID && m.sessionPublic.Endpoint.PrincipalID == originalPublic.Endpoint.PrincipalID &&
@@ -1276,6 +1299,7 @@ func (m *mcpServer) useGroup(groupID string) (any, error) {
 			m.sessionGroupID = ""
 			m.sessionContext = mcpTrustedContext{}
 			m.sessionContextSet = false
+			m.sessionDomain = codexDomainBinding{}
 			m.sessionScope = ""
 			m.sessionPublic = mcpPublicJoinResult{}
 		}
@@ -1319,6 +1343,7 @@ func (m *mcpServer) useGroup(groupID string) (any, error) {
 	m.sessionMu.RLock()
 	token, endpointID, scope := m.sessionToken, m.endpointID, m.sessionScope
 	trusted, public := m.sessionContext, m.sessionPublic
+	domain := m.sessionDomain
 	m.sessionMu.RUnlock()
 	if card.GroupID != groupID || card.EndpointID != endpointID ||
 		(public.BindingID != "" && card.BindingID != public.BindingID) {
@@ -1337,6 +1362,7 @@ func (m *mcpServer) useGroup(groupID string) (any, error) {
 			OwnerID:   public.Endpoint.Owner,
 			BindingID: card.BindingID, BindingEpoch: card.BindingEpoch,
 			LeaseExpiresAt: public.LeaseExpiresAt, SessionToken: token,
+			codexDomainBinding: domain,
 		}); err != nil {
 			return nil, err
 		}

@@ -1048,3 +1048,78 @@ No vault limit is widened. This README is a later documentation delta. Docker
 interop, actual Hub/Node/Host domain execution, physical Windows GUI/DPAPI/ACL,
 Android, physical devices and public HTTPS are **NOT_RUN** here; Root/QA own
 those separate acceptance gates.
+### 2026-10-22 local-domain Hook and MCP consumer
+
+The installed consumer accepts the private Node's consumed one-use context as
+the native writer boundary. Empty or `LEGACY_STRICT` profiles require zero
+domain fields. Only explicit `LOCAL_DOMAIN`, domain version 1 and a complete
+policy ID/epoch/digest select the domain lane. Unknown or partial profiles fail
+before reading cached credentials or sending business requests. Existing Pair
+Join accepts only strict context; it cannot borrow a domain ticket.
+
+Literal commands now use Node issue then consume, without a client-side strict
+record precheck. Only the five exact
+`codex.operator.{endpoint_register,endpoint_leave,endpoint_directory,native_pair_available,native_pair_join_named}`
+purposes are allowed; help remains local. A new random event nonce and parsed
+command digest bind each call to its original SID/workspace. Missing native
+turn/tool-use IDs stay empty; the producer permits the double-empty form only
+for those operator purposes. MCP retains its real event IDs. Operator tickets
+cannot be used for MCP. The Node selects the verification profile; callers
+supply no permission-relaxation switch.
+
+An enabled-domain registration is saved only after the Node returns the
+Registration, Join and domain key result together with accepted native scope.
+The consumer checks the consumed policy digest, version/epoch, complete member,
+manifest and Join scope, original native coordinates and pinned Node-Control
+tuple. App Hub and Node-Control Hub fingerprints remain separate. The Node
+uses its existing independent Owner trust pin to verify delegation before
+registration and the full candidate chain before ACTIVE. The plugin neither
+reads the Node's private database nor treats a policy's embedded Owner key as
+an independent trust pin. Subsequent tools and heartbeat still require current
+Hub Guard; a saved result is not evidence of model consumption or a reply.
+
+A private operator intent is committed before IPC. Response loss and output or
+cache-save failure retain its original request and selector. A newly selected
+policy cannot replace an uncertain request. Historical completion under a
+different current selector is acknowledged as history without restoring its
+old session. Only confirmed explicit Leave clears the current scope cache;
+original native records and historical outbox rows remain intact.
+
+New domain caches use disk version 2; legacy/Pair caches keep version 1.
+Version 1 with domain markers, malformed version 2 or mixed scopes fail without
+rewriting the file. This prevents an old JSON reader from ignoring domain
+fields. No native identity, scope hash, Node pin or cache path changes.
+The existing SQLite outbox adds one bounded binding column; old rows retain
+the empty legacy value. New domain rows bind policy version/selection and
+original native BindingID/epoch. Reads and SQL updates reject changed policy
+or admission before modifying an old row, so a new Join cannot lend its token
+to an older uncertain operation. Frozen heartbeat includes the same domain
+selection and cannot clear another policy after a late response. This adds no
+database or background daemon.
+
+The two authoritative plugin description/skill sources now explain the default
+Owner-enabled local workflow and keep Pair advanced. The skill was updated
+under `skill-creator` and passed its validator; no installed files or resident
+processes were changed. The five original source assets have package digest
+`24c9d1f0b5381811c11f7fc7947d58afc2fddea63d672500d846c7120d2798e8`.
+
+Pinned Go 1.27.3 normal and race checks each recorded **123 PASS, 0 FAIL,
+0 SKIP** on dirty `273965416adfd08a118e287e653c7184619bcc2d` plus this consumer source.
+Scoped CLI vet, Linux and Windows CLI cross-build, and skill validation exited
+0. Evidence: `/home/zyf/.cicada/acceptance/codex-context-checks/local-domain-consumer-final-20261022T193030Z/`;
+receipt SHA-256 `f39baf4346cb49b2c20950f3c28fcb2d48163000e5e4a9fe0165f098cfa8e867`.
+The full Go/C/header/module/five-asset manifests match before and after at
+`e63a80e926c5af6552f04dc47c6288613c91879c2dff19b741f8c074b8e7db0f`.
+These tests use real private sockets, one-use HMAC contexts, local cache/SQLite
+persistence and existing PQ Pair client regression. The domain projection
+fixture explicitly uses synthetic verified-evidence markers; it does not
+substitute for Node Owner/candidate verification. The first retained run at
+`local-domain-consumer-20261022T192548Z` passed normal 123/0/0 but race failed
+122/1/0 because its scripted socket callbacks shared an unsynchronized test
+variable. Its original receipt
+`60136e4f835618f8233fd817766626c31417be2d062df4852e3bee47cf6bf14a`
+is retained. The final source uses an immutable atomic pointer and includes
+the domain-only v2 cache correction. This README is a later documentation
+delta. Actual Node domain profile/022 verification, Hub/Node Owner/candidate
+admission, installed Host/model communication, Docker interop, native Windows,
+Android, physical devices and public HTTPS remain **NOT_RUN** here.

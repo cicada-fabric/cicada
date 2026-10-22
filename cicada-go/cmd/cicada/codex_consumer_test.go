@@ -649,7 +649,7 @@ func TestCodexLiteralJoinPersistsBeforeOutputAndAckAndRecoversOriginal(t *testin
 				return d
 			}
 			var calls atomic.Int32
-			codexConsumerNode(t, filepath.Join(root, "node"), "synthetic-node", func(c net.Conn, raw json.RawMessage) {
+			codexConsumerOperatorNode(t, filepath.Join(root, "node"), "synthetic-node", localCodexContext{}, func(c net.Conn, raw json.RawMessage) {
 				var q localEndpointRequest
 				if json.Unmarshal(raw, &q) != nil {
 					t.Error("invalid operator request")

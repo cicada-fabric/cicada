@@ -269,7 +269,7 @@ func parseCodexOperatorPrompt(prompt string) (codexOperatorCommand, bool, error)
 	return command, true, nil
 }
 
-const codexOperatorHelp = "Cicada：cicada join 名称 · cicada peers · cicada connect · cicada connect 配对名称 A|B · cicada leave。登记不授予通信权限。\nCicada: join NAME · peers · connect · connect PAIR_LABEL A|B · leave. Registration grants no communication permission."
+const codexOperatorHelp = "Cicada：在 App 为该 Node 启用本地协作后，cicada join 名称显式接入当前 Thread；cicada peers 查看目录；cicada leave 退出。高级 Pair：cicada connect · cicada connect 配对名称 A|B。\nCicada: enable local collaboration for this Node in the App, then join NAME explicitly registers this Thread; peers shows the directory; leave exits. Advanced Pair: connect · connect PAIR_LABEL A|B."
 
 func codexUserPrompt(event codexHookInput, output io.Writer) error {
 	return codexUserPromptWithSelection(event, output, nil)
@@ -290,8 +290,9 @@ func codexUserPromptWithSelection(event codexHookInput, output io.Writer, select
 	if err != nil {
 		return codexHookBlock(output, codexHookFailureText(codexHookCoordinatesInvalid))
 	}
-	if err := verifyCodexContextTranscript(event.TranscriptPath, event.SessionID, event.CWD); err != nil {
-		return codexHookBlock(output, codexHookRecordFailure(err))
+	verifiedDomain, err := verifyCodexOperatorContext(event, coordinates, origin, connection, command)
+	if err != nil {
+		return codexHookBlock(output, codexHookFailureText(codexHookTicketUnavailable))
 	}
 	base := ""
 	if connection != nil {
@@ -330,12 +331,18 @@ func codexUserPromptWithSelection(event codexHookInput, output io.Writer, select
 		q.Harness, q.NativeSessionID, q.Workspace = trusted.Harness, trusted.NativeSessionID, trusted.Workspace
 	}
 	if command.operation == "endpoint_register" {
-		q.Name = command.name
-		if q.Name == "" {
-			q.Name = filepath.Base(event.CWD) + " · Thread"
-		}
+		q.Name = codexOperatorRegistrationName(command, event)
+		q.LocalDomainVersion, q.LocalDomain = verifiedDomain.LocalDomainVersion, verifiedDomain.LocalDomain
 	}
 	q.PairLabel, q.Slot = command.label, command.slot
+	var pin *LocalNodeConnectionPin
+	if connection != nil {
+		pin = &connection.Pin
+	}
+	q, err = client.originalVerifiedCommand(q, trusted.NodeID, pin)
+	if err != nil {
+		return codexHookBlock(output, "Cicada 原命令需要按原范围恢复，请精确重试上一条命令。 / Retry the exact previous Cicada command in its original scope.")
+	}
 	var result *localEndpointResult
 	var callErr error
 	if connection != nil {
@@ -368,20 +375,26 @@ func codexUserPromptWithSelection(event codexHookInput, output io.Writer, select
 	if callErr != nil {
 		return codexHookBlock(output, "Cicada 原命令结果需要恢复；未确认成功。 / The original Cicada result needs recovery; success is unconfirmed.")
 	}
-	if result.Join != nil {
+	historicalDomain := result.LocalDomain != nil && (verifiedDomain.LocalDomainVersion != q.LocalDomainVersion || verifiedDomain.LocalDomain != q.LocalDomain)
+	if result.Join != nil && !historicalDomain {
 		joined := result.Join
 		store := newMCPSessionStateStore(base)
-		var pin *LocalNodeConnectionPin
-		if connection != nil {
-			pin = &connection.Pin
-		}
 		if err := store.save(mcpCachedSession{ConnectionPin: pin, Scope: scope, APIOrigin: origin, Harness: trusted.Harness, NativeSessionID: trusted.NativeSessionID, NodeID: trusted.NodeID,
 			Workspace: trusted.Workspace, GroupID: joined.Endpoint.GroupID, EndpointID: joined.Endpoint.ID, OwnerID: joined.Endpoint.Owner,
-			BindingID: joined.BindingID, BindingEpoch: joined.BindingEpoch, LeaseExpiresAt: joined.LeaseExpiresAt, SessionToken: joined.SessionToken}); err != nil {
+			BindingID: joined.BindingID, BindingEpoch: joined.BindingEpoch, LeaseExpiresAt: joined.LeaseExpiresAt, SessionToken: joined.SessionToken, codexDomainBinding: codexDomainBinding{LocalDomainVersion: q.LocalDomainVersion, LocalDomain: q.LocalDomain}}); err != nil {
 			return codexHookBlock(output, "Cicada 接入结果尚未安全保存，原命令已保留。请精确重试。 / Cicada connection state is not safely saved; the original command is retained for retry.")
 		}
 	}
-	if err := codexHookBlock(output, formatCodexOperatorResult(command, result)); err != nil {
+	if command.operation == "endpoint_leave" {
+		if err := newMCPSessionStateStore(base).remove(scope); err != nil {
+			return codexHookBlock(output, "Cicada 退出结果已确认，原缓存仍需恢复；原命令已保留。 / Leave is confirmed; the original cache needs recovery and the command is retained.")
+		}
+	}
+	message := formatCodexOperatorResult(command, result)
+	if historicalDomain {
+		message = "Cicada 原操作已确认完成；当前策略范围已变化，请重新核对，未恢复旧通信权限。 / The original operation completed; its policy scope changed, so no historical communication permission was restored."
+	}
+	if err := codexHookBlock(output, message); err != nil {
 		return err
 	}
 	// A failed ack retains the durable result for an idempotent retry. Never
@@ -393,6 +406,9 @@ func codexUserPromptWithSelection(event codexHookInput, output io.Writer, select
 func formatCodexOperatorResult(command codexOperatorCommand, result *localEndpointResult) string {
 	var b strings.Builder
 	switch {
+	case result.LocalDomain != nil && result.Join != nil:
+		b.WriteString("当前 Thread 的本地协作接入结果已保存；后续通信由当前 Hub Guard 验证。 / This Thread's local collaboration admission is saved; current Hub Guard verifies subsequent communication.\n")
+		b.WriteString(result.Join.Endpoint.Name + "\n" + result.Join.Endpoint.Workspace)
 	case result.Registration != nil:
 		if command.operation == "endpoint_leave" {
 			b.WriteString("当前 Thread 已离开 Cicada，原生记录和工作区保留。 / This Thread left Cicada; its native record and workspace are retained.\n")

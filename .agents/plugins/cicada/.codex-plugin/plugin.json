@@ -1,7 +1,7 @@
 {
   "name": "cicada",
   "version": "0.0.5",
-  "description": "Register the current Codex Thread explicitly and communicate through Owner-authorized Cicada scopes.",
+  "description": "Register the current Codex Thread explicitly in a local collaboration scope enabled by its Owner in the Cicada App.",
   "author": {
     "name": "Cicada Fabric",
     "url": "https://github.com/cicada-fabric/cicada"
@@ -20,8 +20,8 @@
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "Cicada",
-    "shortDescription": "Register Threads and use authorized Cicada communication.",
-    "longDescription": "Use the current native Thread and workspace, explicit zero-right registration, and separately Owner-approved communication through Cicada.",
+    "shortDescription": "Join Owner-enabled local collaboration with the current Thread.",
+    "longDescription": "Enable a local scope once in the Cicada App, then explicitly register each current native Thread and workspace. The Hub maintains authorization; advanced Pair scopes keep separate Owner consents.",
     "developerName": "Cicada Fabric",
     "category": "Productivity",
     "capabilities": [

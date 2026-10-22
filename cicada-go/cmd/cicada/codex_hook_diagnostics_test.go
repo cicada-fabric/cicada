@@ -91,6 +91,9 @@ func TestCodexHookRecordDiagnosticBlocksWithoutChangingOriginal(t *testing.T) {
 	t.Setenv("CODEX_HOME", root)
 	t.Setenv("CICADA_MACHINE_ID", "synthetic-node")
 	t.Setenv("CICADA_API_URL", "https://synthetic.invalid")
+	stateDir := filepath.Join(t.TempDir(), "node")
+	t.Setenv("CICADA_NODE_STATE_DIR", stateDir)
+	codexConsumerOperatorNode(t, stateDir, "synthetic-node", localCodexContext{}, func(net.Conn, json.RawMessage) { t.Error("unverified native record reached endpoint operation") })
 	path := filepath.Join(root, "sessions", "synthetic-rollout.jsonl")
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		t.Fatal(err)
@@ -113,7 +116,7 @@ func TestCodexHookRecordDiagnosticBlocksWithoutChangingOriginal(t *testing.T) {
 		t.Fatal(err)
 	}
 	var response map[string]any
-	if json.Unmarshal(output.Bytes(), &response) != nil || response["decision"] != "block" || response["reason"] != codexHookLocalHandlingReason || !strings.HasPrefix(response["systemMessage"].(string), "CODEX_NATIVE_RECORD_PERMISSION:") {
+	if json.Unmarshal(output.Bytes(), &response) != nil || response["decision"] != "block" || response["reason"] != codexHookLocalHandlingReason || !strings.HasPrefix(response["systemMessage"].(string), "CODEX_NODE_TICKET_UNAVAILABLE:") {
 		t.Fatal("record failure passed to model or lost its phase", output.String())
 	}
 	after, err := os.ReadFile(path)

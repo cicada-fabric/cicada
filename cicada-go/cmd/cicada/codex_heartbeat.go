@@ -39,7 +39,7 @@ func (m *mcpServer) codexHeartbeatSnapshot() *codexFrozenHeartbeat {
 	}
 	return &codexFrozenHeartbeat{connection: connection, cache: mcpCachedSession{ConnectionPin: pin, Scope: m.sessionScope, APIOrigin: m.baseURL, Harness: t.Harness, NativeSessionID: t.NativeSessionID,
 		NodeID: t.NodeID, Workspace: t.Workspace, GroupID: m.sessionGroupID, EndpointID: m.endpointID, OwnerID: m.sessionPublic.Endpoint.Owner,
-		BindingID: m.sessionPublic.BindingID, BindingEpoch: m.sessionPublic.BindingEpoch, LeaseExpiresAt: m.sessionPublic.LeaseExpiresAt, SessionToken: m.sessionToken},
+		BindingID: m.sessionPublic.BindingID, BindingEpoch: m.sessionPublic.BindingEpoch, LeaseExpiresAt: m.sessionPublic.LeaseExpiresAt, SessionToken: m.sessionToken, codexDomainBinding: m.sessionDomain},
 		principal: m.sessionPublic.NetworkCard.PrincipalID, socket: m.joinSocketPath(harness.SessionContext{MachineID: t.NodeID}), pqtls: m.pqtlsSelected}
 }
 
@@ -152,6 +152,7 @@ func (h *codexFrozenHeartbeat) clearMemoryIfMatching(m *mcpServer) {
 	}
 	t := m.sessionContext
 	if m.baseURL != h.cache.APIOrigin || m.sessionToken != h.cache.SessionToken || m.sessionScope != h.cache.Scope || m.sessionGroupID != h.cache.GroupID || m.endpointID != h.cache.EndpointID ||
+		m.sessionDomain != h.cache.codexDomainBinding ||
 		m.pqtlsSelected != h.pqtls || m.sessionPublic.Endpoint.Owner != h.cache.OwnerID || m.sessionPublic.LeaseExpiresAt != h.cache.LeaseExpiresAt ||
 		!m.sessionContextSet || t.Harness != h.cache.Harness || t.NativeSessionID != h.cache.NativeSessionID || t.NodeID != h.cache.NodeID || t.Workspace != h.cache.Workspace ||
 		m.sessionPublic.BindingID != h.cache.BindingID || m.sessionPublic.BindingEpoch != h.cache.BindingEpoch || m.sessionPublic.NetworkCard.PrincipalID != h.principal {
@@ -159,6 +160,7 @@ func (h *codexFrozenHeartbeat) clearMemoryIfMatching(m *mcpServer) {
 	}
 	m.sessionToken, m.endpointID, m.sessionGroupID, m.sessionScope = "", "", "", ""
 	m.sessionContext, m.sessionContextSet, m.sessionPublic = mcpTrustedContext{}, false, mcpPublicJoinResult{}
+	m.sessionDomain = codexDomainBinding{}
 }
 
 func (h *codexFrozenHeartbeat) renew(ctx context.Context) (any, error) {
