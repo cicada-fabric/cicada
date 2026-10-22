@@ -12,6 +12,9 @@ func validScopedPacketLimits(r Route, bodyLimit, packetLimit int, nativePair boo
 	if nativePair {
 		return r.Operation == NativePairReconcileOperation && (r.Direction == DirectionRequest || r.Direction == DirectionResponse) && bodyLimit == NativePairReconcileBodyBytes && packetLimit == NativePairReconcilePacketBytes
 	}
+	if r.Operation == LocalDomainReconcileOperation && bodyLimit == LocalDomainReconcileBodyBytes && packetLimit == LocalDomainReconcilePacketBytes {
+		return r.Direction == DirectionRequest || r.Direction == DirectionResponse
+	}
 	return bodyLimit > 0 && bodyLimit <= 192*1024 && packetLimit > 0 && packetLimit <= 384*1024
 }
 

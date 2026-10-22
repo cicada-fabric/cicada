@@ -14,6 +14,12 @@ import (
 func appNodeOperation(op string) bool { return AppNodeHTTPPath(op) != "" }
 
 func innerLimitForOperation(op string) int {
+	if op == OperationLocalDomainReconcile {
+		return MaxLocalDomainReconcileInnerPacketBytes
+	}
+	if localDomainOperation(op) {
+		return MaxLocalDomainInnerPacketBytes
+	}
 	if op == OperationNativePairReconcile {
 		return MaxNativePairReconcileInnerPacketBytes
 	}

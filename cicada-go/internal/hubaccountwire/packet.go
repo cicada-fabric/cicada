@@ -51,7 +51,9 @@ func SealClientRequest(device *e2ee.Identity, hub HubIdentity, body any) ([]byte
 	var inner []byte
 	if route.Operation == OperationNativePairReconcile {
 		inner, err = clientwire.SealNativePairReconcileRequest(device, hub.Public, binding, route, plaintext)
-	} else if nativePairOperation(route.Operation) {
+	} else if route.Operation == OperationLocalDomainReconcile {
+		inner, err = clientwire.SealLocalDomainReconcileRequest(device, hub.Public, binding, route, plaintext)
+	} else if nativePairOperation(route.Operation) || localDomainOperation(route.Operation) {
 		inner, err = clientwire.SealRequestWithLimits(device, hub.Public, binding, route, plaintext, maxBodyForOperation(route.Operation), innerLimitForOperation(route.Operation))
 	} else if appNodeOperation(route.Operation) {
 		inner, err = clientwire.SealRequestWithLimits(device, hub.Public, binding, route, plaintext, MaxAppNodeBodyBytes, MaxAppNodeInnerPacketBytes)
@@ -106,7 +108,9 @@ func OpenRequestAt(hub *e2ee.Identity, trustedDevice *e2ee.PublicIdentity, bindi
 	var opened clientwire.Opened
 	if expectedRoute.Operation == OperationNativePairReconcile {
 		opened, err = clientwire.OpenNativePairReconcileRequest(hub, packet.SenderPublicIdentity, binding, expectedRoute, inner)
-	} else if nativePairOperation(expectedRoute.Operation) {
+	} else if expectedRoute.Operation == OperationLocalDomainReconcile {
+		opened, err = clientwire.OpenLocalDomainReconcileRequest(hub, packet.SenderPublicIdentity, binding, expectedRoute, inner)
+	} else if nativePairOperation(expectedRoute.Operation) || localDomainOperation(expectedRoute.Operation) {
 		opened, err = clientwire.OpenRequestWithLimits(hub, packet.SenderPublicIdentity, binding, inner, maxBodyForOperation(expectedRoute.Operation), innerLimitForOperation(expectedRoute.Operation))
 	} else if appNodeOperation(expectedRoute.Operation) {
 		opened, err = clientwire.OpenRequestWithLimits(hub, packet.SenderPublicIdentity, binding, inner, MaxAppNodeBodyBytes, MaxAppNodeInnerPacketBytes)
@@ -168,7 +172,9 @@ func SealResponse(hub *e2ee.Identity, device e2ee.PublicIdentity, requestRoute c
 	var inner []byte
 	if route.Operation == OperationNativePairReconcile {
 		inner, err = clientwire.SealNativePairReconcileResponse(hub, device, binding, route, plaintext)
-	} else if nativePairOperation(route.Operation) {
+	} else if route.Operation == OperationLocalDomainReconcile {
+		inner, err = clientwire.SealLocalDomainReconcileResponse(hub, device, binding, route, plaintext)
+	} else if nativePairOperation(route.Operation) || localDomainOperation(route.Operation) {
 		inner, err = clientwire.SealResponseWithLimits(hub, device, binding, route, plaintext, maxBodyForOperation(route.Operation), innerLimitForOperation(route.Operation))
 	} else if appNodeOperation(route.Operation) {
 		inner, err = clientwire.SealResponseWithLimits(hub, device, binding, route, plaintext, MaxAppNodeBodyBytes, MaxAppNodeInnerPacketBytes)
@@ -192,7 +198,24 @@ func SealResponse(hub *e2ee.Identity, device e2ee.PublicIdentity, requestRoute c
 // route derived from the original request before opening the envelope.
 func OpenClientResponse(device *e2ee.Identity, hub HubIdentity, requestBytes, responseBytes []byte, out any) error {
 	request, err := DecodePacket(requestBytes)
-	if err != nil || device == nil || validateHubIdentity(hub) != nil ||
+	if err != nil {
+		return ErrInvalid
+	}
+	return openClientResponsePacket(device, hub, request, requestBytes, responseBytes, out)
+}
+
+// OpenLocalDomainResponse admits only this profile's explicitly bounded frames.
+// The legacy OpenClientResponse/DecodePacket frame limit remains unchanged.
+func OpenLocalDomainResponse(device *e2ee.Identity, hub HubIdentity, requestBytes, responseBytes []byte, out any) error {
+	request, err := DecodeLocalDomainPacket(requestBytes)
+	if err != nil {
+		return ErrInvalid
+	}
+	return openClientResponsePacket(device, hub, request, requestBytes, responseBytes, out)
+}
+
+func openClientResponsePacket(device *e2ee.Identity, hub HubIdentity, request Packet, requestBytes, responseBytes []byte, out any) error {
+	if device == nil || validateHubIdentity(hub) != nil ||
 		request.Packet.Route.Direction != clientwire.DirectionRequest || request.Packet.Route.SenderKeyID != device.Public().ID ||
 		request.Packet.Route.ReceiverKeyID != hub.Public.ID || request.Packet.Route.HubID != hub.HubID {
 		return ErrInvalid
@@ -212,7 +235,9 @@ func OpenClientResponse(device *e2ee.Identity, hub HubIdentity, requestBytes, re
 	var opened clientwire.Opened
 	if request.Packet.Route.Operation == OperationNativePairReconcile {
 		opened, err = clientwire.OpenNativePairReconcileResponse(device, hub.Public, binding, responseRoute(request.Packet.Route), inner)
-	} else if nativePairOperation(request.Packet.Route.Operation) {
+	} else if request.Packet.Route.Operation == OperationLocalDomainReconcile {
+		opened, err = clientwire.OpenLocalDomainReconcileResponse(device, hub.Public, binding, responseRoute(request.Packet.Route), inner)
+	} else if nativePairOperation(request.Packet.Route.Operation) || localDomainOperation(request.Packet.Route.Operation) {
 		opened, err = clientwire.OpenResponseWithLimits(device, hub.Public, binding, inner, maxBodyForOperation(request.Packet.Route.Operation), innerLimitForOperation(request.Packet.Route.Operation))
 	} else if appNodeOperation(request.Packet.Route.Operation) {
 		opened, err = clientwire.OpenResponseWithLimits(device, hub.Public, binding, inner, MaxAppNodeBodyBytes, MaxAppNodeInnerPacketBytes)
@@ -235,6 +260,26 @@ func OpenClientResponse(device *e2ee.Identity, hub HubIdentity, requestBytes, re
 		return ErrInvalid
 	}
 	switch value := dereference(out).(type) {
+	case LocalDomainChallenge:
+		if value.RequestPacketDigest != LocalDomainPacketDigest(requestBytes) || ValidateLocalDomainPolicy(value.Policy, hub, time.Time{}) != nil {
+			return ErrInvalid
+		}
+	case LocalDomainResult:
+		if value.RequestPacketDigest != LocalDomainPacketDigest(requestBytes) {
+			return ErrInvalid
+		}
+		if value.Description != nil && ValidateLocalDomainDescription(*value.Description, hub, time.Time{}) != nil {
+			return ErrInvalid
+		}
+		for _, policy := range value.Policies {
+			if ValidateLocalDomainDescription(policy, hub, time.Time{}) != nil {
+				return ErrInvalid
+			}
+		}
+	case LocalDomainReconciled:
+		if value.RequestPacketDigest != LocalDomainPacketDigest(requestBytes) {
+			return ErrInvalid
+		}
 	case NativePairBootstrapChallenge:
 		if value.RequestPacketDigest != NativePairPacketDigest(requestBytes) || ValidateNativePairBootstrapChallenge(value, hub, time.Time{}) != nil {
 			return ErrInvalid

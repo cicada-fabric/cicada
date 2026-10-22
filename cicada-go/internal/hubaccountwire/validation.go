@@ -315,6 +315,12 @@ func knownOperation(operation string) bool {
 }
 
 func maxBodyForOperation(operation string) int {
+	if operation == OperationLocalDomainReconcile {
+		return MaxLocalDomainReconcileBodyBytes
+	}
+	if localDomainOperation(operation) {
+		return MaxLocalDomainBodyBytes
+	}
 	if operation == OperationNativePairReconcile {
 		return MaxNativePairReconcileBodyBytes
 	}
