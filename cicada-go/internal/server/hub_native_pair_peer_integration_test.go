@@ -90,6 +90,7 @@ func TestNativePairPeerRealTCPConsentResolveAskClaimAndRevoke(t *testing.T) {
 	}
 	// Availability cannot supply directory/peer rights before either consent.
 	a.pairHTTP(t, http.MethodPost, "/v2/fabric/resolve", "CicadaSession "+joins[0].SessionToken, ch.Bootstrap.GroupID, fabric.ResolveInput{Query: joins[1].Endpoint.ID}, http.StatusForbidden)
+	assertNativeDirectoryStatus(t, a, ch.Bootstrap.GroupID, joins[0].SessionToken, http.StatusForbidden)
 
 	statusQ := wire.NativePairStatusRequest{Format: wire.NativePairFormat, Context: a.context(t), SessionToken: a.session.Token, PairID: ch.Bootstrap.PairID}
 	packet := a.seal(t, statusQ)
@@ -140,6 +141,11 @@ func TestNativePairPeerRealTCPConsentResolveAskClaimAndRevoke(t *testing.T) {
 			t.Fatal("HTTP exact consent receipt changed")
 		}
 	}
+	wantDirectory := make(map[string]nativeDirectoryExpected)
+	for _, j := range joins {
+		wantDirectory[j.Endpoint.ID] = nativeDirectoryExpected{name: j.Endpoint.Name, workspace: j.Endpoint.Workspace, node: j.Endpoint.MachineID}
+	}
+	assertNativeDirectoryHTTP(t, a, ch.Bootstrap.GroupID, joins[0].SessionToken, wantDirectory)
 	resolve := a.pairHTTP(t, http.MethodPost, "/v2/fabric/resolve", "CicadaSession "+joins[0].SessionToken, ch.Bootstrap.GroupID, fabric.ResolveInput{Query: joins[1].Endpoint.ID}, http.StatusOK)
 	var card fabric.NetworkCard
 	if json.Unmarshal(resolve, &card) != nil || card.EndpointID != joins[1].Endpoint.ID || card.Capabilities["local_peer_delivery"] != "sealed_v1" {
@@ -187,6 +193,7 @@ func TestNativePairPeerRealTCPConsentResolveAskClaimAndRevoke(t *testing.T) {
 	}
 	packet = a.seal(t, wire.NativePairRevoke{Format: wire.NativePairFormat, Context: c, SessionToken: a.session.Token, OwnerProof: proof})
 	a.post(t, wire.OperationNativePairRevoke, packet)
+	assertNativeDirectoryStatus(t, a, ch.Bootstrap.GroupID, joins[0].SessionToken, http.StatusForbidden)
 	a.pairHTTP(t, http.MethodGet, delivery, "CicadaNode "+a.nodeToken, "", nil, http.StatusNotFound)
 	a.pairHTTP(t, http.MethodGet, base+"peer-key?"+query.Encode(), "CicadaNode "+a.nodeToken, "", nil, http.StatusNotFound)
 	for _, path := range []string{"/v2/fabric/node/join", base + "send", base + "deliveries/extra/authorization/extra"} {

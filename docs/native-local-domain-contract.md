@@ -6,8 +6,9 @@ the trust boundary, lifecycle and operations on 2026-10-22. The shared contract
 checkpoint remains attributed to its original source. The subsequent backend
 checkpoint implements the Hub service and Node report/cryptographic components.
 The later Node checkpoint below passes scoped synthetic integration/race gates
-and actual original-daemon A/B registration; the first actual Host whoami still
-fails and the login-expiry phase has not run. Public capability describes server
+and actual original-daemon A/B registration. Host failures below retain their
+tested sources; complete communication and login-expiry acceptance remain
+incomplete. Public capability describes server
 availability, not complete Native acceptance or caller authorization. Hub schema migration 66 and Node crypto
 schema 7 retain existing identities, public keys, epochs and historical Pair data.
 This does not change `native-pair-v1`,
@@ -269,6 +270,15 @@ checks remain authoritative for existing Pair scopes. No Pair proof is converted
 into a domain policy, and no old per-SID Owner join grant is weakened.
 The independently installed original Owner public pin remains required. A public
 key delivered by the Hub cannot replace that trust root in this profile.
+
+Hub Nodes mode exposes the existing exact `GET /v2/fabric/members` and
+`GET /v2/fabric/list` directory aliases through the same native self boundary.
+Both authenticate the current Group session, require current native
+collaboration self membership, and call the existing `Fabric.List`, including
+its current `directory.read` authorization and directory-card redaction. Query
+filters and the `endpoints` response are unchanged. Zero-rights admission,
+an unjoined or incorrect Group scope and revoked authority cannot enumerate peers. These two
+paths do not enable a general Fabric prefix or change Pair consent semantics.
 
 ## Real Codex record permissions
 
@@ -647,3 +657,44 @@ Android, physical devices, public HTTPS and production restore/deployment.
 Synthetic native queue subprocesses remain separate from actual Runtime
 consumption. No existing daemon/record permissions or real identity were changed
 to bypass proof, and no push, merge or deployment is performed by this task.
+
+## Hub Nodes directory routing follow-up, 2026-10-22
+
+The Nodes-only route allowlist omitted the existing members/list aliases even
+though MCP already exposed `cicada_members` and `cicada_list`. This follow-up adds
+only those two exact GET paths to the native self handler. It calls the existing
+`Fabric.List` after current Group authentication and
+`RequireNativeCollaborationSelf`; `List` retains its `directory.read` check,
+filters and `directoryCard` projection. No wildcard Fabric route, new grant,
+caller-selected identity, DTO revision or Pair consent change is introduced.
+Other HTTP methods refuse and suffix routes remain unavailable.
+
+The tested source is dirty
+`c4cb7b965481377ecface335e693095e3b7df76e`, full manifest SHA-256
+`7f385dd774c6de02a7f97fbd3334f3af2152e44eb54b3fe41ee229665c4b3401`.
+The tests use the same pinned isolated Docker environment documented above.
+All three gates have successful full source/base postchecks; this validation
+record and the scope-wording clarification are later documentation-only overlays.
+Production and test files remain exactly as tested. Artifacts are under
+`/home/zyf/Cicada/.local/evidence/node-endpoint-registration/`:
+
+| Gate | Result | Artifact directory |
+|---|---|---|
+| Scoped normal, `internal/server`: ordinary domain TCP, legacy Pair TCP and existing directory privacy HTTP | Exit 0; 25 pass, 0 fail, 0 skip; 3 top-level; 14.163 seconds | `hub-nodes-directory-normal-20261022-20261022T234739Z` |
+| Focused race, `internal/server`: ordinary domain and legacy Pair TCP | Exit 0; 7 pass, 0 fail, 0 skip; 2 top-level; 106.137 seconds | `hub-nodes-directory-race-20261022-20261022T234739Z` |
+| `go vet ./internal/server ./internal/fabric` | Exit 0 | `hub-nodes-directory-vet-20261022-20261022T234739Z` |
+
+Both directory aliases are checked over the actual Nodes-only TCP handler with
+real synthetic N2/N3/Owner/Node signatures and durable Store state. Active domain
+A/B and fully consented legacy Pair entries retain their own names/cwds while
+Native SIDs and credentials remain absent. Zero-grant admission, absent/wrong
+credential type, unjoined Group header and current revocation refuse. Node,
+harness and limit filters retain the original behavior; POST and extra path
+segments cannot enable a general Fabric API. The existing foreign-Owner directory
+privacy assertions also pass. No SQL membership or grant bypass sets up the
+Nodes-only positive cases.
+
+These scoped HTTP results do not establish complete actual Native Host
+communication, real fifteen-minute login expiry, Windows, Android, public HTTPS
+or production deployment. QA owns the separate full Native/login-expiry gate;
+its historical driver-framing and tool-name corrections retain their own sources.

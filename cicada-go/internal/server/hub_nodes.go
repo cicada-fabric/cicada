@@ -162,7 +162,7 @@ func (h *hubNodesHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.base.ServeHTTP(w, r)
 		return
 	}
-	if path == "/v2/fabric/whoami" || path == "/v2/fabric/endpoint-keys" || path == "/v2/fabric/heartbeat" || path == "/v2/fabric/resolve" {
+	if path == "/v2/fabric/whoami" || path == "/v2/fabric/endpoint-keys" || path == "/v2/fabric/heartbeat" || path == "/v2/fabric/resolve" || path == "/v2/fabric/members" || path == "/v2/fabric/list" {
 		h.nativePairSelf(w, r)
 		return
 	}

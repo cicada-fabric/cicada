@@ -180,6 +180,9 @@ func localDomainRealTCP(t *testing.T, maximum bool) {
 		localDomainNodeHTTP(t, a, wire.OperationLocalDomainNodeJoin, sequence, wire.LocalDomainNodeJoin{ContractRevision: wire.LocalDomainContractRevision, Selection: s, LocalUserScope: r.LocalUserScope, AttemptID: attempt, Runtime: "codex", NativeSessionID: sid, Workspace: workspace, EndpointName: name}, &joins[i])
 		j := joins[i]
 		m := j.Member
+		if !maximum {
+			assertNativeDirectoryStatus(t, a, d.Policy.GroupID, j.SessionToken, http.StatusForbidden)
+		}
 		self := a.pairHTTP(t, http.MethodGet, "/v2/fabric/whoami", "CicadaSession "+j.SessionToken, d.Policy.GroupID, nil, http.StatusOK)
 		var card fabric.NetworkCard
 		if json.Unmarshal(self, &card) != nil || card.EndpointID != m.EndpointID || card.NativeSessionID != sid || card.BindingEpoch != m.BindingEpoch {
@@ -245,6 +248,13 @@ func localDomainRealTCP(t *testing.T, maximum bool) {
 			localDomainLargeRejectedOriginalRecovery(t, a, sequence, complete)
 		}
 	}
+	if !maximum {
+		want := make(map[string]nativeDirectoryExpected)
+		for _, j := range joins {
+			want[j.Member.EndpointID] = nativeDirectoryExpected{name: j.Endpoint.Name, workspace: j.Member.Workspace, node: j.Member.NodeID}
+		}
+		assertNativeDirectoryHTTP(t, a, d.Policy.GroupID, joins[0].SessionToken, want)
+	}
 	query := url.Values{"group_id": {d.Policy.GroupID}, "source_endpoint_id": {joins[0].Member.EndpointID}, "target_endpoint_id": {joins[1].Member.EndpointID}}
 	peerRaw := a.pairHTTP(t, http.MethodGet, "/v2/relay/nodes/"+url.PathEscape(n.NodeID)+"/group/sealed/peer-key?"+query.Encode(), "CicadaNode "+a.nodeToken, "", nil, http.StatusOK)
 	var peer store.SameGroupSealedV1PeerKey
@@ -277,6 +287,9 @@ func localDomainRealTCP(t *testing.T, maximum bool) {
 	var revoked wire.LocalDomainResult
 	localDomainOwnerHTTP(t, a, wire.OperationLocalDomainRevoke, revoke, &revoked)
 	a.pairHTTP(t, http.MethodGet, path, "CicadaNode "+a.nodeToken, "", nil, http.StatusNotFound)
+	if !maximum {
+		assertNativeDirectoryStatus(t, a, d.Policy.GroupID, joins[0].SessionToken, http.StatusForbidden)
+	}
 }
 
 // Exercise a large, authenticated, typed original and its exact rejection

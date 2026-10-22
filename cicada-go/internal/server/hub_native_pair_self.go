@@ -26,6 +26,15 @@ func (h *hubNodesHandler) nativePairSelf(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusForbidden, fabric.ErrPermissionDenied)
 		return
 	}
+	if r.URL.Path == "/v2/fabric/members" || r.URL.Path == "/v2/fabric/list" {
+		cards, err := h.nodes.Fabric().List(actor, r.URL.Query().Get("status"), r.URL.Query().Get("node_id"), r.URL.Query().Get("harness"), queryInt(r, "limit", 200))
+		if err != nil {
+			fabricV2Error(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"endpoints": cards})
+		return
+	}
 	if r.URL.Path == "/v2/fabric/resolve" {
 		var input fabric.ResolveInput
 		if decodeStrictClientJSON(r.Body, 4096, &input) != nil {
