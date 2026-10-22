@@ -929,3 +929,45 @@ This README and contract are later documentation deltas. Docker interop, actual
 installed Codex/shared-daemon/native Runtime, Windows GUI, Android, physical
 devices and public HTTPS are **NOT_RUN** in this checkpoint and remain separate
 QA evidence.
+
+### 2026-10-22 local Hook diagnostic stages
+
+Hook refusals now distinguish native coordinates, native record verification,
+missing tool input, missing call context, an invalid connection marker, invalid
+business arguments, argument encoding failure and an unconfirmed Node ticket.
+Each has a stable local support code and a short bilingual cause with an action
+such as retrying in the original Thread, normal `/hooks` enable/review, checking
+the Node in the App, or providing the code to support. No tool argument values,
+native IDs, record paths, nonces, tickets or arbitrary Node error text are echoed.
+These stages identify local processing failures; they do not turn them into a
+Hub authorization refusal. Local record errors use `errors.As` with the reviewed
+`LocalCodexContextError`: ROOT, PATH, OWNERSHIP, PERMISSION, INODE, METADATA,
+SOURCE, SESSION and WORKSPACE have fixed messages. Unknown stages and wrapped
+error text fall back to the bounded generic record stage. Node-side IPC errors
+retain the Node-ticket stage; their text is not parsed for local record claims.
+The shared native record validator and IPC shape are unchanged by this consumer
+checkpoint.
+
+Literal matched commands retain their blocking result and neutral short reason;
+the SDK's `Blocked by hook` heading does not identify a business failure. Failed
+PreToolUse still denies the invocation before any business action. Diagnostics
+do not change permissions, recreate native identity, borrow a prior Thread or
+claim that a preparation/repair command exists. The separate default local
+collaboration flow awaits its shared DTOs and implementation, and is not
+implemented or accepted by these diagnostic changes.
+
+Pinned Go 1.27.3 normal and race checks each recorded **16 PASS, 0 FAIL,
+0 SKIP** with the Hook/PreTool/real CLI-dispatch selector; scoped CLI vet passed.
+The suite verifies stage selection, private-field redaction, refusal before Node
+issue for invalid calls, bounded typed-stage handling, and unchanged bytes/mode
+of an unsafe synthetic native record. Evidence is retained at
+`/home/zyf/.cicada/acceptance/codex-context-checks/hook-diagnostics-typed-20261022T172936Z/`,
+result SHA-256
+`41e9cdc5fd0ac8032ed3eddd05a0ec520893f7eae97677b3e63067bb4fddcfe5`.
+The tested source is dirty `5c1dd5a144817e6d6fcf399fd648258531520571`;
+all source inputs remained stable across the retained before/after manifests.
+The earlier generic-stage checks on dirty `96dcbe0` remain separately retained
+under `hook-diagnostics-20261022T172150Z` and are not attributed to the final
+typed-stage source. This README is a later documentation delta.
+Actual installed Host, Docker, Windows GUI, Android, physical devices and public
+HTTPS are **NOT_RUN** for this checkpoint.

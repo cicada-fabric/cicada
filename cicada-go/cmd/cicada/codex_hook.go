@@ -66,8 +66,7 @@ func codexHookBlock(output io.Writer, message string) error {
 }
 
 func codexHookDeny(output io.Writer) error {
-	return codexHookOutput(output, map[string]any{"hookSpecificOutput": map[string]any{"hookEventName": "PreToolUse", "permissionDecision": "deny",
-		"permissionDecisionReason": "Cicada 无法验证此次原生会话调用，未使用先前 Thread 的身份。 / Cicada could not verify this invocation; no previous Thread identity was used."}})
+	return codexHookDenyFor(output, codexHookTicketUnavailable)
 }
 
 // The CLI dispatch supplies stdin/stdout; no caller SID is read from argv/env.
@@ -153,30 +152,33 @@ func codexPreToolUseWithSelection(event codexHookInput, output io.Writer, select
 	if err != nil && selection != nil {
 		return codexHookOutput(output, map[string]any{"hookSpecificOutput": map[string]any{"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": err.Error()}})
 	}
-	if err != nil || event.ToolInput == nil {
-		return codexHookDeny(output)
+	if err != nil {
+		return codexHookDenyFor(output, codexHookCoordinatesInvalid)
+	}
+	if event.ToolInput == nil {
+		return codexHookDenyFor(output, codexHookToolInputMissing)
 	}
 	contextInput, ok := event.ToolInput[codexMCPContextArgument].(map[string]any)
 	if !ok {
-		return codexHookDeny(output)
+		return codexHookDenyFor(output, codexHookContextMissing)
 	}
 	nonce, ok := contextInput["connection_nonce"].(string)
 	if !ok || !localContextHex(nonce, 64) {
-		return codexHookDeny(output)
+		return codexHookDenyFor(output, codexHookNonceInvalid)
 	}
 	business, err := codexBusinessArguments(event.ToolInput)
 	if err != nil || validateMCPArguments(name, business) != nil {
-		return codexHookDeny(output)
+		return codexHookDenyFor(output, codexHookArgumentsInvalid)
 	}
 	digest, err := codexArgumentsDigest(business)
 	if err != nil {
-		return codexHookDeny(output)
+		return codexHookDenyFor(output, codexHookDigestInvalid)
 	}
 	issued, err := requestMachineAgentCodexContextIssue(codexHookSocket(coordinates, connection), localCodexContextIssue{
 		Version: localJoinProtocolVersion, Operation: "codex_context_issue", APIOrigin: origin, Harness: "codex", NativeSessionID: coordinates.NativeSessionID,
 		Workspace: coordinates.Workspace, TranscriptPath: event.TranscriptPath, ConnectionNonce: nonce, ToolName: name, ArgumentsDigest: digest, TurnID: event.TurnID, ToolUseID: event.ToolUseID})
 	if err != nil || issued == nil || issued.Ticket == "" {
-		return codexHookDeny(output)
+		return codexHookDenyFor(output, codexHookTicketUnavailable)
 	}
 	// Replace the entire context, including a provider-supplied parent ticket.
 	business[codexMCPContextArgument] = map[string]any{"connection_nonce": nonce, "ticket": issued.Ticket}
@@ -285,8 +287,11 @@ func codexUserPromptWithSelection(event codexHookInput, output io.Writer, select
 	if err != nil && selection != nil {
 		return codexHookBlock(output, err.Error())
 	}
-	if err != nil || verifyCodexContextTranscript(event.TranscriptPath, event.SessionID, event.CWD) != nil {
-		return codexHookBlock(output, "Cicada 无法验证当前原生记录；未登记、未接入，也未借用其他 Thread。 / Cicada could not verify the current native record; no registration, connection or borrowed identity was used.")
+	if err != nil {
+		return codexHookBlock(output, codexHookFailureText(codexHookCoordinatesInvalid))
+	}
+	if err := verifyCodexContextTranscript(event.TranscriptPath, event.SessionID, event.CWD); err != nil {
+		return codexHookBlock(output, codexHookRecordFailure(err))
 	}
 	base := ""
 	if connection != nil {
