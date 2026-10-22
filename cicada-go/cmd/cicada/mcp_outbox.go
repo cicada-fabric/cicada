@@ -105,9 +105,10 @@ type mcpOutboxOperation struct {
 // operations from different native sessions remain isolated by their scope
 // columns and are never addressed by a global body hash.
 type mcpOutboxStore struct {
-	path string
-	mu   sync.Mutex
-	db   *sql.DB
+	connectionPin *LocalNodeConnectionPin
+	path          string
+	mu            sync.Mutex
+	db            *sql.DB
 }
 
 func newMCPOutbox(path string) *mcpOutboxStore {
@@ -146,40 +147,53 @@ func (s *mcpOutboxStore) openLocked() error {
 		return errMCPOutboxPersistence
 	}
 	if s.db != nil {
-		return nil
+		return s.connectionFence(s.db)
 	}
 	if strings.TrimSpace(s.path) == "" {
 		return fmt.Errorf("%w: no local state path configured", errMCPOutboxPersistence)
 	}
+	created, err := s.prepareConnectionDB()
+	if err != nil {
+		return err
+	}
 
 	if s.path != ":memory:" {
-		dir := filepath.Clean(filepath.Dir(s.path))
-		if dir == "." {
-			if absolute, err := filepath.Abs(dir); err == nil {
-				dir = absolute
-			}
-		}
-		if err := ensureMCPPrivateDir(dir); err != nil {
+		if err := s.connectionDirectory(); err != nil {
 			return fmt.Errorf("%w: create private outbox directory: %v", errMCPOutboxPersistence, err)
 		}
 		if info, err := os.Lstat(s.path); err == nil {
 			if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
 				return fmt.Errorf("%w: outbox path is not a regular file", errMCPOutboxPersistence)
 			}
-			if err := os.Chmod(s.path, 0o600); err != nil {
-				return fmt.Errorf("%w: protect outbox file: %v", errMCPOutboxPersistence, err)
+			if s.connectionPin == nil {
+				if err := os.Chmod(s.path, 0o600); err != nil {
+					return fmt.Errorf("%w: protect outbox file: %v", errMCPOutboxPersistence, err)
+				}
 			}
 		} else if !errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("%w: inspect outbox file: %v", errMCPOutboxPersistence, err)
 		}
 	}
 
-	db, err := sql.Open("sqlite", s.path)
+	source := s.path
+	if s.connectionPin != nil {
+		source = mcpOutboxSQLiteURI(s.path, "mode=rw")
+	}
+	db, err := sql.Open("sqlite", source)
 	if err != nil {
 		return fmt.Errorf("%w: open outbox: %v", errMCPOutboxPersistence, err)
 	}
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
+	if created != nil {
+		err = s.initializeConnectionDB(db, created)
+	} else {
+		err = s.connectionFence(db)
+	}
+	if err != nil {
+		_ = db.Close()
+		return err
+	}
 	closeDB := func(openErr error) error {
 		_ = db.Close()
 		return fmt.Errorf("%w: initialize outbox: %v", errMCPOutboxPersistence, openErr)
@@ -621,11 +635,17 @@ func (m *mcpServer) ensureMCPOutbox() (*mcpOutboxStore, error) {
 	m.stateMu.Lock()
 	defer m.stateMu.Unlock()
 	if m.outbox == nil {
-		path := mcpOutboxStatePath(m.sessionStatePath)
+		path := ""
+		if m.localNode != nil {
+			path = m.localNode.Pin.MCPOutboxStateFile
+		} else {
+			path = mcpOutboxStatePath(m.sessionStatePath)
+		}
 		if path == "" {
 			return nil, fmt.Errorf("%w: MCP server has no state path", errMCPOutboxPersistence)
 		}
 		m.outbox = newMCPOutbox(path)
+		m.outbox.connectionPin = m.localNodePin()
 	}
 	return m.outbox, nil
 }

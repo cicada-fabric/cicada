@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -44,6 +45,7 @@ type mcpServer struct {
 	heartbeatOnce     sync.Once
 	stop              chan struct{}
 	codexContext      *codexMCPContextState
+	localNode         *LocalNodeConnection
 }
 
 var errPeerTaskHandoffRetired = errors.New("Thread-to-Thread plaintext Task handoffs are retired; use sealed cicada_send and explicitly authorized Artifact references. This does not transfer Task responsibility or stop resources.")
@@ -75,6 +77,10 @@ func (e *mcpHTTPError) Error() string {
 }
 
 func newMCPServer(baseURL, endpointID, statePath string) *mcpServer {
+	return newMCPServerWithPaths(baseURL, endpointID, statePath, mcpOutboxStatePath(statePath))
+}
+
+func newMCPServerWithPaths(baseURL, endpointID, statePath, outboxPath string) *mcpServer {
 	server := &mcpServer{
 		baseURL:          strings.TrimRight(strings.TrimSpace(baseURL), "/"),
 		endpointID:       strings.TrimSpace(endpointID),
@@ -84,7 +90,7 @@ func newMCPServer(baseURL, endpointID, statePath string) *mcpServer {
 	if server.sessionStatePath != "" {
 		server.sessionState = newMCPSessionStateStore(server.sessionStatePath)
 	}
-	server.outbox = newMCPOutbox(mcpOutboxStatePath(server.sessionStatePath))
+	server.outbox = newMCPOutbox(outboxPath)
 	return server
 }
 
@@ -109,72 +115,100 @@ type mcpError struct {
 
 func runMCP(args []string) error {
 	flags := flag.NewFlagSet("mcp", flag.ContinueOnError)
-	apiURL := flags.String("api-url", envOr("CICADA_API_URL", "http://127.0.0.1:8787"), "Cicada Hub URL")
-	endpointID := flags.String("endpoint", strings.TrimSpace(os.Getenv("CICADA_ENDPOINT_ID")), "existing Endpoint ID")
+	apiURL := flags.String("api-url", "", "Cicada Hub URL (legacy explicit configuration)")
+	endpointID := flags.String("endpoint", "", "existing Endpoint ID (legacy explicit configuration)")
 	hubID := flags.String("hub-id", "", "exact Hub selection from local multi-Hub registry")
+	userRoot := flags.String("user-root", "", "absolute selected installation root; discover an already running Node")
+	nodeID := flags.String("node-id", "", "exact Node selection within --user-root")
 	hubsFile := flags.String("hubs-file", "", "local multi-Hub registry JSON")
 	stateRoot := flags.String("state-root", "", "local multi-Hub state root")
 	withCodexContext := flags.Bool("codex-context", false, "require a fresh native Codex context for every tool call")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
-	statePath := ""
-	hubStateDir := ""
-	writerRoot := ""
-	pqtlsSelected := strings.TrimSpace(os.Getenv("CICADA_NODE_PQTLS_CONFIG")) != ""
-	contextNodeID := ""
-	if *hubID != "" || *hubsFile != "" || *stateRoot != "" {
-		if *hubID == "" || *hubsFile == "" || *stateRoot == "" {
-			return errors.New("MCP multi-Hub selection requires --hub-id, --hubs-file and --state-root")
+	if len(flags.Args()) != 0 {
+		return errors.New("unexpected MCP arguments")
+	}
+	selected := make(map[string]bool)
+	flags.Visit(func(f *flag.Flag) { selected[f.Name] = true })
+	var server *mcpServer
+	if selected["user-root"] {
+		if *userRoot == "" || !*withCodexContext || selected["api-url"] || selected["endpoint"] || selected["hubs-file"] || selected["state-root"] {
+			return codexLocalNodeError(ErrLocalNodeConfigRequired)
 		}
-		entries, err := loadMachineHubConfig(*hubsFile)
+		var err error
+		server, err = newLocalNodeMCPServer(LocalNodeSelection{UserRoot: *userRoot, HubID: *hubID, NodeID: *nodeID})
 		if err != nil {
 			return err
-		}
-		root, err := filepath.Abs(*stateRoot)
-		if err != nil {
-			return err
-		}
-		writerRoot = root
-		for _, entry := range entries {
-			if entry.HubID != *hubID {
-				continue
-			}
-			*apiURL = entry.ControlURL
-			contextNodeID = entry.NodeID
-			pqtlsSelected = strings.TrimSpace(entry.PQTLSConfig) != ""
-			hubStateDir = machineHubStateDir(root, entry)
-			statePath = filepath.Join(hubStateDir, "mcp", "sessions.json")
-			break
-		}
-		if hubStateDir == "" {
-			return errors.New("selected Hub ID is absent from local registry")
 		}
 	} else {
-		var err error
-		statePath, err = mcpSessionStatePath()
-		if err != nil {
-			return err
+		if selected["node-id"] {
+			return codexLocalNodeError(ErrLocalNodeConfigRequired)
 		}
-	}
-	server := newMCPServer(strings.TrimRight(*apiURL, "/"), *endpointID, statePath)
-	server.pqtlsSelected = pqtlsSelected
-	server.hubStateDir = hubStateDir
-	server.writerRoot = writerRoot
-	if *withCodexContext {
-		if contextNodeID == "" {
+		if !selected["api-url"] {
+			*apiURL = envOr("CICADA_API_URL", "http://127.0.0.1:8787")
+		}
+		if !selected["endpoint"] {
+			*endpointID = strings.TrimSpace(os.Getenv("CICADA_ENDPOINT_ID"))
+		}
+		statePath := ""
+		hubStateDir := ""
+		writerRoot := ""
+		pqtlsSelected := strings.TrimSpace(os.Getenv("CICADA_NODE_PQTLS_CONFIG")) != ""
+		contextNodeID := ""
+		if *hubID != "" || *hubsFile != "" || *stateRoot != "" {
+			if *hubID == "" || *hubsFile == "" || *stateRoot == "" {
+				return errors.New("MCP multi-Hub selection requires --hub-id, --hubs-file and --state-root")
+			}
+			entries, err := loadMachineHubConfig(*hubsFile)
+			if err != nil {
+				return err
+			}
+			root, err := filepath.Abs(*stateRoot)
+			if err != nil {
+				return err
+			}
+			writerRoot = root
+			for _, entry := range entries {
+				if entry.HubID != *hubID {
+					continue
+				}
+				*apiURL = entry.ControlURL
+				contextNodeID = entry.NodeID
+				pqtlsSelected = strings.TrimSpace(entry.PQTLSConfig) != ""
+				hubStateDir = machineHubStateDir(root, entry)
+				statePath = filepath.Join(hubStateDir, "mcp", "sessions.json")
+				break
+			}
+			if hubStateDir == "" {
+				return errors.New("selected Hub ID is absent from local registry")
+			}
+		} else {
 			var err error
-			contextNodeID, err = configuredCodexNodeID()
+			statePath, err = mcpSessionStatePath()
 			if err != nil {
 				return err
 			}
 		}
-		if err := server.enableCodexContext(contextNodeID); err != nil {
-			return err
+		server = newMCPServer(strings.TrimRight(*apiURL, "/"), *endpointID, statePath)
+		server.pqtlsSelected = pqtlsSelected
+		server.hubStateDir = hubStateDir
+		server.writerRoot = writerRoot
+		if *withCodexContext {
+			if contextNodeID == "" {
+				var err error
+				contextNodeID, err = configuredCodexNodeID()
+				if err != nil {
+					return err
+				}
+			}
+			if err := server.enableCodexContext(contextNodeID); err != nil {
+				return err
+			}
 		}
-	}
-	if hubStateDir != "" {
-		server.outbox = newMCPOutbox(filepath.Join(hubStateDir, "mcp", "outbox.sqlite3"))
+		if hubStateDir != "" {
+			server.outbox = newMCPOutbox(filepath.Join(hubStateDir, "mcp", "outbox.sqlite3"))
+		}
 	}
 	defer func() { close(server.stop); server.stopCodexHeartbeat() }()
 	// A cached credential is considered usable only after the trusted harness
@@ -206,6 +240,9 @@ func runMCP(args []string) error {
 }
 
 func (m *mcpServer) joinSocketPath(context harness.SessionContext) string {
+	if m != nil && m.localNode != nil {
+		return m.localNode.Pin.SocketPath
+	}
 	if m != nil && m.hubStateDir != "" {
 		return machineAgentJoinSocketPath(m.hubStateDir, context.MachineID)
 	}
@@ -382,6 +419,12 @@ func (m *mcpServer) callToolWithContext(name string, arguments map[string]any) (
 	}
 	if err := validateMCPArguments(name, arguments); err != nil {
 		return nil, err
+	}
+	// The formal discovery pin does not select legacy Network invitation or
+	// Monitor configuration. Do not obtain another deployment's paths from env.
+	if m.localNode != nil && (strings.HasPrefix(name, "cicada_network_") || stringArgument(arguments, "network_id") != "" ||
+		strings.HasPrefix(name, "cicada_monitor_broadcast")) {
+		return nil, codexLocalNodeError(ErrLocalNodeConfigRequired)
 	}
 	// Validate reviewer operation inputs before the active-session precondition.
 	// This keeps malformed CAS values (for example a fractional version) from
@@ -857,6 +900,10 @@ func (m *mcpServer) restoreSession(context harness.SessionContext) error {
 	if cached == nil {
 		return nil
 	}
+	if err := validateCodexCachedConnection(cached, m.localNode); err != nil {
+		m.clearSessionMemory()
+		return err
+	}
 	if cached.Scope != scope || !cached.matches(origin, scope, trusted) {
 		return nil
 	}
@@ -976,6 +1023,9 @@ func (m *mcpServer) apiForGroup(method, path string, body any, groupID string) (
 }
 
 func (m *mcpServer) requestWithGroup(method, path string, body any, authorization, groupID string) (any, error) {
+	if err := revalidateCodexLocalNode(context.Background(), m.localNode); err != nil {
+		return nil, err
+	}
 	var reader io.Reader
 	var encodedBody []byte
 	if body != nil {
@@ -1000,6 +1050,9 @@ func (m *mcpServer) requestWithGroup(method, path string, body any, authorizatio
 		request.Header.Set("Cicada-Group-Scope", groupID)
 	}
 	client := &http.Client{Timeout: 30 * time.Second}
+	if m.localNode != nil {
+		client.CheckRedirect = rejectNodeRedirect
+	}
 	if strings.HasPrefix(path, "/v2/fabric/") || strings.HasPrefix(path, "/v2/relay/") || strings.HasPrefix(path, "/v2/artifacts") || strings.HasPrefix(path, "/v2/artifact-refs") {
 		if m.pqtlsSelected {
 			if strings.HasPrefix(path, "/v2/fabric/") {
@@ -1007,9 +1060,11 @@ func (m *mcpServer) requestWithGroup(method, path string, body any, authorizatio
 			}
 			return nil, errors.New("protected MCP route has no checked local Node transport path for the selected PQ Hub")
 		}
-		client, err = machineNodeHTTPClient(request.Context(), 30*time.Second)
-		if err != nil {
-			return nil, err
+		if m.localNode == nil {
+			client, err = machineNodeHTTPClient(request.Context(), 30*time.Second)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 	response, err := client.Do(request)
@@ -1017,6 +1072,9 @@ func (m *mcpServer) requestWithGroup(method, path string, body any, authorizatio
 		return nil, fmt.Errorf("Cicada Hub request failed: %w", err)
 	}
 	defer response.Body.Close()
+	if m.localNode != nil && response.StatusCode >= 300 && response.StatusCode < 400 {
+		return nil, errors.New("Cicada Hub redirect refused; no authorization result confirmed")
+	}
 	data, err := io.ReadAll(io.LimitReader(response.Body, 2*1024*1024))
 	if err != nil {
 		return nil, err
@@ -1070,7 +1128,7 @@ func (m *mcpServer) join(arguments map[string]any) (any, error) {
 		return m.joinNativePair(selection)
 	}
 	groupID := stringArgument(arguments, "group_id")
-	if groupID == "" {
+	if groupID == "" && m.localNode == nil {
 		groupID = strings.TrimSpace(os.Getenv("CICADA_GROUP_ID"))
 	}
 	if groupID == "" {
@@ -1164,7 +1222,8 @@ func (m *mcpServer) join(arguments map[string]any) (any, error) {
 	state := m.sessionStateStore()
 	if state != nil {
 		if err := state.save(mcpCachedSession{
-			Scope: scope, APIOrigin: origin, Harness: trusted.Harness, NativeSessionID: trusted.NativeSessionID,
+			ConnectionPin: m.localNodePin(),
+			Scope:         scope, APIOrigin: origin, Harness: trusted.Harness, NativeSessionID: trusted.NativeSessionID,
 			NodeID: trusted.NodeID, Workspace: trusted.Workspace, GroupID: groupID, EndpointID: joined.Endpoint.ID,
 			OwnerID:   joined.Endpoint.Owner,
 			BindingID: joined.BindingID, BindingEpoch: joined.BindingEpoch, LeaseExpiresAt: joined.LeaseExpiresAt,
@@ -1271,7 +1330,8 @@ func (m *mcpServer) useGroup(groupID string) (any, error) {
 			return nil, err
 		}
 		if err := state.save(mcpCachedSession{
-			Scope: scope, APIOrigin: origin, Harness: trusted.Harness,
+			ConnectionPin: m.localNodePin(),
+			Scope:         scope, APIOrigin: origin, Harness: trusted.Harness,
 			NativeSessionID: trusted.NativeSessionID, NodeID: trusted.NodeID,
 			Workspace: trusted.Workspace, GroupID: groupID, EndpointID: endpointID,
 			OwnerID:   public.Endpoint.Owner,

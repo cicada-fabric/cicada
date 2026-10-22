@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -121,6 +122,11 @@ func (m *mcpServer) callContextualTool(name string, arguments map[string]any) (a
 	}
 	state.callMu.Lock()
 	defer state.callMu.Unlock()
+	if err := revalidateCodexLocalNode(context.Background(), m.localNode); err != nil {
+		m.stopCodexHeartbeat()
+		m.clearSessionMemory()
+		return nil, err
+	}
 	if !isCicadaMCPTool(name) {
 		return nil, errCodexMCPContext
 	}

@@ -2,8 +2,10 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
+	"flag"
 	"io"
 	"path/filepath"
 	"strconv"
@@ -70,8 +72,22 @@ func codexHookDeny(output io.Writer) error {
 
 // The CLI dispatch supplies stdin/stdout; no caller SID is read from argv/env.
 func runCodexHook(args []string, input io.Reader, output io.Writer) error {
-	if len(args) != 0 {
-		return errors.New("usage: cicada codex-hook")
+	flags := flag.NewFlagSet("codex-hook", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	root := flags.String("user-root", "", "absolute selected installation root")
+	hubID := flags.String("hub-id", "", "exact Hub selection")
+	nodeID := flags.String("node-id", "", "exact Node selection")
+	if flags.Parse(args) != nil || len(flags.Args()) != 0 {
+		return errors.New("usage: cicada codex-hook [--user-root ABS [--hub-id ID] [--node-id ID]]")
+	}
+	var selection *LocalNodeSelection
+	flags.Visit(func(f *flag.Flag) {
+		if f.Name == "user-root" {
+			selection = &LocalNodeSelection{UserRoot: *root, HubID: *hubID, NodeID: *nodeID}
+		}
+	})
+	if selection != nil && *root == "" || selection == nil && (*hubID != "" || *nodeID != "") {
+		return codexLocalNodeError(ErrLocalNodeConfigRequired)
 	}
 	event, err := decodeCodexHook(input)
 	if err != nil {
@@ -79,9 +95,9 @@ func runCodexHook(args []string, input io.Reader, output io.Writer) error {
 	}
 	switch event.Event {
 	case "PreToolUse":
-		return codexPreToolUse(event, output)
+		return codexPreToolUseWithSelection(event, output, selection)
 	case "UserPromptSubmit":
-		return codexUserPrompt(event, output)
+		return codexUserPromptWithSelection(event, output, selection)
 	default:
 		return codexHookOutput(output, map[string]any{})
 	}
@@ -102,12 +118,41 @@ func codexHookCoordinates(event codexHookInput) (harness.SessionContext, string,
 	return harness.SessionContext{Harness: "codex", NativeSessionID: event.SessionID, MachineID: nodeID, Workspace: event.CWD}, origin, nil
 }
 
+func codexHookConnection(event codexHookInput, selection *LocalNodeSelection) (harness.SessionContext, string, *LocalNodeConnection, error) {
+	if selection == nil {
+		coordinates, origin, err := codexHookCoordinates(event)
+		return coordinates, origin, nil, err
+	}
+	if !localContextText(event.SessionID, 128) || !filepath.IsAbs(event.CWD) || filepath.Clean(event.CWD) != event.CWD {
+		return harness.SessionContext{}, "", nil, errCodexMCPContext
+	}
+	connection, err := ResolveLocalNodeConnection(context.Background(), *selection, nil)
+	if err != nil {
+		return harness.SessionContext{}, "", nil, codexLocalNodeError(err)
+	}
+	return harness.SessionContext{Harness: "codex", NativeSessionID: event.SessionID, MachineID: connection.Pin.NodeID, Workspace: event.CWD}, connection.Pin.APIOrigin, &connection, nil
+}
+
+func codexHookSocket(coordinates harness.SessionContext, connection *LocalNodeConnection) string {
+	if connection != nil {
+		return connection.Pin.SocketPath
+	}
+	return defaultMCPJoinSocketPath(coordinates)
+}
+
 func codexPreToolUse(event codexHookInput, output io.Writer) error {
+	return codexPreToolUseWithSelection(event, output, nil)
+}
+
+func codexPreToolUseWithSelection(event codexHookInput, output io.Writer, selection *LocalNodeSelection) error {
 	name, matched := codexCicadaToolName(event.ToolName)
 	if !matched {
 		return codexHookOutput(output, map[string]any{})
 	}
-	coordinates, origin, err := codexHookCoordinates(event)
+	coordinates, origin, connection, err := codexHookConnection(event, selection)
+	if err != nil && selection != nil {
+		return codexHookOutput(output, map[string]any{"hookSpecificOutput": map[string]any{"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": err.Error()}})
+	}
 	if err != nil || event.ToolInput == nil {
 		return codexHookDeny(output)
 	}
@@ -127,7 +172,7 @@ func codexPreToolUse(event codexHookInput, output io.Writer) error {
 	if err != nil {
 		return codexHookDeny(output)
 	}
-	issued, err := requestMachineAgentCodexContextIssue(defaultMCPJoinSocketPath(coordinates), localCodexContextIssue{
+	issued, err := requestMachineAgentCodexContextIssue(codexHookSocket(coordinates, connection), localCodexContextIssue{
 		Version: localJoinProtocolVersion, Operation: "codex_context_issue", APIOrigin: origin, Harness: "codex", NativeSessionID: coordinates.NativeSessionID,
 		Workspace: coordinates.Workspace, TranscriptPath: event.TranscriptPath, ConnectionNonce: nonce, ToolName: name, ArgumentsDigest: digest, TurnID: event.TurnID, ToolUseID: event.ToolUseID})
 	if err != nil || issued == nil || issued.Ticket == "" {
@@ -225,6 +270,10 @@ func parseCodexOperatorPrompt(prompt string) (codexOperatorCommand, bool, error)
 const codexOperatorHelp = "Cicada：cicada join 名称 · cicada peers · cicada connect · cicada connect 配对名称 A|B · cicada leave。登记不授予通信权限。\nCicada: join NAME · peers · connect · connect PAIR_LABEL A|B · leave. Registration grants no communication permission."
 
 func codexUserPrompt(event codexHookInput, output io.Writer) error {
+	return codexUserPromptWithSelection(event, output, nil)
+}
+
+func codexUserPromptWithSelection(event codexHookInput, output io.Writer, selection *LocalNodeSelection) error {
 	command, matched, err := parseCodexOperatorPrompt(event.Prompt)
 	if !matched {
 		return codexHookOutput(output, map[string]any{})
@@ -232,11 +281,19 @@ func codexUserPrompt(event codexHookInput, output io.Writer) error {
 	if err != nil || command.operation == "help" {
 		return codexHookBlock(output, codexOperatorHelp)
 	}
-	coordinates, origin, err := codexHookCoordinates(event)
+	coordinates, origin, connection, err := codexHookConnection(event, selection)
+	if err != nil && selection != nil {
+		return codexHookBlock(output, err.Error())
+	}
 	if err != nil || verifyCodexContextTranscript(event.TranscriptPath, event.SessionID, event.CWD) != nil {
 		return codexHookBlock(output, "Cicada 无法验证当前原生记录；未登记、未接入，也未借用其他 Thread。 / Cicada could not verify the current native record; no registration, connection or borrowed identity was used.")
 	}
-	base, err := mcpSessionStatePath()
+	base := ""
+	if connection != nil {
+		base = connection.Pin.MCPSessionStateFile
+	} else {
+		base, err = mcpSessionStatePath()
+	}
 	if err != nil || strings.TrimSpace(base) == "" {
 		return codexHookBlock(output, "Cicada 原配置位置需要恢复，未创建替代状态。 / The original Cicada state location needs recovery; no replacement was created.")
 	}
@@ -247,6 +304,15 @@ func codexUserPrompt(event codexHookInput, output io.Writer) error {
 	scope, trusted, err := mcpSessionScope(origin, coordinates)
 	if err != nil {
 		return codexHookBlock(output, "Cicada 无法验证当前范围。 / Cicada could not verify the current scope.")
+	}
+	if connection != nil {
+		cached, loadErr := newMCPSessionStateStore(base).load(origin, coordinates)
+		if loadErr != nil {
+			return codexHookBlock(output, "Cicada 原缓存需要恢复，未创建替代状态。 / Restore the original Cicada cache; no replacement state was created.")
+		}
+		if err := validateCodexCachedConnection(cached, connection); err != nil {
+			return codexHookBlock(output, err.Error())
+		}
 	}
 	client, err := openCodexOperatorIntent(filepath.Join(filepath.Dir(base), "scopes", scope, "operator-intent.json"))
 	if err != nil {
@@ -265,7 +331,22 @@ func codexUserPrompt(event codexHookInput, output io.Writer) error {
 		}
 	}
 	q.PairLabel, q.Slot = command.label, command.slot
-	result, callErr := client.call(defaultMCPJoinSocketPath(coordinates), q, trusted.NodeID)
+	var result *localEndpointResult
+	var callErr error
+	if connection != nil {
+		q, callErr = client.prepareForConnection(q, *connection)
+		if callErr == nil {
+			callErr = revalidateCodexLocalNode(context.Background(), connection)
+		}
+		if callErr == nil {
+			result, callErr = client.callForConnection(q, *connection)
+		}
+		if callErr != nil && (errors.Is(callErr, ErrLocalNodeConfigRequired) || errors.Is(callErr, ErrLocalNodeBindingChanged)) {
+			return codexHookBlock(output, codexLocalNodeError(callErr).Error())
+		}
+	} else {
+		result, callErr = client.call(defaultMCPJoinSocketPath(coordinates), q, trusted.NodeID)
+	}
 	if result == nil || result.State != "COMPLETED" {
 		reason := "Cicada 此次命令结果尚未确认；请精确重试，不会以替代身份绕过原命令。 / This Cicada result is unconfirmed; retry the same command without substituting an identity."
 		if result != nil && result.State == "REFUSED" {
@@ -285,7 +366,11 @@ func codexUserPrompt(event codexHookInput, output io.Writer) error {
 	if result.Join != nil {
 		joined := result.Join
 		store := newMCPSessionStateStore(base)
-		if err := store.save(mcpCachedSession{Scope: scope, APIOrigin: origin, Harness: trusted.Harness, NativeSessionID: trusted.NativeSessionID, NodeID: trusted.NodeID,
+		var pin *LocalNodeConnectionPin
+		if connection != nil {
+			pin = &connection.Pin
+		}
+		if err := store.save(mcpCachedSession{ConnectionPin: pin, Scope: scope, APIOrigin: origin, Harness: trusted.Harness, NativeSessionID: trusted.NativeSessionID, NodeID: trusted.NodeID,
 			Workspace: trusted.Workspace, GroupID: joined.Endpoint.GroupID, EndpointID: joined.Endpoint.ID, OwnerID: joined.Endpoint.Owner,
 			BindingID: joined.BindingID, BindingEpoch: joined.BindingEpoch, LeaseExpiresAt: joined.LeaseExpiresAt, SessionToken: joined.SessionToken}); err != nil {
 			return codexHookBlock(output, "Cicada 接入结果尚未安全保存，原命令已保留。请精确重试。 / Cicada connection state is not safely saved; the original command is retained for retry.")

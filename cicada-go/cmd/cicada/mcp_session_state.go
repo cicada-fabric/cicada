@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/cicada-ai/cicada/internal/apppaths"
 	"github.com/cicada-ai/cicada/internal/harness"
 )
 
@@ -33,19 +34,20 @@ type mcpTrustedContext struct {
 // authenticate after a process restart, so the containing file is protected
 // with a private directory and a 0600 file mode.
 type mcpCachedSession struct {
-	Scope           string `json:"scope"`
-	APIOrigin       string `json:"api_origin"`
-	Harness         string `json:"harness"`
-	NativeSessionID string `json:"native_session_id"`
-	NodeID          string `json:"node_id"`
-	Workspace       string `json:"workspace,omitempty"`
-	GroupID         string `json:"group_id"`
-	EndpointID      string `json:"endpoint_id"`
-	OwnerID         string `json:"owner_id,omitempty"`
-	BindingID       string `json:"binding_id,omitempty"`
-	BindingEpoch    uint64 `json:"binding_epoch,omitempty"`
-	LeaseExpiresAt  string `json:"lease_expires_at,omitempty"`
-	SessionToken    string `json:"session_token"`
+	ConnectionPin   *LocalNodeConnectionPin `json:"connection_pin,omitempty"`
+	Scope           string                  `json:"scope"`
+	APIOrigin       string                  `json:"api_origin"`
+	Harness         string                  `json:"harness"`
+	NativeSessionID string                  `json:"native_session_id"`
+	NodeID          string                  `json:"node_id"`
+	Workspace       string                  `json:"workspace,omitempty"`
+	GroupID         string                  `json:"group_id"`
+	EndpointID      string                  `json:"endpoint_id"`
+	OwnerID         string                  `json:"owner_id,omitempty"`
+	BindingID       string                  `json:"binding_id,omitempty"`
+	BindingEpoch    uint64                  `json:"binding_epoch,omitempty"`
+	LeaseExpiresAt  string                  `json:"lease_expires_at,omitempty"`
+	SessionToken    string                  `json:"session_token"`
 }
 
 type mcpSessionStateDisk struct {
@@ -222,17 +224,27 @@ func (s *mcpSessionStateStore) save(entry mcpCachedSession) error {
 	if entry.Workspace != "" {
 		entry.Workspace = filepath.Clean(entry.Workspace)
 	}
+	if pin := entry.ConnectionPin; pin != nil {
+		if validateLocalNodePin(*pin) != nil || pin.MCPSessionStateFile != s.path || pin.APIOrigin != entry.APIOrigin || pin.NodeID != entry.NodeID {
+			return ErrLocalNodeDiscoveryInvalid
+		}
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if err := ensureMCPPrivateDir(filepath.Dir(s.scopeDirectory())); err != nil {
-		return err
-	}
-	if err := ensureMCPPrivateDir(s.scopeDirectory()); err != nil {
+	if err := s.ensureDirectories(entry.ConnectionPin); err != nil {
 		return err
 	}
 	disk, _, err := s.readScopeLocked(entry.Scope)
 	if err != nil {
 		return err
+	}
+	for _, previous := range disk.Sessions {
+		if (entry.ConnectionPin == nil) != (previous.ConnectionPin == nil) {
+			return ErrLocalNodeConfigRequired
+		}
+		if entry.ConnectionPin != nil && *entry.ConnectionPin != *previous.ConnectionPin {
+			return ErrLocalNodeBindingChanged
+		}
 	}
 	disk.Sessions = []mcpCachedSession{entry}
 	disk.Version = mcpSessionStateVersion
@@ -324,10 +336,11 @@ func ensureMCPPrivateDir(path string) error {
 }
 
 func (s *mcpSessionStateStore) writeScopeLocked(scope string, disk mcpSessionStateDisk) error {
-	if err := ensureMCPPrivateDir(filepath.Dir(s.scopeDirectory())); err != nil {
-		return err
+	var pin *LocalNodeConnectionPin
+	if len(disk.Sessions) == 1 {
+		pin = disk.Sessions[0].ConnectionPin
 	}
-	if err := ensureMCPPrivateDir(s.scopeDirectory()); err != nil {
+	if err := s.ensureDirectories(pin); err != nil {
 		return err
 	}
 	data, err := json.MarshalIndent(disk, "", "  ")
@@ -367,4 +380,21 @@ func (s *mcpSessionStateStore) writeScopeLocked(scope string, disk mcpSessionSta
 		return err
 	}
 	return nil
+}
+
+func (s *mcpSessionStateStore) ensureDirectories(pin *LocalNodeConnectionPin) error {
+	base := filepath.Dir(s.scopeDirectory())
+	if pin == nil {
+		if err := ensureMCPPrivateDir(base); err != nil {
+			return err
+		}
+	} else {
+		if _, err := apppaths.ResolveUserRoot(base); err != nil {
+			return ErrLocalNodeDiscoveryInvalid
+		}
+		if err := os.MkdirAll(base, 0700); err != nil {
+			return err
+		}
+	}
+	return ensureMCPPrivateDir(s.scopeDirectory())
 }

@@ -82,7 +82,7 @@ func (m *mcpServer) joinNativePair(selection nativePairJoinSelection) (any, erro
 	}
 	public := mcpPublicJoinResult{Endpoint: joined.Endpoint, NetworkCard: joined.NetworkCard, BindingID: joined.BindingID, BindingEpoch: joined.BindingEpoch, LeaseExpiresAt: joined.LeaseExpiresAt, NativeContextScope: decision, Reused: joined.Reused}
 	if state := m.sessionStateStore(); state != nil {
-		if err := state.save(mcpCachedSession{Scope: scope, APIOrigin: origin, Harness: trusted.Harness, NativeSessionID: trusted.NativeSessionID, NodeID: trusted.NodeID, Workspace: trusted.Workspace, GroupID: joined.Endpoint.GroupID, EndpointID: joined.Endpoint.ID, OwnerID: joined.Endpoint.Owner, BindingID: joined.BindingID, BindingEpoch: joined.BindingEpoch, LeaseExpiresAt: joined.LeaseExpiresAt, SessionToken: joined.SessionToken}); err != nil {
+		if err := state.save(mcpCachedSession{ConnectionPin: m.localNodePin(), Scope: scope, APIOrigin: origin, Harness: trusted.Harness, NativeSessionID: trusted.NativeSessionID, NodeID: trusted.NodeID, Workspace: trusted.Workspace, GroupID: joined.Endpoint.GroupID, EndpointID: joined.Endpoint.ID, OwnerID: joined.Endpoint.Owner, BindingID: joined.BindingID, BindingEpoch: joined.BindingEpoch, LeaseExpiresAt: joined.LeaseExpiresAt, SessionToken: joined.SessionToken}); err != nil {
 			return nil, fmt.Errorf("persist reserved Pair session: %w", err)
 		}
 	}

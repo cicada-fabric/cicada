@@ -529,3 +529,39 @@ CONFIG_REQUIRED through Describe/Resolve; its existing business service and
 original explicit strict flow remain unchanged. A missing Codex-daemon PQTLS
 environment variable can never turn that Node into a standard transport. No
 transport-profile field or new strict-runtime implementation is introduced.
+
+The installed consumer uses `mcp --codex-context --user-root ABS` and
+`codex-hook --user-root ABS`, optionally selecting exact `--hub-id`/`--node-id`.
+It rejects mixed legacy API/Endpoint/registry/state overrides. Connection paths
+and identity come from this resolver; no process environment is replaced, no
+Node is launched, and no other deployment's environment is used as a fallback.
+Every managed tool and frozen heartbeat revalidates the original complete pin.
+An instance-only restart can recover; a changed pin cannot retarget the call.
+Standard HTTP uses redirect refusal without consulting legacy PQTLS environment;
+3xx responses do not confirm a result or heartbeat. Root-mode Network invitations
+and Monitor broadcast operations lack a selected configuration and return
+CONFIG_REQUIRED; their original explicit legacy flows remain available.
+
+Local MCP session records add optional `connection_pin`, excluding instance ID.
+The original scope hash stays unchanged. Root mode cannot activate or overwrite
+an old unpinned cache, and cannot replace a differently pinned cache. A completed
+Hook connect saves the complete pin with its session result before ACK. Original
+operator-intent persistence, exact retry and output-before-ACK remain authoritative.
+
+The original MCP outbox SQLite database adds one immutable metadata row in
+`mcp_outbox_connection_pin` (format `cicada.mcp-outbox-connection.v1`). New root-mode
+databases require an absent original DB and no residual WAL/SHM/journal. Exclusive
+file creation precedes a FULL-synchronous transaction committing the complete
+pin, then directory sync, before enabling WAL or storing operations. Existing
+databases undergo a read-only main-DB fence check before opening for mutation;
+missing pins return CONFIG_REQUIRED and changed pins return BINDING_CHANGED.
+An empty DB left before pin commit is retained and cannot be silently adopted.
+Original operation IDs, scopes, uncertain packages and file locations stay intact;
+no new session record retroactively authorizes an old outbox-only namespace.
+
+The current legacy consumer refuses new pinned caches/outboxes, preserving old
+unpinned legacy records. Historical binaries do not understand these forward-only
+fences: opening new pinned state with such a binary is an unsupported downgrade.
+No automatic migration, grant, Owner/Node key replacement or public wire change
+is part of this local consumer schema extension. New acceptance Threads use
+explicitly new managed scopes; this is not evidence of migration of older scopes.

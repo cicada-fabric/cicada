@@ -17,6 +17,7 @@ import (
 // Renewal is lease evidence, not proof of the foreground native Thread.
 type codexFrozenHeartbeat struct {
 	cache             mcpCachedSession
+	connection        *LocalNodeConnection
 	principal, socket string
 	pqtls             bool
 	cancel            context.CancelFunc
@@ -30,14 +31,28 @@ func (m *mcpServer) codexHeartbeatSnapshot() *codexFrozenHeartbeat {
 		return nil
 	}
 	t := m.sessionContext
-	return &codexFrozenHeartbeat{cache: mcpCachedSession{Scope: m.sessionScope, APIOrigin: m.baseURL, Harness: t.Harness, NativeSessionID: t.NativeSessionID,
+	var connection *LocalNodeConnection
+	var pin *LocalNodeConnectionPin
+	if m.localNode != nil {
+		frozen := *m.localNode
+		connection, pin = &frozen, &frozen.Pin
+	}
+	return &codexFrozenHeartbeat{connection: connection, cache: mcpCachedSession{ConnectionPin: pin, Scope: m.sessionScope, APIOrigin: m.baseURL, Harness: t.Harness, NativeSessionID: t.NativeSessionID,
 		NodeID: t.NodeID, Workspace: t.Workspace, GroupID: m.sessionGroupID, EndpointID: m.endpointID, OwnerID: m.sessionPublic.Endpoint.Owner,
 		BindingID: m.sessionPublic.BindingID, BindingEpoch: m.sessionPublic.BindingEpoch, LeaseExpiresAt: m.sessionPublic.LeaseExpiresAt, SessionToken: m.sessionToken},
 		principal: m.sessionPublic.NetworkCard.PrincipalID, socket: m.joinSocketPath(harness.SessionContext{MachineID: t.NodeID}), pqtls: m.pqtlsSelected}
 }
 
 func (h *codexFrozenHeartbeat) same(other *codexFrozenHeartbeat) bool {
-	return h != nil && other != nil && h.cache == other.cache && h.principal == other.principal && h.socket == other.socket && h.pqtls == other.pqtls
+	if h == nil || other == nil {
+		return false
+	}
+	a, b := h.cache, other.cache
+	if (a.ConnectionPin == nil) != (b.ConnectionPin == nil) || a.ConnectionPin != nil && *a.ConnectionPin != *b.ConnectionPin {
+		return false
+	}
+	a.ConnectionPin, b.ConnectionPin = nil, nil
+	return a == b && h.principal == other.principal && h.socket == other.socket && h.pqtls == other.pqtls
 }
 
 func (h *codexFrozenHeartbeat) matches(m *mcpServer) bool { return h.same(m.codexHeartbeatSnapshot()) }
@@ -116,6 +131,10 @@ func (h *codexFrozenHeartbeat) runWithTicks(ctx context.Context, m *mcpServer, t
 			if ctx.Err() != nil {
 				return
 			}
+			if errors.Is(err, ErrLocalNodeBindingChanged) || errors.Is(err, ErrLocalNodeConfigRequired) {
+				h.clearMemoryIfMatching(m)
+				return
+			}
 			var response *mcpHTTPError
 			if errors.As(err, &response) && (response.statusCode == http.StatusUnauthorized || response.statusCode == http.StatusForbidden) {
 				h.clearMemoryIfMatching(m)
@@ -128,6 +147,9 @@ func (h *codexFrozenHeartbeat) runWithTicks(ctx context.Context, m *mcpServer, t
 func (h *codexFrozenHeartbeat) clearMemoryIfMatching(m *mcpServer) {
 	m.sessionMu.Lock()
 	defer m.sessionMu.Unlock()
+	if (h.connection == nil) != (m.localNode == nil) || h.connection != nil && h.connection.Pin != m.localNode.Pin {
+		return
+	}
 	t := m.sessionContext
 	if m.baseURL != h.cache.APIOrigin || m.sessionToken != h.cache.SessionToken || m.sessionScope != h.cache.Scope || m.sessionGroupID != h.cache.GroupID || m.endpointID != h.cache.EndpointID ||
 		m.pqtlsSelected != h.pqtls || m.sessionPublic.Endpoint.Owner != h.cache.OwnerID || m.sessionPublic.LeaseExpiresAt != h.cache.LeaseExpiresAt ||
@@ -140,6 +162,9 @@ func (h *codexFrozenHeartbeat) clearMemoryIfMatching(m *mcpServer) {
 }
 
 func (h *codexFrozenHeartbeat) renew(ctx context.Context) (any, error) {
+	if err := revalidateCodexLocalNode(ctx, h.connection); err != nil {
+		return nil, err
+	}
 	var raw []byte
 	var status int
 	if h.pqtls {
@@ -157,15 +182,21 @@ func (h *codexFrozenHeartbeat) renew(ctx context.Context) (any, error) {
 		}
 		request.Header.Set("Authorization", "CicadaSession "+h.cache.SessionToken)
 		request.Header.Set("Cicada-Group-Scope", h.cache.GroupID)
-		client, err := machineNodeHTTPClient(ctx, 30*time.Second)
-		if err != nil {
-			return nil, err
+		client := &http.Client{Timeout: 30 * time.Second, CheckRedirect: rejectNodeRedirect}
+		if h.connection == nil {
+			client, err = machineNodeHTTPClient(ctx, 30*time.Second)
+			if err != nil {
+				return nil, err
+			}
 		}
 		response, err := client.Do(request)
 		if err != nil {
 			return nil, err
 		}
 		defer response.Body.Close()
+		if h.connection != nil && response.StatusCode >= 300 && response.StatusCode < 400 {
+			return nil, errors.New("Cicada Hub redirect refused; heartbeat unconfirmed")
+		}
 		raw, err = io.ReadAll(io.LimitReader(response.Body, localMCPMetadataMaxBody+1))
 		if err != nil || len(raw) > localMCPMetadataMaxBody {
 			return nil, errors.New("invalid frozen heartbeat response")

@@ -6,6 +6,9 @@ import (
 )
 
 func (m *mcpServer) currentMonitorBroadcastRequest(operation mcpOutboxOperation, approvalID string) (monitorBroadcastRequest, error) {
+	if m.localNode != nil {
+		return monitorBroadcastRequest{}, codexLocalNodeError(ErrLocalNodeConfigRequired)
+	}
 	trusted, err := m.currentLocalSealedSendRequest(operation, mcpOutboxInput{})
 	if err != nil {
 		return monitorBroadcastRequest{}, err

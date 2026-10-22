@@ -863,3 +863,69 @@ with result SHA-256
 This README is a later documentation delta. Docker interop, actual installed
 Codex/Node integration, Windows Runtime, Android, physical devices and public
 HTTPS are **NOT_RUN** for this checkpoint.
+
+### 2026-10-22 installed local Node consumer
+
+The three independent stages now have a consumer implementation. Stage one is
+the existing file-only `components install` with the optional reviewed plugin
+assets above. Stage two is the user's manual start of the original Node daemon:
+add `--user-root ABS` to the existing `machine agent` configuration, retaining
+its original state and account. A single-Hub daemon also explicitly declares
+its original `--mcp-session-state-file ABS` and `--mcp-outbox-state-file ABS`;
+these paths can differ. This declares existing locations rather than migrating
+them. Multi-Hub publication uses its existing per-Hub paths. Neither installing
+files nor installing the plugin starts a Node or creates a second Node identity.
+
+Stage three installs the materialized marketplace using normal Codex commands.
+For the default selected root, first remove an already registered old source
+with `codex plugin marketplace remove cicada-repo`, then run:
+
+```sh
+codex plugin marketplace add "$HOME/.cicada/components/node/share/codex"
+codex plugin add cicada@cicada-repo
+```
+
+For a custom selected root, use that installation's `components/node/share/codex`
+directory. Complete normal Host trust for the installed MCP and changed Hooks.
+The source repository's bare-command entry remains a developer/legacy mode.
+The installed entry uses absolute executable/root arguments, with no terminal
+PATH or Cicada deployment environment required in an already running Codex
+daemon. The formal mode selects an already running standard-profile Node,
+checks its original binding, and fixes independent cache/outbox/socket paths.
+It does not infer strict-PQTLS configuration from absent environment variables.
+
+Offline/ambiguous/unready discovery produces bounded bilingual guidance and
+never guesses a different Node. Each tool and frozen heartbeat rechecks its
+complete original pin; a same-binding daemon restart may change instance ID.
+MCP session and operator-intent records persist that pin while keeping the
+original scope hash. Old unpinned caches/pending commands return
+`LOCAL_NODE_CONFIG_REQUIRED` and remain untouched. A new pinned session cannot
+adopt an old outbox-only namespace: the original SQLite database requires its
+own immutable pin metadata. New databases commit this metadata before WAL or
+business rows; absent DBs with residual WAL/SHM/journal, empty interrupted DBs,
+and existing unpinned DBs require original configuration recovery. Changed pins
+cannot replace an uncertain request, cache or outbox. New managed acceptance
+Threads use explicitly new scopes; no migration of existing Threads is claimed.
+Current legacy code refuses pinned state; older published binaries do not
+understand this forward-only schema and must not open that new pinned state.
+Root-mode Network invitation/session and Monitor broadcast configuration are
+not selected by this contract and return CONFIG_REQUIRED; original explicit
+legacy flows remain separate. Registration still grants no communication rights.
+
+Pinned Go 1.27.3 normal/race checks on dirty
+`2fc293c80dda9ed2aa983a277fb346dd97d21847` each recorded **70 PASS, 0 FAIL,
+0 SKIP**. Scoped CLI vet and Linux CGO-disabled build passed. Evidence is at
+`/home/zyf/.cicada/acceptance/codex-context-checks/formal-consumer-20261022T152239Z/`,
+result SHA-256
+`fe4cb9a34d172dd3ea50727d38d2106fb296e3da32d99c336a8e3021b8630b6b`.
+The before/after source manifest records all Go/C/header/module inputs and five
+authoritative plugin assets, stable throughout these runs. The retained initial
+failed run found an in-process environment-poison fixture issue, a private-fixture
+umask issue, and an empty 307 heartbeat response previously treated as success;
+the final source corrects all three. The HTTP test verifies no redirect target
+receives credentials. Synthetic local descriptions and the real local bridge
+fixture remain scoped tests, not actual Codex/Hub authorization acceptance.
+This README and contract are later documentation deltas. Docker interop, actual
+installed Codex/shared-daemon/native Runtime, Windows GUI, Android, physical
+devices and public HTTPS are **NOT_RUN** in this checkpoint and remain separate
+QA evidence.
