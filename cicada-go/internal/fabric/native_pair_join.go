@@ -13,3 +13,11 @@ func (s *Service) NativePairZeroJoinResult(join store.HubNativePairZeroJoin) Joi
 func (s *Service) RequireNativePairSelf(actor Actor) error {
 	return s.store.RequireHubNativePairSelf(nativeActorScope(actor))
 }
+
+func (s *Service) RequireNativeCollaborationSelf(actor Actor) error {
+	return s.store.RequireHubNativeCollaborationSelf(nativeActorScope(actor))
+}
+
+func (s *Service) RequireLocalDomainRelay(nodeToken, groupID string) error {
+	return s.store.RequireHubLocalDomainRelay(HashSessionCredential(nodeToken), groupID)
+}

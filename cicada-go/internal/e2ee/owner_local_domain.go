@@ -131,6 +131,7 @@ type LocalDomainEndpointKeyClaims struct {
 	PolicyDigest           string `json:"policy_digest"`
 	MemberID               string `json:"member_id"`
 	MemberRevision         uint64 `json:"member_revision"`
+	MemberDigest           string `json:"member_digest"`
 	ManifestDigest         string `json:"manifest_digest"`
 	CandidateBindingDigest string `json:"candidate_binding_digest"`
 	IssuedAt               string `json:"issued_at"`
@@ -332,7 +333,7 @@ func validateLocalDomainEndpointKey(c LocalDomainEndpointKeyClaims, p LocalDomai
 	digest, err := LocalDomainPolicyDigest(p)
 	if err != nil || ValidateLocalDomainPolicy(p, now) != nil || c.Version != 1 || c.Purpose != LocalDomainEndpointKeyPurpose ||
 		c.PolicyID != p.PolicyID || c.PolicyEpoch != p.Epoch || c.PolicyDigest != digest || !nativePairToken(c.MemberID) || !localDomainRevision(c.MemberRevision) ||
-		!canonicalSHA256Hex(c.ManifestDigest) || !canonicalSHA256Hex(c.CandidateBindingDigest) {
+		!canonicalSHA256Hex(c.MemberDigest) || !canonicalSHA256Hex(c.ManifestDigest) || !canonicalSHA256Hex(c.CandidateBindingDigest) {
 		return ErrInvalidEnvelope
 	}
 	issued, err := parseCanonicalUTC(c.IssuedAt)
@@ -370,7 +371,7 @@ func VerifyLocalDomainEndpointKey(p LocalDomainPolicy, raw []byte, now time.Time
 }
 
 func validateLocalDomainUserReport(r LocalDomainUserReport, now time.Time) error {
-	if r.Version != 1 || r.Purpose != LocalDomainUserReportPurpose || !nativePairToken(r.HubID) || !nativePairToken(r.OwnerID) || !nativePairToken(r.NodeID) ||
+	if r.Version != 1 || r.Purpose != LocalDomainUserReportPurpose || !nativePairToken(r.HubID) || (r.OwnerID != "" && !nativePairToken(r.OwnerID)) || !nativePairToken(r.NodeID) ||
 		!nativePairToken(r.OwnerBindingID) || !localDomainRevision(r.NodeKeyEpoch) || !ValidLocalDomainUserScope(r.LocalUserScope) || !canonicalSHA256Hex(r.Nonce) ||
 		appNodeProofWindow(r.IssuedAt, r.ExpiresAt, LocalDomainRequestLifetime, now) != nil {
 		return ErrInvalidEnvelope
@@ -392,7 +393,7 @@ func SignLocalDomainUserReport(node *Identity, r LocalDomainUserReport) ([]byte,
 func VerifyLocalDomainUserReport(node OwnerAppNodeBinding, raw []byte, now time.Time) (LocalDomainUserReport, error) {
 	var p LocalDomainUserReportProof
 	if len(raw) > MaxLocalDomainProofBytes || tlsProofRead(raw, &p) != nil || validateLocalDomainUserReport(p.Report, now) != nil ||
-		p.Report.HubID != node.HubID || p.Report.OwnerID != node.OwnerID || p.Report.NodeID != node.NodeID || p.Report.OwnerBindingID != node.OwnerBindingID || p.Report.NodeKeyEpoch != node.NodeKeyEpoch ||
+		p.Report.HubID != node.HubID || (p.Report.OwnerID != "" && p.Report.OwnerID != node.OwnerID) || p.Report.NodeID != node.NodeID || p.Report.OwnerBindingID != node.OwnerBindingID || p.Report.NodeKeyEpoch != node.NodeKeyEpoch ||
 		verifyAppNodeSignature(node.NodePublic, "cicada/node/local-domain-user-report/v1\x00", p.Report, p.Signature) != nil {
 		return LocalDomainUserReport{}, ErrInvalidEnvelope
 	}

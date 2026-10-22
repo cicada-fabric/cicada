@@ -30,8 +30,10 @@ const (
 	MaxLocalDomainReconcilePacketBytes      = 896 << 10
 	MaxLocalDomainReconcileInnerPacketBytes = 896 << 10
 	MaxLocalDomainNodeOriginalBytes         = 64 << 10
-	MaxLocalDomainNodeReceiptBytes          = 192 << 10
-	MaxLocalDomainNodeReconcilePacketBytes  = 384 << 10
+	MaxLocalDomainNodeReceiptBytes          = 224 << 10
+	MaxLocalDomainNodeReconcileBodyBytes    = nodewire.MaxLocalDomainReconcilePlaintextBytes
+	MaxLocalDomainNodeReconcilePacketBytes  = 560 << 10
+	MaxLocalDomainCarrierBytes              = 320 << 10
 	LocalDomainPrepared                     = "PREPARED"
 	LocalDomainActive                       = "ACTIVE"
 	LocalDomainRevoked                      = "REVOKED"

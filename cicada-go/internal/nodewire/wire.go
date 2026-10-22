@@ -23,14 +23,23 @@ const (
 	DirectionRequest  = "REQUEST"
 	DirectionResponse = "RESPONSE"
 	Algorithm         = e2ee.Algorithm
-	// Requests retain the existing 64KiB management-body ceiling. Responses
-	// may carry bounded Worker prompts/results and use the old 2MiB body limit.
-	MaxRequestPacketBytes    = 256 << 10
-	MaxPacketBytes           = 5 << 20
-	MaxRequestPlaintextBytes = 64 << 10
-	MaxPlaintextBytes        = 2 << 20 // maximum response plaintext
-	aadDomain                = "cicada/node-control/packet/v1\x00"
+	// Only local-domain reconciliation may embed a complete original packet
+	// in a 128KiB body. Other requests retain the 64KiB management ceiling.
+	// Responses retain the 2MiB body limit for bounded Worker prompts/results.
+	MaxRequestPacketBytes                 = 256 << 10
+	MaxPacketBytes                        = 5 << 20
+	MaxRequestPlaintextBytes              = 64 << 10
+	MaxLocalDomainReconcilePlaintextBytes = 128 << 10
+	MaxPlaintextBytes                     = 2 << 20 // maximum response plaintext
+	aadDomain                             = "cicada/node-control/packet/v1\x00"
 )
+
+func requestPlaintextLimit(operation string) int {
+	if operation == "node.local_domain.reconcile" {
+		return MaxLocalDomainReconcilePlaintextBytes
+	}
+	return MaxRequestPlaintextBytes
+}
 
 var ErrInvalidPacket = errors.New("invalid Node-Control packet")
 
@@ -194,7 +203,7 @@ func seal(sender *e2ee.Identity, receiver e2ee.PublicIdentity, binding Binding,
 	maxPlaintext := MaxPlaintextBytes
 	maxPacket := MaxPacketBytes
 	if direction == DirectionRequest {
-		maxPlaintext = MaxRequestPlaintextBytes
+		maxPlaintext = requestPlaintextLimit(route.Operation)
 		maxPacket = MaxRequestPacketBytes
 	}
 	if sender == nil || len(plaintext) == 0 || len(plaintext) > maxPlaintext {
@@ -252,7 +261,7 @@ func open(recipient *e2ee.Identity, sender e2ee.PublicIdentity, binding Binding,
 	}
 	maxPlaintext := MaxPlaintextBytes
 	if direction == DirectionRequest {
-		maxPlaintext = MaxRequestPlaintextBytes
+		maxPlaintext = requestPlaintextLimit(packet.Route.Operation)
 	}
 	if sequence != packet.Route.Sequence || len(plaintext) == 0 || len(plaintext) > maxPlaintext {
 		return Opened{}, ErrInvalidPacket

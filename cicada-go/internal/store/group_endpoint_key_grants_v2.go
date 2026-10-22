@@ -387,6 +387,13 @@ func readGroupEndpointKeyGrantManifest(tx *sql.Tx, ownerID, groupID, endpointID,
 	if expires.UTC().Format(time.RFC3339Nano) != expiresAt || !expires.After(issued) {
 		return nil, errors.New("Group Endpoint key grant has an invalid interval")
 	}
+	return readGroupEndpointKeyGrantSnapshotTx(tx, ownerID, groupID, endpointID, ownerKeyID, issuedAt, expiresAt, at)
+}
+
+// Shared current snapshot builder only. The legacy wrapper above retains its
+// strict nonempty finite interval; delegated domain callers validate their own
+// signed persistent policy before using an optional expiry here.
+func readGroupEndpointKeyGrantSnapshotTx(tx *sql.Tx, ownerID, groupID, endpointID, ownerKeyID, issuedAt, expiresAt string, at time.Time) (*GroupEndpointKeyGrantManifest, error) {
 	ownerKey, err := scanOwnerApprovalKey(tx.QueryRow(`SELECT owner_id, key_id, public_identity_json,
 state, version, created_at, updated_at, revoked_at FROM owner_approval_keys_v2
 WHERE owner_id = ? AND key_id = ?`, ownerID, ownerKeyID))

@@ -393,6 +393,9 @@ func (b *machineAgentJoinBridge) runManagedPairLeaseWorker() {
 	ticker := time.NewTicker(managedPairLeaseInterval)
 	defer ticker.Stop()
 	for {
+		if b.localDomainReportsEnabled.Load() {
+			b.refreshLocalDomainReport(b.ctx, time.Now)
+		}
 		b.renewManagedPairLeaseBatch(b.ctx, time.Now)
 		select {
 		case <-b.ctx.Done():

@@ -504,6 +504,13 @@ func runMachineAgentWithContext(parent context.Context, args []string, pinned *m
 				}
 			}
 			markRelayReady()
+			if localBridge != nil {
+				localBridge.localDomainReportsEnabled.Store(true)
+				select {
+				case localBridge.managedLeaseWake <- struct{}{}:
+				default:
+				}
+			}
 			if *relayOnly {
 				return
 			}

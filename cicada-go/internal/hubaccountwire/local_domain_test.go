@@ -23,6 +23,43 @@ type localDomainFixture struct {
 	challenge LocalDomainChallenge
 }
 
+func TestLocalDomainNodePacketProfileBoundsAreIndependent(t *testing.T) {
+	for _, test := range []struct {
+		name, operation, direction string
+		limit                      int
+	}{
+		{"original", OperationLocalDomainNodeKeyComplete, nodewire.DirectionRequest, MaxLocalDomainNodeOriginalBytes},
+		{"receipt", OperationLocalDomainNodeKeyComplete, nodewire.DirectionResponse, MaxLocalDomainNodeReceiptBytes},
+		{"reconciliation", OperationLocalDomainNodeReconcile, nodewire.DirectionResponse, MaxLocalDomainNodeReconcilePacketBytes},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			p := nodewire.Packet{Route: nodewire.Route{Operation: test.operation, Direction: test.direction}, Envelope: json.RawMessage(`"SYNTHETIC"`)}
+			base, err := json.Marshal(p)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Envelope is a byte slice, so packet JSON base64-encodes it. Use
+			// the closest representable size below the cap, then add one block.
+			p.Envelope = bytes.Repeat([]byte("S"), (test.limit-len(base)+16)/4*3)
+			raw, err := json.Marshal(p)
+			if err != nil || len(raw) > test.limit || test.limit-len(raw) > 3 {
+				t.Fatal("incorrect size fixture", err, len(raw))
+			}
+			if _, err := DecodeLocalDomainNodePacket(raw); err != nil {
+				t.Fatal("exact profile boundary rejected", err)
+			}
+			p.Envelope = append(p.Envelope, 'S', 'S', 'S')
+			raw, err = json.Marshal(p)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := DecodeLocalDomainNodePacket(raw); err == nil {
+				t.Fatal("profile accepted packet above its bound")
+			}
+		})
+	}
+}
+
 func localDomainCrypto(t *testing.T) localDomainFixture {
 	return localDomainSizedCrypto(t, false)
 }
@@ -88,6 +125,32 @@ func localDomainRequestRoundTrip(t *testing.T, f localDomainFixture, body, out a
 		t.Fatal("request changed across PQ envelope")
 	}
 	return raw
+}
+
+func TestLocalDomainOwnerChallengeAcceptsOnlyExactBindingWithEmptyReportOwnerHint(t *testing.T) {
+	f := localDomainCrypto(t)
+	var original e2ee.LocalDomainUserReportProof
+	if json.Unmarshal(f.challenge.LocalUserReport, &original) != nil {
+		t.Fatal("synthetic report")
+	}
+	good := original.Report
+	good.OwnerID = ""
+	for name, change := range map[string]func(*e2ee.LocalDomainUserReport){"empty-correct": func(*e2ee.LocalDomainUserReport) {}, "wrong-owner": func(r *e2ee.LocalDomainUserReport) { r.OwnerID = "synthetic-other-owner" }, "wrong-binding": func(r *e2ee.LocalDomainUserReport) { r.OwnerBindingID += "-other" }, "wrong-node": func(r *e2ee.LocalDomainUserReport) { r.NodeID += "-other" }, "wrong-epoch": func(r *e2ee.LocalDomainUserReport) { r.NodeKeyEpoch++ }} {
+		t.Run(name, func(t *testing.T) {
+			r := good
+			change(&r)
+			raw, err := e2ee.SignLocalDomainUserReport(f.node, r)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ch := f.challenge
+			ch.LocalUserReport = raw
+			err = ValidateLocalDomainChallenge(f.prepare, f.original, ch, f.f.hub, f.f.now.Add(2*time.Second))
+			if (name == "empty-correct") != (err == nil) {
+				t.Fatal("Owner challenge confused report hint with exact Node binding", err)
+			}
+		})
+	}
 }
 
 func TestLocalDomainOwnerConstructorsAndActualPQEnvelope(t *testing.T) {
@@ -390,7 +453,7 @@ func TestLocalDomainCapabilitiesAndNodeUserReportCodec(t *testing.T) {
 	if _, err := CanonicalLocalDomainNodeRequest(OperationLocalDomainNodeKeyPrepare, prepare); err != nil {
 		t.Fatal("explicit key preparation", err)
 	}
-	claims := e2ee.LocalDomainEndpointKeyClaims{Version: 1, Purpose: e2ee.LocalDomainEndpointKeyPurpose, PolicyID: selection.PolicyID, PolicyEpoch: selection.PolicyEpoch, PolicyDigest: selection.PolicyDigest, MemberID: prepare.MemberID, MemberRevision: 2, ManifestDigest: strings.Repeat("e", 64), CandidateBindingDigest: strings.Repeat("f", 64), IssuedAt: f.challenge.Policy.IssuedAt}
+	claims := e2ee.LocalDomainEndpointKeyClaims{Version: 1, Purpose: e2ee.LocalDomainEndpointKeyPurpose, PolicyID: selection.PolicyID, PolicyEpoch: selection.PolicyEpoch, PolicyDigest: selection.PolicyDigest, MemberID: prepare.MemberID, MemberRevision: 2, MemberDigest: strings.Repeat("a", 64), ManifestDigest: strings.Repeat("e", 64), CandidateBindingDigest: strings.Repeat("f", 64), IssuedAt: f.challenge.Policy.IssuedAt}
 	proof, err := e2ee.SignLocalDomainEndpointKey(f.node, f.challenge.Policy, claims)
 	if err != nil {
 		t.Fatal(err)

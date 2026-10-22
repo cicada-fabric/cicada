@@ -16,7 +16,7 @@ import (
 // Restore only permits schema versions whose table inventory, forward-floor,
 // and UNKNOWN-row semantics have been reviewed explicitly. A new migration
 // must update this pin only after those restore rules are reviewed.
-const hubRestoreReviewedSchemaVersion = 65
+const hubRestoreReviewedSchemaVersion = 66
 
 type hubRestoreSQLiteBlob struct {
 	Hex string `json:"sqlite_blob"`
@@ -199,6 +199,11 @@ func InspectHubRestoreCheckpointReadOnly(stateDir string) (*HubRestoreCheckpoint
 			return nil, fmt.Errorf("%w: missing scope %s", ErrHubRestoreCoverage, name)
 		}
 	}
+	for _, name := range localDomainRestoreTables {
+		if _, ok := cp.rows[name]; !ok {
+			return nil, fmt.Errorf("%w: missing scope %s", ErrHubRestoreCoverage, name)
+		}
+	}
 	sort.Strings(unknown)
 	cp.UnknownSHA256 = hubRestoreDigest(unknown)
 	cp.CoverageSHA256 = hubRestoreDigest(cp.rows)
@@ -231,14 +236,20 @@ func CompareHubRestoreCoverage(base, current *HubRestoreCheckpoint) error {
 	for table, rows := range base.rows {
 		// These two bounded tables hold no authority, replay nonce, effect or
 		// mutation receipt. Ordinary polling/rate-window expiry may evict them.
-		if table == "hub_app_node_reads_v1" || table == "hub_app_node_rates_v1" || table == "hub_native_pair_guard_v1" || table == "hub_native_pair_reads_v1" || table == "hub_native_pair_rates_v1" || table == "hub_native_pair_node_reads_v1" || table == "hub_native_pair_node_rates_v1" {
+		if localDomainRestoreCache(table) || table == "hub_app_node_reads_v1" || table == "hub_app_node_rates_v1" || table == "hub_native_pair_guard_v1" || table == "hub_native_pair_reads_v1" || table == "hub_native_pair_rates_v1" || table == "hub_native_pair_node_reads_v1" || table == "hub_native_pair_node_rates_v1" {
 			continue
 		}
 
 		for key, old := range rows {
 			next, ok := current.rows[table][key]
 			if !ok {
+				if table == "node_control_rpc_inbox_v1" && old["state"] == "COMPLETE" && (old["operation"] == "node.local_domain.available" || old["operation"] == "node.local_domain.describe") {
+					continue
+				}
 				return fmt.Errorf("%w: missing %s history", ErrHubRestoreCoverage, table)
+			}
+			if err := localDomainRestoreRowAdvance(table, old, next); err != nil {
+				return fmt.Errorf("%w: %s domain authority", err, table)
 			}
 			if hubRestoreUnknown(old) && hubRestoreDigest(old) != hubRestoreDigest(next) {
 				return fmt.Errorf("%w: %s UNKNOWN tombstone changed", ErrHubRestoreCoverage, table)
@@ -264,6 +275,9 @@ func CompareHubRestoreCoverage(base, current *HubRestoreCheckpoint) error {
 				// state/version may advance, but cannot silently replace an identity.
 				switch name {
 				case "manifest_digest", "pairing_json", "nonce_digest", "prepare_nonce_digest", "complete_nonce_digest", "established_at", "root_key", "response_packet", "recovery_packet", "identity_json", "public_identity_json", "node_public_identity_json", "hub_public_identity_json", "public_key_json", "request_digest", "ciphertext_digest", "operation_id", "operation", "native_session_id", "session_id", "credential_hash":
+					if name == "credential_hash" && localDomainRestoreAccessAdvance(base, table, old, next) {
+						continue
+					}
 					if hubRestoreDigest(value) != hubRestoreDigest(next[name]) {
 						return fmt.Errorf("%w: %s.%s identity", ErrHubRestoreCoverage, table, name)
 					}
@@ -627,6 +641,11 @@ func hubRestoreReconcileReadOnly(o HubRestoreOperationOptions, a *HubRestoreAuth
 // Explicit schema table names, reviewed against the selected product schema.
 // Schema v60 preserves account, consumed authority and permanent root history.
 func hubRestoreSupportedTable(name string) bool {
+	for _, table := range localDomainRestoreTables {
+		if name == table {
+			return true
+		}
+	}
 	switch name {
 	case "hub_native_pair_node_reads_v1", "hub_native_pair_node_rates_v1", "hub_native_pairs_v1", "hub_native_pair_slots_v1", "hub_native_pair_plans_v1", "hub_native_pair_consents_v1", "hub_native_pair_operations_v1", "hub_native_pair_messages_v1", "hub_native_pair_node_operations_v1", "hub_native_pair_guard_v1", "hub_native_pair_reads_v1", "hub_native_pair_rates_v1", "hub_app_node_heads_v1", "hub_app_node_grants_v1", "hub_app_node_operations_v1", "hub_app_node_provenance_v1", "hub_app_node_reads_v1", "hub_app_node_rates_v1", "hub_owner_activation_v1", "hub_owner_operations_v1", "hub_app_leases_v1", "hub_account_config_v1", "hub_account_claims_v1", "hub_account_credentials_v1", "hub_account_devices_v1", "hub_account_public_association_v1", "hub_account_attempts_v1", "hub_account_sessions_v1", "hub_account_requests_v1", "hub_owner_setup_v1", "owner_root_history_v1", "owner_bootstrap_authority_v1", "approvals", "artifact_v2_grants", "artifact_v2_refs", "artifacts", "attachments", "client_control_intents_v2", "client_device_enrollment_proofs_v2", "client_device_grant_nonces_v2", "client_device_hub_config_v2", "client_device_request_recovery_v2", "client_device_requests_v2", "client_devices_v2", "client_status_change_events_v2", "client_status_state_v2", "client_status_streams_v2", "client_topology_group_create_guard_v2", "client_topology_group_creates_v2", "commands", "communication_link_grants_v2", "communication_link_key_grants_v2", "communication_link_message_review_candidates_v2", "communication_link_message_reviews_v2", "communication_link_review_events_v2", "communication_link_review_policy_grants_v2", "communication_link_review_policy_heads_v2", "communication_links_v2", "contact_discovery_requests", "contacts", "cross_owner_group_admissions_v2", "cross_owner_group_joins_v2", "cross_owner_group_key_proofs_v2", "directory_records", "endpoint_group_memberships", "endpoint_key_candidates_v2", "endpoint_network_memberships_v2", "events", "external_actions", "external_events", "external_thread_invites_v2", "external_thread_invites_v2_v51", "fabric_endpoints", "fabric_events", "fabric_messages", "fabric_node_credentials", "gateway_v2_contracts", "gateway_v2_group_cards", "gateway_v2_mailbox", "gateway_v2_representatives", "gateway_v2_request_events", "gateway_v2_requests", "gateway_v2_results", "goals", "group_broadcast_v2_snapshot_recipients", "group_broadcast_v2_snapshots", "group_endpoint_key_grants_v2", "group_space_audience_v2", "group_space_change_sequences_v2", "group_space_history_grants_v2", "group_space_history_manifests_v2", "group_space_read_state_v2", "group_space_readers_v2", "group_space_records_v2", "group_space_sequences_v2", "group_space_tombstones_v2", "group_space_topics_v2", "groups", "ideas", "intents", "machines", "memberships", "memories", "monitors", "network_access_sessions_v2", "network_broadcast_recipients_v2", "network_broadcasts_v2", "network_collaboration_key_grant_nonces_v2", "network_collaboration_key_grants_v2", "network_direct_key_candidates_v2", "network_direct_key_grant_nonces_v2", "network_direct_key_grants_v2", "network_direct_message_routes_v2", "network_direct_native_bindings_v2", "network_group_mappings_v2", "network_invitations_v2", "network_join_consents_v2", "network_memberships_v2", "network_message_enrollment_v2", "network_mode_v2", "network_task_offers_v2", "network_task_readers_v2", "network_task_results_v2", "networks_v2", "node_control_key_bindings_v1", "node_control_key_requests_v1", "node_control_rpc_inbox_v1", "node_control_rpc_sequences_v1", "node_control_snapshot_rpc_responses_v1", "node_device_binding_requests_v2", "node_owner_bindings_v2", "node_tls_application_keys_v1", "node_tls_authority_v1", "node_tls_epoch_floors_v1", "node_tls_issuer_serial_floors_v1", "node_tls_proof_nonces_v1", "notifications", "owner_approval_keys_v2", "peer_messages", "peer_sessions", "permissions", "principals", "push_subscriptions", "regroup_audit_v2", "regroup_delegations_v2", "regroup_proposals_v2", "relay_v2_admission_config", "relay_v2_admission_guard", "relay_v2_consumer_cursors", "relay_v2_delivery_attempts", "relay_v2_inbox", "relay_v2_message_payloads", "relay_v2_message_security", "relay_v2_outbox", "relay_v2_rebind_events", "relay_v2_receipts", "relay_v2_recipient_sequences", "relay_v2_request_events", "relay_v2_requests", "resource_v2_authority", "resource_v2_leases", "resource_v2_managed_blobs", "schema_migrations_v2", "session_bindings", "shared_task_local_handoff_routes_v54", "shared_task_peer_assignments_v57", "shared_task_peer_refs_v57", "shared_task_sealed_handoffs_v2", "shared_task_v2_dependencies", "shared_task_v2_events", "shared_task_v2_guard", "shared_task_v2_handoffs", "shared_task_v2_results", "shared_task_v2_side_effect_events", "shared_task_v2_side_effects", "shared_tasks_v2", "thread_deliveries", "thread_sessions", "user_monitor_broadcast_v2", "user_monitor_broadcast_v2_notice_cursors", "user_monitor_broadcast_v2_notice_receipts", "user_monitor_broadcast_v2_recipient_outcomes", "workers", "workspaces":
 		return true

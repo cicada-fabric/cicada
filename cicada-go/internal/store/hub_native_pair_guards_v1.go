@@ -44,6 +44,13 @@ func nativePairLegacyAllowed(q nativePairReader, network, group, binding string)
 	if found {
 		return ErrNetworkPermission
 	}
+	domain, err := localDomainScopeExists(q, group, binding)
+	if err != nil {
+		return err
+	}
+	if domain {
+		return ErrNetworkPermission
+	}
 	return nil
 }
 func (s *Store) CheckLegacyGroupEnrollment(group string) error {

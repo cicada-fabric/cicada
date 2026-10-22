@@ -25,19 +25,20 @@ var (
 // SameGroupSealedV1EndpointEvidence is public key and route evidence for one
 // endpoint. The candidate and signed grant contain public data only.
 type SameGroupSealedV1EndpointEvidence struct {
-	EndpointID           string                      `json:"endpoint_id"`
-	PrincipalID          string                      `json:"principal_id"`
-	OwnerID              string                      `json:"owner_id"`
-	NodeID               string                      `json:"node_id"`
-	GroupID              string                      `json:"group_id"`
-	BindingID            string                      `json:"binding_id"`
-	BindingEpoch         uint64                      `json:"binding_epoch"`
-	NativeSessionID      string                      `json:"native_session_id"`
-	GroupRevision        int64                       `json:"group_revision"`
-	MembershipRevision   int64                       `json:"membership_revision"`
-	EndpointJoinRevision int64                       `json:"endpoint_join_revision"`
-	Candidate            EndpointKeyCandidate        `json:"candidate"`
-	Grant                *OwnerGroupEndpointKeyGrant `json:"grant"`
+	EndpointID           string                            `json:"endpoint_id"`
+	PrincipalID          string                            `json:"principal_id"`
+	OwnerID              string                            `json:"owner_id"`
+	NodeID               string                            `json:"node_id"`
+	GroupID              string                            `json:"group_id"`
+	BindingID            string                            `json:"binding_id"`
+	BindingEpoch         uint64                            `json:"binding_epoch"`
+	NativeSessionID      string                            `json:"native_session_id"`
+	GroupRevision        int64                             `json:"group_revision"`
+	MembershipRevision   int64                             `json:"membership_revision"`
+	EndpointJoinRevision int64                             `json:"endpoint_join_revision"`
+	Candidate            EndpointKeyCandidate              `json:"candidate"`
+	Grant                *OwnerGroupEndpointKeyGrant       `json:"grant"`
+	LocalDomainGrant     *wire.LocalDomainEndpointKeyGrant `json:"local_domain_grant,omitempty"`
 }
 
 // SameGroupSealedV1PeerKey lets an authenticated source Node pin and encrypt
@@ -51,6 +52,7 @@ type SameGroupSealedV1PeerKey struct {
 	Receiver           SameGroupSealedV1EndpointEvidence `json:"receiver"`
 	NativePairEvidence *wire.NativePairPeerEvidence      `json:"native_pair_evidence,omitempty"`
 	NativePairCurrent  *wire.NativePairPeerCurrent       `json:"native_pair_current,omitempty"`
+	LocalDomainCurrent *wire.LocalDomainCurrent          `json:"local_domain_current,omitempty"`
 }
 
 type SameGroupSealedV1Send struct {
@@ -108,11 +110,13 @@ type SameGroupSealedV1DeliveryAuthorization struct {
 	TaskHandoff        *SealedTaskHandoffDeliveryAuthorization `json:"task_handoff,omitempty"`
 	NativePairEvidence *wire.NativePairPeerEvidence            `json:"native_pair_evidence,omitempty"`
 	NativePairCurrent  *wire.NativePairPeerCurrent             `json:"native_pair_current,omitempty"`
+	LocalDomainCurrent *wire.LocalDomainCurrent                `json:"local_domain_current,omitempty"`
 }
 
 type sameGroupEndpointPair struct {
 	nativeEvidence *wire.NativePairPeerEvidence
 	nativeCurrent  *wire.NativePairPeerCurrent
+	domainCurrent  *wire.LocalDomainCurrent
 	hubID          string
 	groupID        string
 	sender         SameGroupSealedV1EndpointEvidence
@@ -137,6 +141,11 @@ func validSameGroupSealedV1Input(inputCredential, groupID, sourceEndpointID,
 
 func readSameGroupSealedV1EndpointTx(tx *sql.Tx, groupID, endpointID string,
 	at time.Time) (SameGroupSealedV1EndpointEvidence, error) {
+	if p, err := localDomainForGroupTx(tx, groupID); err != nil {
+		return SameGroupSealedV1EndpointEvidence{}, err
+	} else if p != nil {
+		return readLocalDomainPeerEndpointTx(tx, p, endpointID, at)
+	}
 	var ownerID string
 	err := tx.QueryRow(`SELECT p.owner_id FROM fabric_endpoints e
 JOIN principals p ON p.id=e.principal_id WHERE e.id=?`, endpointID).Scan(&ownerID)
@@ -218,9 +227,9 @@ func readSameGroupSealedV1PairTx(tx *sql.Tx, groupID, senderEndpointID,
 	}
 	if sender.GroupID != groupID || receiver.GroupID != groupID ||
 		sender.OwnerID == "" || sender.OwnerID != receiver.OwnerID ||
-		sender.Grant.Manifest.HubID != hubID ||
-		receiver.Grant.Manifest.HubID != hubID ||
-		sender.Grant.Manifest.GroupRevision != receiver.Grant.Manifest.GroupRevision {
+		sameGroupEvidenceManifest(sender).HubID != hubID ||
+		sameGroupEvidenceManifest(receiver).HubID != hubID ||
+		sender.GroupRevision != receiver.GroupRevision {
 		return sameGroupEndpointPair{}, ErrSameGroupSealedV1Denied
 	}
 	for _, endpoint := range []SameGroupSealedV1EndpointEvidence{sender, receiver} {
@@ -233,10 +242,13 @@ func readSameGroupSealedV1PairTx(tx *sql.Tx, groupID, senderEndpointID,
 		return sameGroupEndpointPair{}, err
 	}
 	pair := sameGroupEndpointPair{hubID: hubID, groupID: groupID, sender: sender, receiver: receiver, nativeEvidence: evidence, nativeCurrent: current}
+	if pair.domainCurrent, err = localDomainPeerCurrentTx(tx, pair, at); err != nil {
+		return sameGroupEndpointPair{}, err
+	}
 	if err = nativePairMatchEndpointEvidence(pair); err != nil {
 		return sameGroupEndpointPair{}, err
 	}
-	if pair.nativeEvidence != nil {
+	if pair.nativeEvidence != nil || pair.domainCurrent != nil {
 		if _, err = sameGroupSealedV1PeerCarrierTx(tx, pair); err != nil {
 			return sameGroupEndpointPair{}, err
 		}
@@ -363,8 +375,8 @@ func sameGroupSealedV1AskForReplyTx(tx *sql.Tx, requestID string,
 		return nil, nil, sameGroupEndpointPair{}, ErrSameGroupSealedV1Denied
 	}
 	expiresAt, expiryErr := time.Parse(time.RFC3339Nano, request.ExpiresAt)
-	if expiryErr != nil || expiresAt.After(mustParseRFC3339Nano(pair.sender.Grant.Manifest.ExpiresAt)) ||
-		expiresAt.After(mustParseRFC3339Nano(pair.receiver.Grant.Manifest.ExpiresAt)) {
+	if expiryErr != nil || !sameGroupEvidenceAllowsExpiry(pair.sender, expiresAt) ||
+		!sameGroupEvidenceAllowsExpiry(pair.receiver, expiresAt) {
 		return nil, nil, sameGroupEndpointPair{}, ErrSameGroupSealedV1Denied
 	}
 	context := sameGroupSealedV1Context(pair, request.MessageID, "REQUEST", request.RequestID, "", request.ParentRequestID)
@@ -517,8 +529,8 @@ func (s *Store) EnqueueSameGroupSealedV1Ask(input SameGroupSealedV1Ask) (*Fabric
 	if err != nil || requireSameGroupSealedV1SourceTx(tx, input.NodeCredentialDigest, pair) != nil {
 		return nil, ErrSameGroupSealedV1Denied
 	}
-	if expiresAt.After(mustParseRFC3339Nano(pair.sender.Grant.Manifest.ExpiresAt)) ||
-		expiresAt.After(mustParseRFC3339Nano(pair.receiver.Grant.Manifest.ExpiresAt)) {
+	if !sameGroupEvidenceAllowsExpiry(pair.sender, expiresAt) ||
+		!sameGroupEvidenceAllowsExpiry(pair.receiver, expiresAt) {
 		return nil, ErrSameGroupSealedV1Denied
 	}
 	context := sameGroupSealedV1Context(pair, input.MessageID, "REQUEST", input.RequestID, "", input.ParentRequestID)

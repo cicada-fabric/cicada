@@ -92,6 +92,8 @@ func (s *Service) RPC(ctx context.Context, token string, raw []byte) ([]byte, er
 		return nil, ErrUnavailable
 	}
 	switch packet.Route.Operation {
+	case wire.OperationLocalDomainNodeAvailable, wire.OperationLocalDomainNodeJoin, wire.OperationLocalDomainNodeKeyPrepare, wire.OperationLocalDomainNodeKeyComplete, wire.OperationLocalDomainNodeDescribe, wire.OperationLocalDomainNodeReconcile:
+		return s.localDomainRPC(ctx, token, raw)
 	case nodewire.EndpointRegisterOperation, nodewire.EndpointLeaveOperation, nodewire.NativePairAvailableOperation, nodewire.EndpointDirectoryOperation:
 		return s.endpointRPC(ctx, token, raw, packet)
 	case wire.OperationNativePairNodeDescribe, wire.OperationNativePairNodeJoin, wire.OperationNativePairNodeReconcile:

@@ -40,6 +40,31 @@ func (h *hubNodesHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	path := r.URL.Path
+	if path == wire.LocalDomainCapabilitiesPath {
+		if r.Method != http.MethodGet {
+			writeError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+			return
+		}
+		caps, err := h.account.LocalDomainCapabilities()
+		if err != nil {
+			writeError(w, http.StatusServiceUnavailable, errors.New("local domain unavailable"))
+			return
+		}
+		raw, err := json.Marshal(caps)
+		if err != nil || len(raw) > wire.MaxLocalDomainCapabilitiesBytes {
+			writeError(w, http.StatusServiceUnavailable, errors.New("local domain metadata unavailable"))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(raw)
+		return
+	}
+	for _, op := range wire.LocalDomainHTTPOperations() {
+		if path == wire.LocalDomainHTTPPath(op) {
+			h.base.hubAccount(w, r, op)
+			return
+		}
+	}
 	if path == wire.NativePairCapabilitiesPath {
 		if r.Method != http.MethodGet {
 			writeError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
@@ -143,6 +168,9 @@ func (h *hubNodesHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if hubNodesRelayPath(path) {
 		h.base.ServeHTTP(w, r)
+		return
+	}
+	if h.localDomainRelaySend(w, r) {
 		return
 	}
 	// The existing relay-only Agent polls this exact Node-scoped queue even

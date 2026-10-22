@@ -382,8 +382,22 @@ func inspectCryptoState(path string) (CryptoStateInspection, error) {
 	var result CryptoStateInspection
 	result.Present = true
 	result.Integrity = "ok"
-	if err := db.QueryRow(`SELECT version FROM node_crypto_schema WHERE singleton=1`).Scan(&result.SchemaVersion); err != nil || result.SchemaVersion < 1 || result.SchemaVersion > 5 {
+	if err := db.QueryRow(`SELECT version FROM node_crypto_schema WHERE singleton=1`).Scan(&result.SchemaVersion); err != nil || result.SchemaVersion < 1 || result.SchemaVersion > 7 {
 		return CryptoStateInspection{}, fmt.Errorf("unsupported Node crypto state schema: %w", ErrBackupInvalid)
+	}
+	if result.SchemaVersion >= 6 {
+		for _, table := range []string{"node_crypto_owner_key_trust", "node_crypto_peer_pins", "node_native_pair_nodes", "node_native_pair_policies", "node_native_pair_messages", "node_native_pair_submissions", "node_native_pair_local_keys", "node_native_pair_attestations"} {
+			if err := requireSQLiteTable(db, table); err != nil {
+				return CryptoStateInspection{}, err
+			}
+		}
+	}
+	if result.SchemaVersion >= 7 {
+		for _, table := range []string{"node_local_domain_policies_v1", "node_local_domain_members_v1", "node_local_domain_local_keys_v1", "node_local_domain_attestations_v1"} {
+			if err := requireSQLiteTable(db, table); err != nil {
+				return CryptoStateInspection{}, err
+			}
+		}
 	}
 	for _, table := range []string{"node_crypto_sequences", "node_crypto_outbox", "node_crypto_replay"} {
 		if err := requireSQLiteTable(db, table); err != nil {

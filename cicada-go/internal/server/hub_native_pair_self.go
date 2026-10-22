@@ -22,7 +22,7 @@ func (h *hubNodesHandler) nativePairSelf(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	actor, err := h.nodes.Fabric().AuthenticateForGroup(token, r.Header.Get("Cicada-Group-Scope"))
-	if err != nil || h.nodes.Fabric().RequireNativePairSelf(actor) != nil {
+	if err != nil || h.nodes.Fabric().RequireNativeCollaborationSelf(actor) != nil {
 		writeError(w, http.StatusForbidden, fabric.ErrPermissionDenied)
 		return
 	}

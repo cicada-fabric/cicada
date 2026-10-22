@@ -26,7 +26,7 @@ const (
 	maxCryptoIDLength   = 256
 	maxWireEnvelope     = 1 << 20
 	maxSQLiteSequence   = int64(^uint64(0) >> 1)
-	cryptoSchemaVersion = 6
+	cryptoSchemaVersion = 7
 )
 
 var (
@@ -582,7 +582,7 @@ CREATE TABLE IF NOT EXISTS node_crypto_peer_pins (
 			version = 2
 		}
 	}
-	if version == 2 || version == 3 || version == 5 || version == cryptoSchemaVersion {
+	if version == 2 || version == 3 || version == 5 || version == 6 || version == cryptoSchemaVersion {
 		if _, err := conn.ExecContext(ctx, `
 CREATE TABLE IF NOT EXISTS node_crypto_inbox (
   receiver_endpoint_id TEXT NOT NULL,
@@ -649,6 +649,15 @@ CREATE INDEX IF NOT EXISTS node_crypto_owner_key_trust_state_idx
 			return fmt.Errorf("upgrade Node crypto state schema from v5 to v6: %w", err)
 		}
 		version = 6
+	}
+	if version == 6 {
+		if err := initializeLocalDomainSchema(ctx, conn); err != nil {
+			return err
+		}
+		if _, err := conn.ExecContext(ctx, `UPDATE node_crypto_schema SET version=7 WHERE singleton=1`); err != nil {
+			return err
+		}
+		version = 7
 	}
 	if version != cryptoSchemaVersion {
 		return fmt.Errorf("unsupported Node crypto state schema version %d", version)

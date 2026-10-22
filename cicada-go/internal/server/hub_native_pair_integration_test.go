@@ -31,6 +31,10 @@ type nativePairTCPActor struct {
 // Real N2/N3 PQ over disposable TCP. The keys/Node are synthetic and there is
 // no Runtime, native SID, queue invocation, Control inference or DB grant setup.
 func nativePairTCP(t *testing.T) *nativePairTCPActor {
+	return nativePeerTCP(t, "synthetic-pair-tcp-node", "Synthetic bounded pair Node")
+}
+
+func nativePeerTCP(t *testing.T, nodeID, nodeName string) *nativePairTCPActor {
 	t.Helper()
 	f := newHubNodesTCPFixture(t)
 	device, err := e2ee.NewIdentity()
@@ -75,7 +79,6 @@ func nativePairTCP(t *testing.T) *nativePairTCPActor {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const nodeID = "synthetic-pair-tcp-node"
 	transcript, err := nodewire.PairingProofTranscript(nodewire.PairingProofContext{HubID: f.hub.HubID, NodeID: nodeID, RequestNonce: nonce, CredentialDigest: digest, NodePublicIdentity: node.Public(), HubPublicIdentity: nodeHub.PublicIdentity, HubKeyVersion: nodeHub.KeyVersion})
 	if err != nil {
 		t.Fatal(err)
@@ -84,7 +87,7 @@ func nativePairTCP(t *testing.T) *nativePairTCPActor {
 	if err != nil {
 		t.Fatal(err)
 	}
-	input := nodeControlPairingInput{NodeID: nodeID, NodeName: "Synthetic bounded pair Node", CredentialDigest: digest, RequestNonce: nonce, NodePublicIdentity: node.Public(), NodeFingerprint: nodewire.IdentityFingerprint(node.Public()), ProofPacket: proof, HubID: f.hub.HubID, HubPublicIdentity: nodeHub.PublicIdentity, HubKeyVersion: nodeHub.KeyVersion, HubFingerprint: nodeHub.Fingerprint}
+	input := nodeControlPairingInput{NodeID: nodeID, NodeName: nodeName, CredentialDigest: digest, RequestNonce: nonce, NodePublicIdentity: node.Public(), NodeFingerprint: nodewire.IdentityFingerprint(node.Public()), ProofPacket: proof, HubID: f.hub.HubID, HubPublicIdentity: nodeHub.PublicIdentity, HubKeyVersion: nodeHub.KeyVersion, HubFingerprint: nodeHub.Fingerprint}
 	request, _ := json.Marshal(input)
 	status, raw = n3HTTP(t, f, http.MethodPost, "/v2/nodes/device-code", "", request)
 	var code nodebinding.DeviceCode

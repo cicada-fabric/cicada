@@ -8,6 +8,20 @@ reservations, current authorization and revocation state, and operation
 outcomes. The target receives C in its entirety before activation. An archive
 signature, new nonce, operator click, or counter maximum cannot prove freshness.
 
+The local-domain backend extends explicit coverage to Hub schema 66. Current
+capsules must include all eleven local-domain tables. Permanent policies,
+Owner/Node mutation receipts and no-effect fences, member identities, consumed
+challenges and authority epochs cannot disappear, change coordinates or revive
+after terminal states. Same-Network explicit rejoin may change a domain-owned
+Access credential only with a strictly higher epoch and unchanged stable
+Access/Network/Endpoint/principal/Node/native-session coordinates. Short-lived
+report/read/rate/guard caches may expire; removing a completed read cache never
+permits the shared Node-Control sequence high-water mark to decrease. These
+checks do not establish remote native execution outcomes or release recovery
+holds. Node offline inspection accepts crypto schema 7 only with all retained
+Owner/peer/Pair and four local-domain trust/key tables; it remains read-only and
+does not regenerate an identity or clear quarantine.
+
 Candidate03 passed the supervising task's focused normal/race checks, vet,
 formatting, builds, Python checks, and three-case disposable TCP gate. The exact
 tested source and exclusions are recorded below. Historical quarantine and

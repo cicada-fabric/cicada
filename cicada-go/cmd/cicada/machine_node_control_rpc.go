@@ -102,6 +102,7 @@ type machineNodeControlPairingInput struct {
 }
 
 type machineNodeControlState struct {
+	LocalDomainReport             *machineLocalDomainReportState        `json:"local_domain_report,omitempty"`
 	ManagedPairLeases             map[string]machineManagedPairLease    `json:"managed_pair_leases,omitempty"`
 	LocalEndpointAdmissionFloorMS int64                                 `json:"local_endpoint_admission_floor_ms,omitempty"`
 	LocalEndpointIntents          map[string]machineLocalEndpointIntent `json:"local_endpoint_intents,omitempty"`
@@ -388,6 +389,7 @@ func cloneMachineNodeControlState(state machineNodeControlState) machineNodeCont
 	state = cloneMachineNativePairState(state)
 	state = cloneMachineLocalEndpointState(state)
 	state = cloneManagedPairLeaseState(state)
+	state = cloneMachineLocalDomainState(state)
 	if state.PendingSnapshotManifest != nil {
 		manifest := *state.PendingSnapshotManifest
 		state.PendingSnapshotManifest = &manifest
@@ -465,11 +467,20 @@ func (client *machineNodeControlClient) call(ctx context.Context, token, operati
 	if err != nil {
 		return err
 	}
-	if len(plain) == 0 || len(plain) > nodewire.MaxRequestPlaintextBytes {
+	maxRequestPlaintext := nodewire.MaxRequestPlaintextBytes
+	if operation == wire.OperationLocalDomainNodeReconcile {
+		maxRequestPlaintext = wire.MaxLocalDomainNodeReconcileBodyBytes
+	}
+	if len(plain) == 0 || len(plain) > maxRequestPlaintext {
 		return errors.New("Node-Control request exceeds the 64KiB management limit")
 	}
 	if nativePairNodeBusinessOperation(operation) {
 		if _, err := nativePairNodeBody(operation, plain); err != nil {
+			return err
+		}
+	}
+	if localDomainNodeBusinessOperation(operation) {
+		if _, err := wire.DecodeLocalDomainNodeRequest(operation, plain); err != nil {
 			return err
 		}
 	}
@@ -683,6 +694,9 @@ func (client *machineNodeControlClient) call(ctx context.Context, token, operati
 		return err
 	}
 	if !envelope.OK {
+		if localDomainNodeBusinessOperation(completedOperation) {
+			return localEndpointTerminalError(envelope.ErrorCode)
+		}
 		if endpointNodeBusinessOperation(completedOperation) {
 			return localEndpointTerminalError(envelope.ErrorCode)
 		}
@@ -873,6 +887,9 @@ func (client *machineNodeControlClient) recoverPending(ctx context.Context, toke
 		return err
 	}
 	if !envelope.OK {
+		if localDomainNodeBusinessOperation(operation) {
+			return localEndpointTerminalError(envelope.ErrorCode)
+		}
 		if endpointNodeBusinessOperation(operation) {
 			return localEndpointTerminalError(envelope.ErrorCode)
 		}
@@ -1036,8 +1053,14 @@ func (client *machineNodeControlClient) postPacket(ctx context.Context, token st
 	defer response.Body.Close()
 	limit := nodewire.MaxPacketBytes
 	pairResponse := false
+	domainResponse := false
 	if original, decodeErr := nodewire.DecodePacket(packet); decodeErr == nil {
 		switch {
+		case localDomainNodeBusinessOperation(original.Route.Operation):
+			limit, domainResponse = wire.MaxLocalDomainNodeReceiptBytes, true
+			if original.Route.Operation == wire.OperationLocalDomainNodeReconcile {
+				limit = wire.MaxLocalDomainNodeReconcilePacketBytes
+			}
 		case nativePairNodeBusinessOperation(original.Route.Operation):
 			limit, pairResponse = wire.MaxNativePairNodeReceiptBytes, true
 		case original.Route.Operation == wire.OperationNativePairNodeReconcile:
@@ -1057,7 +1080,11 @@ func (client *machineNodeControlClient) postPacket(ctx context.Context, token st
 	if len(data) == 0 || len(data) > limit {
 		return nil, errors.New("Hub returned an invalid Node-Control response packet size")
 	}
-	if pairResponse {
+	if domainResponse {
+		if _, err := wire.DecodeLocalDomainNodePacket(data); err != nil {
+			return nil, errors.New("Hub returned an invalid bounded local-domain Node response")
+		}
+	} else if pairResponse {
 		if _, err := wire.DecodeNativePairNodePacket(data); err != nil {
 			return nil, errors.New("Hub returned an invalid native Pair Node-Control response packet")
 		}

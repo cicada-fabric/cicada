@@ -48,6 +48,9 @@ func nativePairNodeBusinessOperation(operation string) bool {
 }
 
 func machineNodeControlResponseCodeAllowedFor(operation, code string) bool {
+	if localDomainNodeBusinessOperation(operation) && (code == "LOCAL_DOMAIN_REJECTED" || code == "READ_EXPIRED" || code == "REJECTED_UNADMITTED") {
+		return true
+	}
 	return machineNodeControlResponseCodeAllowed(code) || operation == wire.OperationNativePairNodeJoin && code == wire.NativePairNodeJoinFenceCode || endpointNodeBusinessOperation(operation) && (code == nodewire.ErrEndpointContext.Error() || code == nodewire.ErrEndpointConflict.Error() || code == nodewire.ErrEndpointUnavailable.Error())
 }
 

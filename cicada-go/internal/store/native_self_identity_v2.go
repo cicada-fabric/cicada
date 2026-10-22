@@ -18,7 +18,10 @@ FROM memberships WHERE id=? AND revision=?`, at.Format(time.RFC3339Nano),
 		scope.MembershipID, scope.MembershipRevision).Scan(&effective); err != nil || effective != 1 {
 		return ErrNetworkPermission
 	}
-	return nativePairSelfTx(tx, scope, at)
+	if err := nativePairSelfTx(tx, scope, at); err != nil {
+		return err
+	}
+	return localDomainSelfTx(tx, scope, at)
 }
 
 // GetNativeSelfForActor exposes only this actor's current Endpoint and native

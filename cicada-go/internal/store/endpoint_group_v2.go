@@ -409,5 +409,5 @@ WHERE endpoint_id = ? AND status = 'active'`, timestamp, endpointID); err != nil
 WHERE id = ?`, timestamp, endpointID); err != nil {
 		return err
 	}
-	return nil
+	return localDomainLeaveEndpointTx(tx, endpointID, timestamp)
 }

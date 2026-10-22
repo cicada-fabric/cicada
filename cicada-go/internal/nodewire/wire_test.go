@@ -141,6 +141,45 @@ func TestNodeControlPacketRejectsWrongEpochAndStrictJSON(t *testing.T) {
 	}
 }
 
+func TestLocalDomainReconcileBodyCeilingIsExactAndAuthenticated(t *testing.T) {
+	node, hub, binding, route := testBinding(t)
+	route.Operation = "node.local_domain.reconcile"
+	payload := bytes.Repeat([]byte("r"), MaxLocalDomainReconcilePlaintextBytes)
+	packet, err := SealRequest(node, hub.Public(), binding, route, payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(packet) > MaxRequestPacketBytes {
+		t.Fatalf("maximum reconciliation packet exceeded the unchanged request ceiling: %d", len(packet))
+	}
+	opened, err := OpenRequest(hub, node.Public(), binding, packet)
+	if err != nil || !bytes.Equal(opened.Plaintext, payload) {
+		t.Fatal("exact reconciliation body did not roundtrip", err)
+	}
+	if _, err := SealRequest(node, hub.Public(), binding, route, append(payload, 'x')); err == nil {
+		t.Fatal("reconciliation accepted an oversized body")
+	}
+	for _, op := range []string{"node.local_domain.key_complete", "node.native_pair.reconcile", "node.local_domain.reconcile.extra", "node.jobs.list"} {
+		other := route
+		other.Operation = op
+		if _, err := SealRequest(node, hub.Public(), binding, other, payload[:MaxRequestPlaintextBytes+1]); err == nil {
+			t.Fatalf("%s inherited the reconciliation-only ceiling", op)
+		}
+	}
+	var changed Packet
+	if err := json.Unmarshal(packet, &changed); err != nil {
+		t.Fatal(err)
+	}
+	changed.Route.Operation = "node.jobs.list"
+	tampered, err := json.Marshal(changed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := OpenRequest(hub, node.Public(), binding, tampered); err == nil {
+		t.Fatal("operation substitution bypassed the authenticated body ceiling")
+	}
+}
+
 func TestSnapshotChunksHaveIndependentAADAndBoundedFraming(t *testing.T) {
 	node, hub, _, route := testBinding(t)
 	plaintext := []byte("synthetic snapshot bytes")

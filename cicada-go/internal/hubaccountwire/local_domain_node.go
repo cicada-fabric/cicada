@@ -90,7 +90,7 @@ func DecodeLocalDomainNodeRequest(operation string, raw []byte) (any, error) {
 		return q, nil
 	case OperationLocalDomainNodeReconcile:
 		var q LocalDomainNodeReconcile
-		if decodeCanonical(raw, nodewire.MaxRequestPlaintextBytes, &q) != nil || q.ContractRevision != LocalDomainContractRevision || len(q.Nonce) != NonceBytes || validateCanonicalTime(q.IssuedAt) != nil {
+		if decodeCanonical(raw, MaxLocalDomainNodeReconcileBodyBytes, &q) != nil || q.ContractRevision != LocalDomainContractRevision || len(q.Nonce) != NonceBytes || validateCanonicalTime(q.IssuedAt) != nil {
 			return nil, ErrInvalid
 		}
 		p, err := DecodeLocalDomainNodePacket(q.OriginalPacket)

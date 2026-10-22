@@ -135,27 +135,29 @@ func localJoinRecoveryFromError(err error) (*localJoinRecoveryStatus, bool) {
 }
 
 type machineAgentJoinBridge struct {
-	discoveryMu      sync.Mutex
-	discovery        atomic.Pointer[localNodeDiscoveryPublication]
-	managedLeaseMu   sync.Mutex
-	managedLeaseNext int
-	managedLeaseWake chan struct{}
-	cancel           context.CancelFunc
-	endpointMu       sync.Mutex
-	codexContexts    localCodexContextAuthority
-	listener         net.Listener
-	path             string
-	socketFile       os.FileInfo
-	baseURL          string
-	stateDir         string
-	nodeID           string
-	nodeToken        string
-	ctx              context.Context
-	localWake        chan struct{}
-	wg               sync.WaitGroup
-	closeOnce        sync.Once
-	spaceSyncMu      sync.Mutex
-	spaceSyncNext    int
+	localDomainMu             sync.Mutex
+	localDomainReportsEnabled atomic.Bool
+	discoveryMu               sync.Mutex
+	discovery                 atomic.Pointer[localNodeDiscoveryPublication]
+	managedLeaseMu            sync.Mutex
+	managedLeaseNext          int
+	managedLeaseWake          chan struct{}
+	cancel                    context.CancelFunc
+	endpointMu                sync.Mutex
+	codexContexts             localCodexContextAuthority
+	listener                  net.Listener
+	path                      string
+	socketFile                os.FileInfo
+	baseURL                   string
+	stateDir                  string
+	nodeID                    string
+	nodeToken                 string
+	ctx                       context.Context
+	localWake                 chan struct{}
+	wg                        sync.WaitGroup
+	closeOnce                 sync.Once
+	spaceSyncMu               sync.Mutex
+	spaceSyncNext             int
 }
 
 func machineAgentJoinSocketPath(stateDir, nodeID string) string {

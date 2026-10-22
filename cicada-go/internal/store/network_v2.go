@@ -859,7 +859,18 @@ func networkGuardGroupEndpointTx(tx *sql.Tx, principalID, endpointID, groupID st
 		SenderPrincipalID: principalID, SenderEndpointID: endpointID, SenderGroupID: groupID,
 		ReceiverPrincipalID: principalID, ReceiverEndpointID: endpointID, ReceiverGroupID: groupID,
 	}
-	return networkGuardRelaySecurityTx(tx, security, groupID, at)
+	if err := networkGuardRelaySecurityTx(tx, security, groupID, at); err != nil {
+		return err
+	}
+	p, err := localDomainForGroupTx(tx, groupID)
+	if err != nil || p == nil {
+		return err
+	}
+	m, err := localDomainEndpointCurrentTx(tx, p, endpointID, at)
+	if err != nil || m.member.PrincipalID != principalID {
+		return ErrNetworkPermission
+	}
+	return nil
 }
 
 func networkGuardTaskPrincipalTx(tx *sql.Tx, principalID, groupID string, at time.Time) error {

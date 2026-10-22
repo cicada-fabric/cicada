@@ -62,6 +62,10 @@ type nativePairTCPConsumerFixture struct {
 }
 
 func newNativePairTCPConsumerFixture(t *testing.T) *nativePairTCPConsumerFixture {
+	return newNativePeerTCPConsumerFixture(t, true)
+}
+
+func newNativePeerTCPConsumerFixture(t *testing.T, bootstrapPair bool) *nativePairTCPConsumerFixture {
 	t.Helper()
 	root, err := os.MkdirTemp(os.TempDir(), "np-")
 	if err != nil {
@@ -263,7 +267,9 @@ func newNativePairTCPConsumerFixture(t *testing.T) *nativePairTCPConsumerFixture
 		f.mcp[i] = newMCPServer(f.server.URL, "", filepath.Join(root, "mcp", native+".json"))
 		f.mcp[i].hubStateDir = f.nodeRoot
 	}
-	f.bootstrapPair(t)
+	if bootstrapPair {
+		f.bootstrapPair(t)
+	}
 	return f
 }
 

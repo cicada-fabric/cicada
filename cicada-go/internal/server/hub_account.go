@@ -108,6 +108,12 @@ func (h *Handler) hubAccount(response http.ResponseWriter, request *http.Request
 		}
 	}
 	limit := wire.MaxPacketBytes
+	if wire.LocalDomainHTTPPath(operation) != "" {
+		limit = wire.MaxLocalDomainOriginalBytes
+		if operation == wire.OperationLocalDomainReconcile {
+			limit = wire.MaxLocalDomainReconcilePacketBytes
+		}
+	}
 	if wire.NativePairHTTPPath(operation) != "" {
 		limit = wire.MaxNativePairOriginalBytes
 		if operation == wire.OperationNativePairReconcile {

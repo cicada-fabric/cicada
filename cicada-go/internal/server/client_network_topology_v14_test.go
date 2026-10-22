@@ -196,8 +196,10 @@ VALUES(?,?,'active',1,'synthetic endpoint',0,?,?)`, "synthetic-network-foreign",
 				endpointVisible = true
 			}
 		}
-		if networkVisible != expiry.visible || endpointVisible != expiry.visible {
-			t.Fatalf("expiry %q leaked/omitted foreign topology: network=%t endpoint=%t want=%t",
+		// The Owner directory independently includes this Owner's own Endpoint
+		// metadata. Expiry removes the foreign Network relation, not that identity.
+		if networkVisible != expiry.visible || !endpointVisible {
+			t.Fatalf("expiry %q leaked/omitted topology: network=%t owner_endpoint=%t want_network=%t want_owner_endpoint=true",
 				expiry.value, networkVisible, endpointVisible, expiry.visible)
 		}
 	}

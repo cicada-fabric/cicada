@@ -2017,6 +2017,10 @@ func (s *Store) renewSessionBindingLease(bindingID, leaseOwner string, expectedE
 	if err != nil {
 		return nil, err
 	}
+	leaseExpiresAt, err = renewLocalDomainAccessLeaseTx(tx, binding, leaseExpiresAt, currentTime)
+	if err != nil {
+		return nil, err
+	}
 	result, err := tx.Exec(`UPDATE session_bindings SET lease_expires_at = ?, status = ?, version = version + 1, updated_at = ? WHERE id = ? AND epoch = ? AND version = ? AND lease_owner = ? AND status IN ('active', 'leased', 'online', 'ready', 'acquired')`,
 		leaseExpiresAt, SessionBindingStatusLeased, currentTime.Format(time.RFC3339), bindingID, expectedEpoch, binding.Version, leaseOwner)
 	if err != nil {

@@ -305,6 +305,10 @@ func localEndpointTerminalError(code string) error {
 		return errNativePairNodeRejected
 	case "RESULT_EXPIRED":
 		return errLocalEndpointReceiptExpired
+	case "READ_EXPIRED":
+		return errLocalEndpointReceiptExpired
+	case "LOCAL_DOMAIN_REJECTED", "REJECTED_UNADMITTED":
+		return errLocalDomainNodeRejected
 	case nodewire.ErrEndpointContext.Error():
 		return nodewire.ErrEndpointContext
 	case nodewire.ErrEndpointConflict.Error():

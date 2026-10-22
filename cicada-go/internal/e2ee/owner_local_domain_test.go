@@ -91,7 +91,7 @@ func TestLocalDomainDelegationCannotWidenOrImpersonateOwner(t *testing.T) {
 		t.Fatal("domain delegation became Pair consent")
 	}
 	digest, _ := LocalDomainPolicyDigest(p)
-	c := LocalDomainEndpointKeyClaims{Version: 1, Purpose: LocalDomainEndpointKeyPurpose, PolicyID: p.PolicyID, PolicyEpoch: p.Epoch, PolicyDigest: digest, MemberID: "synthetic-member", MemberRevision: 1, ManifestDigest: strings.Repeat("e", 64), CandidateBindingDigest: strings.Repeat("f", 64), IssuedAt: p.IssuedAt}
+	c := LocalDomainEndpointKeyClaims{Version: 1, Purpose: LocalDomainEndpointKeyPurpose, PolicyID: p.PolicyID, PolicyEpoch: p.Epoch, PolicyDigest: digest, MemberID: "synthetic-member", MemberRevision: 1, MemberDigest: strings.Repeat("a", 64), ManifestDigest: strings.Repeat("e", 64), CandidateBindingDigest: strings.Repeat("f", 64), IssuedAt: p.IssuedAt}
 	keyProof, err := SignLocalDomainEndpointKey(node, p, c)
 	if err != nil {
 		t.Fatal(err)
@@ -138,5 +138,31 @@ func TestLocalDomainUserReportUsesExactNodeAndShortLifetime(t *testing.T) {
 	}
 	if !ValidLocalDomainUserScope("uid:0") || !ValidLocalDomainUserScope("uid:1000") {
 		t.Fatal("canonical user scope refused")
+	}
+}
+
+func TestLocalDomainUserReportEmptyOwnerHintStillBindsOriginalNodeAuthority(t *testing.T) {
+	_, node, p, _, now := syntheticLocalDomain(t)
+	r := LocalDomainUserReport{Version: 1, Purpose: LocalDomainUserReportPurpose, HubID: p.HubID, NodeID: p.Node.NodeID, OwnerBindingID: p.Node.OwnerBindingID, NodeKeyEpoch: p.Node.NodeKeyEpoch, LocalUserScope: p.LocalUserScope, IssuedAt: p.IssuedAt, ExpiresAt: now.Add(5 * time.Minute).Format(time.RFC3339Nano), Nonce: strings.Repeat("a", 64)}
+	raw, err := SignLocalDomainUserReport(node, r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = VerifyLocalDomainUserReport(p.Node, raw, now); err != nil {
+		t.Fatal("empty Owner hint refused its unique authenticated binding", err)
+	}
+	changes := map[string]func(*LocalDomainUserReport){"wrong-owner": func(r *LocalDomainUserReport) { r.OwnerID = "synthetic-other-owner" }, "wrong-node": func(r *LocalDomainUserReport) { r.NodeID += "-other" }, "wrong-binding": func(r *LocalDomainUserReport) { r.OwnerBindingID += "-other" }, "wrong-epoch": func(r *LocalDomainUserReport) { r.NodeKeyEpoch++ }, "wrong-hub": func(r *LocalDomainUserReport) { r.HubID += "-other" }}
+	for name, change := range changes {
+		t.Run(name, func(t *testing.T) {
+			bad := r
+			change(&bad)
+			raw, err := SignLocalDomainUserReport(node, bad)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err = VerifyLocalDomainUserReport(p.Node, raw, now); err == nil {
+				t.Fatal("signed report escaped its original binding")
+			}
+		})
 	}
 }

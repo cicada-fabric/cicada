@@ -142,6 +142,49 @@ func TestRecoveryInspectRequiresExclusiveMaintenanceLock(t *testing.T) {
 	}
 }
 
+func TestLocalDomainCryptoSchemaInspectionRequiresAllTrustTablesReadOnly(t *testing.T) {
+	for _, missing := range []string{"", "node_crypto_owner_key_trust", "node_native_pair_attestations", "node_local_domain_policies_v1", "node_local_domain_members_v1", "node_local_domain_local_keys_v1", "node_local_domain_attestations_v1", "future-schema"} {
+		t.Run(missing, func(t *testing.T) {
+			dir := t.TempDir()
+			state, err := nodekeys.OpenCryptoState(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := state.Close(); err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(dir, "node-crypto-state.sqlite")
+			if missing != "" {
+				db, err := openSQLite(path, "mode=rw")
+				if err != nil {
+					t.Fatal(err)
+				}
+				statement := "DROP TABLE " + missing
+				if missing == "future-schema" {
+					statement = "UPDATE node_crypto_schema SET version=8 WHERE singleton=1"
+				}
+				_, err = db.Exec(statement)
+				closeErr := db.Close()
+				if err != nil || closeErr != nil {
+					t.Fatal(err, closeErr)
+				}
+			}
+			before := snapshotNodeTree(t, dir)
+			report, err := inspectCryptoState(path)
+			if missing == "" {
+				if err != nil || report.SchemaVersion != 7 {
+					t.Fatal("current crypto schema was not inspected", err)
+				}
+			} else if !errors.Is(err, ErrBackupInvalid) {
+				t.Fatal("unsupported or incomplete crypto schema accepted", err)
+			}
+			if !equalFileSnapshots(before, snapshotNodeTree(t, dir)) {
+				t.Fatal("offline inspection changed crypto state")
+			}
+		})
+	}
+}
+
 func createRecoveryInspectFixture(t *testing.T) (backupDir, stateDir, nodeDir string) {
 	t.Helper()
 	root := t.TempDir()

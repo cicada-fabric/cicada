@@ -1,8 +1,13 @@
 # Native local domain contract
 
-Status: **SHARED CONTRACT; SERVICE NOT IMPLEMENTED**. Root approved
-the trust boundary, lifecycle and operations on 2026-10-22. The shared Go types,
-constructors and crypto/codec tests are the reviewable contract checkpoint.
+Status: **HUB/NODE RPC, NODE CRYPTO AND USER REPORT IMPLEMENTED;
+NATIVE ISSUER/JOIN ADAPTER NOT YET ACCEPTED**. Root approved
+the trust boundary, lifecycle and operations on 2026-10-22. The shared contract
+checkpoint remains attributed to its original source. The subsequent backend
+checkpoint implements the Hub service and Node report/cryptographic components;
+its public capability describes server availability, not completion of a local
+Native adapter or caller authorization. Hub schema migration 66 and Node crypto
+schema 7 retain existing identities, public keys, epochs and historical Pair data.
 This does not change `native-pair-v1`,
 the frozen Client wire identifiers, or the installation-registration profile.
 
@@ -24,7 +29,7 @@ attest a Unix UID. A private Node key or IPC accessible to another UID violates
 this boundary and remains a hard refusal.
 
 The App never guesses the remote user or takes it from its own OS. A new
-Node-signed `LocalDomainUserReport` binds Hub/Owner/Node/Owner-binding/key-epoch,
+Node-signed `LocalDomainUserReport` binds Hub/Node/Owner-binding/key-epoch,
 actual user scope, nonce and at most five minutes validity. The prepare target
 may leave `LocalUserScope` empty to resolve this authenticated report, or require
 an exact nonempty match. The complete preview includes the report; App verifies
@@ -33,6 +38,14 @@ then signs the persistent policy. Without a fresh report, preparation refuses
 with a bounded upgrade/start-Node result. The report is needed only to prepare
 and activate, never to keep an active policy alive, read/revoke it or recover an
 exact old receipt.
+
+The report's `OwnerID` is an optional hint because the original approved Node
+state does not contain an Owner ID. A nonempty hint must match exactly. An
+empty hint does not assert or grant Owner authority: the Hub derives Owner from
+the unique current authenticated binding; the App verifies the unchanged signed
+report against its authenticated Owner/Node binding. Hub ID, Node ID,
+Owner-binding ID and Node-key epoch remain mandatory exact signed coordinates.
+No local first-Owner guess or new discovery operation supplies an identity.
 
 Owner delegation is necessary for Endpoint encryption-key authenticity as well
 as membership. An approved Node signs each exact current Endpoint candidate and
@@ -46,6 +59,16 @@ never accepted as an Owner signature in existing grant verification.
 New independent revision `native-local-domain-v1`, format
 `cicada.native-local-domain.v1`. Existing encrypted App account envelopes and
 Node-Control RPC are reused; no Control inference, new daemon or dependency.
+
+Only this new profile uses a 224 KiB encrypted Node receipt limit and a 560 KiB
+encrypted reconciliation-response limit. An original Node request stays within
+64 KiB; the exact `node.local_domain.reconcile` plaintext body alone may use
+128 KiB to embed that original. The existing generic 256 KiB request-packet,
+64 KiB other-request plaintext and 2 MiB response-plaintext limits remain.
+Strict typed DTOs reject unknown padding. The complete signed Owner/Node and
+member proofs, including worst-case legal native fields and JSON escaping,
+must fit these bounds through actual PQ encryption and nested exact recovery.
+Legacy Pair bounds and its verifier are unchanged.
 
 `LocalDomainPolicy` contains these immutable authority coordinates:
 
@@ -84,7 +107,17 @@ Node-signed grant and delegation reference. It is a distinct evidence variant,
 not an `OwnerGroupEndpointKeyGrant` with forged Owner attribution. The delegated
 signature reuses existing ML-DSA signing/verification primitives with a distinct
 typed purpose `local-domain-endpoint-key-grant:v1`; policy and member binding
-digests are signed together. Its optional expiry equals the policy expiry; the
+digests are signed together. `LocalDomainEndpointKeyClaims.MemberDigest` is
+mandatory and equals the lowercase SHA-256 of UTF-8
+`cicada/local-domain/member/v1\0` followed by the canonical complete typed
+`LocalDomainMember` JSON (Go DTO field order, normal JSON escaping, no whitespace).
+It binds SID, canonical cwd, user, access ID/epoch, membership revisions and
+LeaseOwner in addition to the generic manifest's key/binding coordinates.
+Preparation computes it from the projected member; the Node must compare the
+complete original local member before signing; completion and receivers
+recompute it. Missing or substituted coordinates refuse. This addition belongs
+to the subsequent backend source, not the original shared-contract validation.
+Its optional expiry equals the policy expiry; the
 short key-completion challenge is separate. Empty manifest expiry is accepted
 only by this new delegation verifier, never by legacy Owner or Pair verifiers.
 
@@ -130,11 +163,16 @@ key/epoch, sequence and replay ledger:
 
 * `node.local_domain.available`: publishes an independently Node-signed
   `LocalDomainUserReport` and reads current exact Node/user policies, with no
-  account session token or policy for other Nodes/users. This is a mutation with
-  an immutable exact replay receipt; retry returns the original report/read
-  outcome, not a new observation. On startup and periodically, the existing
+  account session token or policy for other Nodes/users. Its exact report/read
+  receipt has a bounded five-minute cache; a retry in that window returns the
+  original observation. An expired original sequence returns signed
+  `READ_EXPIRED` without republishing the report or refreshing the read. On
+  startup and periodically, the existing
   Node agent publishes a fresh actual-writer report when the Hub advertises this
-  profile, even before any Thread joins. No legacy heartbeat schema is changed.
+  profile, even before any Thread joins. Refresh is at most once per two minutes,
+  with a persisted 2/4/8/16-minute failure backoff; old Hub 404/unavailable leaves
+  the normal shared counter/outbox and daemon intact. There is no per-tool,
+  whoami or heartbeat report. No legacy heartbeat schema is changed.
 * `node.local_domain.join`: explicitly selected policy plus exact current native
   registration; returns original Endpoint/SessionBinding/network session and
   member with runtime/SID/canonical workspace. This is zero peer rights until the
@@ -152,6 +190,15 @@ key/epoch, sequence and replay ledger:
   and exact operation recovery. Existing native lease renewal retains policy
   authority checks and never renews policy expiry.
 
+Owner status/reconcile and Node available/describe/reconcile use five-minute
+read caches of at most 128 entries per authenticated actor/epoch and at most
+128 fresh reads per minute. Node reads share the existing sequence highwater;
+deleting an expired read cache never makes an old sequence executable again.
+Only one latest signed user report is upserted per Node-binding/key epoch.
+Prepare/activate/revoke, join and key prepare/complete retain permanent exact
+mutation receipts and no-effect fences. Report polling does not append a full
+policy response to permanent history every two minutes.
+
 Policy: `PREPARED -> ACTIVE -> REVOKED | EXPIRED`. No backward transition.
 v1 admits at most one nonterminal policy per exact Node/user. Creating another
 Network/scope conflicts until the old policy is revoked or expires; it is never
@@ -163,7 +210,15 @@ Preparation timeout creates an expired durable outcome, not a new scope.
 Member: `REGISTERED_ZERO -> JOINED_ZERO -> ACTIVE -> LEFT | REVOKED | EXPIRED`.
 A failed or expired key challenge remains zero-right; refresh can issue a new
 challenge under the same current member, without resetting its identity or
-epochs. An already-left registration cannot be revived by retry. A new policy
+epochs. An already-left member cannot be revived by retry. A fresh explicit
+Attempt can reuse the stable native SID, cwd, Endpoint and principal after Leave
+or under a newly approved policy. It allocates a new member and SessionBinding
+with a strictly newer binding epoch; only current members participate in SID and
+Endpoint uniqueness. The established Network table keeps one AccessID per
+Network/Endpoint, so same-Network rejoin preserves that ID and CAS-increments its
+access epoch. Historical members retain their original `(AccessID, epoch)` and
+remain terminal; exact old packets return the original receipt without revival.
+A new policy
 does not automatically adopt terminal members, old Pair slots or prior history.
 
 The key challenge contains `ExpectedRevision` (current), a projected `Member`
@@ -191,6 +246,18 @@ not continuing authorization dependencies. App close, ordinary logout, a
 Explicit policy revoke, Owner-root revoke, Node-binding/key revoke/rotation,
 Network/Group/member revoke or policy expiry immediately prevents new work.
 Queued work fails current Guard; accepted historical receipts remain recoverable.
+
+The Hub serializes send, claim and final authorization with revocation under
+SQLite's writer transaction. Committing final authorization for an exact native
+attempt is the in-flight boundary. Revocation before that commit denies it;
+revocation afterward may leave that already authorized attempt in flight only
+within its original deadline (at most 30 seconds and the current short leases).
+A Node fetches final authorization afresh before each actual attempt, including
+after a writer wait or restart; it cannot reuse the observation for another
+operation/attempt. Queued/claimed rows without such authorization fail after
+revoke. This is no claim of an atomic Hub/remote-OS operation, rollback of native
+side effects or two-phase commit. Complete peer/delivery carriers are bounded
+to 320 KiB including both distinct delegated grants and current evidence.
 
 The dedicated domain Group cannot be an existing Pair Group. Legacy admission,
 topology or key-grant mutations cannot insert unrelated members into that Group.
@@ -263,8 +330,11 @@ Signing APIs are `e2ee.Sign/VerifyOwnerLocalDomainPolicy`,
 `CanonicalLocalDomainNodeRequest`, `DecodeLocalDomainNodeRequest`,
 `DecodeLocalDomainNodePacket`, `DecodeLocalDomainNodeAvailable` and
 `LocalDomainSelectionForPolicy`. Typed DTOs are defined in
-`internal/hubaccountwire/local_domain_types.go`. Service/Store/CLI entry points
-above remain implementation work, not exposed availability in this checkpoint.
+`internal/hubaccountwire/local_domain_types.go`. Hub service/Store entry points,
+Node cryptographic state and the bounded Node report worker are implemented in
+the backend checkpoint recorded below. The Native issuer and explicit Join /
+delivery adapters remain separate acceptance work. The following shared-contract
+validation retains its original, earlier implementation boundary.
 
 Separately approved local diagnostic API is
 `LocalCodexContextError{Stage string}` with `Unwrap() -> errLocalCodexContext`;
@@ -341,3 +411,103 @@ All evidence is under
 `/home/zyf/Cicada/.local/evidence/node-endpoint-registration/`, retaining source
 manifests, exact receipts, post-source checks and command output. The final
 candidate manifest lists exact checkpoint file hashes and receipt hashes.
+
+## Hub backend and Node crypto/report validation, 2026-10-22
+
+This checkpoint implements Hub schema 66, encrypted Owner prepare/activate /
+status/revoke/reconcile, Node report/available/zero-Join/key-prepare/key-complete /
+describe/reconcile, dedicated-Group guards, lease recovery and existing sealed
+Relay SEND/ASK/REPLY admission. Node crypto schema 7 requires the independent
+original Owner public pin, verifies complete delegated member/key chains and
+rechecks that pin under the peer-pin writer. The existing Node worker publishes
+the actual OS-user report before Thread enrollment only after binding approval;
+low-level discovery startup stays read-only. No Control inference is used.
+
+The final tested dirty source is based on
+`e423be32b070cc2cefacf9974dd0d3e957ecabcb`, with full source manifest SHA-256
+`289a6ec7a9b5f0d31eca58086b6121c28be450571f43d5942777ed62ed2f8c14`.
+All final gates kept every source byte and base commit unchanged, checked after
+completion. This validation record and the preceding entry-point clarification
+are a subsequent documentation-only overlay. Do not attribute this dirty build
+solely to HEAD. Commands used the same pinned Go 1.27.3 Docker image, UID 1000,
+network-disabled container and read-only source/module mounts described above.
+Only disposable SQLite/TCP fixtures and visibly synthetic identities were used.
+
+| Gate | Result | External evidence directory |
+| --- | --- | --- |
+| Full normal: e2ee, clientwire, hubaccountwire, nodewire, nodekeys, nodebackup, hubauth, hubnodes | Exit 0; 817 pass, 0 fail, 1 skip; 272 top-level pass | `local-domain-crypto-rpc-normal-20261022-20261022T204318Z` |
+| Scoped normal: Store, Server and CLI | Exit 0; 289 pass, 0 fail, 1 skip; 124 top-level pass | `local-domain-backend-normal-final-20261022-20261022T204623Z` |
+| Focused race: local domain, crypto migrations, concurrent Hub migration and existing Node request/response ceilings | Exit 0; 103 pass, 0 fail, 0 skip; 40 top-level pass | `local-domain-focused-race-final-20261022-20261022T210403Z` |
+| Vet: the above packages plus fabric | Exit 0 | `local-domain-backend-vet-final-20261022-20261022T204635Z` |
+| Wider compatibility race attempt | **NOT_ACCEPTED**, exit 1; Store package reached its 20-minute timeout after 1263.287 seconds overall | `local-domain-all-race-final-20261022-20261022T204623Z` |
+
+The full normal lightweight-package gate used earlier source manifest
+`addc30a13435541f92ce335adf7739e9fa2395e9a0a5921f7a1e2976e6ef737f`;
+its tested package sources are unchanged in the final source. The later changes
+fixed the Store's external reconciliation digest and strengthened its concurrent
+Join / persistent-reopen test. Exact commands, package lists, selectors,
+per-test events, receipt hashes and post-source checks remain in each evidence
+directory. Counts are per gate and include subtests; they are not additive.
+
+The scoped normal selector covers local domain, legacy Native Pair, same-Group
+sealed carriers, native self, relevant migration/restore, Node discovery and
+Owner topology tests. The focused race selector is exactly
+`^Test(LocalDomain|CryptoStateV[123]|V2MigrationsConcurrentOpenSerializesLedger|NodeControlUsesRequestAndResponseBodyCeilings)`
+over e2ee, hubaccountwire, nodewire, nodekeys, nodebackup, Store, Server and CLI.
+The broad race attempt recorded 342 completed pass events and no explicit test
+assertion failure before its package timeout; this is **not** an overall pass.
+Its last active test, `TestV2MigrationFailureRollsBackSchemaAndResumes`, had run
+six seconds; the retained stack was compiling SQLite integrity-check work in
+`verifySQLiteIntegrity` / `Store.New`. Prior test completions kept advancing.
+This evidence alone does not establish absence of a product deadlock. Unfinished
+wide-race tests are **NOT_RUN**; compatibility claims use the completed normal
+scope and completed focused race, without retrying the enormous broad group.
+
+The two separate skip reasons are unchanged external prerequisites: the full
+lightweight normal gate did not select an independently verified OpenSSL 3.5.9
+executable, and the scoped normal restore gate did not supply two disposable
+physical bind mounts. Neither is a pass. The focused race has no skips.
+
+Real Hub-Nodes-only TCP tests perform existing N2/N3 enrollment, preserve original
+Owner/Node keys and epochs, activate a policy, recover the exact activation
+receipt, zero-Join two synthetic native SIDs, publish original Endpoint
+candidates, complete the real PQ Owner-to-Node-to-Endpoint chain, SEND/claim /
+final-authorize and revoke. Maximum legal native fields produced 214,186-byte
+Node completion receipts and 520,695-byte nested reconciliation responses.
+A 55,248-byte authenticated original with a deliberately invalid inner signature
+produced a durable no-effect refusal, recovered byte-for-byte through a
+73,831-byte reconciliation body / 143,353-byte request packet. Unknown DTO
+padding, oversized profile frames, operation substitution and inherited old
+Pair/generic enlarged limits are refused.
+
+Store tests cover four concurrent identical Joins returning one exact
+identity/token receipt, close/reopen recovery of that original receipt, Leave
+followed by explicit same-SID/cwd rejoin with greater binding and Access epochs,
+non-revival of old members, cold lease recovery after App/session/device loss,
+bounded report reads and expired-original fencing, current full-chain peer
+guards, and final authorization serialized before/after revocation. Restore
+tests reject policy/proof/receipt/challenge/member replacement and epoch
+rollback, distinguish disposable caches from permanent sequence floors, and
+accept only exact higher-epoch stable-coordinate Access credential advancement.
+Node offline inspection remains read-only and refuses missing trust/key tables
+or future crypto schemas.
+
+Earlier failures are retained, not relabeled: the initial broad normal attempt
+recorded 3018 pass / 30 fail / 22 skip and a Store timeout. It exposed stale
+migration/version fixtures, missing schema-66 / crypto-7 restore coverage,
+implicit report startup in low-level discovery fixtures and a pre-existing
+Owner-directory expectation. The latter was independently reproduced on clean
+`914250b6` by Root; only that test expectation changed, with no product directory
+query change. Subsequent boundary fixtures corrected base64 size calculations;
+the real TCP test also caught the external Node reconciliation digest using the
+internal ledger SHA-256 instead of the shared domain-separated packet digest.
+The internal ledger algorithm remains unchanged. Final scoped gates above cover
+these corrections; no full Store/Server/CLI-suite pass is claimed.
+
+**Remaining acceptance boundary:** Native context issuer/profile selection,
+explicit local-domain Join/candidate publication/managed lease adapters, actual
+native delivery, integrated Hook/MCP consumption, the supervising App-to-Hub
+domain gate, real Codex Runtime, Windows, Android, physical devices, public HTTPS
+and production restore/deployment are **NOT_RUN / NOT_ACCEPTED by this backend
+checkpoint**. Synthetic SIDs in TCP fixtures were never sent to a real Runtime.
+No deployment, real identity/key replacement, push or merge is performed here.
