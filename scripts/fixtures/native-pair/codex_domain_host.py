@@ -19,6 +19,9 @@ sys.dont_write_bytecode = True
 from codex_three_stage import PersistentCLI
 
 DOMAIN_ADMISSION_TITLE = "This Thread's local collaboration admission is saved; current Hub Guard verifies subsequent communication."
+# Codex 0.163.0 tools/context.rs Text output has this root-anchored header.
+# Decode the entire remaining JSON body; never search arbitrary text for JSON.
+CODEX_0163_TEXT_HEADER = re.compile(r'\AWall time: (?:0|[1-9][0-9]*)\.[0-9]{4} seconds\nOutput:\n')
 
 
 def output_objects(value):
@@ -30,7 +33,12 @@ def output_objects(value):
     elif isinstance(value, list):
         for child in value:
             yield from output_objects(child)
-    elif isinstance(value, str) and value.lstrip().startswith(('{', '[')):
+    elif isinstance(value, str):
+        header = CODEX_0163_TEXT_HEADER.match(value)
+        if header is not None:
+            value = value[header.end():]
+        if not value.lstrip().startswith(('{', '[')):
+            return
         try:
             decoded = json.loads(value)
         except ValueError:
