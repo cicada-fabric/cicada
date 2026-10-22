@@ -4811,3 +4811,44 @@ model/queue consumption, automatic wake, Windows DPAPI/ACL/GUI, Android and
 public HTTPS remain NOT_RUN in this scope. Earlier gates retain their own
 sources. The temporary launcher/helper remains unapplied; this acceptance does
 not install or alter anything in the user's real environment.
+
+## 2026-10-22 user MCP recovery and original UX-A registration
+
+Root identifies the deployed code as `7bbcb84`; `5f29484` is the documentation/
+acceptance checkpoint. This entry adds user observations and attributed read-only
+diagnostics, not a rebuilt package or another independent business gate. It records
+7bb behavior without adopting per-record chmod or per-Thread Pair approval as
+the future permission model.
+
+| Observation | Attribution and limit |
+| --- | --- |
+| MCP initially unknown, zero tools | **USER_REPORTED_FAIL**. QA's selected logs only report no exact ready client; that message alone does not establish the cause. |
+| Local discovery permission failure | **Root independent read-only verification, relayed to QA**: the exact installed binary's initialize/list exits 1 with LOCAL_NODE_DISCOVERY_INVALID; `/home/zyf/Cicada` is 0775. QA does not repeat that probe. |
+| MCP connected, 71 tools | **USER_REPORTED_PASS — startup only**, after the user's single-directory chmod. Root separately reports 0755 and initialize/list exit 0, 71 tools, empty stderr. Tool discovery grants no business authority. |
+| UserPromptSubmit disabled, then restored | Root reads the specific Cicada UserPromptSubmit enabled=false override. The user reports enabling the Hook through normal controls and retries the literal command in the original A Thread; it is then intercepted and refused for unverified native evidence. The earlier generic PreToolUse refusal does not establish that the SID was wrong. |
+| Native-record permission blocker | **QA independent read-only metadata** for the designated A workspace: source/originator `(vscode, codex-tui)`, original id/session_id/cwd and inode match, with record mode 0664 and record-tree directories 0775. No message body, raw tool payload, nonce or ticket is exported. These group-writable paths violate the existing record guard. |
+| Original A registers as UX-A | **USER_REPORTED_PASS — registration only** after the user corrects the identified unsafe paths and retries in the same original Thread. The reported output is “This Thread is registered”, with UX-A and the correct cwd. QA does not independently rerun registration or assert post-correction modes. |
+| Current permissions and original writer | **Root independent read-only receipt**: the original A record and five record-tree directories have matching UID, no symlink and no mode bits 0022; the actual Codex daemon PID 10791 still has Umask 0002. Safe current paths do not establish safe creation for the next Thread. |
+
+The external layered startup receipt is
+`native-pair-acceptance/mcp-permission-recovery-20261022-a8t7e0zn/result.json`,
+SHA-256 `7d98f576c34a5f055f6ebb0a41da068da78c31048903312fa6cbb45a144ef4a9`;
+its earlier limited-log source is
+`mcp-log-status-20261022-_0fvhkzx/result.json`, SHA-256
+`2a75fd390de92423e4aa96698fa59026673258f0ad419e4ab26d17af88712a89`.
+Root's current metadata/writer receipt is
+`local-permission-feedback-20261022-gwijg5up/result.json`, SHA-256
+`3a839c12ef3713c2d4b09cf20aedae68217f15c9444d3c2240118e342f0f6bdd`.
+QA verifies that receipt hash without repeating Root's probes or freshly
+verifying the installed binary. QA changes no real permissions, Hook
+configuration, daemon or product state while recording this batch.
+
+No automatic preparation, future-Thread behavior or new permission model is
+implemented or tested by this record. UX-A registration establishes neither a
+Node/Network business grant nor successful communication. New B registration,
+new A/B peers/App-directory matching, communication, App-exit persistence,
+revocation, native queue/model consumption and platform security remain
+**NOT_RUN in this user batch**. Node/Network authorization and default local
+communication are pending Root's review, not validated here. Historical Pair
+and other independent results retain their original scopes; no new CLI/API/script
+or automatic repair is claimed here.

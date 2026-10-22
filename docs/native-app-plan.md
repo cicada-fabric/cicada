@@ -67,6 +67,20 @@ configuration/discovery and consumers are now implemented; the
 passes on the integrated source. Rollout and broader acceptance remain in
 progress; no replacement installer or Node daemon is introduced.
 
+2026-10-22 user clarification: the same Node and OS user form a trusted-host
+boundary; individual Threads are not strong isolation principals. Business
+permissions govern Node-to-Network membership and service-mediated shared or
+cross-domain resources/operations. The Owner panel manages policy; Hub maintains
+its authoritative grants. Explicit Thread registration remains for identity and
+routing. Within an explicit Node/user/Network policy scope, local collaboration
+does not require human approval for every Thread pair. The current Pair flow
+remains a bounded implemented mode, not the default local product target.
+The new domain-level policy is **NOT_IMPLEMENTED / NOT_RUN**: Node approval is
+not authority over every Network, and old Pair rights are not retroactively
+expanded. Group boundaries, cryptography and current Guards remain. Record
+identity/anti-misbinding checks and business authorization require separate
+review; no chmod or ACL solution is selected by this clarification.
+
 Hub/Node owns a private locator under the selected root, live Node description,
 same-UID checks and pin revalidation. App owns extending the file-only component
 installer to materialize the single existing plugin asset set with an absolute
