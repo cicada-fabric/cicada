@@ -281,8 +281,14 @@ checking non-link path components, same-UID non-writable record ownership,
 regular-file open-handle identity and bounded `session_meta` metadata. It does
 not scan session history per tool call. Metadata ID and cwd must match exactly;
 fork ancestry never supplies an identity. Supported sources are the existing
-`cli` shape and the isolated-tested `exec`/`codex_exec` shape. Missing/unknown
-sources and structured subagent records are unsupported.
+`cli` shape, the isolated-tested `exec`/`codex_exec` shape, and exactly
+`source=vscode` with `originator=codex-tui`. The last combination was observed
+in an actual Codex 0.163.0 TUI after its shared daemon was initialized through
+`--remote`; it does not establish arbitrary VSCode/IDE source support. Other
+`vscode` originators, missing/unknown sources and structured subagent records
+remain unsupported. This source compatibility changes none of the original
+SID/session ID, cwd, ownership, non-writable mode, inode, configured record-root,
+ticket or current authorization checks.
 
 The Node uses a memory-only random HMAC key and at most 512 live opaque tickets,
 each expiring in 30 seconds. Tickets bind the current Hub/Node binding, API

@@ -277,11 +277,11 @@ func verifyCodexContextTranscript(path, sid, workspace string) error {
 			continue
 		}
 		var source string
-		// exec has local Runtime evidence; cli retains the existing TUI source.
-		// A fork has its own
-		// actual ID; ancestry never supplies or replaces that ID. Structured
-		// subagent and untested/missing origins remain unsupported.
-		if json.Unmarshal(meta.Payload.Source, &source) != nil || (source != "cli" && (source != "exec" || meta.Payload.Originator != "codex_exec")) || meta.Payload.ID != sid || (meta.Payload.SessionID != "" && meta.Payload.SessionID != sid) {
+		// A real TUI on a --remote-initialized shared daemon records the exact
+		// vscode/codex-tui tuple. Other vscode origins remain unsupported.
+		// A fork's ancestry never supplies its ID; structured subagent and
+		// missing/unknown sources remain unsupported.
+		if json.Unmarshal(meta.Payload.Source, &source) != nil || (source != "cli" && (source != "exec" || meta.Payload.Originator != "codex_exec") && (source != "vscode" || meta.Payload.Originator != "codex-tui")) || meta.Payload.ID != sid || (meta.Payload.SessionID != "" && meta.Payload.SessionID != sid) {
 			return errLocalCodexContext
 		}
 		cwd, err := filepath.EvalSymlinks(meta.Payload.CWD)

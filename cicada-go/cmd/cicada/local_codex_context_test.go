@@ -148,3 +148,64 @@ func TestLocalCodexContextTranscriptMetadataAndPath(t *testing.T) {
 		t.Fatal("workspace mismatch accepted")
 	}
 }
+
+func TestLocalCodexContextManagedDaemonTUIOrigin(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("CODEX_HOME", root)
+	workspace := t.TempDir()
+	path := filepath.Join(root, "sessions", "2026", "10", "22", "rollout-synthetic-managed-tui.jsonl")
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		t.Fatal(err)
+	}
+	write := func(source any, originator, sid, sessionID, cwd string, mode os.FileMode) {
+		t.Helper()
+		data, _ := json.Marshal(map[string]any{"type": "session_meta", "payload": map[string]any{"id": sid, "session_id": sessionID, "cwd": cwd, "source": source, "originator": originator}})
+		if err := os.WriteFile(path, append(data, '\n'), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(path, mode); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// QA observed this precise source/originator tuple in an actual TUI whose
+	// shared daemon was first initialized through --remote. These records remain
+	// visibly synthetic; they do not claim another actual Codex run.
+	for _, mode := range []os.FileMode{0600, 0644} {
+		write("vscode", "codex-tui", "synthetic-managed-tui", "", workspace, mode)
+		if err := verifyCodexContextTranscript(path, "synthetic-managed-tui", workspace); err != nil {
+			t.Fatalf("exact managed TUI tuple rejected at protected mode %04o: %v", mode, err)
+		}
+	}
+	for _, candidate := range []struct {
+		source     any
+		originator string
+	}{
+		{"vscode", "codex_exec"}, {"vscode", ""}, {"vscode", "unknown"}, {"VSCODE", "codex-tui"}, {"unknown", "codex-tui"}, {nil, "codex-tui"},
+		{map[string]any{"subagent": map[string]any{"thread_spawn": true}}, "codex-tui"},
+	} {
+		write(candidate.source, candidate.originator, "synthetic-managed-tui", "", workspace, 0600)
+		if verifyCodexContextTranscript(path, "synthetic-managed-tui", workspace) == nil {
+			t.Fatal("unverified source/originator accepted")
+		}
+	}
+	for _, candidate := range []struct {
+		sid, sessionID, cwd string
+		mode                os.FileMode
+	}{
+		{"synthetic-other", "", workspace, 0600}, {"synthetic-managed-tui", "synthetic-other", workspace, 0600},
+		{"synthetic-managed-tui", "", root, 0600}, {"synthetic-managed-tui", "", workspace, 0666},
+	} {
+		write("vscode", "codex-tui", candidate.sid, candidate.sessionID, candidate.cwd, candidate.mode)
+		if verifyCodexContextTranscript(path, "synthetic-managed-tui", workspace) == nil {
+			t.Fatal("source compatibility bypassed original identity/path/permission checks")
+		}
+	}
+	write("vscode", "codex-tui", "synthetic-managed-tui", "", workspace, 0600)
+	link := filepath.Join(filepath.Dir(path), "rollout-synthetic-link.jsonl")
+	if err := os.Symlink(path, link); err != nil {
+		t.Fatal(err)
+	}
+	if verifyCodexContextTranscript(link, "synthetic-managed-tui", workspace) == nil {
+		t.Fatal("source compatibility accepted symlink record")
+	}
+}

@@ -528,3 +528,55 @@ validation-only append. The broader 96/0/1 and prior race 29/0/0 remain attribut
 to their earlier d17195b5 source; no aggregate clean-commit pass is invented.
 The previously listed outer-fixture skip and actual consumer/platform exclusions
 are unchanged. The candidate maps the final nine blobs and all gate receipts.
+
+## 2026-10-22 managed-daemon TUI source compatibility
+
+The actual QA three-stage run `run-20261022T160022Z-I8KCar` remains **FAIL** on
+its original dirty 737f37f input. Its retained `result.json` SHA-256 is
+`96c4c563513c342c7774f358b34b1d6ceed1aefe172d95bfc23a73028700e2c3`;
+input manifest is
+`8a04f3736af8c73264009842fded0a3ff8556612ade5420d27252a97a9714cbb`.
+The metadata-only whitelist `native-record-checks.json` has SHA-256
+`e29e99280650325954d17f44dadf258485ce8495ceb5642c8cacae4d6e72826f`.
+Hub independently checked both retained file hashes and read only the whitelist,
+not the full native transcript or private bodies/credentials. QA's genuine
+Codex TUI records report `source=vscode`, `originator=codex-tui`, 0600 mode,
+matching original cwd/current UID/open inode and containment under the original
+CODEX_HOME. The Hook process's HOME/CODEX_HOME comparisons are true; direct
+observation of its transcript_path is false/UNKNOWN, not newly proven here.
+There is no fork in that observed record. A prior QA synthetic control-client
+source is separate and is not the basis for product compatibility.
+
+The existing shared transcript verifier accepted only cli or exec/codex_exec
+and therefore rejected this exact real TUI tuple after initialization of the
+shared daemon through `--remote`. The fix adds only the exact string pair
+(vscode,codex-tui). Other vscode originators, missing/unknown/structured-subagent
+sources remain refused. SID/session_id, configured record-root containment,
+canonical cwd, ownership, non-writable permissions, inode, tickets, epochs and
+current authorization checks are unchanged. No generic IDE or subagent support
+is claimed, and source metadata does not become a human or cryptographic proof.
+
+The synthetic reproducer first failed as expected: on dirty
+`737f37f095e70ab3390e826d688f063bf00e59b5`,
+`codex-daemon-origin-red-20261022T160429Z` exited 1 (0 pass / 1 fail / 0 skip),
+manifest `59d13c604b7209acf4b4700772357b9d9d43232a0c12ad6f86c1c83f66ba638e`.
+It retains its own source-after check and is not counted as a pass.
+
+After the single source predicate and matching contract correction, manifest
+`6cdb59965d9e696d53b31ec181fb9a453bc065257e33405d08f3eee53f35b4ad`
+on the same dirty base passed
+`codex-daemon-origin-functional-20261022T160609Z` (4/0/0),
+`codex-daemon-origin-race-20261022T160609Z` (4/0/0, 23.296 s), and
+`codex-daemon-origin-vet-20261022T160609Z` (exit 0).
+These are four substantive context/ticket tests; the new table-driven test
+checks the exact new tuple at 0600 and the already supported non-writable 0644
+mode, wrong/missing originator, unknown/structured source, wrong SID/session_id,
+cwd, writable record and symlink. Existing context atomic consumption, binding,
+expiry, capacity and restart tests run in the same selected scope. No native
+Codex process, provider/model or public deployment is executed by these producer
+gates. They use the same pinned offline Go 1.27.3 Docker image and isolated
+synthetic files as above. Every completed gate's source-after check is unchanged;
+only this validation append follows those checks. The new candidate contains
+exactly the shared verifier, its tests and existing contract/validation files.
+QA must rerun the actual installed-plugin/shared-daemon chain on the integrated
+fix before that original actual scope can acquire a separate passed receipt.
