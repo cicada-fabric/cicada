@@ -44,6 +44,20 @@ NATIVE_ASSERTION_CODES = frozenset((
     'ACTUAL_TUI_EXIT_NONZERO', 'ACTUAL_ORIGINAL_THREAD_NOT_RESUMED', 'ACTUAL_TUI_NATIVE_IDENTITY_UNCONFIRMED',
     'ORIGINAL_DAEMON_REPLACED', 'INSTALLED_PLUGIN_ID_CHANGED', 'INSTALLED_HOOK_STALE_SOURCE',
     'NORMAL_NEW_HOOK_TRUST_REQUIRED'))
+NATIVE_ASSERTION_CODES |= frozenset((
+    'ACTUAL_HOST_TOOL_REFUSED', 'HOST_PHASE_OVERLAP', 'CALLER_CONTEXT_TICKET_SUBSTITUTE_FORBIDDEN',
+    'ACTUAL_HOST_PHASE_INCOMPLETE', 'HOST_THREAD_NOT_CREATED_BY_NATIVE_TUI', 'ORIGINAL_DAEMON_CHANGED',
+    'ACTUAL_ORIGINAL_THREAD_SCOPE_CHANGED', 'UNEXPECTED_NATIVE_HOST_APPROVAL_OR_RPC',
+    'ACTUAL_DAEMON_NOTIFICATION_BOUND', 'ACTUAL_NATIVE_HOST_TURN_FAILED',
+    'ACTUAL_DAEMON_RPC_REFUSED_thread/resume', 'ACTUAL_DAEMON_RPC_REFUSED_turn/start',
+    'OWNED_PUBLIC_SUMMARY_PATH_REQUIRED', 'OWNED_PUBLIC_SUMMARY_SYMLINK_REFUSED',
+    'ORIGINAL_0002_DAEMON_CHANGED', 'LITERAL_REACHED_PROVIDER', 'ACTUAL_ASK_REQUEST_ID_AMBIGUOUS',
+    'ACTUAL_HOST_BINDING_EPOCH_MISSING_OR_AMBIGUOUS', 'ACTUAL_HOST_NATIVE_IDENTITY_CHANGED',
+    'ACTUAL_HOST_OWNER_POLICY_SCOPE_CHANGED', 'ACTUAL_NAMED_PEER_NOT_VISIBLE',
+    'CURRENT_DOMAIN_REVOKE_NOT_ENFORCED', 'REVOKED_NEW_ASK_CREATED_REQUEST',
+    'CURRENT_NATIVE_MCP_NOT_READY', 'AUTHENTICATED_LOGIN_DEADLINE_OUTSIDE_FIXTURE_BOUND')) | frozenset(
+    'ACTUAL_HOST_RESULT_FIELD_MISSING_OR_AMBIGUOUS_' + field for field in
+    ('native_session_id', 'workspace', 'node_id', 'endpoint_id', 'group_id'))
 NATIVE_HOOK_MARKERS = {
     'domain_saved': (DOMAIN_ADMISSION_TITLE, '当前 Thread 的本地协作接入结果已保存；后续通信由当前 Hub Guard 验证。'),
     'registered_zero': ('This Thread is registered; registration does not add or renew communication permission.',
@@ -89,7 +103,7 @@ def classify_literal_hook(text, prompt):
 
 
 def native_stage_summary(phase, label, status='IN_PROGRESS', failure_kind='', failure_code='UNCLASSIFIED',
-                         hook_result='none', literal_provider_posts=None, provider_posts=None):
+                         hook_result='none', literal_provider_posts=None, provider_posts=None, host_diagnostic=None):
     # Location is diagnostic only. It cannot establish a successful measurement.
     assert phase in NATIVE_PHASES and label in NATIVE_LABELS and status in ('IN_PROGRESS', 'FAIL')
     assert failure_kind in NATIVE_FAILURE_KINDS
@@ -98,7 +112,8 @@ def native_stage_summary(phase, label, status='IN_PROGRESS', failure_kind='', fa
     assert all(value is None or type(value) is int and value >= 0 for value in (literal_provider_posts, provider_posts))
     return {'scope': 'NATIVE_DOMAIN_LOCATION_ONLY_NOT_ACCEPTANCE', 'status': status,
             'phase': phase, 'label': label, 'failure_kind': failure_kind, 'failure_code': failure_code,
-            'hook_result': hook_result, 'literal_provider_posts': literal_provider_posts, 'provider_posts': provider_posts}
+            'hook_result': hook_result, 'literal_provider_posts': literal_provider_posts, 'provider_posts': provider_posts,
+            'host_diagnostic': host_diagnostic}
 
 
 def native_failure_kind(error):
@@ -370,7 +385,9 @@ enabled = false
     except Exception as error:
         reply['failure_category'] = (type(error).__name__ + ': ' + str(error))[:180]
         reply.update(failure_phase=location['phase'], failure_label=location['label'], failure_kind=native_failure_kind(error),
-                     failure_code=native_assertion_code(error), hook_result=failed_hook_result())
+                     failure_code=native_assertion_code(error), hook_result=failed_hook_result(),
+                     host_diagnostic=provider.safe_diagnostic() if location['phase'] in
+                     ('HOST_APP_CLOSED', 'HOST_POST_LOGIN_EXPIRY', 'HOST_NEW_C_AFTER_LOGIN_EXPIRY', 'HOST_AFTER_REVOKE') else None)
     finally:
         if reply['status'] == 'SCOPED_PASS':
             locate('CLEANUP')
@@ -390,7 +407,7 @@ enabled = false
             except Exception:
                 if reply['status'] == 'SCOPED_PASS':
                     reply.update(failure_phase='CLEANUP', failure_label='DAEMON_STOP', failure_kind='CLEANUP',
-                                 failure_code='UNCLASSIFIED', hook_result='none')
+                                 failure_code='UNCLASSIFIED', hook_result='none', host_diagnostic=None)
                 reply['status'] = 'FAIL'
                 reply['cleanup_failed'] = True
         provider.close()
@@ -401,7 +418,7 @@ enabled = false
             location.clear()
             location.update(native_stage_summary(reply['failure_phase'], reply['failure_label'], 'FAIL', reply['failure_kind'],
                                                 reply['failure_code'], reply['hook_result'],
-                                                reply['literal_provider_posts'], reply['provider_posts']))
+                                                reply['literal_provider_posts'], reply['provider_posts'], reply['host_diagnostic']))
             publish_location()
         private_json(Path(config['result']), reply)
     return 0 if reply['status'] == 'SCOPED_PASS' else 1

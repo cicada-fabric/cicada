@@ -24,6 +24,24 @@ type nativeDomainActor struct {
 	Epoch     uint64 `json:"binding_epoch"`
 }
 
+type nativeHostFieldDiagnostic struct {
+	Present bool     `json:"present"`
+	Types   []string `json:"types"`
+}
+
+type nativeHostDiagnostic struct {
+	Observed          bool                                 `json:"observed"`
+	OutputType        string                               `json:"output_type"`
+	JSONStringPrefix  string                               `json:"json_string_prefix"`
+	ParsedObject      bool                                 `json:"parsed_object_present"`
+	IsErrorObserved   bool                                 `json:"is_error_observed"`
+	IsError           *bool                                `json:"is_error"`
+	Fields            map[string]nativeHostFieldDiagnostic `json:"fields"`
+	ProductErrorCodes []string                             `json:"product_error_codes"`
+	HubHTTPStatuses   []int                                `json:"hub_http_statuses"`
+	ProviderIssues    []string                             `json:"provider_issues"`
+}
+
 type nativeDomainDaemon struct {
 	PID      int    `json:"pid"`
 	Start    string `json:"start_ticks"`
@@ -111,19 +129,20 @@ func TestN3LocalDomainNativeOriginalDaemonAB(t *testing.T) {
 			}
 			if !client.running() {
 				var failure struct {
-					Phase        string `json:"failure_phase"`
-					Label        string `json:"failure_label"`
-					Kind         string `json:"failure_kind"`
-					Code         string `json:"failure_code"`
-					Hook         string `json:"hook_result"`
-					LiteralPosts int    `json:"literal_provider_posts"`
-					Posts        int    `json:"provider_posts"`
+					Phase        string                `json:"failure_phase"`
+					Label        string                `json:"failure_label"`
+					Kind         string                `json:"failure_kind"`
+					Code         string                `json:"failure_code"`
+					Hook         string                `json:"hook_result"`
+					LiteralPosts int                   `json:"literal_provider_posts"`
+					Posts        int                   `json:"provider_posts"`
+					Host         *nativeHostDiagnostic `json:"host_diagnostic"`
 				}
 				if _, err := os.Stat(result); err != nil {
 					t.Fatal("actual native driver stopped before its final safe diagnostics")
 				}
 				readJSON(t, result, &failure)
-				t.Fatalf("actual native driver stopped: phase=%s label=%s category=%s code=%s hook=%s literal_posts=%d provider_posts=%d", failure.Phase, failure.Label, failure.Kind, failure.Code, failure.Hook, failure.LiteralPosts, failure.Posts)
+				t.Fatalf("actual native driver stopped: phase=%s label=%s category=%s code=%s hook=%s literal_posts=%d provider_posts=%d host=%s", failure.Phase, failure.Label, failure.Kind, failure.Code, failure.Hook, failure.LiteralPosts, failure.Posts, must(json.Marshal(failure.Host)))
 			}
 			time.Sleep(25 * time.Millisecond)
 		}

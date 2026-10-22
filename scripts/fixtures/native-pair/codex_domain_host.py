@@ -51,12 +51,55 @@ def require_successful_output(value):
     return value
 
 
+HOST_PROVIDER_ISSUES = frozenset(('ACTUAL_HOST_TOOL_NOT_UNIQUE_OR_MISSING', 'ACTUAL_HOST_CURRENT_NONCE_MISSING',
+                                 'CURRENT_HOST_TOOL_OUTPUT_MISSING_OR_DUPLICATED', 'UNEXPECTED_EXTRA_PROVIDER_POST'))
+HOST_PUBLIC_FIELDS = ('native_session_id', 'workspace', 'node_id', 'endpoint_id', 'group_id', 'binding_epoch',
+                      'operation_id', 'request_id', 'error_code', 'code', 'isError')
+HOST_PRODUCT_ERROR_CODES = frozenset(('CODEX_CALL_CONTEXT_REQUIRED', 'CODEX_NATIVE_COORDINATES_INVALID',
+                                     'CODEX_NATIVE_RECORD_UNVERIFIED', 'CODEX_TOOL_INPUT_MISSING',
+                                     'CODEX_CALL_CONTEXT_MISSING', 'CODEX_CONNECTION_NONCE_INVALID',
+                                     'CODEX_TOOL_ARGUMENTS_INVALID', 'CODEX_ARGUMENT_DIGEST_UNAVAILABLE',
+                                     'CODEX_NODE_TICKET_UNAVAILABLE')) | frozenset(
+    'CODEX_NATIVE_RECORD_' + stage for stage in
+    ('ROOT', 'PATH', 'OWNERSHIP', 'PERMISSION', 'INODE', 'METADATA', 'SOURCE', 'SESSION', 'WORKSPACE'))
+
+
+def host_value_type(value):
+    return {type(None): 'null', bool: 'boolean', int: 'integer', float: 'number', str: 'string',
+            list: 'array', dict: 'object'}.get(type(value), 'other')
+
+
+def host_output_diagnostic(value, issues=(), observed=True):
+    # Inspect the existing parser's result without changing it. Only fixed
+    # field names, types, booleans and public error-code enums leave memory.
+    rows = list(output_objects(value)) if observed else []
+    flags = [row['isError'] for row in rows if type(row.get('isError')) is bool]
+    prefix = 'not_string'
+    if observed and isinstance(value, str):
+        prefix = 'object' if value.lstrip().startswith('{') else 'array' if value.lstrip().startswith('[') else 'other'
+    try:
+        text = json.dumps(value) if observed else ''
+    except (TypeError, ValueError):
+        text = ''
+    return {'observed': observed, 'output_type': host_value_type(value) if observed else 'not_observed',
+            'json_string_prefix': prefix, 'parsed_object_present': bool(rows),
+            'is_error_observed': bool(flags), 'is_error': any(flags) if flags else None,
+            'fields': {name: {'present': any(name in row for row in rows),
+                              'types': sorted({host_value_type(row[name]) for row in rows if name in row})}
+                       for name in HOST_PUBLIC_FIELDS},
+            'product_error_codes': sorted(code for code in HOST_PRODUCT_ERROR_CODES
+                                          if re.search(r'(?<![A-Z0-9_])' + code + r'(?![A-Z0-9_])', text)),
+            'hub_http_statuses': sorted({int(code) for code in re.findall(r'Cicada Hub (401|403|409|410|429|500|503)\b', text)}),
+            'provider_issues': sorted({code if code in HOST_PROVIDER_ISSUES else 'UNCLASSIFIED' for code in issues})}
+
+
 class StaticHostProvider:
     def __init__(self, run_scope):
         self.scope = hashlib.sha256(run_scope.encode()).hexdigest()[:16]
         self.phase = None
         self.sequence = 0
         self.requests = []
+        self.last_diagnostic = None
         owner = self
 
         class Handler(http.server.BaseHTTPRequestHandler):
@@ -125,6 +168,7 @@ class StaticHostProvider:
                             phase['issues'].append('CURRENT_HOST_TOOL_OUTPUT_MISSING_OR_DUPLICATED')
                         else:
                             phase['output'] = outputs[0].get('output')
+                            phase['output_received'] = True
                             phase['output_sha256'] = hashlib.sha256(json.dumps(phase['output'], sort_keys=True).encode()).hexdigest()
                     else:
                         phase['issues'].append('UNEXPECTED_EXTRA_PROVIDER_POST')
@@ -156,9 +200,19 @@ class StaticHostProvider:
         self.sequence += 1
         unique = self.scope + '_' + str(self.sequence) + '_' + hashlib.sha256(label.encode()).hexdigest()[:12]
         self.phase = {'label': label, 'id': unique, 'call_id': 'call_' + unique, 'tool': tool,
-                      'arguments': arguments, 'posts': 0, 'issues': [], 'output': None}
+                      'arguments': arguments, 'posts': 0, 'issues': [], 'output': None, 'output_received': False}
+
+    def reset_diagnostic(self):
+        self.last_diagnostic = None
+
+    def safe_diagnostic(self):
+        if self.phase is not None:
+            return host_output_diagnostic(self.phase['output'], self.phase['issues'], self.phase['output_received'])
+        return self.last_diagnostic
 
     def finish(self):
+        if self.phase is not None:
+            self.last_diagnostic = self.safe_diagnostic()
         phase, self.phase = self.phase, None
         assert phase and phase['posts'] == 2 and not phase['issues'] and phase['output'] is not None, 'ACTUAL_HOST_PHASE_INCOMPLETE'
         # Raw tool output is used only in memory by this owned synthetic driver.
@@ -211,6 +265,7 @@ class DomainHostCLI(PersistentCLI):
         raise RuntimeError('ACTUAL_DAEMON_RPC_TIMEOUT_' + method)
 
     def host_call(self, provider, sid, label, tool, arguments):
+        provider.reset_diagnostic()
         assert sid in self.native_records(), 'HOST_THREAD_NOT_CREATED_BY_NATIVE_TUI'
         assert self.daemon_identity() == self.original_daemon, 'ORIGINAL_DAEMON_CHANGED'
         resumed = self.rpc('thread/resume', {'threadId': sid})
