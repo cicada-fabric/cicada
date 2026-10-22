@@ -133,6 +133,16 @@ Network uses a dedicated non-Pair Group. The Hub proposal still needs updated
 frozen DTOs and implementation before consumers are connected. These are targets,
 not available product APIs.
 
+Root-frozen supplementary requirements, pending the full shared checkpoint:
+the actual agent automatically publishes a Node-signed local-user report with
+at most five minutes validity. Prepare may leave user scope empty so Hub derives
+it from that fresh exact report; App independently verifies the report in the
+challenge and never substitutes its own host UID. Report freshness limits new
+configuration only. Its later expiry cannot terminate an active policy or block
+status, revoke or original-request reconciliation. Node-scoped Owner status
+recovers Hub policy history without a cached policy ID or an online Node;
+pagination must obey both row and encoded-byte limits.
+
 The security principal boundary is the selected Node and its OS user in an
 explicitly authorized Network. Threads under that same trusted UID are not
 mutually isolated principals. Native-record SID/cwd/source/inode checks still
@@ -153,7 +163,7 @@ requests; closing App must not move that authority into an online UI dependency.
 | --- | --- | --- |
 | DOMAIN-01 — one approval, new A/B | Actual App authorizes one exact Node/user/Network through its own signing action. The original persistent Codex daemon creates fresh A and B; literal Join has zero provider POSTs, exact original SID/cwd/name, and no per-Thread/Pair Owner approval. Current by-name discovery resolves exact IDs; actual Host ASK/Reply succeeds within scope. | NOT_RUN; business interface pending |
 | DOMAIN-02 — original `0002` writer | Observe the same daemon PID/start ticks and actual `/proc` Umask 0002 before/after installation and each fresh A/B. No per-record chmod, recursive repair or new-shell umask substitutes for the writer's policy. Record actual record/tree metadata and ordinary Hook trust. | Driver parameters prepared; execution NOT_RUN |
-| DOMAIN-03 — other UID, same group | A real UID 1001/GID 1000 process in the exact owned running container cannot read Node private keys, connect to private context/signing IPC, obtain a usable context proof or cause a signed business request. Observe actual denied operations, not only mode helpers. | NOT_RUN; bounded host `docker exec --user 1001:1000` lane pending |
+| DOMAIN-03 — other UID, same group | A real UID 1001/GID 1000 process in the exact owned running container cannot read Node private keys, connect to private context/signing IPC, obtain a usable context proof or cause a signed business request. Observe actual denied operations, not only mode helpers. | OS file/IPC boundary SCOPED_PASS on dirty `18c54a6`; new domain context/signing still NOT_RUN. See [bounded run](native-app-validation.md#2026-10-22-actual-other-uid-private-file-and-node-ipc-boundary). |
 | DOMAIN-04 — foreign coordinates | Same Network/different Node; same Node/different Network; different Owner; absent/wrong/forged grant; stale grant or Node epoch all deny by current Guard. Capture redacted typed errors and unchanged unauthorized state. Group boundaries retain their existing contract. | NOT_RUN |
 | DOMAIN-05 — App/session lifetime | Close actual App process and cross a deliberately short account-login/status TTL. Newly created Threads and new permitted operations continue only within the independently granted domain lifetime. Domain expiry itself denies; restart Hub/Node and re-read the original persistent grant. | NOT_RUN; independent lifetimes pending |
 | DOMAIN-06 — explicit revoke | Actual App revokes the exact domain. New discovery/business operations deny immediately according to the frozen linearization rule, including an already connected MCP client and a fresh Thread. Never confuse App close/logout with domain revoke. | NOT_RUN |
@@ -162,6 +172,10 @@ requests; closing App must not move that authority into an online UI dependency.
 | DOMAIN-09 — legacy Pair migration | An old exact Pair, old pending packet or read cache retains its original scope and identity. It cannot silently become a Node/Network-wide grant, repair a wrong pin or revive a revoked Endpoint. | NOT_RUN; migration rule pending |
 | DOMAIN-10 — identity without inference | Account login alone cannot act as Root or issue a domain grant. With Control inference off, actual identity/Owner approval, explicit Join and deterministic Guard operations remain usable. | New domain extension NOT_RUN; older N2 evidence separate |
 | DOMAIN-11 — platform | Actual Windows DPAPI, ACL and physical GUI; Android and public HTTPS each require their own run. | NOT_RUN |
+| DOMAIN-12 — empty policy cache | Preserve the original protected Owner/device vault; reconstruct actual App Core with empty local domain cache and no retained policy ID. Read by exact Node from Hub through authenticated Owner actions, including all pages and original states, without requiring Node online. An independently enrolled App2 is a separate case and cannot be simulated by copying App1 private keys. | Scope confirmed by Root; execution NOT_RUN. Independent new-device enrollment remains separate NOT_RUN. |
+| DOMAIN-13 — signed user report | Actual Node publishes its exact signed writer scope automatically. Empty-scope Prepare derives that value and App verifies it. Wrong Node/UID/epoch, missing/forged/expired report refuses new setup; after a genuine activation, report expiry alone does not affect current work, status/revoke or original recovery, even with Node offline for Owner reads. | NOT_RUN |
+| DOMAIN-14 — bounded policy pages | Use real PQ identities/proofs so byte size, rather than row count, can truncate a page below the row cap. Verify valid continuation, bounded complete recovery, empty/bad/repeated cursors, no omitted/duplicated policies in a stable history, and no foreign Node/Owner disclosure. | NOT_RUN; byte/row contract implementation pending |
+| DOMAIN-15 — nested original receipts | Lose the actual encrypted activation response after commit; retain and reconcile the original packet/keys across restart. Real PQ proof/receipt sizes must fit the original, embedded base64, body and encrypted outer limits; exact/over-bound inputs fail atomically without fresh authorization or duplicate policy creation. | NOT_RUN |
 
 Freeze dependencies are the exact Node/user/Network identity binding and selectors,
 Owner/App action and signed-packet schema, grant lifetime independent of account

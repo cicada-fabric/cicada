@@ -43,6 +43,7 @@ CODEX_PRODUCT_GUARD_EXPECTED.update('TestN3CodexProductContextRefusesMissingAndF
 CODEX_PRODUCT_CLI_EXPECTED = {'TestN3CodexProductInstalledPluginLiteralTUI'}
 CODEX_PRODUCT_COLD_EXPECTED = {'TestN3CodexProductColdLeaseBeforeFirstTool'}
 CODEX_PRODUCT_THREE_STAGE_EXPECTED = {'TestN3CodexProductThreeStagePersistentDaemon'}
+CODEX_PRODUCT_OTHER_UID_EXPECTED = {'TestN3CodexProductOtherUIDPrivateBoundary'}
 
 
 def sha(path):
@@ -142,7 +143,7 @@ def terminal_events(path):
 
 
 def finish(run, artifacts, image, owned, mode='protocol'):
-    if mode not in ('protocol', 'store', 'a3', 'a3-http', 'a3-size-store', 'app-owner', 'endpoint-security', 'endpoint-security-boundaries', 'endpoint-security-app-fixture', 'endpoint-security-owner-directory', 'endpoint-security-owner-directory-recovery', 'codex-product-guards', 'codex-product-cli', 'codex-product-cold', 'codex-product-three-stage'):
+    if mode not in ('protocol', 'store', 'a3', 'a3-http', 'a3-size-store', 'app-owner', 'endpoint-security', 'endpoint-security-boundaries', 'endpoint-security-app-fixture', 'endpoint-security-owner-directory', 'endpoint-security-owner-directory-recovery', 'codex-product-guards', 'codex-product-cli', 'codex-product-cold', 'codex-product-three-stage', 'codex-product-other-uid'):
         raise ValueError('Only protocol and isolated core regression modes are active.')
     before, after = [json.loads((run / f'source-{side}.json').read_text()) for side in ('before', 'after')]
     results, diagnostics, metrics = {}, [], []
@@ -172,10 +173,13 @@ def finish(run, artifacts, image, owned, mode='protocol'):
                 'codex-product-cli': CODEX_PRODUCT_CLI_EXPECTED,
                 'codex-product-cold': CODEX_PRODUCT_COLD_EXPECTED,
                 'codex-product-three-stage': CODEX_PRODUCT_THREE_STAGE_EXPECTED,
+                'codex-product-other-uid': CODEX_PRODUCT_OTHER_UID_EXPECTED,
                 'protocol': EXPECTED}[mode]
-    core = mode not in ('protocol', 'app-owner', 'endpoint-security', 'endpoint-security-boundaries', 'endpoint-security-app-fixture', 'endpoint-security-owner-directory', 'endpoint-security-owner-directory-recovery', 'codex-product-guards', 'codex-product-cli', 'codex-product-cold', 'codex-product-three-stage')
+    core = mode not in ('protocol', 'app-owner', 'endpoint-security', 'endpoint-security-boundaries', 'endpoint-security-app-fixture', 'endpoint-security-owner-directory', 'endpoint-security-owner-directory-recovery', 'codex-product-guards', 'codex-product-cli', 'codex-product-cold', 'codex-product-three-stage', 'codex-product-other-uid')
     owner_directory = mode.startswith('endpoint-security-owner-directory')
     stages = ('version', 'compile-tests', 'compile-race', 'harness', 'race', 'vet') if core else ('version', 'compile-cli', 'compile-tests', 'harness', 'vet')
+    if mode == 'codex-product-other-uid':
+        stages += ('other-uid-host',)
     race = terminal_events(run / 'race.log') if core else None
     race_passed = not core or (set(race) == expected and all(v == 'pass' for v in race.values()))
     binary_records = [json.loads((run / f'binaries-{side}.json').read_text())
@@ -194,6 +198,7 @@ def finish(run, artifacts, image, owned, mode='protocol'):
                          'codex-product-cli': {'cicada', 'n3.test'},
                          'codex-product-cold': {'cicada', 'n3.test'},
                          'codex-product-three-stage': {'cicada', 'n3.test'},
+                         'codex-product-other-uid': {'cicada', 'n3.test'},
                          'protocol': {'cicada', 'n3.test'}}[mode]
     binaries_stable = set(binary_records[0]) == expected_binaries and binary_records[0] == binary_records[1]
     runtime_tools = before.get('external_runtime_tools', {})
@@ -225,6 +230,7 @@ def finish(run, artifacts, image, owned, mode='protocol'):
              'codex-product-cli': 'ACTUAL_INSTALLED_PLUGIN_LITERAL_PTY_AND_HOST_MCP_WHOAMI_VERIFIED_CONTEXT_NOT_JOINED_NO_REAL_MODEL',
              'codex-product-cold': 'ACTUAL_APP_DUAL_CONSENT_ORIGINAL_DEFAULT_FIVE_MINUTE_COLD_LEASE_NODE_RESTART_FIRST_HOST_TOOL_AND_REVOCATION_MANUAL_OWNER_PIN',
              'codex-product-three-stage': 'ACTUAL_ORIGINAL_ENV_ZERO_CODEX_DAEMON_FILE_INSTALL_OLD_PLUGIN_UPDATE_NODE_OFFLINE_EXPLICIT_START_AND_SAME_PIN_RESTART_NO_MODEL',
+             'codex-product-other-uid': 'ACTUAL_APP_APPROVED_NODE_OTHER_UID1001_GID1000_PRIVATE_FILES_AND_UNIX_IPC_ONLY_NOT_DOMAIN_CONTEXT_OR_SIGNING',
              'protocol': 'REAL_TCP_PQ_BOOTSTRAP_AND_RECOVERY_ONLY'}[mode]
     summary = {'scope': scope,
                'status': 'SCOPED_PASS' if passed else ('EXPECTED_RED_SERVICE_UNAVAILABLE' if expected_red else 'FAIL'),
@@ -285,6 +291,12 @@ def finish(run, artifacts, image, owned, mode='protocol'):
                               'valid_ticket_replay_cross_context_and_fork', 'original_operator_intent_response_loss_recovery',
                               'ordinary_prompt_skill_plugin_passthrough', 'native_queue_consumption', 'real_model_provider',
                               'Windows_DPAPI', 'Windows_ACL', 'Windows_GUI', 'Android', 'public_HTTPS']
+    elif mode == 'codex-product-other-uid':
+        summary['not_run'] = ['Node_user_Network_business_policy', 'domain_context_proof', 'domain_signed_business_request',
+                              'actual_Codex_native_TUI_and_Host', 'same_UID_isolation', 'legacy_Pair',
+                              'App_close_login_TTL_report_expiry_and_policy_recovery', 'real_model_provider',
+                              'native_queue_consumption', 'automatic_wake', 'Windows_DPAPI', 'Windows_ACL',
+                              'Windows_GUI', 'Android', 'public_HTTPS']
     elif mode == 'codex-product-three-stage':
         summary['not_run'] = ['Node_user_Network_business_policy', 'other_UID_private_IPC_keys_context_signing',
                               'domain_App_close_login_TTL_revoke_expiry_and_original_retry', 'legacy_Pair_migration',

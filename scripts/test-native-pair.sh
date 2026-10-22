@@ -17,7 +17,8 @@ elif [[ $# == 1 && "$1" == --codex-product-guards ]]; then mode=codex-product-gu
 elif [[ $# == 1 && "$1" == --codex-product-cli ]]; then mode=codex-product-cli
 elif [[ $# == 1 && "$1" == --codex-product-cold ]]; then mode=codex-product-cold
 elif [[ $# == 1 && "$1" == --codex-product-three-stage ]]; then mode=codex-product-three-stage
-elif [[ $# != 0 ]]; then printf 'Usage: scripts/test-native-pair.sh [--store-regressions|--a3-core|--a3-http|--a3-size-store|--app-owner|--endpoint-security|--endpoint-security-boundaries|--endpoint-security-app-fixture|--endpoint-security-owner-directory|--endpoint-security-owner-directory-recovery|--codex-product-guards|--codex-product-cli|--codex-product-cold|--codex-product-three-stage]\n' >&2; exit 2; fi
+elif [[ $# == 1 && "$1" == --codex-product-other-uid ]]; then mode=codex-product-other-uid
+elif [[ $# != 0 ]]; then printf 'Usage: scripts/test-native-pair.sh [--store-regressions|--a3-core|--a3-http|--a3-size-store|--app-owner|--endpoint-security|--endpoint-security-boundaries|--endpoint-security-app-fixture|--endpoint-security-owner-directory|--endpoint-security-owner-directory-recovery|--codex-product-guards|--codex-product-cli|--codex-product-cold|--codex-product-three-stage|--codex-product-other-uid]\n' >&2; exit 2; fi
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source_root="$repo_root"
 if [[ "$mode" == endpoint-security* && ! -f "$source_root/docs/native-endpoint-directory-contract.md" ]]; then
@@ -97,9 +98,19 @@ evidence="$local_root/evidence/native-pair-acceptance/$run_id"
 artifacts="$local_root/artifacts/native-pair-acceptance/$run_id"
 mkdir "$evidence" "$artifacts" "$state/tmp"
 container="cicada-native-pair-${run_id,,}"
+other_uid_worker_pid=''
+other_uid_parameters=()
+if [[ "$mode" == codex-product-other-uid ]]; then
+ mkdir "$state/other-uid-control"
+ other_uid_parameters=(-e CICADA_N3_OTHER_UID_CONTROL=/state/other-uid-control)
+fi
 cleanup() {
  if [[ "$(docker inspect --format '{{index .Config.Labels "cicada.native-pair.run"}}' "$container" 2>/dev/null || true)" == "$run_id" ]]; then
   docker rm -f "$container" >/dev/null 2>&1 || true
+ fi
+ if [[ -n "$other_uid_worker_pid" ]]; then
+  kill "$other_uid_worker_pid" >/dev/null 2>&1 || true
+  wait "$other_uid_worker_pid" >/dev/null 2>&1 || true
  fi
 }
 trap cleanup EXIT
@@ -122,6 +133,7 @@ common=(docker run --rm --name "$container" --label "cicada.native-pair.run=$run
  "${codex_mount[@]}"
  "${license_mount[@]}"
  "${three_stage_parameters[@]}"
+ "${other_uid_parameters[@]}"
  --workdir /repo/cicada-go "$image")
 lane() {
  local name="$1"; shift
@@ -134,6 +146,14 @@ lane() {
  printf 'Native pair %s exit=%s\n' "$name" "$code"
 }
 lane version go version
+other_uid_worker() {
+ local deadline=$((SECONDS + 100))
+ while [[ ! -f "$state/other-uid-control/request.json" && "$SECONDS" -lt "$deadline" ]]; do sleep .1; done
+ if [[ ! -f "$state/other-uid-control/request.json" ]]; then
+  printf 'NOT_RUN: actual Node fixture did not request the probe.\n' >&2; return 125
+ fi
+ bash "$repo_root/scripts/fixtures/native-pair/other_uid_host.sh" "$container" "$run_id" "$state/other-uid-control/request.json" "$state/other-uid-control/result.json"
+}
 if [[ "$mode" != protocol && "$mode" != app-owner && "$mode" != endpoint-security* && "$mode" != codex-product-* ]]; then
  if [[ "$mode" == store ]]; then
   overlay=/qa/scripts/fixtures/native-pair/overlay.json
@@ -201,10 +221,24 @@ else
   elif [[ "$mode" == codex-product-three-stage ]]; then
    selector='^TestN3CodexProductThreeStagePersistentDaemon$'
    runtime_timeout=7m
+  elif [[ "$mode" == codex-product-other-uid ]]; then
+   selector='^TestN3CodexProductOtherUIDPrivateBoundary$'
   else
    selector='^TestN3NativePair(BootstrapAndExactReplay|WrongNodeScopeIsFenced|PrepareLossBeforeForward|CompleteLossAfterCommit|MissingOwnerProofCannotBootstrap)$'
   fi
+  if [[ "$mode" == codex-product-other-uid ]]; then
+   other_uid_worker >"$evidence/other-uid-host.log" 2>&1 &
+   other_uid_worker_pid=$!
+  fi
   lane harness go tool test2json -t /out/n3.test -test.v -test.count=1 "-test.timeout=$runtime_timeout" "-test.run=$selector"
+  if [[ "$mode" == codex-product-other-uid ]]; then
+   set +e
+   wait "$other_uid_worker_pid"
+   printf '%s\n' "$?" >"$evidence/other-uid-host.exit"
+   set -e
+   other_uid_worker_pid=''
+   if [[ -f "$state/other-uid-control/result.json" ]]; then cp "$state/other-uid-control/result.json" "$evidence/other-uid-observation.json"; fi
+  fi
   python3 "$repo_root/scripts/native_pair_evidence.py" binaries "$artifacts" "$evidence/binaries-after.json"
  else
   printf 'Required compilation failed; runtime NOT_RUN.\n' >"$evidence/harness.log"

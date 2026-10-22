@@ -4905,3 +4905,63 @@ expiry/revoke, cross-domain refusals, original-packet faults and legacy-Pair
 migration all remain **NOT_RUN**. Windows DPAPI, ACL and physical GUI, Android,
 real model/native queue/automatic wake and public HTTPS remain **NOT_RUN**.
 No real user record, process, permission, state or deployment is modified.
+
+## 2026-10-22 actual other-UID private-file and Node IPC boundary
+
+**SCOPED_PASS — OS boundary only**, independently executed on dirty
+`18c54a6b3f5d4a595a8185774163efb3e2f764d3` plus this checkpoint's QA fixtures,
+runner and plan inputs. No new local-domain backend/profile is implemented on
+that source. This run does not accept domain context proofs or signing, and does
+not relax legacy native-record mode checks or Pair authority.
+
+Reproduce from the intended source with the existing pinned offline prerequisites:
+
+```sh
+scripts/test-native-pair.sh --codex-product-other-uid
+```
+
+The actual App Core creates and approves the original real Node through its own
+Owner action. Real PQ, loopback TCP and persistent owned databases run in a
+disposable network-none Docker container with read-only source/module mounts,
+cap-drop ALL and no-new-privileges. The host checks the exact task label, original
+64-hex container ID, pinned image and isolation settings. It then runs the real
+probe first as UID/GID 1000, then as UID 1001 with the same GID 1000 using
+`docker exec`; the Go fixture has no Docker socket, root or setuid capability.
+
+| Observation | Actual result |
+| --- | --- |
+| Original owner precondition | UID 1000 successfully opens the original `node-control-state.json` and `identity.json` without reading bytes, and connects to the live production Node Join/context socket in its container-private runtime directory. Original ownership/type and absence of substituted symlinks are checked. |
+| Other-UID operations | UID 1001/GID 1000 receives errno 13, EACCES, for both file opens and the actual Unix-socket connect. Missing targets, refused/offline sockets or a successful open/connect fail the gate. |
+| Actual process security | Both probes observe CapEff=0 and NoNewPrivs=1. No key bytes are read and no application IPC payload is sent. |
+| Original product state | Original Node binding, key epoch/fingerprint and actual App-signed empty Endpoint directory remain unchanged; no Thread, Pair or business grant is created. |
+| Required stages | version, compile-cli, compile-tests, harness, other-uid-host and vet all exit 0; exactly 1 parent test passes, 0 fail/skip. Source and executable hashes match before/after; owned container absent. |
+
+Evidence directory: `native-pair-acceptance/run-20261022T175733Z-TGeB0c/`.
+
+| Artifact | SHA-256 |
+| --- | --- |
+| `result.json` | `a73b29f3a102428e25b397a82df7979415393d18a0ec0b33228b2893f7bbcbe2` |
+| Redacted `other-uid-observation.json` | `85b166a43c15f5a9359b72bda08ba10739971af042dbd6b08606e72e275705d3` |
+| Identical before/after source JSON | `e49c70caf2658791120653559afaf717bb103ffe9abd2107094c1d78c919b2e4` |
+| Complete source input manifest | `c281db52d0b802b06bba18733cb0ba4b9407309dac621cc59de21be71d9c9df1` |
+| Executed CLI, 37,294,941 bytes | `4270ffd3c33ba85c58708f777f37ebea9c16bf89dc113e408a2a986224b5efe6` |
+| Executed test, 23,082,074 bytes | `4fde5e4d5f12ece247a47dbb05e0a7b388dde4229516ebcea520f3c2c93a7cab` |
+
+The fixture/driver source bytes tested here remain distinct from the later
+documentation and any eventual clean checkpoint or integrated domain source.
+Actual new-domain context issuance, signed business dispatch, same-UID isolation,
+App-close/login/report lifetimes, empty-policy-cache recovery, real Codex TUI/Host,
+legacy Pair, model/native queue/automatic wake, Windows DPAPI/ACL/GUI, Android and
+public HTTPS are **NOT_RUN in this scope**. Later domain enablement must recheck
+the private boundary and independently exercise context/signing refusal.
+
+Related Root execution is recorded separately, never added to this one-test
+count: Root's combined Hook/context narrow Docker run on `18c54a6` reports
+21 pass, 0 fail/skip, exit 0, stable source and owned-container cleanup. Receipt
+`local-domain-root/context-hook-exec-20261022-nblvth1u/result.json`, SHA-256
+`07e9643ea61b57322c08e0c4394151c1d5c09c238b7217416496794b4a755f81`.
+QA independently verifies that file hash; QA does not repeat Root's tests.
+The prior `/tmp noexec` harness refusal remains a distinct exit-1 receipt with
+zero tests executed: `local-domain-root/context-hook-20261022-px7mg9cp/result.json`,
+SHA-256 `8e4fbcc45cbdb16e163274a4d2c2449491e98886ff2c9d41e976ef81389097c3`.
+Neither Root run accepts domain business or physical Windows behavior.
