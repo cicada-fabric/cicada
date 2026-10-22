@@ -518,6 +518,95 @@ func TestLocalCollaborationUnsignedRefusalAndLostRecoveryKeepOriginalPackets(t *
 	}
 }
 
+func TestLocalCollaborationResumePersistedSessionBeforeActivationRecovery(t *testing.T) {
+	for _, expired := range []bool{false, true} {
+		t.Run(fmt.Sprintf("expired=%t", expired), func(t *testing.T) {
+			f := newLocalCollaborationActor(t)
+			// Unlike the other Node actors' RAM-only session, retain an actual
+			// Hub-signed, device-encrypted login receipt in the real local vault.
+			// Its issuer and account are synthetic; this is not a server gate.
+			fingerprint, err := e2ee.OwnerDevicePublicKeyFingerprint(f.c.device.Public())
+			if err != nil {
+				t.Fatal(err)
+			}
+			s := f.c.session
+			challenge := wire.LoginChallenge{Format: wire.LoginChallengeFormat, Purpose: wire.PurposeAccountLogin,
+				Origin: s.Origin, HubID: s.HubID, AccountID: s.AccountID, OwnerID: s.OwnerID, DeviceID: s.DeviceID,
+				DeviceKeyID: s.DeviceKeyID, DeviceKeyFingerprint: fingerprint, Username: "synthetic-user",
+				AttemptID: strings.Repeat("1", 32), PrepareRequestID: strings.Repeat("2", 32),
+				ClientNonce: bytes.Repeat([]byte{0x31}, wire.NonceBytes), ServerNonce: bytes.Repeat([]byte{0x32}, wire.NonceBytes),
+				AccountEpoch: s.AccountEpoch, DeviceEpoch: s.DeviceEpoch,
+				IssuedAt: f.n.stamp(f.n.n2.now), ExpiresAt: f.n.stamp(f.n.n2.now.Add(time.Minute))}
+			login, err := wire.NewLoginComplete(f.c.hub, challenge, "synthetic secure meadow 42!", f.n.n2.now)
+			if err != nil {
+				t.Fatal(err)
+			}
+			device, err := f.c.device.E2EE()
+			if err != nil {
+				t.Fatal(err)
+			}
+			request, err := wire.SealClientRequest(device, f.c.hub, login)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, route, err := wire.NewClientRoute(f.c.hub, login, f.c.device.Public())
+			if err != nil {
+				t.Fatal(err)
+			}
+			receipt := wire.SessionReceipt{Format: wire.SessionReceiptFormat, Purpose: wire.PurposeAccountSession,
+				Origin: s.Origin, HubID: s.HubID, AccountID: s.AccountID, OwnerID: s.OwnerID, DeviceID: s.DeviceID,
+				DeviceKeyID: s.DeviceKeyID, DeviceKeyFingerprint: fingerprint, SessionToken: bytes.Clone(s.SessionToken),
+				AccountEpoch: s.AccountEpoch, DeviceEpoch: s.DeviceEpoch, RequestID: login.RequestID,
+				IssuedAt: f.n.stamp(f.n.n2.now), ExpiresAt: s.ExpiresAt}
+			response, err := wire.SealResponse(f.n.n2.hubKey, f.c.device.Public(), route, receipt)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := f.c.persistSession(request, response); err != nil {
+				t.Fatal(err)
+			}
+			ownerID, deviceID := f.c.owner.Public().ID, f.c.device.Public().ID
+			f.prepare()
+			f.drop = wire.OperationLocalDomainActivate
+			if err := f.c.Dispatch(context.Background(), Action{Kind: ActionActivateLocalCollaboration,
+				LocalCollaboration: LocalCollaborationAction{ReviewID: f.c.Snapshot().LocalCollaboration.ReviewID, ConfirmActivation: true}}); err == nil {
+				t.Fatal("lost activation response reported success")
+			}
+			original := bytes.Clone(f.c.localDomain.original.Packet)
+			if expired {
+				f.n.n2.now = parseExpiry(receipt.ExpiresAt)
+			}
+			posts := len(f.n.n2.posts)
+			f.reopen()
+			view := f.c.Snapshot()
+			if len(f.n.n2.posts) != posts || !view.LocalCollaboration.Pending || view.LocalCollaboration.Current ||
+				!bytes.Equal(original, f.c.localDomain.original.Packet) || f.c.owner.Public().ID != ownerID || f.c.device.Public().ID != deviceID ||
+				view.Management == ManagementAuthorized || !slices.Contains(view.AvailableActions, ActionRecoverLocalCollaboration) {
+				t.Fatal("profile resume displaced uncertainty, changed identities or restored authority")
+			}
+			if expired && f.c.session != nil || !expired && (f.c.session == nil || !f.c.sessionNeedsCheck || f.c.sessionInspected) {
+				t.Fatal("restored session bypassed independent expiry or inspection")
+			}
+			f.drop = wire.OperationLocalDomainReconcile
+			if err := f.c.Dispatch(context.Background(), Action{Kind: ActionRecoverLocalCollaboration}); err == nil {
+				t.Fatal("lost reconciliation response reported success")
+			}
+			recovery := bytes.Clone(f.c.localDomain.recovery.Packet)
+			f.reopen()
+			if err := f.c.Dispatch(context.Background(), Action{Kind: ActionRecoverLocalCollaboration}); err != nil {
+				t.Fatal(err)
+			}
+			view = f.c.Snapshot()
+			if view.LocalCollaboration.Pending || view.LocalCollaboration.State != wire.LocalDomainActive || view.LocalCollaboration.Current ||
+				len(f.posts[wire.OperationLocalDomainPrepare]) != 1 || len(f.posts[wire.OperationLocalDomainActivate]) != 1 ||
+				len(f.posts[wire.OperationLocalDomainReconcile]) != 2 || !bytes.Equal(recovery, f.posts[wire.OperationLocalDomainReconcile][1]) ||
+				!bytes.Equal(original, f.c.localDomain.original.Packet) || len(f.n.n2.posts) != posts {
+				t.Fatal("recovery changed original packets or treated the historical result as current authority")
+			}
+		})
+	}
+}
+
 func TestLocalCollaborationPublicAvailabilityNeverAuthorizesSigning(t *testing.T) {
 	for _, mode := range []string{"false", "404", "malformed"} {
 		t.Run(mode, func(t *testing.T) {

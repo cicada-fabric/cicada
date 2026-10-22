@@ -162,6 +162,13 @@ func (c *nativeController) resumeProfile(ctx context.Context, id string) error {
 			return err
 		}
 	}
+	// Unlock may expose an uncertain domain packet without starting new work.
+	// Keep the restored session uninspected until that original is recovered;
+	// inspectSession correctly refuses fresh requests while it is pending.
+	if c.hasLocalDomainPending() {
+		c.publish()
+		return nil
+	}
 	if c.session != nil {
 		if err := c.inspectSession(ctx); err != nil {
 			return err

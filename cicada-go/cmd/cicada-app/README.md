@@ -1159,3 +1159,48 @@ remains attributed to its tested producer source. This README and skill sentence
 are later documentation deltas. No executable was rebuilt or delivered for this
 correction. Actual Node/Hub/Host acceptance remains separate; the final Windows
 App must be rebuilt from clean combined source after backend and QA acceptance.
+
+### 2026-10-22 profile resume with an unresolved local-domain activation
+
+The actual process gate on clean `2458552c78a69daba386ec9c1721568f30d49e51`
+retained an activation accepted by Hub, lost its response, and restarted both
+App and Hub. Reopening the same encrypted profile then failed before the
+safe checkpoint. QA's separate diagnostic run classified the failure as
+`UNLOCK_AND_RESUME_PROFILE` returning an error with no snapshot error code.
+Those two failed runs remain failed evidence; this Core correction does not
+retroactively establish actual service acceptance.
+
+The restored account session was present, so `resumeProfile` called
+`inspectSession` after loading the unresolved domain packet. The shared
+`canBeginOperation` guard correctly refused a new request while that original
+was pending. Profile unlock now completes with the retained pending operation
+and the session still requiring independent inspection. Explicit domain
+recovery remains available. No generic guard is relaxed, and cached outcomes
+still cannot establish current management authorization.
+
+The new regression stores a visibly synthetic Hub-signed, device-encrypted
+login receipt in the real local vault, loses an accepted activation response,
+and reopens the same profile. It covers both live and expired account sessions,
+then loses the reconciliation response and reopens again. Assertions retain
+the original Owner/App keys and exact activation/reconciliation packets,
+prevent fresh account POSTs during recovery, and restore the historical ACTIVE
+outcome with `Current=false`. The live-session case first fails against the
+original Core; the expired-session control passes. This closes the previous
+RAM-only actor session coverage gap without claiming real account login or
+Hub/Node service coverage.
+
+Pinned Go 1.27.3 scoped normal tests recorded **46 PASS, 0 FAIL, 0 SKIP**
+for local collaboration and profile discovery/recovery. The new two-case
+regression under race recorded **3 PASS, 0 FAIL, 0 SKIP** including its
+parent test; App Core vet exited 0. The tested source is dirty
+`2458552c78a69daba386ec9c1721568f30d49e51` plus the recorded Core and test edits,
+not HEAD alone. The Go/C/header/module manifest matches before and after at
+`747ca821780ae892aeff6c0501d4e6d1b9b12126cff787eb0b1d958a7270c17c`.
+Evidence: `/home/zyf/.cicada/acceptance/codex-context-checks/local-domain-profile-recovery-20261022T212140Z/`;
+red receipt SHA-256 `abb7c7f83c319beddf7b8683efb9a3cb73539a18a2f98296f45771a75aef1306`;
+final receipt SHA-256 `89b1253acfe5ec6e45be34346d54e7cfb235777d4d853152baa64f8623ec8009`.
+This README is a later documentation delta. The original actual process FAIL
+and QA diagnostic FAIL are retained separately. A fresh actual Hub/Node/App
+process gate, Docker interop, installed Host/model communication, native
+Windows Runtime, Android, physical devices and public HTTPS are **NOT_RUN**
+for this correction. No executable was rebuilt or delivered here.
