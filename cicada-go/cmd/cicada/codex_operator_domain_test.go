@@ -27,7 +27,7 @@ func syntheticCodexDomainAdmission(t *testing.T, q localEndpointRequest) (localE
 	t.Helper()
 	f := newNativePairConsumerFixture(t)
 	actor := f.scope.Actor
-	policy := e2ee.LocalDomainPolicy{Version: 1, PolicyID: strings.Repeat("a", 32), Epoch: 1, Origin: q.APIOrigin, HubID: actor.HubID, HubFingerprint: actor.HubFingerprint, OwnerID: actor.OwnerID, OwnerPublic: actor.OwnerPublic, OwnerKeyVersion: 1, Node: f.scope.Node, NodeControlBindingVersion: 1, CredentialCommitment: strings.Repeat("b", 64), LocalUserScope: "uid:4242", NetworkID: "synthetic-domain-network", NetworkName: "Synthetic local Network", CreateNetwork: true, GroupID: "synthetic-domain-group", GroupName: "Synthetic local Group", Rights: e2ee.LocalDomainRights(), IssuedAt: time.Now().UTC().Add(-time.Minute).Format(time.RFC3339Nano), PrepareRequestID: strings.Repeat("c", 32), PreparePacketDigest: strings.Repeat("d", 64), ServerNonce: strings.Repeat("e", 64)}
+	policy := e2ee.LocalDomainPolicy{Version: 1, PolicyID: strings.Repeat("a", 32), Epoch: 1, Origin: q.APIOrigin, HubID: actor.HubID, HubFingerprint: actor.HubFingerprint, OwnerID: actor.OwnerID, OwnerPublic: actor.OwnerPublic, OwnerKeyVersion: 1, Node: f.scope.Node, NodeControlBindingVersion: 7, CredentialCommitment: strings.Repeat("b", 64), LocalUserScope: "uid:4242", NetworkID: "synthetic-domain-network", NetworkName: "Synthetic local Network", CreateNetwork: true, GroupID: "synthetic-domain-group", GroupName: "Synthetic local Group", Rights: e2ee.LocalDomainRights(), IssuedAt: time.Now().UTC().Add(-time.Minute).Format(time.RFC3339Nano), PrepareRequestID: strings.Repeat("c", 32), PreparePacketDigest: strings.Repeat("d", 64), ServerNonce: strings.Repeat("e", 64)}
 	selection, err := wire.LocalDomainSelectionForPolicy(policy)
 	if err != nil {
 		t.Fatal(err)
@@ -49,11 +49,24 @@ func TestCodexDomainResultRejectsSubstitutedScopeAndIncompleteAdmission(t *testi
 		t.Fatal("complete Node scope projection rejected", err)
 	}
 	node := result.LocalDomain.Description.Policy.Node
+	if node.BindingVersion != 1 || result.LocalDomain.Description.Policy.NodeControlBindingVersion != 7 {
+		t.Fatal("fixture must distinguish owner binding v1 from control row v7")
+	}
 	pin := LocalNodeConnectionPin{HubID: result.HubID, NodeID: result.NodeID, APIOrigin: q.APIOrigin, Binding: LocalNodeBinding{BindingID: node.OwnerBindingID, BindingVersion: 1, NodeKeyEpoch: node.NodeKeyEpoch, NodeKeyVersion: node.NodeKeyVersion, HubKeyVersion: node.HubNodeControlKeyVersion, NodeKeyID: node.NodePublic.ID, NodeKeyFingerprint: node.NodeKeyFingerprint, HubKeyID: node.HubNodeControlPublic.ID, HubFingerprint: node.HubNodeControlFingerprint}}
 	pending.ConnectionPin = &pin
 	if err := validateCodexOperatorResult(pending, result, nil); err != nil {
 		t.Fatal("Node-Control pin was confused with the independent App Hub pin", err)
 	}
+	pin.Binding.BindingVersion = 7
+	if validateCodexOperatorResult(pending, result, nil) == nil {
+		t.Fatal("control row revision was accepted as the owner binding version")
+	}
+	pin.Binding.BindingVersion = 1
+	pin.Binding.BindingID = "synthetic-different-owner-binding"
+	if validateCodexOperatorResult(pending, result, nil) == nil {
+		t.Fatal("different owner binding was accepted")
+	}
+	pin.Binding.BindingID = node.OwnerBindingID
 	pin.Binding.HubFingerprint = result.LocalDomain.Description.Policy.HubFingerprint
 	if validateCodexOperatorResult(pending, result, nil) == nil {
 		t.Fatal("App Hub fingerprint replaced the Node-Control pin")

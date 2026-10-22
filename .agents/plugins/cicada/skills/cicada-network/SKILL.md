@@ -28,7 +28,9 @@ For simple onboarding, ask the user to send one of these literal messages in
   joins the local scope already enabled for this Node/user, when available.
 - `cicada peers` shows the private Node operator directory snapshot.
 - `cicada leave` withdraws this Thread's association while retaining its native
-  record and workspace. Repeating registration after leaving does not revive it.
+  record and workspace. An explicit new domain Join under the current policy
+  creates a new admission, without reviving the old member/binding or reassigning
+  its unresolved original packets.
 - `cicada help` shows local command help.
 
 The existing Pair flow is advanced: `cicada connect` lists available human Pair

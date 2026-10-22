@@ -25,7 +25,9 @@ func validateCodexDomainOperatorResult(p codexOperatorPending, r *localEndpointR
 	if p.ConnectionPin != nil {
 		pin := p.ConnectionPin.Binding
 		node := policy.Node
-		if node.OwnerBindingID != pin.BindingID || policy.NodeControlBindingVersion != pin.BindingVersion || node.NodeKeyEpoch != pin.NodeKeyEpoch || node.NodeKeyVersion != pin.NodeKeyVersion || node.NodePublic.ID != pin.NodeKeyID || node.NodeKeyFingerprint != pin.NodeKeyFingerprint || node.HubNodeControlKeyVersion != pin.HubKeyVersion || node.HubNodeControlPublic.ID != pin.HubKeyID || node.HubNodeControlFingerprint != pin.HubFingerprint {
+		// Discovery pins the Owner binding version. The distinct Control-key
+		// row revision remains bound by the policy digest and Node validation.
+		if node.OwnerBindingID != pin.BindingID || node.BindingVersion != pin.BindingVersion || node.NodeKeyEpoch != pin.NodeKeyEpoch || node.NodeKeyVersion != pin.NodeKeyVersion || node.NodePublic.ID != pin.NodeKeyID || node.NodeKeyFingerprint != pin.NodeKeyFingerprint || node.HubNodeControlKeyVersion != pin.HubKeyVersion || node.HubNodeControlPublic.ID != pin.HubKeyID || node.HubNodeControlFingerprint != pin.HubFingerprint {
 			return errCodexOperatorIntentResponse
 		}
 	}

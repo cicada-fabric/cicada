@@ -1123,3 +1123,39 @@ the domain-only v2 cache correction. This README is a later documentation
 delta. Actual Node domain profile/022 verification, Hub/Node Owner/candidate
 admission, installed Host/model communication, Docker interop, native Windows,
 Android, physical devices and public HTTPS remain **NOT_RUN** here.
+
+### 2026-10-22 consumer binding-version compatibility correction
+
+Read-only comparison with the Hub implementation found a real version mismatch:
+the consumer compared `policy.NodeControlBindingVersion` with the discovered
+`LocalNodeBinding.BindingVersion`. The former is the Node-Control key row
+revision; the latter is the Owner binding version, carried by
+`policy.Node.BindingVersion`. The original fixture set both to 1 and hid the
+difference. The consumer now compares the Owner binding version with its
+independent Node connection pin. The full policy digest and Node verification
+continue to cover the separate Control-key row revision.
+
+A regression explicitly sets Owner binding version **1** and Control-key row
+revision **7**. It first fails against the original comparison, then passes
+after the fix. A pin incorrectly using 7 as its Owner binding version and a
+different Owner binding ID are rejected. Scoped normal and race checks each
+recorded **17 PASS, 0 FAIL, 0 SKIP**, and CLI vet exited 0, using pinned Go 1.27.3
+on dirty `a4b15e5c61783234109619d5bebe46f28eaae1a3` plus the two recorded source changes.
+The affected code/test/module manifest is stable before and after at
+`f311599b8bef538cd9f9a74b7add16d1338186e9da55f48d386e0d9e8b8da878`.
+The red regression and final logs are retained at
+`/home/zyf/.cicada/acceptance/codex-context-checks/local-domain-binding-version-20261022T194648Z/`;
+final receipt SHA-256 `17d5120d80c117dc8dc9b486951ebceadca3660dd84f6d56c4d9899f18483d18`.
+This is a narrow consumer projection/persistence regression; it does not rerun
+the earlier 123-event group or establish actual domain service acceptance.
+
+The skill's Leave sentence now distinguishes a new explicit domain admission
+under the current policy from reviving an old member/binding or reassigning an
+unresolved original packet. Legacy/Pair behavior, native IDs and protocol
+structures are unchanged. The five original plugin source assets now have
+digest `89502bd0ddc39971591940a7273e7ebdca848e4a1a60e4653ac650114d32c7eb`; the earlier
+`24c9d1f0b5381811c11f7fc7947d58afc2fddea63d672500d846c7120d2798e8`
+remains attributed to its tested producer source. This README and skill sentence
+are later documentation deltas. No executable was rebuilt or delivered for this
+correction. Actual Node/Hub/Host acceptance remains separate; the final Windows
+App must be rebuilt from clean combined source after backend and QA acceptance.
