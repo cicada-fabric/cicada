@@ -26,7 +26,7 @@ NATIVE_PHASES = frozenset(('SETUP', 'ORIGINAL_DAEMON', 'WAIT_OWNER_POLICY', 'PLU
                           'HOST_POST_LOGIN_EXPIRY', 'LITERAL_C_AFTER_LOGIN_EXPIRY',
                           'HOST_NEW_C_AFTER_LOGIN_EXPIRY', 'WAIT_OWNER_REVOKE',
                           'HOST_AFTER_REVOKE', 'CLEANUP'))
-NATIVE_TOOL_LABELS = {'cicada_whoami': 'WHOAMI', 'cicada_peers': 'PEERS', 'cicada_ask': 'ASK',
+NATIVE_TOOL_LABELS = {'cicada_whoami': 'WHOAMI', 'cicada_members': 'PEERS', 'cicada_ask': 'ASK',
                       'cicada_receive': 'RECEIVE', 'cicada_reply': 'REPLY',
                       'cicada_operation_status': 'OPERATION_STATUS'}
 NATIVE_LABELS = frozenset(('NONE', 'DAEMON_START', 'TUI_INITIALIZE', 'HOST_CONNECT',
@@ -278,7 +278,7 @@ enabled = false
 '''.replace('BASE_URL', json.dumps(provider.origin))
         for path in workspaces:
             text += '\n[projects.' + json.dumps(str(path)) + ']\ntrust_level = "trusted"\n'
-        for tool in ('cicada_whoami', 'cicada_peers', 'cicada_ask', 'cicada_receive', 'cicada_reply', 'cicada_operation_status'):
+        for tool in ('cicada_whoami', 'cicada_members', 'cicada_ask', 'cicada_receive', 'cicada_reply', 'cicada_operation_status'):
             text += '\n[plugins."cicada@cicada-repo".mcp_servers.cicada.tools.' + tool + ']\napproval_mode = "approve"\n'
         configuration.write_text(text)
         cli.workspace = workspaces[0]
@@ -329,7 +329,7 @@ enabled = false
         await_command(2)  # The actual App has completed normal Controller.Close.
         actors = [whoami(index, expected, 'initial-whoami-' + 'ab'[index]) for index in range(2)]
         assert actors[0]['endpoint_id'] != actors[1]['endpoint_id']
-        peers = call(0, 'initial-peers-a', 'cicada_peers', {})
+        peers = call(0, 'initial-peers-a', 'cicada_members', {})
         assert names[1] in json.dumps(peers) and actors[1]['endpoint_id'] in json.dumps(peers), 'ACTUAL_NAMED_PEER_NOT_VISIBLE'
         first = roundtrip('app-closed')
         checkpoint(2, {'actors': actors, 'roundtrip': first, 'actual_Host_MCP': True, 'App_closed': True})
