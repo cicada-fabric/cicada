@@ -297,6 +297,7 @@ class ActualCLI:
         fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 45, 180, 0, 0))
         prompt = self.config.get('literal_prompt', 'cicada join "Synthetic installed-plugin Thread"')
         single_marker = self.config.get('literal_expected')
+        registered_name = re.sub(r'\s+', '', self.config.get('literal_registered_name', 'Synthetic installed-plugin Thread'))
         transport = ['--remote', self.config.get('persistent_remote', 'unix://')] if self.config.get('persistent_daemon') else ['--no-daemon']
         argv = [self.binary, *transport, '--no-alt-screen', '-C', str(self.workspace)]
         if self.config.get('literal_resume_sid'):
@@ -383,7 +384,7 @@ class ActualCLI:
                     if self.config.get('require_unique_literal_titles'):
                         assert compact.count('ThisThreadisregistered') == 1, 'ACTUAL_JOIN_RESULT_TITLE_DUPLICATED'
                         result_body = compact.split('ThisThreadisregistered', 1)[1]
-                        assert 'Syntheticinstalled-pluginThread' in result_body and str(self.workspace) in result_body, 'ACTUAL_JOIN_RESULT_FIELDS_NOT_VISIBLE'
+                        assert registered_name in result_body and str(self.workspace) in result_body, 'ACTUAL_JOIN_RESULT_FIELDS_NOT_VISIBLE'
                     frames.append({'stage': 'literal-join', 'screen': plain})
                     type_command('cicada peers')
                     sent_peers = True
@@ -428,7 +429,7 @@ class ActualCLI:
                 if not single_marker and 'ThisThreadisregistered' in compact and peers_ready_at is None:
                     peers_ready_at = time.monotonic() + .5
                 if (sent_peers and 'NodeThreaddirectorysnapshot' in compact and
-                        'Syntheticinstalled-pluginThread' in compact and str(self.workspace) in compact and
+                        registered_name in compact and str(self.workspace) in compact and
                         'Offlineatsnapshot' in compact):
                     if self.config.get('require_unique_literal_titles'):
                         time.sleep(.4)
@@ -438,7 +439,7 @@ class ActualCLI:
                         compact = re.sub(r'\s+', '', plain)
                         assert compact.count('NodeThreaddirectorysnapshot') == 1, 'ACTUAL_PEERS_RESULT_TITLE_DUPLICATED'
                         result_body = compact.split('NodeThreaddirectorysnapshot', 1)[1]
-                        assert ('Syntheticinstalled-pluginThread' in result_body and str(self.workspace) in result_body and
+                        assert (registered_name in result_body and str(self.workspace) in result_body and
                                 'Offlineatsnapshot' in result_body), 'ACTUAL_PEERS_RESULT_FIELDS_NOT_VISIBLE'
                     visible = True
                     frames.append({'stage': 'literal-peers', 'screen': plain})

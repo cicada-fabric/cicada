@@ -17,6 +17,23 @@ import (
 // One bounded actual-daemon gate. Existing Node approval is a fixture
 // precondition; the measured installation/connection stages cannot enroll it.
 func TestN3CodexProductThreeStagePersistentDaemon(t *testing.T) {
+	// These are acceptance inputs, never a chmod/ACL repair of a native record.
+	daemonUmask := os.Getenv("CICADA_N3_CODEX_DAEMON_UMASK")
+	if daemonUmask == "" {
+		daemonUmask = "0077"
+	}
+	freshThreads := os.Getenv("CICADA_N3_CODEX_FRESH_THREADS")
+	if freshThreads == "" {
+		freshThreads = "1"
+	}
+	preparation := os.Getenv("CICADA_N3_CODEX_PREPARATION")
+	if preparation == "" {
+		preparation = "none"
+	}
+	if (daemonUmask != "0002" && daemonUmask != "0077") || (freshThreads != "1" && freshThreads != "2") || preparation != "none" {
+		t.Fatal("invalid or unfrozen actual-daemon acceptance parameters")
+	}
+	freshCount := must(strconv.Atoi(freshThreads))
 	v := newCodexProductFixture(t, "1s")
 	t.Cleanup(func() { retainColdCLIDiagnostics(t, v) })
 	v.actualNode.kill(t)
@@ -50,6 +67,7 @@ func TestN3CodexProductThreeStagePersistentDaemon(t *testing.T) {
 		"environment": clientEnvironment, "codex_binary": "/tools/codex-package/bin/codex",
 		"codex_sha256": "399ff69c431c066e40de318fba45c2b07f45a76b19939d247ee4828fc70c4215",
 		"marketplace":  "/repo", "step": "three-stage", "persistent_daemon": true, "allow_test_termination": true,
+		"daemon_umask": daemonUmask, "fresh_threads": freshCount, "preparation": preparation,
 		"control": control, "result": result, "require_unique_literal_titles": true, "selected_root": prefix})
 	log := must(os.OpenFile(filepath.Join(v.root, "private-three-stage.log"), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600))
 	t.Cleanup(func() { log.Close() })
@@ -60,6 +78,9 @@ func TestN3CodexProductThreeStagePersistentDaemon(t *testing.T) {
 		t.Helper()
 		path := filepath.Join(control, strconv.Itoa(step)+".reply.json")
 		deadline := time.Now().Add(85 * time.Second)
+		if step == 2 && freshCount == 2 {
+			deadline = deadline.Add(60 * time.Second)
+		}
 		for time.Now().Before(deadline) {
 			if _, err := os.Stat(path); err == nil {
 				var reply map[string]json.RawMessage
@@ -141,7 +162,24 @@ func TestN3CodexProductThreeStagePersistentDaemon(t *testing.T) {
 	if json.Unmarshal(connected["native_session_id"], &sid) != nil || sid == "" {
 		t.Fatal("actual registered native Thread missing")
 	}
-	v.requireOwnerDirectory(t, map[string]string{"Synthetic installed-plugin Thread": "offline"})
+	var ids, names []string
+	if json.Unmarshal(connected["native_session_ids"], &ids) != nil || json.Unmarshal(connected["registered_names"], &names) != nil || len(ids) != freshCount || len(names) != freshCount || ids[0] != sid {
+		t.Fatal("fresh native Thread identity/count mismatch")
+	}
+	directory := make(map[string]string, freshCount)
+	seen := make(map[string]bool, freshCount)
+	for i, id := range ids {
+		expectedName := "Synthetic installed-plugin Thread"
+		if freshCount == 2 {
+			expectedName = "Synthetic fresh Thread " + string("AB"[i])
+		}
+		if id == "" || seen[id] || names[i] != expectedName {
+			t.Fatal("fresh Thread reused an identity or changed its registered name")
+		}
+		seen[id] = true
+		directory[expectedName] = "offline"
+	}
+	v.requireOwnerDirectory(t, directory)
 	v.actualNode.kill(t)
 	stoppedNodeHash := hash(readPrivate(t, v.actualNode.statePath()))
 	sendStep(3, nil)
@@ -162,14 +200,16 @@ func TestN3CodexProductThreeStagePersistentDaemon(t *testing.T) {
 		t.Fatal("persistent daemon client cleanup timeout")
 	}
 	var final struct {
-		Status string `json:"status"`
-		SID    string `json:"native_session_id"`
+		Status string   `json:"status"`
+		SID    string   `json:"native_session_id"`
+		IDs    []string `json:"native_session_ids"`
 	}
 	readJSON(t, result, &final)
-	if client.cmd.ProcessState.ExitCode() != 0 || final.Status != "SCOPED_PASS" || final.SID != sid {
+	if client.cmd.ProcessState.ExitCode() != 0 || final.Status != "SCOPED_PASS" || final.SID != sid || strings.Join(final.IDs, ",") != strings.Join(ids, ",") {
 		t.Fatal("actual persistent daemon gate failed")
 	}
 	checkRoot()
+	t.Logf("THREE_STAGE_PARAMETERS actual_daemon_umask=%s fresh_native_threads=%d preparation=%s domain_authorization=NOT_RUN other_UID=NOT_RUN", daemonUmask, freshCount, preparation)
 	t.Log("THREE_STAGE_PASS original_persistent_Codex_daemon=true daemon_env5_absent=true installed_old_same_plugin_updated=true normal_Hook_trust=true existing_root0755_and_canary_retained=true Node_absent_and_stop_refuse=true explicit_original_Node_restart=true same_complete_pin=true actual_MCP_and_literal_Hook=true provider_posts=0 Pair_cold_model_queue_Windows=NOT_RUN")
 }
 

@@ -4852,3 +4852,56 @@ revocation, native queue/model consumption and platform security remain
 communication are pending Root's review, not validated here. Historical Pair
 and other independent results retain their original scopes; no new CLI/API/script
 or automatic repair is claimed here.
+
+## 2026-10-22 local-domain matrix and actual-daemon driver preparation
+
+Preparation source: dirty `96dcbe0` plus the acceptance/driver/plan changes in
+this checkpoint. This is **COMPILE_AND_VET_ONLY**, not a new business or native
+Runtime PASS. The [minimum threat/acceptance matrix](native-app-plan.md#nodeusernetwork-policy-acceptance-preparation)
+records the Node/user/Network target, trusted same-UID boundary and actual
+other-UID requirement, independent App/account and delegation lifetimes,
+immediate current-authority revocation, original-packet recovery and strict
+legacy-Pair compatibility. Root has approved the direction; frozen DTOs and
+production implementation are still pending.
+
+The existing three-stage driver is parameterized for an original official
+Codex daemon writer umask `0002` or `0077`, and one or two successive new native
+Threads. Only preparation policy `none` is executable: no QA record chmod/ACL
+repair or daemon restart is substituted for a product policy. It verifies the
+actual daemon `/proc` Umask and unchanged PID/start ticks at checkpoints, exact
+native SID/cwd/inode metadata and distinct A/B names, normal Hook trust, zero
+literal provider POSTs and the actual App-signed zero-right directory. These
+are prepared assertions, **not observations from an executed new gate**.
+The default remains `0077`/one Thread; the earlier `aTS6FI` runtime receipt is
+not reattributed to this code or to the new `0002`/A+B case.
+
+Checks actually executed in owned network-none, read-only-source Docker with
+the pinned Go 1.27.3 image and read-only shared module cache:
+
+| Check | Actual result |
+| --- | --- |
+| `go version`; `go test -mod=readonly -c -o /out/n3.test ./acceptance/n3`; `go vet -mod=readonly ./acceptance/n3` | All exit 0; no test case or native Runtime executed. Exact command arrays are retained in the receipt directory. |
+| Source inventory before/after compile and vet | Identical; HEAD remains `96dcbe0`, dirty=true; all three owned containers absent afterward. |
+| Bash syntax, Python AST and `git diff --check` | Exit 0. |
+| Illegal daemon umask, illegal fresh-Thread count, daemon parameters in another mode | Each exits 2 before resources start. |
+| Unfrozen preparation policy | Exits 125 with NOT_RUN before resources start. This expected refusal is not a business PASS. |
+
+External evidence is under
+`native-pair-acceptance/domain-preparation-20261022-l_gp334g/`:
+
+| Artifact | SHA-256 |
+| --- | --- |
+| `compile-result.json` | `d6a7008e249926e65b531dd4d8c226ff6a939baea49194458ffe0a3881a39bbd` |
+| Identical `source-before.json` / `source-after.json` | `5510144be2de83435dc486042e3f507926c5a54d35248169517fa01df4234044` |
+| Complete compile input manifest | `78a98d973dbf2711a2c8a3b087bd354f8cf2bb378c8afd71756356b33ac9fd3e` |
+| Compiled, unexecuted `n3.test`, 23,071,432 bytes | `b261a9305d6e4a57077dd01b67565f282cf0e542699635810f6d3f3113c9c959` |
+
+The plan provides the parameterized reproduction command. Execute it only on
+the intended frozen implementation; a missing policy or the current strict
+record guard cannot be treated as acceptance of the new domain. Actual new
+`0002` A/B registration, one-time domain approval, same-domain Host ASK/Reply,
+other-UID IPC/key/context/signing probes, App-close/short-login-TTL continuity,
+expiry/revoke, cross-domain refusals, original-packet faults and legacy-Pair
+migration all remain **NOT_RUN**. Windows DPAPI, ACL and physical GUI, Android,
+real model/native queue/automatic wake and public HTTPS remain **NOT_RUN**.
+No real user record, process, permission, state or deployment is modified.

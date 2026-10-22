@@ -69,6 +69,9 @@ def snapshot(repo, dest, harness=None):
     endpoint_contract = repo / 'docs/native-endpoint-directory-contract.md'
     if endpoint_contract.exists():
         paths.append(endpoint_contract)
+    domain_contract = repo / 'docs/native-local-domain-contract.md'
+    if domain_contract.exists():
+        paths.append(domain_contract)
     paths += [repo / 'scripts/native-pair-contract.py']
     files = {'source/' + str(p.relative_to(repo)): sha(p) for p in sorted(paths)}
     files.update({'source/' + str(p.relative_to(repo)): sha(p)
@@ -114,6 +117,10 @@ def snapshot(repo, dest, harness=None):
                 'external_runtime_tools': runtime_tools,
                 'external_component_licenses': component_licenses,
                 'external_codex_package': codex_package,
+                'codex_daemon_parameters': {
+                    'daemon_umask': os.environ.get('CICADA_NATIVE_PAIR_CODEX_DAEMON_UMASK'),
+                    'fresh_threads': os.environ.get('CICADA_NATIVE_PAIR_CODEX_FRESH_THREADS'),
+                    'preparation': os.environ.get('CICADA_NATIVE_PAIR_CODEX_PREPARATION')},
                 'manifest_sha256': hashlib.sha256(json.dumps(files, sort_keys=True, separators=(',', ':')).encode()).hexdigest(),
                 'files': files})
 
@@ -236,6 +243,7 @@ def finish(run, artifacts, image, owned, mode='protocol'):
                'external_runtime_tools': runtime_tools,
                'external_component_licenses': before.get('external_component_licenses'),
                'external_codex_package': before.get('external_codex_package'),
+               'codex_daemon_parameters': before.get('codex_daemon_parameters'),
                'diagnostics': diagnostics, 'http_measurements': metrics,
                'artifacts': {p.name: {'sha256': sha(p), 'bytes': p.stat().st_size} for p in artifacts.iterdir() if p.is_file()},
                'evidence_sha256': {p.name: sha(p) for p in run.iterdir() if p.is_file() and p.name != 'result.json'},
@@ -278,7 +286,9 @@ def finish(run, artifacts, image, owned, mode='protocol'):
                               'ordinary_prompt_skill_plugin_passthrough', 'native_queue_consumption', 'real_model_provider',
                               'Windows_DPAPI', 'Windows_ACL', 'Windows_GUI', 'Android', 'public_HTTPS']
     elif mode == 'codex-product-three-stage':
-        summary['not_run'] = ['Pair', 'default_five_minute_cold_lease', 'multi_Node_ambiguity',
+        summary['not_run'] = ['Node_user_Network_business_policy', 'other_UID_private_IPC_keys_context_signing',
+                              'domain_App_close_login_TTL_revoke_expiry_and_original_retry', 'legacy_Pair_migration',
+                              'Pair', 'default_five_minute_cold_lease', 'multi_Node_ambiguity',
                               'graceful_TUI_exit', 'per_call_ticket_business_dispatch', 'cross_pin_cache_pending_outbox_faults',
                               'real_model_provider', 'native_queue_consumption', 'automatic_wake',
                               'Windows_DPAPI', 'Windows_ACL', 'Windows_GUI', 'Android', 'public_HTTPS']

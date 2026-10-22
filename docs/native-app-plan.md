@@ -119,6 +119,88 @@ one direct-stdio candidate initialization PASS. The launcher/helper has not been
 applied, and actual managed reconnection/Hook lookup are NOT_RUN there. Neither
 that candidate nor earlier fcea942 Pair/cold evidence validates this new flow.
 
+## Node/user/Network policy acceptance preparation
+
+2026-10-22, preparation baseline `96dcbe0`. **CONTRACT_PENDING / NOT_RUN**
+for the new business policy. This matrix extends the existing isolated driver;
+it introduces no production command, schema, grant or authorization bypass.
+Root freezes the Hub contract and App consumer together before business tests
+are connected. Historical Pair, N2 and three-stage results keep their scopes.
+Root has approved the design direction: the default policy lasts until explicit
+revocation, with optional Owner-selected expiry; a short activation proof is not
+the delegation's lifetime. A newly named private Network or an exact existing
+Network uses a dedicated non-Pair Group. The Hub proposal still needs updated
+frozen DTOs and implementation before consumers are connected. These are targets,
+not available product APIs.
+
+The security principal boundary is the selected Node and its OS user in an
+explicitly authorized Network. Threads under that same trusted UID are not
+mutually isolated principals. Native-record SID/cwd/source/inode checks still
+prevent misbinding; accepting a record mode under a reviewed trusted-host policy
+cannot replace actual other-UID protection of private IPC and keys. In particular,
+test UID 1001 with GID 1000: membership in the writer's group must not grant Node
+context or signing authority. A malicious same-UID process is inside the local
+trust boundary. This policy must not claim to revoke that UID's underlying OS
+filesystem/IPC capabilities.
+
+Treat forged App/Owner authority, other Nodes/Owners/Networks, modified packets,
+stale epochs and replay after revocation as untrusted. An account session, visible
+directory card, matching label, Node registration or old Pair does not imply the
+new domain grant. Hub's durable current authorization governs service-mediated
+requests; closing App must not move that authority into an online UI dependency.
+
+| Case | Minimum independent observation after freeze | Current status |
+| --- | --- | --- |
+| DOMAIN-01 — one approval, new A/B | Actual App authorizes one exact Node/user/Network through its own signing action. The original persistent Codex daemon creates fresh A and B; literal Join has zero provider POSTs, exact original SID/cwd/name, and no per-Thread/Pair Owner approval. Current by-name discovery resolves exact IDs; actual Host ASK/Reply succeeds within scope. | NOT_RUN; business interface pending |
+| DOMAIN-02 — original `0002` writer | Observe the same daemon PID/start ticks and actual `/proc` Umask 0002 before/after installation and each fresh A/B. No per-record chmod, recursive repair or new-shell umask substitutes for the writer's policy. Record actual record/tree metadata and ordinary Hook trust. | Driver parameters prepared; execution NOT_RUN |
+| DOMAIN-03 — other UID, same group | A real UID 1001/GID 1000 process in the exact owned running container cannot read Node private keys, connect to private context/signing IPC, obtain a usable context proof or cause a signed business request. Observe actual denied operations, not only mode helpers. | NOT_RUN; bounded host `docker exec --user 1001:1000` lane pending |
+| DOMAIN-04 — foreign coordinates | Same Network/different Node; same Node/different Network; different Owner; absent/wrong/forged grant; stale grant or Node epoch all deny by current Guard. Capture redacted typed errors and unchanged unauthorized state. Group boundaries retain their existing contract. | NOT_RUN |
+| DOMAIN-05 — App/session lifetime | Close actual App process and cross a deliberately short account-login/status TTL. Newly created Threads and new permitted operations continue only within the independently granted domain lifetime. Domain expiry itself denies; restart Hub/Node and re-read the original persistent grant. | NOT_RUN; independent lifetimes pending |
+| DOMAIN-06 — explicit revoke | Actual App revokes the exact domain. New discovery/business operations deny immediately according to the frozen linearization rule, including an already connected MCP client and a fresh Thread. Never confuse App close/logout with domain revoke. | NOT_RUN |
+| DOMAIN-07 — loss and original retry | Reuse existing method-specific barrier for loss before forward, loss after commit, unsigned/corrupt responses and uncertain result. Restart App/Hub/Node as appropriate; retry the original encrypted packet and reconcile the authenticated original outcome without new authority. | NOT_RUN; operation and recovery contract pending |
+| DOMAIN-08 — concurrency and replay | Concurrent exact retries produce one original grant/outcome; conflicting requests cannot claim a different domain. Pre-revoke accepted history may be readable only as the contract permits; retry never renews revoked authority or expands scope. | NOT_RUN |
+| DOMAIN-09 — legacy Pair migration | An old exact Pair, old pending packet or read cache retains its original scope and identity. It cannot silently become a Node/Network-wide grant, repair a wrong pin or revive a revoked Endpoint. | NOT_RUN; migration rule pending |
+| DOMAIN-10 — identity without inference | Account login alone cannot act as Root or issue a domain grant. With Control inference off, actual identity/Owner approval, explicit Join and deterministic Guard operations remain usable. | New domain extension NOT_RUN; older N2 evidence separate |
+| DOMAIN-11 — platform | Actual Windows DPAPI, ACL and physical GUI; Android and public HTTPS each require their own run. | NOT_RUN |
+
+Freeze dependencies are the exact Node/user/Network identity binding and selectors,
+Owner/App action and signed-packet schema, grant lifetime independent of account
+TTL, current-version/epoch and revocation linearization rules, native-context
+record policy, local/foreign directory behavior, Group interaction, and original
+request/recovery plus legacy-Pair migration semantics. No parameter value or API
+is inferred from this table.
+
+The existing `--codex-product-three-stage` gate now accepts these isolated inputs:
+`CICADA_NATIVE_PAIR_CODEX_DAEMON_UMASK=0077|0002` (default 0077),
+`CICADA_NATIVE_PAIR_CODEX_FRESH_THREADS=1|2` (default 1), and
+`CICADA_NATIVE_PAIR_CODEX_PREPARATION=none` (the only currently executable policy).
+An unfrozen preparation value exits 125 with NOT_RUN before starting resources;
+invalid umask/count or use in another mode exits 2. Parameter values are captured
+in source/result receipts. The umask applies to the official daemon-start child;
+the actual daemon's status must match it, with the same PID/start ticks through
+all stages. QA's own evidence files retain umask 0077. No chmod/ACL preparation
+is performed on Codex records. Two-Thread mode checks distinct native IDs,
+matching names/cwd and the actual App-signed zero-right directory; that is still
+registration evidence, not DOMAIN-01 business authorization.
+
+Prepared reproduction, **not yet executed** on this source:
+
+```sh
+CICADA_NATIVE_PAIR_LICENSES_DIR=/path/to/matching/complete/notices \
+CICADA_NATIVE_PAIR_CODEX_DAEMON_UMASK=0002 \
+CICADA_NATIVE_PAIR_CODEX_FRESH_THREADS=2 \
+CICADA_NATIVE_PAIR_CODEX_PREPARATION=none \
+scripts/test-native-pair.sh --codex-product-three-stage
+```
+
+Use the existing pinned network-none Docker, real crypto/TCP/persistent owned
+databases, read-only module cache and locked task build cache. The other-UID
+probe must use the exact owned container, retaining cap-drop/no-new-privileges;
+the Go fixture receives no Docker socket and needs no root/setuid capability.
+Literal Join's zero-POST sentinel is separate from actual Host ASK/Reply via a
+synthetic static provider. That Host lane is not a real model, native queue
+consumption or automatic wake. No new business row passes until actually run.
+
 ## Current feedback and acceptance ledger
 
 2026-10-20 consolidation on recording baseline

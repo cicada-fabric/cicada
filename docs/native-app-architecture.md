@@ -124,6 +124,15 @@ not the implementation of this three-stage flow.
 
 ## Naming, Directory and native-context targets
 
+The 2026-10-22 [Node/user/Network acceptance preparation](native-app-plan.md#nodeusernetwork-policy-acceptance-preparation)
+separates trusted same-UID host context from Hub-authoritative business grants.
+The target permits local collaboration within an explicitly approved domain
+without per-Thread Pair approval; the new grant/consumer contract is pending.
+Actual other-UID IPC/key/context protection, domain expiry/revocation and legacy
+Pair migration require separate evidence. Parameterizing an existing Codex
+daemon's writer umask or creating fresh A/B is acceptance preparation only;
+it implements neither that policy nor a record-permission repair.
+
 The 2026-10-20 feedback is tracked in the
 [existing acceptance ledger](native-app-plan.md#current-feedback-and-acceptance-ledger).
 The following product targets are implemented in stages under the

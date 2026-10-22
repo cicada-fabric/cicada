@@ -25,7 +25,9 @@ class PersistentCLI(ActualCLI):
         private_json(self.state / (label + '.command.json'), argv)
         process = subprocess.Popen(argv, env=self.environment, cwd=self.workspace,
                                    stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                                   stderr=subprocess.PIPE, start_new_session=True)
+                                   stderr=subprocess.PIPE, start_new_session=True,
+                                   umask=int(self.config['daemon_umask'], 8)
+                                   if arguments == ['app-server', 'daemon', 'start'] else 0o077)
         try:
             out, err = process.communicate(timeout=timeout)
         except subprocess.TimeoutExpired:
@@ -62,7 +64,11 @@ class PersistentCLI(ActualCLI):
                         'CICADA_STATE_DIR', 'CICADA_MCP_SESSION_STATE_FILE')
                 assert not any(env.get(key.encode()) for key in keys), 'DAEMON_INHERITED_DEPLOYMENT_ENV'
                 start = (proc / 'stat').read_text().rsplit(') ', 1)[1].split()[19]
-                found.append({'pid': int(proc.name), 'start_ticks': start, 'five_deployment_variables_absent': True, 'executable_sha256': self.expected_binary})
+                status = dict(line.split(':', 1) for line in (proc / 'status').read_text().splitlines() if ':' in line)
+                actual_umask = status['Umask'].strip()
+                assert actual_umask == self.config['daemon_umask'], 'ACTUAL_DAEMON_UMASK_DIFFERS'
+                found.append({'pid': int(proc.name), 'start_ticks': start, 'umask': actual_umask,
+                              'five_deployment_variables_absent': True, 'executable_sha256': self.expected_binary})
             except (FileNotFoundError, PermissionError, ProcessLookupError):
                 continue
         assert len(found) == 1, 'ONE_OWNED_PERSISTENT_DAEMON_REQUIRED'
@@ -192,7 +198,7 @@ class PersistentCLI(ActualCLI):
             assert digest(Path(hook['sourcePath'])) == expected_hash, 'INSTALLED_HOOK_STALE_SOURCE'
         return actual
 
-    def literal(self, label, prompt=None, expected=None, resume=None):
+    def literal(self, label, prompt=None, expected=None, resume=None, registered_name=None):
         # Reuse the actual controlling-PTY/normal-trust path. Only transport
         # changes: the TUI attaches to the original managed daemon.
         prior = self.state
@@ -201,6 +207,7 @@ class PersistentCLI(ActualCLI):
         self.config['literal_prompt'] = prompt or 'cicada join "Synthetic installed-plugin Thread"'
         self.config['literal_expected'] = expected
         self.config['literal_resume_sid'] = resume
+        self.config['literal_registered_name'] = registered_name or 'Synthetic installed-plugin Thread'
         stopped = threading.Event()
         observed = {}
         def watch_hook_environment():
@@ -234,25 +241,36 @@ class PersistentCLI(ActualCLI):
         finally:
             stopped.set()
             watcher.join(timeout=2)
-            records = []
-            for native_id, value in self.native_records().items():
-                path = Path(value['path'])
-                before = path.lstat()
-                with path.open('rb') as stream:
-                    opened = os.fstat(stream.fileno())
-                meta = value['metadata']
-                source = meta.get('source')
-                records.append({'id': native_id, 'cwd_matches_original': meta.get('cwd') == str(self.workspace),
-                                'source': source if isinstance(source, str) else {'keys': sorted(source or {})},
-                                'originator': meta.get('originator'), 'forked_from_id': meta.get('forked_from_id'),
-                                'path': str(path), 'under_original_CODEX_HOME': path.is_relative_to(self.codex_home),
-                                'under_HOME_default_CODEX_HOME': path.is_relative_to(Path(self.environment['HOME']) / '.codex'),
-                                'mode': oct(before.st_mode & 0o777), 'uid_matches_current': before.st_uid == os.getuid(),
-                                'size': before.st_size, 'readable': True,
-                                'open_inode_matches': (before.st_ino, before.st_dev) == (opened.st_ino, opened.st_dev)})
             private_json(self.state / 'native-record-checks.json', {'hook_transcript_path_observed': False,
-                         'actual_native_record_metadata_only': records, 'actual_Hook_environment_matches_only': observed})
+                         'actual_native_record_metadata_only': self.native_metadata(),
+                         'actual_Hook_environment_matches_only': observed})
             self.state = prior
+
+    def native_metadata(self):
+        records = []
+        for native_id, value in self.native_records().items():
+            path = Path(value['path'])
+            before = path.lstat()
+            with path.open('rb') as stream:
+                opened = os.fstat(stream.fileno())
+            meta = value['metadata']
+            source = meta.get('source')
+            parents = []
+            parent = path.parent
+            while parent.is_relative_to(self.codex_home):
+                info = parent.lstat()
+                parents.append({'path': str(parent), 'mode': oct(info.st_mode & 0o777),
+                                'uid_matches_current': info.st_uid == os.getuid(), 'symlink': parent.is_symlink()})
+                parent = parent.parent
+            records.append({'id': native_id, 'cwd_matches_original': meta.get('cwd') == str(self.workspace),
+                            'source': source if isinstance(source, str) else {'keys': sorted(source or {})},
+                            'originator': meta.get('originator'), 'forked_from_id': meta.get('forked_from_id'),
+                            'path': str(path), 'under_original_CODEX_HOME': path.is_relative_to(self.codex_home),
+                            'under_HOME_default_CODEX_HOME': path.is_relative_to(Path(self.environment['HOME']) / '.codex'),
+                            'mode': oct(before.st_mode & 0o777), 'uid_matches_current': before.st_uid == os.getuid(),
+                            'size': before.st_size, 'readable': True, 'record_tree': parents,
+                            'open_inode_matches': (before.st_ino, before.st_dev) == (opened.st_ino, opened.st_dev)})
+        return records
 
     def tool_status(self, sid):
         reply = self.rpc('mcpServerStatus/list', {'threadId': sid, 'limit': 100, 'detail': 'full'})
@@ -264,6 +282,9 @@ class PersistentCLI(ActualCLI):
 
 
 def run(config):
+    assert config['daemon_umask'] in ('0002', '0077'), 'INVALID_DAEMON_UMASK'
+    assert config['fresh_threads'] in (1, 2), 'INVALID_FRESH_THREAD_COUNT'
+    assert config['preparation'] == 'none', 'PREPARATION_POLICY_NOT_FROZEN'
     cli = PersistentCLI(config)
     control = Path(config['control'])
     control.mkdir(mode=0o700)
@@ -342,10 +363,24 @@ enabled = false
         absent_sid = cli.literal('three-stage-node-absent', 'cicada peers', 'NODE_NOT_RUNNING')
         checkpoint(1, {'node_absent_literal_refusal': True, 'native_session_id': absent_sid})
         await_command(2)
-        sid = cli.literal('three-stage-node-connected')
-        status = cli.tool_status(sid)
-        assert status['tools_count'] > 0 and not status['tools_error'], 'CURRENT_DAEMON_MCP_DISCOVERY_FAILED'
-        checkpoint(2, {'native_session_id': sid, 'mcp_tools_count': status['tools_count'], 'actual_literal_registration': True})
+        ids, names = [], []
+        for index in range(config['fresh_threads']):
+            name = 'Synthetic installed-plugin Thread' if config['fresh_threads'] == 1 else 'Synthetic fresh Thread ' + 'AB'[index]
+            label = 'three-stage-node-connected' if config['fresh_threads'] == 1 else 'three-stage-node-connected-' + 'ab'[index]
+            sid = cli.literal(label, 'cicada join ' + json.dumps(name), registered_name=name)
+            assert sid not in ids, 'NEW_NATIVE_THREAD_REUSED_ORIGINAL_SID'
+            ids.append(sid)
+            names.append(name)
+            status = cli.tool_status(sid)
+            assert status['tools_count'] > 0 and not status['tools_error'], 'CURRENT_DAEMON_MCP_DISCOVERY_FAILED'
+            assert not requests, 'LITERAL_COMMAND_REACHED_PROVIDER'
+        sid = ids[0]
+        records = [row for row in cli.native_metadata() if row['id'] in ids]
+        assert len(records) == len(ids) and all(row['cwd_matches_original'] and row['uid_matches_current'] and
+            row['open_inode_matches'] and row['under_original_CODEX_HOME'] for row in records), 'ORIGINAL_NATIVE_RECORD_MISMATCH'
+        checkpoint(2, {'native_session_id': sid, 'native_session_ids': ids, 'registered_names': names,
+                       'fresh_native_record_metadata': records, 'mcp_tools_count': status['tools_count'],
+                       'actual_literal_registration': True, 'preparation': config['preparation']})
         await_command(3)
         cli.literal('three-stage-node-stopped', 'cicada peers', 'NODE_NOT_RUNNING', sid)
         checkpoint(3, {'same_native_session_id': sid, 'stopped_node_literal_refusal': True})
@@ -355,7 +390,9 @@ enabled = false
         assert status['tools_count'] > 0 and not status['tools_error']
         checkpoint(4, {'same_native_session_id': sid, 'mcp_tools_count': status['tools_count'], 'original_daemon_retained': True})
         reply.update(status='SCOPED_PASS', daemon=cli.original_daemon,
-                     native_session_id=sid, provider_posts=len(requests), original_plugin_id=cli.original_plugin_id)
+                     native_session_id=sid, native_session_ids=ids, registered_names=names,
+                     preparation=config['preparation'], fresh_native_record_metadata=records,
+                     provider_posts=len(requests), original_plugin_id=cli.original_plugin_id)
     except Exception as error:
         reply['failure_category'] = (type(error).__name__ + ': ' + str(error) + ' phase=' + getattr(cli, 'last_method', 'startup'))[:180]
         reply['diagnostic_traceback'] = traceback.format_exc()[-5000:]

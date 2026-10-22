@@ -38,6 +38,22 @@ local_root="$workspace_root/.local"
 module_cache="$local_root/cache/n2-acceptance/gomod-go1.27.2-stable"
 build_cache="$local_root/cache/native-pair-acceptance/go-build-go1.27.3"
 image='golang:1.27.3-bookworm@sha256:5c3e9b43cfd3bb95c7937462e29d87ada57b481a96fa23ad0eb61778d7a00110'
+three_stage_parameters=()
+if [[ "$mode" == codex-product-three-stage ]]; then
+ export CICADA_NATIVE_PAIR_CODEX_DAEMON_UMASK="${CICADA_NATIVE_PAIR_CODEX_DAEMON_UMASK:-0077}"
+ export CICADA_NATIVE_PAIR_CODEX_FRESH_THREADS="${CICADA_NATIVE_PAIR_CODEX_FRESH_THREADS:-1}"
+ export CICADA_NATIVE_PAIR_CODEX_PREPARATION="${CICADA_NATIVE_PAIR_CODEX_PREPARATION:-none}"
+ case "$CICADA_NATIVE_PAIR_CODEX_DAEMON_UMASK" in 0002|0077) ;; *) printf 'Daemon umask must be 0002 or 0077.\n' >&2; exit 2;; esac
+ case "$CICADA_NATIVE_PAIR_CODEX_FRESH_THREADS" in 1|2) ;; *) printf 'Fresh native Thread count must be 1 or 2.\n' >&2; exit 2;; esac
+ if [[ "$CICADA_NATIVE_PAIR_CODEX_PREPARATION" != none ]]; then
+  printf 'NOT_RUN: preparation policy is not frozen; only none is executable.\n' >&2; exit 125
+ fi
+ three_stage_parameters=(-e "CICADA_N3_CODEX_DAEMON_UMASK=$CICADA_NATIVE_PAIR_CODEX_DAEMON_UMASK"
+  -e "CICADA_N3_CODEX_FRESH_THREADS=$CICADA_NATIVE_PAIR_CODEX_FRESH_THREADS"
+  -e "CICADA_N3_CODEX_PREPARATION=$CICADA_NATIVE_PAIR_CODEX_PREPARATION")
+elif [[ -n "${CICADA_NATIVE_PAIR_CODEX_DAEMON_UMASK:-}${CICADA_NATIVE_PAIR_CODEX_FRESH_THREADS:-}${CICADA_NATIVE_PAIR_CODEX_PREPARATION:-}" ]]; then
+ printf 'Daemon/preparation parameters require --codex-product-three-stage.\n' >&2; exit 2
+fi
 codex_mount=()
 if [[ "$mode" == codex-product-cli || "$mode" == codex-product-cold || "$mode" == codex-product-three-stage ]]; then
  if [[ ! -f "$source_root/.agents/plugins/cicada/hooks/hooks.json" || ! -f "$source_root/.agents/plugins/cicada/.mcp.json" || ! -f "$source_root/.agents/plugins/cicada/.codex-plugin/plugin.json" ]]; then
@@ -105,6 +121,7 @@ common=(docker run --rm --name "$container" --label "cicada.native-pair.run=$run
  --mount "type=bind,src=$artifacts,dst=/out"
  "${codex_mount[@]}"
  "${license_mount[@]}"
+ "${three_stage_parameters[@]}"
  --workdir /repo/cicada-go "$image")
 lane() {
  local name="$1"; shift
@@ -183,7 +200,7 @@ else
    runtime_timeout=12m
   elif [[ "$mode" == codex-product-three-stage ]]; then
    selector='^TestN3CodexProductThreeStagePersistentDaemon$'
-   runtime_timeout=5m
+   runtime_timeout=7m
   else
    selector='^TestN3NativePair(BootstrapAndExactReplay|WrongNodeScopeIsFenced|PrepareLossBeforeForward|CompleteLossAfterCommit|MissingOwnerProofCannotBootstrap)$'
   fi
