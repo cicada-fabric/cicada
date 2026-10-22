@@ -4617,3 +4617,41 @@ Encrypted PKCS#8 import, total Owner-key-loss recovery, uninstall scripts,
 full uninstall/reinstall, Android and public HTTPS are outside this batch's
 executed scope and remain NOT_RUN. This batch does not authorize modifying a
 public deployment or running paid model turns; Root/user controls execution.
+
+## 2026-10-22 user-reported fcea942 package and native App checks
+
+The user began physical-machine acceptance of the delivered package identified
+by code source `fcea942b75ae2ee197053026e9d5c1b5c8866f59` and reported
+“全部正常” (all normal). This entry records **USER_REPORTED_PASS** for the
+observations below. QA did not independently repeat these checks, inspect the
+running binaries or verify the installed package hash in this batch. The
+package code source remains distinct from the later `6582b61` acceptance and
+documentation checkpoint; this report is not a new build or automated gate.
+
+Hub and Node updates receive an overall **USER_REPORTED_PASS** from the same
+feedback. No post-update actual health JSON was supplied, so this entry does
+not independently establish their running revisions, current health or fresh
+authorized heartbeat state.
+
+| Native App observation | Reported result and scope |
+| --- | --- |
+| Original configuration recovery | **USER_REPORTED_PASS** — the updated App restores the original configuration. No identity migration or replacement-key behavior is inferred. |
+| Login privacy | **USER_REPORTED_PASS** — the login-first privacy check is reported normal. This is user observation, not an independent cross-account or stale-session adversarial test. |
+| Section navigation | **USER_REPORTED_PASS** — the user explicitly lists `Overview`, `Devices`, `Sessions & communication`, `Identity & access` and `Settings`. |
+| Chinese text and scaling | **USER_REPORTED_PASS** — Chinese rendering and scaling are reported normal on the user's machine. This does not cover every font, DPI setting or Windows environment. |
+| Selection and copy | **USER_REPORTED_PASS** — selection/copy is reported normal. No clipboard secrecy or private-key/token disclosure attack test is claimed. |
+| Opening the App again | **USER_REPORTED_PASS** — reopening is reported normal. Simultaneous second-instance behavior and corrupt/busy storage recovery were not independently exercised here. |
+
+The supplied UI text includes the cards `gpu1-ab-test`, `GPU1 Ubuntu Node` and
+`Hub verified`. These are user-supplied display observations, not a substitute
+for authenticated current Hub/Node health evidence or independent pin checks.
+The historical Chinese-rendering **USER_REPORTED_FAIL** and earlier profile/
+second-instance observations retain their original package/source attribution;
+this later positive report does not rewrite those records.
+
+Windows DPAPI and ACL attack tests remain **NOT_RUN**. The subsequent new-plugin,
+Pair and cold-recovery user batch has not yet run; its real native ASK/Reply,
+queue consumption, automatic wake, revocation and Leave results remain
+**NOT_RUN in this user batch**. Earlier source-bound independent Linux cold-gate
+and other validation results remain separate. No development, automated test,
+deployment or public-operation action was performed to add this record.
