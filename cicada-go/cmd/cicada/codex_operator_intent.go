@@ -37,12 +37,13 @@ type codexOperatorIntentDisk struct {
 }
 
 type codexOperatorPending struct {
-	NodeID         string               `json:"node_id"`
-	SemanticDigest string               `json:"semantic_digest"`
-	IntentDigest   string               `json:"intent_digest"`
-	Request        localEndpointRequest `json:"request"`
-	Result         *localEndpointResult `json:"result,omitempty"`
-	ResponseError  string               `json:"response_error,omitempty"`
+	ConnectionPin  *LocalNodeConnectionPin `json:"connection_pin,omitempty"`
+	NodeID         string                  `json:"node_id"`
+	SemanticDigest string                  `json:"semantic_digest"`
+	IntentDigest   string                  `json:"intent_digest"`
+	Request        localEndpointRequest    `json:"request"`
+	Result         *localEndpointResult    `json:"result,omitempty"`
+	ResponseError  string                  `json:"response_error,omitempty"`
 }
 
 type codexOperatorAck struct {
@@ -163,6 +164,9 @@ func (c *codexOperatorIntentClient) readLocked() (codexOperatorIntentDisk, error
 		if p.Request.validate() != nil || !localContextText(p.NodeID, 256) || p.SemanticDigest != codexOperatorDigest(p.Request, true) || p.IntentDigest != codexOperatorDigest(p.Request, false) {
 			return disk, errCodexOperatorIntentPersistence
 		}
+		if p.ConnectionPin != nil && (validateLocalNodePin(*p.ConnectionPin) != nil || p.ConnectionPin.NodeID != p.NodeID || p.ConnectionPin.APIOrigin != p.Request.APIOrigin) {
+			return disk, errCodexOperatorIntentPersistence
+		}
 		if p.Result != nil {
 			if validateCodexOperatorResult(*p, p.Result, codexOperatorStoredError(p)) != nil {
 				return disk, errCodexOperatorIntentPersistence
@@ -190,6 +194,25 @@ func (c *codexOperatorIntentClient) writeLocked(disk *codexOperatorIntentDisk) e
 }
 
 func (c *codexOperatorIntentClient) prepare(q localEndpointRequest, nodeID string) (localEndpointRequest, error) {
+	return c.prepareWithConnectionPin(q, nodeID, nil)
+}
+func (c *codexOperatorIntentClient) prepareForConnection(q localEndpointRequest, connection LocalNodeConnection) (localEndpointRequest, error) {
+	if err := c.validateConnectionPath(connection); err != nil {
+		return localEndpointRequest{}, err
+	}
+	return c.prepareWithConnectionPin(q, connection.Pin.NodeID, &connection.Pin)
+}
+func (c *codexOperatorIntentClient) validateConnectionPath(connection LocalNodeConnection) error {
+	p := connection.Pin
+	if validateLocalNodePin(p) != nil || !localContextHex(connection.InstanceID, 32) || !localContextHex(connection.LocatorDigest, 64) {
+		return ErrLocalNodeDiscoveryInvalid
+	}
+	if filepath.Base(c.path) != "operator-intent.json" || filepath.Dir(filepath.Dir(c.path)) != filepath.Join(filepath.Dir(p.MCPSessionStateFile), "scopes") || !localContextHex(filepath.Base(filepath.Dir(c.path)), 64) {
+		return ErrLocalNodeBindingChanged
+	}
+	return nil
+}
+func (c *codexOperatorIntentClient) prepareWithConnectionPin(q localEndpointRequest, nodeID string, pin *LocalNodeConnectionPin) (localEndpointRequest, error) {
 	var original localEndpointRequest
 	if q.Version == 0 {
 		q.Version = localJoinProtocolVersion
@@ -201,9 +224,18 @@ func (c *codexOperatorIntentClient) prepare(q localEndpointRequest, nodeID strin
 	if err != nil || origin != q.APIOrigin || !localContextText(nodeID, 256) {
 		return original, nodewire.ErrEndpointContext
 	}
+	if pin != nil && (q.APIOrigin != pin.APIOrigin || nodeID != pin.NodeID) {
+		return original, ErrLocalNodeBindingChanged
+	}
 	semantic := codexOperatorDigest(q, true)
 	err = c.withLocked(func(disk *codexOperatorIntentDisk) error {
 		if p := disk.Pending; p != nil {
+			if pin != nil && p.ConnectionPin == nil {
+				return ErrLocalNodeConfigRequired
+			}
+			if (pin == nil) != (p.ConnectionPin == nil) || pin != nil && *pin != *p.ConnectionPin {
+				return ErrLocalNodeBindingChanged
+			}
 			if p.NodeID != nodeID || p.SemanticDigest != semantic {
 				return errCodexOperatorIntentConflict
 			}
@@ -228,7 +260,7 @@ func (c *codexOperatorIntentClient) prepare(q localEndpointRequest, nodeID strin
 		if disk.LastAck != nil && disk.LastAck.RequestID == q.RequestID {
 			return errCodexOperatorIntentConflict
 		}
-		disk.Pending = &codexOperatorPending{NodeID: nodeID, SemanticDigest: semantic, IntentDigest: codexOperatorDigest(q, false), Request: q}
+		disk.Pending = &codexOperatorPending{ConnectionPin: pin, NodeID: nodeID, SemanticDigest: semantic, IntentDigest: codexOperatorDigest(q, false), Request: q}
 		if err := c.writeLocked(disk); err != nil {
 			return err
 		}
@@ -248,6 +280,9 @@ func codexOperatorStoredError(p *codexOperatorPending) error {
 func validateCodexOperatorResult(p codexOperatorPending, r *localEndpointResult, responseErr error) error {
 	q := p.Request
 	if r == nil || r.RequestID != q.RequestID || r.IntentDigest != p.IntentDigest || r.Operation != q.Operation || r.NodeID != p.NodeID || !localContextText(r.HubID, 256) {
+		return errCodexOperatorIntentResponse
+	}
+	if p.ConnectionPin != nil && r.HubID != p.ConnectionPin.HubID {
 		return errCodexOperatorIntentResponse
 	}
 	payloads := 0
@@ -310,7 +345,16 @@ func validateCodexOperatorResult(p codexOperatorPending, r *localEndpointResult,
 // successful output and explicitly acknowledges. It is historical completion,
 // not fresh evidence of a current lease or permission.
 func (c *codexOperatorIntentClient) call(socketPath string, q localEndpointRequest, nodeID string) (*localEndpointResult, error) {
-	original, err := c.prepare(q, nodeID)
+	return c.callWithConnectionPin(socketPath, q, nodeID, nil)
+}
+func (c *codexOperatorIntentClient) callForConnection(q localEndpointRequest, connection LocalNodeConnection) (*localEndpointResult, error) {
+	if err := c.validateConnectionPath(connection); err != nil {
+		return nil, err
+	}
+	return c.callWithConnectionPin(connection.Pin.SocketPath, q, connection.Pin.NodeID, &connection.Pin)
+}
+func (c *codexOperatorIntentClient) callWithConnectionPin(socketPath string, q localEndpointRequest, nodeID string, pin *LocalNodeConnectionPin) (*localEndpointResult, error) {
+	original, err := c.prepareWithConnectionPin(q, nodeID, pin)
 	if err != nil {
 		return nil, err
 	}
@@ -318,7 +362,7 @@ func (c *codexOperatorIntentClient) call(socketPath string, q localEndpointReque
 	var cachedErr error
 	err = c.withLocked(func(disk *codexOperatorIntentDisk) error {
 		p := disk.Pending
-		if p == nil || p.Request != original || p.NodeID != nodeID {
+		if p == nil || p.Request != original || p.NodeID != nodeID || !sameCodexOperatorConnectionPin(pin, p.ConnectionPin) {
 			return errCodexOperatorIntentConflict
 		}
 		cached, cachedErr = p.Result, codexOperatorStoredError(p)
@@ -331,9 +375,9 @@ func (c *codexOperatorIntentClient) call(socketPath string, q localEndpointReque
 		return cached, cachedErr
 	}
 	result, callErr := c.exchange(socketPath, original)
-	p := codexOperatorPending{NodeID: nodeID, Request: original, IntentDigest: codexOperatorDigest(original, false)}
+	p := codexOperatorPending{ConnectionPin: pin, NodeID: nodeID, Request: original, IntentDigest: codexOperatorDigest(original, false)}
 	if validateCodexOperatorResult(p, result, callErr) != nil {
-		if result != nil && result.RequestID == original.RequestID && result.IntentDigest == p.IntentDigest && result.Operation == original.Operation && result.NodeID == nodeID && result.HubID != "" && result.State == "UNKNOWN" && callErr != nil {
+		if result != nil && result.RequestID == original.RequestID && result.IntentDigest == p.IntentDigest && result.Operation == original.Operation && result.NodeID == nodeID && result.HubID != "" && (pin == nil || result.HubID == pin.HubID) && result.State == "UNKNOWN" && callErr != nil {
 			return result, callErr
 		}
 		if result == nil && callErr != nil {
@@ -343,7 +387,7 @@ func (c *codexOperatorIntentClient) call(socketPath string, q localEndpointReque
 	}
 	err = c.withLocked(func(disk *codexOperatorIntentDisk) error {
 		p := disk.Pending
-		if p == nil || p.Request != original || p.NodeID != nodeID || p.IntentDigest != result.IntentDigest {
+		if p == nil || p.Request != original || p.NodeID != nodeID || p.IntentDigest != result.IntentDigest || !sameCodexOperatorConnectionPin(pin, p.ConnectionPin) {
 			return errCodexOperatorIntentConflict
 		}
 		if p.Result != nil {
@@ -386,4 +430,8 @@ func (c *codexOperatorIntentClient) ack(requestID, intentDigest string) error {
 		}
 		return errCodexOperatorIntentConflict
 	})
+}
+
+func sameCodexOperatorConnectionPin(a, b *LocalNodeConnectionPin) bool {
+	return a == nil && b == nil || a != nil && b != nil && *a == *b
 }

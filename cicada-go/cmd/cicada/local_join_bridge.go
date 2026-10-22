@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -134,6 +135,8 @@ func localJoinRecoveryFromError(err error) (*localJoinRecoveryStatus, bool) {
 }
 
 type machineAgentJoinBridge struct {
+	discoveryMu      sync.Mutex
+	discovery        atomic.Pointer[localNodeDiscoveryPublication]
 	managedLeaseMu   sync.Mutex
 	managedLeaseNext int
 	managedLeaseWake chan struct{}
@@ -404,6 +407,11 @@ func (b *machineAgentJoinBridge) Close() error {
 		if b.cancel != nil {
 			b.cancel()
 		}
+		b.discoveryMu.Lock()
+		if publication := b.discovery.Swap(nil); publication != nil {
+			publication.close()
+		}
+		b.discoveryMu.Unlock()
 		closeErr = b.listener.Close()
 		b.wg.Wait()
 		if err := removeOwnedMachineAgentJoinSocket(b.path, b.socketFile); err != nil && closeErr == nil {
@@ -451,6 +459,10 @@ func (b *machineAgentJoinBridge) serveConnection(connection net.Conn) {
 	}
 	if err := json.Unmarshal(requestBytes, &header); err != nil {
 		_ = json.NewEncoder(connection).Encode(localJoinResponse{Version: localJoinProtocolVersion, Error: "invalid local Node request"})
+		return
+	}
+	if header.Operation == "local_node_describe" {
+		b.serveLocalNodeDescribe(requestBytes, connection)
 		return
 	}
 	if localEndpointOperation(header.Operation) {

@@ -31,6 +31,9 @@ func runMachineAgent(args []string) error {
 
 func runMachineAgentWithContext(parent context.Context, args []string, pinned *machineHubContext) error {
 	flags := flag.NewFlagSet("machine agent", flag.ContinueOnError)
+	userRoot := flags.String("user-root", "", "explicit installed root; enable local Node discovery without starting other components")
+	mcpSession := flags.String("mcp-session-state-file", "", "original absolute MCP session file for local discovery")
+	mcpOutbox := flags.String("mcp-outbox-state-file", "", "original absolute MCP outbox file for local discovery")
 	hubsFile := flags.String("hubs-file", "", "private local multi-Hub registry JSON")
 	stateRoot := flags.String("state-root", "", "shared native-writer and Hub state root for multi-Hub mode")
 	id := flags.String("id", envOr("CICADA_MACHINE_ID", ""), "stable machine ID")
@@ -46,11 +49,43 @@ func runMachineAgentWithContext(parent context.Context, args []string, pinned *m
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
+	if len(flags.Args()) != 0 {
+		return errors.New("unexpected machine agent arguments")
+	}
+	if *userRoot != "" {
+		if _, err := apppaths.ResolveUserRoot(*userRoot); err != nil {
+			return ErrLocalNodeConfigRequired
+		}
+		if !localNodePath(*userRoot) {
+			return ErrLocalNodeConfigRequired
+		}
+		if *hubsFile == "" && (!localNodePath(*mcpSession) || !localNodePath(*mcpOutbox)) {
+			return localNodeConfigError("both original MCP paths must be explicit")
+		}
+		explicitState := false
+		flags.Visit(func(f *flag.Flag) {
+			if f.Name == "state-dir" {
+				explicitState = true
+			}
+		})
+		if *hubsFile == "" && !explicitState && strings.TrimSpace(os.Getenv("CICADA_NODE_STATE_DIR")) == "" && strings.TrimSpace(os.Getenv("CICADA_STATE_DIR")) == "" {
+			selected, err := chooseMachineDefaultState(apppaths.NodeStateRoot(*userRoot), "/state")
+			if err != nil {
+				return err
+			}
+			*stateDir = selected
+		}
+	} else if *mcpSession != "" || *mcpOutbox != "" {
+		return localNodeConfigError("MCP discovery paths require --user-root")
+	}
 	if *hubsFile != "" {
 		if pinned != nil || *stateRoot == "" || !*relayOnly || *lanDiscovery || len(flags.Args()) != 0 {
 			return errors.New("multi-Hub mode requires --state-root and --relay-only, with no LAN discovery")
 		}
-		return runMachineMultiHubAgent(*hubsFile, *stateRoot, *interval, *once)
+		if *mcpSession != "" || *mcpOutbox != "" {
+			return localNodeConfigError("multi-Hub uses its original per-Hub MCP paths")
+		}
+		return runMachineMultiHubAgentWithDiscovery(*hubsFile, *stateRoot, *interval, *once, *userRoot)
 	}
 	*id = strings.TrimSpace(*id)
 	if strings.TrimSpace(*id) == "" {
@@ -60,6 +95,9 @@ func runMachineAgentWithContext(parent context.Context, args []string, pinned *m
 		*name = *id
 	}
 	*stateDir = strings.TrimSpace(*stateDir)
+	if *userRoot != "" && !localNodePath(*stateDir) {
+		return localNodeConfigError("original Node state directory must be absolute")
+	}
 	base, err := normalizeControlURL(*controlURL)
 	if err != nil {
 		return err
@@ -396,6 +434,9 @@ func runMachineAgentWithContext(parent context.Context, args []string, pinned *m
 			return fmt.Errorf("start trusted local Join bridge: %w", err)
 		}
 		defer bridge.Close()
+		if err := startLocalNodeDiscovery(bridge, localNodePublishConfig{*userRoot, *mcpSession, *mcpOutbox}); err != nil {
+			return fmt.Errorf("publish local Node discovery: %w", err)
+		}
 		localBridge = bridge
 		localWake = bridge.localWake
 	}

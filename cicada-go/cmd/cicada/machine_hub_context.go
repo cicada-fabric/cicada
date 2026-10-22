@@ -194,6 +194,9 @@ type machineHubConfigFile struct {
 // Multi-Hub configuration contains public coordinates only. Credentials and
 // all replay-bearing state live under one private, Hub-specific directory.
 func runMachineMultiHubAgent(configPath, stateRoot string, interval time.Duration, once bool) error {
+	return runMachineMultiHubAgentWithDiscovery(configPath, stateRoot, interval, once, "")
+}
+func runMachineMultiHubAgentWithDiscovery(configPath, stateRoot string, interval time.Duration, once bool, userRoot string) error {
 	entries, err := loadMachineHubConfig(configPath)
 	if err != nil {
 		return err
@@ -215,6 +218,9 @@ func runMachineMultiHubAgent(configPath, stateRoot string, interval time.Duratio
 		}
 		args := []string{"--id", entry.NodeID, "--name", name, "--control-url", entry.ControlURL,
 			"--state-dir", hubState, "--interval", interval.String(), "--relay-only", "--pqtls-config", entry.PQTLSConfig}
+		if userRoot != "" {
+			args = append(args, "--user-root", userRoot, "--mcp-session-state-file", filepath.Join(hubState, "mcp", "sessions.json"), "--mcp-outbox-state-file", filepath.Join(hubState, "mcp", "outbox.sqlite3"))
+		}
 		if once {
 			args = append(args, "--once")
 		}

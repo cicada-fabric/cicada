@@ -409,3 +409,123 @@ these fields are written. Preserve it and its identities; automatic downgrade,
 state replacement and renewal of old non-enrolled sessions are not supported.
 The frozen public protocol, App/MCP/main implementations and consent powers are
 unchanged by this checkpoint.
+
+## Installed local Node discovery v1
+
+The installation sequence is file installation, an explicit user start of the
+existing Node Agent, then normal Codex plugin installation/trust. The installer
+materializes one plugin bundle with an absolute installed executable and explicit
+user root. Neither installation nor plugin loading starts/enrolls a Node, joins
+a Thread, grants authority, or changes existing keys/state. An installed plugin
+must not depend on a previously started Codex daemon's PATH or Cicada environment.
+
+Only `machine agent --user-root ABS` enables publication. Without this explicit
+flag, old Agent launches and low-level bridge fixtures publish nothing and do
+not inspect a discovery HOME. `--once` does not publish. An explicit `--state-dir`
+or existing component override retains precedence; otherwise this mode uses
+`<selectedRoot>/state` with the existing original-state guard. No state migration
+is performed. Single-Hub publication requires both `--mcp-session-state-file ABS`
+and `--mcp-outbox-state-file ABS` explicitly; these declare two independent original
+paths, without creating/opening their data. Existing custom paths must be selected,
+not replaced by empty paths under a new root. Multi-Hub publication uses each
+original resolved per-Hub `mcp/sessions.json` and `mcp/outbox.sqlite3`, rejects those
+two single-Hub flags, and preserves the original shared WriterRoot.
+
+Each Agent publishes one same-UID locator under `<root>/run/nodes/`. The filename
+is lowercase SHA-256 of `cicada/local-node-locator/v1`, NUL, canonical absolute
+per-Hub StateDir, NUL, NodeID, followed by `.json`. The bounded strict JSON has
+exact fields `format` (`cicada.local-node-locator.v1`), `instance_id` (16 random
+bytes in lowercase hex), and `socket_path`. It contains no bearer, SID, workspace,
+Owner proof or private key. The instance is a process label, not a new identity.
+The selected existing root remains same-UID owned and protected against group/
+world writes, including an existing 0755 root; its permissions are not repaired.
+Only the new `run`/`nodes` directories require 0700 and locators require 0600.
+Readers reject symlink ancestors,
+wrong ownership/permissions, nonregular files, duplicate/unknown JSON fields,
+trailing data and a changed open-handle identity. Publication is atomic and only
+after the existing private socket is listening. An existing target must itself
+strictly match this locator format and derived socket; unknown private bytes
+are retained rather than overwritten. Close removes only its own exact
+locator instance/inode; crashes may retain stale locators. Readers never clean,
+repair, migrate or create anything.
+
+On the original socket, `local_node_describe` accepts exactly Version 1,
+`operation`, `nonce` (32 random bytes in lowercase hex), `instance_id`, and
+`locator_digest` (SHA-256 of the complete original locator bytes). The Node checks
+its own published instance and retained locator digest rather than blindly echoing
+them. `localJoinResponse.node_description` contains `nonce`, `instance_id`,
+`locator_digest`, and `connection` (the stable pin below). It uses only the Agent's
+existing approved in-memory Node-Control binding and pinned context. An unapproved
+or unavailable binding returns NODE_NOT_READY. This operation makes no Hub/Control
+request, opens/creates no database/key, and changes no counter/outbox. Nonce and
+same-UID socket checks establish only fresh local discovery, not human intent,
+a Hub/Owner signature, business permission or protection from a hostile same-UID
+process. All existing context tickets and current server/Node Guards remain required.
+
+The shared Go API is:
+
+```go
+type LocalNodeSelection struct { UserRoot, HubID, NodeID string }
+// Binding contains the complete original public Node-Control coordinates.
+type LocalNodeBinding struct {
+    BindingID string
+    BindingVersion, NodeKeyEpoch, NodeKeyVersion, HubKeyVersion uint64
+    NodeKeyID, NodeKeyFingerprint, HubKeyID, HubFingerprint string
+}
+type LocalNodeConnectionPin struct {
+    UserRoot, HubID, APIOrigin, NodeID, SocketPath string
+    StateDir, WriterRoot, MCPSessionStateFile, MCPOutboxStateFile string
+    Binding LocalNodeBinding
+}
+type LocalNodeConnection struct {
+    Pin LocalNodeConnectionPin
+    InstanceID, LocatorDigest string
+}
+func ResolveLocalNodeConnection(context.Context, LocalNodeSelection,
+    *LocalNodeConnectionPin) (LocalNodeConnection, error)
+```
+
+JSON pin fields use their snake_case names; `binding` contains `binding_id`,
+`binding_version`, `node_key_epoch`, `node_key_version`, `hub_key_version`,
+`node_key_id`, `node_key_fingerprint`, `hub_key_id`, and `hub_fingerprint`.
+Both full fingerprints reuse `nodewire.IdentityFingerprint`; no truncated ID or
+new fingerprint algorithm replaces them. All stable coordinates/paths are pinned.
+Only a newly live-verified instance may change after restart. The resolver checks
+the nonce, instance, root, original locator digest, derived filename/socket path,
+normalized origin and complete binding. With an existing pin it addresses only
+that original locator and rejects any changed stable coordinate or path.
+
+One resolution has a single context budget of at most three seconds, shortened
+by its parent deadline; it is not a fresh timeout per candidate. Limits are 64
+locator entries, 4 KiB per locator, 1 KiB describe request, 32 KiB response,
+4096 UTF-8 bytes per path and 256 bytes per identifier. The resolver searches
+only the selected root, never other roots, process lists, historical SIDs or
+recent files. No live match returns `ErrLocalNodeNotRunning`/NODE_NOT_RUNNING;
+multiple matches return `ErrLocalNodeSelectionAmbiguous`/NODE_SELECTION_AMBIGUOUS.
+Only definite ENOENT/connection-refused socket outcomes count as stale. Invalid
+format/ownership/permission/path/response returns `ErrLocalNodeDiscoveryInvalid`/
+LOCAL_NODE_DISCOVERY_INVALID; uncertain I/O or the global deadline returns
+`ErrLocalNodeDiscoveryUnavailable`/LOCAL_NODE_DISCOVERY_UNAVAILABLE. A bad or
+uncertain candidate cannot be skipped to guess another Node. Other fixed errors
+are `ErrLocalNodeNotReady`/NODE_NOT_READY, `ErrLocalNodeDiscoveryLimit`/
+LOCAL_NODE_DISCOVERY_LIMIT, `ErrLocalNodeBindingChanged`/LOCAL_NODE_BINDING_CHANGED,
+and `ErrLocalNodeConfigRequired`/LOCAL_NODE_CONFIG_REQUIRED. Discovery is local
+availability metadata, never a public Hub capability or caller authorization.
+
+The existing operator helper adds `prepareForConnection(q,connection)` and
+`callForConnection(q,connection)` while preserving explicit legacy methods. New
+pending commands atomically retain an optional `connection_pin` in the original
+private intent file. Exact retries require the same complete stable pin, origin,
+Node and command; restart instance changes do not rewrite authority. A new root
+mode encountering old pending material without a pin returns CONFIG_REQUIRED,
+retains its bytes and cannot ACK, silently attach current authority or create a
+side database to hide it. Its original explicit legacy recovery remains separate.
+Changed binding or cache paths cannot retarget an uncertain pending operation.
+No public Hub wire/catalog identifier changes in this checkpoint.
+
+This installed discovery checkpoint supports the standard HTTPS/application-PQ
+profile only. A Node with a selected strict-PQTLS runtime/transport returns
+CONFIG_REQUIRED through Describe/Resolve; its existing business service and
+original explicit strict flow remain unchanged. A missing Codex-daemon PQTLS
+environment variable can never turn that Node into a standard transport. No
+transport-profile field or new strict-runtime implementation is introduced.

@@ -416,3 +416,115 @@ e727d8ab remains separately attributed above. Each completed final gate has a
 full unchanged-source after-check. After those checks, only this validation
 record was appended; the candidate records final per-file hashes and each gate's
 actual source. No Runtime or platform exclusion above is upgraded by these gates.
+
+## 2026-10-22 installed local Node discovery
+
+The shared local-discovery contract was reviewed before implementation. This
+checkpoint separates file installation, the user's explicit start of the existing
+Node Agent, and normal Codex plugin installation/trust. It owns only Node/shared
+resolver/intent implementation and the existing contract/validation documents.
+Component installation assets, MCP/Hook/plugin consumers and their actual Runtime
+acceptance belong to separate App/QA changes. No new daemon, Hub public wire,
+catalog operation, identity, Owner proof, grant or registration authority is added.
+
+On dirty base `25cca3a9764cf485da2242efc03d92f594a465ae`, the initial compile-only
+gate `local-node-discovery-compile-20261022T145548Z` exited 0 with zero tests,
+manifest `0146687a3f035776ec851f03b1f56dc24c756a6665f709cbc3e68a288aa47e16`.
+`local-node-discovery-focused-20261022T150025Z` passed 41/0/0 (14 top-level,
+including the old operator subprocess harness's empty parent selector), manifest
+`abba6f59e95b53d933d32b658ef2c66f9c26db052d6c250c5e019a4f71c94d81`.
+Root's strict-transport review then added a fixed CONFIG_REQUIRED refusal for
+an already selected strict-PQTLS runtime/transport, with no Pin/API extension or
+standard-HTTPS fallback. Publication/Close are serialized within the existing
+bridge lifecycle to preserve exact owned cleanup.
+
+The final frozen source manifest is
+`d17195b5486a3674d1e4f13eadd68a536325397686f6cd8e4c662c3f75e16298`
+on that same dirty base. Its gates are separately recorded:
+
+| Gate | Result | Scope |
+| --- | --- | --- |
+| `local-node-discovery-final-functional-20261022T150232Z` | exit 0, 96 pass / 0 fail / 1 skip; 51 passing top-level tests | New local discovery and pin-aware helper, all selected old operator/Endpoint/Agent/multi-Hub/shared-RPC regression selectors. Includes an empty subprocess parent harness, not a separate product acceptance. |
+| `local-node-discovery-final-race-20261022T150305Z` | exit 0, 29/0/0; 11 top-level tests; 29.123 s | All new discovery/pin tests, original client recovery/process-lock and exact sealed RPC/claim-ticket recovery. Explicit 20-minute package budget. |
+| `local-node-discovery-final-vet-20261022T150305Z` | exit 0 | `go vet ./cmd/cicada`. |
+
+The skipped `TestMachineMultiHubDockerFixture` requires its explicit outer-fixture
+opt-in; it is **NOT_RUN**, not a pass. Selected ordinary multi-Hub deterministic
+regressions do run. These gates use the pinned Go 1.27.3 Docker image
+`sha256:5c3e9b43cfd3bb95c7937462e29d87ada57b481a96fa23ad0eb61778d7a00110`,
+network-disabled containers, disposable paths/sockets/loopback services, source
+and module read-only mounts and task-local build caches. The original unchanged
+TCP/PQ Endpoint/operator tests provide their bounded existing service interop;
+this is not an independent outer multi-container deployment claim. Every gate
+has a full unchanged-source after-check before subsequent documentation edits.
+
+The new positive socket test uses the original synthetic Node-Control key/state
+and actual production bridge/publisher. It verifies the exact original approved
+binding, independent session/outbox paths, zero Hub HTTP calls, unchanged key/
+state bytes, no cache or database creation, clean stop, a new process instance
+with an identical stable pin after restart, and rejection of changed key epoch.
+A separate selected strict-runtime context refuses CONFIG_REQUIRED while the
+existing bridge remains alive; no TLS implementation is substituted or exercised.
+
+Defensive input fixtures use explicit synthetic local socket replies, not positive
+Hub authorization. They verify duplicate/unknown/trailing fields, changed nonce,
+instance, root, digest, socket and key version, wrong permissions/symlinks, size
+and directory limits, two candidates' ambiguity and exact selection, refusal to
+skip a bad candidate, the shared three-second deadline and a shorter parent
+budget across hanging sockets. CAS cleanup retains a replacement locator. Bad
+opt-in CLI configuration fails before Node state/locator creation. The old
+low-level bridge publishes nothing without an explicit root.
+
+The pin-aware operator helper persists the complete stable pin before IPC, keeps
+an uncertain original through client restart and a new live instance, refuses
+retargeting authority/epoch/key versions/fingerprints/state/writer/cache paths
+without modifying the original bytes or sending IPC, and preserves legacy
+unfenced material as CONFIG_REQUIRED in root mode. The original explicit legacy
+recovery remains usable; an uncertain result cannot become acknowledgeable.
+New optional `connection_pin` metadata makes private intent compatibility
+directional: an older strict reader may reject it. No automatic downgrade or
+state replacement is supported.
+
+Actual installed-plugin execution against an already running Codex daemon with
+stale PATH/absent Cicada environment, actual separately App-approved two-Node
+ambiguity, native Runtime, Windows IPC/ACL/UI, Android, physical devices, public
+HTTPS, strict-PQTLS installed discovery and resident deployment are **NOT_RUN**
+by this producer checkpoint. Consumer/QA must attribute those results to their
+own integrated source/artifacts. No real service, key or user-state data was
+used as a disposable fixture. The final candidate records any documentation-only
+overlay and maps each committed blob to these actual dirty sources.
+
+### Reviewed existing-root compatibility and unknown-locator preservation
+
+Root's code review identified that an existing protected installation root can
+be 0755 while the component installer deliberately preserves its permissions.
+The earlier implementation required 0700 for the root and would have rejected
+that valid installation. This was found by read-only review, not a claimed
+successful real-user upgrade. The resolver/publisher now preserve the original
+same-UID root with no group/world writes, retain pinned ancestor handles and
+require only their new `run`/`nodes` directories to be 0700 (locators 0600).
+A positive real-bridge case verifies a 0755 root remains 0755; 0775/0777 and a
+symlink root still fail without chmod or Hub requests.
+
+`local-node-root-permission-functional-20261022T151001Z` passed 26/0/0
+(8 top-level), dirty manifest
+`3c398eb9c09b9cdc14a9022081515fa7d3b91285e921f0b797fc02f543d0f669`
+on the original 25cca3a base. The final publisher also strictly recognizes an
+existing same-slot locator before replacing it; malformed/unknown private bytes
+are retained. Its negative fixture verifies retained bytes and the Node's own
+digest/instance rejection, without a Hub call or new authority. Directory capacity
+is a bounded resolver limit, not a new cross-process installation quota service.
+
+The resulting reviewed source manifest is
+`dad3e2f2163d1ecd500769cae11ceaae86341da70cbe1e97684e489b54c1fa0d`
+on dirty `25cca3a9764cf485da2242efc03d92f594a465ae`.
+`local-node-discovery-reviewed-functional-20261022T151209Z` passed 27/0/0,
+`local-node-discovery-reviewed-race-20261022T151225Z` passed 27/0/0
+(9 substantive top-level tests and 18 nested cases; race 26.073 s), and
+`local-node-discovery-reviewed-vet-20261022T151225Z` exited 0. These gates cover
+all new discovery and pin-helper cases, including the root/publisher corrections.
+All source-after checks cover the complete source manifest before this final
+validation-only append. The broader 96/0/1 and prior race 29/0/0 remain attributed
+to their earlier d17195b5 source; no aggregate clean-commit pass is invented.
+The previously listed outer-fixture skip and actual consumer/platform exclusions
+are unchanged. The candidate maps the final nine blobs and all gate receipts.
