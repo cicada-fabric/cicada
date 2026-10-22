@@ -335,10 +335,12 @@ def finish(run, artifacts, image, owned, mode='protocol'):
     elif mode == 'codex-product-domain-app':
         if domain_not_run:
             summary['scope'] = 'ACTUAL_HUB_CAPABILITY_PREFLIGHT_ONLY_DOMAIN_APP_WORKFLOW_NOT_RUN'
-        summary['not_run'] = ([] if passed else ['actual_App_local_policy_preview_activate_read_revoke']) + [
+        summary['not_run'] = ([] if passed else ['actual_App_local_policy_preview_activate_read_revoke',
+                                               'activation_loss_original_packet_reconcile',
+                                               'normal_App_Controller_Close_policy_retained']) + [
                               'actual_native_A_B_join_without_Pair', 'Host_ASK_Reply', 'new_domain_other_UID_context_signing',
-                              'App_close_login_TTL_report_expiry', 'empty_policy_cache_full_pagination_recovery',
-                              'activation_loss_original_packet_reconcile', 'stale_epoch_and_foreign_scope', 'legacy_Pair',
+                              'actual_Hub_login_TTL_and_Node_report_expiry', 'empty_policy_cache_full_pagination_recovery',
+                              'stale_epoch_and_foreign_scope', 'legacy_Pair',
                               'real_model_provider', 'native_queue_consumption', 'automatic_wake', 'Windows_DPAPI',
                               'Windows_ACL', 'Windows_GUI', 'Android', 'public_HTTPS']
     elif mode == 'codex-product-domain-native':

@@ -176,6 +176,33 @@ type appProcess struct {
 	mailbox string
 }
 
+// Fixed startup categories only. Never copy a Snapshot, raw error, vault
+// record or subprocess stderr into the parent acceptance output.
+type appStartupDiagnostic struct {
+	Phase     string             `json:"phase"`
+	Action    appcore.ActionKind `json:"action,omitempty"`
+	ErrorCode string             `json:"error_code,omitempty"`
+}
+
+func safeAppStartupDiagnostic(value appStartupDiagnostic) appStartupDiagnostic {
+	switch value.Phase {
+	case "STARTING", "CONTROLLER", "ACTION", "ACTION_FAILED", "ACTION_OK", "VAULT_OPEN", "VAULT_AUDIT", "VAULT_AUDITED", "SAFE_SNAPSHOT", "READY":
+	default:
+		value.Phase = "UNKNOWN"
+	}
+	switch value.Action {
+	case "", appcore.ActionConnect, appcore.ActionGenerateOwner, appcore.ActionActivateApp, appcore.ActionLogin, appcore.ActionDiscoverProfiles, appcore.ActionResumeProfile:
+	default:
+		value.Action = "UNKNOWN"
+	}
+	switch value.ErrorCode {
+	case "", "APP_VAULT_CLOSE_FAILED", "APP_PROFILE_INVALID", "APP_PROFILE_HUB_UNVERIFIED", "APP_PROFILE_DISCOVERY_FAILED", "APP_PROFILE_IN_USE", "APP_PROFILE_UNLOCK_FAILED", "APP_VAULT_SCOPE_MISMATCH", "APP_VAULT_UNAVAILABLE", "LOOPBACK_HTTP_DISABLED", "APP_IDENTITY_UNAVAILABLE", "APP_NODE_STATE_INVALID", "APP_SESSION_STATE_INVALID", "APP_PENDING_RESPONSE_INVALID", "APP_PAIR_RECOVERY_INVALID", "APP_PAIR_RECOVERY_UNRESOLVED", "APP_LOCAL_COLLABORATION_COMMIT_FAILED", "APP_LOCAL_COLLABORATION_RESPONSE_UNCONFIRMED", "APP_LOCAL_COLLABORATION_READ_INVALID", "APP_STORAGE_RECOVERY_REQUIRED", "APP_STATE_SCOPE_MISMATCH", "APP_STATE_UNAVAILABLE", "ACCOUNT_REQUEST_REJECTED":
+	default:
+		value.ErrorCode = "OTHER"
+	}
+	return value
+}
+
 func commandApp(t *testing.T, f *hubFixture, p *appProcess, sequence int, command appActorCommand) appActorReply {
 	t.Helper()
 	base := queueAppCommand(t, f, p, sequence, command)
@@ -206,7 +233,14 @@ func startAppProcess(t *testing.T, f *hubFixture, step, marker string) *appProce
 	writeJSON(t, filepath.Join(f.dir, "synthetic-app-input.json"), input)
 	cmd := exec.Command(must(os.Executable()), "-test.run=^TestN3AppProcess$", "-test.timeout=10m")
 	cmd.Env = append(os.Environ(), "CICADA_N3_APP_CHILD=1", "CICADA_N3_FIXTURE="+f.dir, "CICADA_N3_MARKER="+marker)
-	return &appProcess{process: startProcess(t, cmd), mailbox: input.Mailbox}
+	diagnostic := ""
+	if os.Getenv("CICADA_N3_LOCAL_DOMAIN_AUDIT") == "1" {
+		diagnostic = marker + ".startup.json"
+		cmd.Env = append(cmd.Env, "CICADA_N3_APP_STARTUP_DIAGNOSTIC="+diagnostic)
+	}
+	p := startProcess(t, cmd)
+	p.appStartupDiagnostic = diagnostic
+	return &appProcess{process: p, mailbox: input.Mailbox}
 }
 
 // The actor invokes the production App Controller and its persistence and
@@ -216,6 +250,17 @@ func TestN3AppProcess(t *testing.T) {
 		return
 	}
 	dir := os.Getenv("CICADA_N3_FIXTURE")
+	diagnostic := os.Getenv("CICADA_N3_APP_STARTUP_DIAGNOSTIC")
+	if diagnostic != "" && (diagnostic != os.Getenv("CICADA_N3_MARKER")+".startup.json" || filepath.Dir(diagnostic) != dir) {
+		t.Fatal("App startup diagnostic is outside its exact owned checkpoint")
+	}
+	var startupAction appcore.ActionKind
+	startup := func(phase, code string) {
+		if diagnostic != "" {
+			writeJSON(t, diagnostic, safeAppStartupDiagnostic(appStartupDiagnostic{Phase: phase, Action: startupAction, ErrorCode: code}))
+		}
+	}
+	startup("STARTING", "")
 	var input appActorInput
 	readJSON(t, filepath.Join(dir, "synthetic-app-input.json"), &input)
 	loopback(t, input.Proxy)
@@ -226,22 +271,30 @@ func TestN3AppProcess(t *testing.T) {
 	if os.Getenv("CICADA_N3_LOCAL_DOMAIN_AUDIT") == "1" {
 		base := openVault
 		openVault = func(ctx context.Context, scope appvault.Scope, create bool) (*appvault.Vault, error) {
+			startup("VAULT_OPEN", "")
 			vault, err := base(ctx, scope, create)
 			if err == nil {
+				startup("VAULT_AUDIT", "")
 				auditLocalDomainOpen(t, vault, filepath.Join(dir, "domain-open-audit"))
+				startup("VAULT_AUDITED", "")
 			}
 			return vault, err
 		}
 	}
+	startup("CONTROLLER", "")
 	c := must(appcore.NewController(appcore.Config{HTTP: appProxyDoer{input.Proxy, appcore.NewHTTPClient()},
 		OpenVault: openVault, DiscoverVaults: appcore.NewProfileDiscovery(root), AllowLoopbackHTTP: true,
 		Now: func() time.Time { return time.Now().UTC().Add(time.Duration(clockOffset.Load()) * time.Second) }}))
 	defer c.Close()
 	ctx := context.Background()
 	dispatch := func(action appcore.Action) {
+		startupAction = action.Kind
+		startup("ACTION", "")
 		if c.Dispatch(ctx, action) != nil {
-			t.Fatalf("production App action failed: kind=%s code=%s", action.Kind, c.Snapshot().ErrorCode)
+			startup("ACTION_FAILED", c.Snapshot().ErrorCode)
+			t.Fatalf("production App action failed: kind=%s code=%s", action.Kind, safeAppStartupDiagnostic(appStartupDiagnostic{ErrorCode: c.Snapshot().ErrorCode}).ErrorCode)
 		}
+		startup("ACTION_OK", "")
 	}
 	checkpoint := appActorCheckpoint{Actor: "PRODUCTION_APP_CORE_PROCESS_NOT_NATIVE_GUI"}
 	switch input.Step {
@@ -271,6 +324,7 @@ func TestN3AppProcess(t *testing.T) {
 	default:
 		t.Fatal("unknown App actor step")
 	}
+	startup("SAFE_SNAPSHOT", "")
 	checkpoint.Current = c.Snapshot()
 	s := checkpoint.Current
 	if !s.Hub.Verified || !s.Account.LocalOwnerKeyPresent || s.Management != appcore.ManagementUnavailable || s.Canvas.State != appcore.CanvasNoAuthorization {
@@ -282,6 +336,7 @@ func TestN3AppProcess(t *testing.T) {
 		t.Fatal("actual App did not retain the expected limited N2 authority")
 	}
 	writeJSON(t, os.Getenv("CICADA_N3_MARKER"), checkpoint)
+	startup("READY", "")
 	for sequence := 1; ; sequence++ {
 		base := filepath.Join(dir, "app-command-"+input.Mailbox+"-"+strconv.Itoa(sequence))
 		for {

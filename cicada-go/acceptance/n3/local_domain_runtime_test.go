@@ -100,7 +100,15 @@ func requireLocalDomainAvailable(t *testing.T, v *codexProductFixture) {
 
 func requireSameLocalDomain(t *testing.T, expected, actual appcore.LocalCollaborationSnapshot) {
 	t.Helper()
-	if actual.Pending || !actual.Current || actual.PolicyID != expected.PolicyID || actual.PolicyEpoch != expected.PolicyEpoch ||
+	requireLocalDomainCoordinates(t, expected, actual)
+	if actual.Pending || !actual.Current {
+		t.Fatal("actual App has no authenticated current domain authority")
+	}
+}
+
+func requireLocalDomainCoordinates(t *testing.T, expected, actual appcore.LocalCollaborationSnapshot) {
+	t.Helper()
+	if actual.PolicyID != expected.PolicyID || actual.PolicyEpoch != expected.PolicyEpoch ||
 		actual.NodeID != expected.NodeID || actual.LocalUserScope != expected.LocalUserScope || actual.NetworkID != expected.NetworkID ||
 		actual.GroupID != expected.GroupID || actual.NetworkName != expected.NetworkName || actual.GroupName != expected.GroupName || actual.ExpiresAt != expected.ExpiresAt {
 		t.Fatal("actual App changed the exact reviewed original domain authority")
@@ -217,9 +225,9 @@ func TestN3LocalDomainActualAppOwnerPolicy(t *testing.T) {
 	if !durableOriginal {
 		t.Fatal("new actual App process did not open the exact unresolved original packet from its protected vault")
 	}
-	active := current.LocalCollaboration
-	requireSameLocalDomain(t, preview, active)
-	if active.State != wire.LocalDomainActive || active.Revision <= preview.Revision || active.StateReviewID == "" {
+	historical := current.LocalCollaboration
+	requireLocalDomainCoordinates(t, preview, historical)
+	if historical.Pending || historical.Current || historical.State != wire.LocalDomainActive || historical.Revision <= preview.Revision {
 		t.Fatal("actual App did not recover the original activation outcome")
 	}
 	recovered := false
@@ -250,6 +258,15 @@ func TestN3LocalDomainActualAppOwnerPolicy(t *testing.T) {
 	}
 	if !recovered {
 		t.Fatal("actual App never recovered its original accepted request")
+	}
+	// The recovered receipt establishes history. Explicitly authenticate the
+	// current account session, then read current policy before any new action.
+	inspected := v.do(appcore.Action{Kind: appcore.ActionSessionInspect})
+	assertOwnerDirectoryIdentity(t, v.endpointSecurityFixture, inspected)
+	active := v.do(appcore.Action{Kind: appcore.ActionRefreshLocalCollaboration}).LocalCollaboration
+	requireSameLocalDomain(t, historical, active)
+	if active.State != wire.LocalDomainActive || active.Revision != historical.Revision || active.StateReviewID == "" {
+		t.Fatal("actual App did not independently authenticate the current policy after historical recovery")
 	}
 	closeFrom := len(v.f.proxy.snapshot())
 	closeLocalDomainApp(t, v)

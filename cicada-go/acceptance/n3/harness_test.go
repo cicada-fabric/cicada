@@ -92,8 +92,9 @@ func loopback(t *testing.T, origin string) {
 }
 
 type process struct {
-	cmd  *exec.Cmd
-	done chan struct{}
+	cmd                  *exec.Cmd
+	done                 chan struct{}
+	appStartupDiagnostic string
 }
 
 func startProcess(t *testing.T, cmd *exec.Cmd) *process {
@@ -146,6 +147,13 @@ func awaitMarker(t *testing.T, p *process, marker string) {
 		}
 		select {
 		case <-p.done:
+			if p.appStartupDiagnostic != "" {
+				var d appStartupDiagnostic
+				if raw, err := os.ReadFile(p.appStartupDiagnostic); err == nil && len(raw) <= 1024 && json.Unmarshal(raw, &d) == nil {
+					d = safeAppStartupDiagnostic(d)
+					t.Fatalf("owned App exited before safe checkpoint: exit=%d phase=%s action=%s code=%s", p.cmd.ProcessState.ExitCode(), d.Phase, d.Action, d.ErrorCode)
+				}
+			}
 			t.Fatal("owned process exited before its safe checkpoint")
 		default:
 		}

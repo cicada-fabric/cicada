@@ -5068,3 +5068,119 @@ Host/Native business flow or 15-minute wait was executed in this checkpoint.
 New-domain other-UID context/signing, foreign scopes/epochs, business recovery,
 policy pagination, legacy Pair and model/queue/wake remain **NOT_RUN**.
 Windows DPAPI, ACL, physical GUI, Android and public HTTPS remain **NOT_RUN**.
+
+## 2026-10-22 actual domain activation recovery failure and safe classification
+
+Root ran the committed `--codex-product-domain-app` gate on clean
+`2458552c78a69daba386ec9c1721568f30d49e51`. The real Node report, App preview,
+Hub activation with response loss and retained App Pending state passed their
+assertions. Following the deliberate owned App crash and Hub restart, the
+resumed App actor exited before its safety checkpoint at
+`local_domain_runtime_test.go:201`. The result is **FAIL**, exit 1, 0 pass / 1
+fail / 0 skip. Its original receipt is
+`/home/zyf/Cicada/.local/evidence/native-pair-acceptance/run-20261022T211344Z-In5cA3/result.json`,
+SHA-256 `cbc812bec392275117e0755f088dbd0ac03f2475f5bab06fd3d132c91e1d7198`.
+Version, CLI/test compilation and vet exited 0; source/binaries were stable and
+the owned container was removed. The original actor stderr was intentionally
+discarded, so that receipt alone does not identify the internal cause.
+
+QA added startup-only fixed phase/action categories, an explicit error-code
+allowlist and child exit code to the existing actual actor. Both producer and
+parent filter these values. No raw error, stderr, Snapshot, vault contents,
+private key or full packet enters the diagnostic. One necessary diagnostic
+reproduction used dirty `2458552` plus the two QA files; it retained the same
+**FAIL**, exit 1, 0/1/0, at the same checkpoint. The measured classification is
+`exit=1 phase=ACTION_FAILED action=UNLOCK_AND_RESUME_PROFILE code=` (empty).
+Its independent receipt is
+`/home/zyf/Cicada/.local/evidence/native-pair-acceptance/run-20261022T211825Z-GTh994/result.json`,
+SHA-256 `5dc9d9d8e1c8ebd8418b332f6e55a9d8d853d8a3b17e2841abbc802b7fee7fd5`.
+All compilation/version/vet stages exited 0, the container was removed, and
+both source JSON hashes are
+`b46a8afab4d7becc2faa22f80bd3c45efd04af23181b9aa138c959e06a11cea0`.
+The executed CLI is 37,847,850 bytes, SHA-256
+`2f5fa0897dea1778cb9e611f7294a07df01c1413ef8908a741237e9200e6f9fd`;
+test binary is 23,555,890 bytes, SHA-256
+`105d62da74e6396978e605322a3bcc7d3c6239c239d545ca3b13edd7f632277d`.
+These documentation additions follow that diagnostic source snapshot.
+The cross-worktree source-manifest comparison also identifies two pre-existing
+ignored generated-input differences under `internal/server/ui/generated/`:
+`cicada-webcrypto.wasm.gz` and `panel.manifest.json`. Apart from those generated
+inputs and the two QA files, all captured source inputs match Root's clean run.
+Each run's complete manifest pins its actual inputs; its CLI binary is attributed
+to that build, with no claim that the two worktrees produced identical binaries.
+
+The App owner confirmed the Core defect: profile resume loads the unresolved
+domain operation and then calls ordinary session inspection; that inspection's
+`canBeginOperation` guard rejects the retained domain Pending state with
+`ErrInvalidAction` and no Snapshot error code. The App owner is responsible for
+the production fix and persistent-session recovery regression. QA retains the
+original operation and failure assertions. Recovery after restart and all later
+domain-App assertions remain **NOT_ACCEPTED** until the fixed formal checkpoint
+is actually rerun. Native A/B/Host business flow, Windows DPAPI/ACL/physical GUI,
+Android and public HTTPS remain **NOT_RUN**.
+
+## 2026-10-22 actual domain App recovery after Core fix
+
+The formal App fix `bd0d90120c042735aba0f627bd01a1b0a0546055`, parent
+`2458552`, keeps a restored live session awaiting inspection while the exact
+uncertain domain packet remains available for explicit recovery. App producer
+normal 46/0/0, focused race 3/0/0 and vet 0 remain separate from this independent
+process gate. Its producer receipt is
+`/home/zyf/.cicada/acceptance/codex-context-checks/local-domain-profile-recovery-20261022T212140Z/final-result.json`,
+SHA-256 `89b1253acfe5ec6e45be34346d54e7cfb235777d4d853152baa64f8623ec8009`.
+
+Before the one necessary verification run, Root identified and QA corrected a
+separate acceptance expectation: an authenticated historical activation receipt
+must restore its original ACTIVE outcome with `Current=false`. It does not
+restore current account or policy authority. The test now verifies original
+opaque packet durability, identity and historical outcome first, explicitly
+dispatches the actual `ActionSessionInspect`, then calls the actual
+`ActionRefreshLocalCollaboration` and requires the independently authenticated
+current policy and StateReviewID. All subsequent Close and offline-revoke
+assertions retain that current-state prerequisite.
+
+Reproduction was `scripts/test-native-pair.sh --codex-product-domain-app`.
+The real gate returned **SCOPED_PASS**, exit **0**, 1 pass / 0 fail / 0 skip on
+dirty `bd0d901` plus three QA Go changes and a validation-record overlay.
+Version, CLI/test compilation, harness and vet all exited 0. Its immutable
+receipt is
+`/home/zyf/Cicada/.local/evidence/native-pair-acceptance/run-20261022T212846Z-iDwN6U/result.json`,
+SHA-256 `b2a593af88cf5c09d0612155c60ca3e9ac759dae3babdb0cc163c26b87be2a01`.
+Source-before/source-after both hash to
+`a09c07034de2e4b44de0e7ead997c4953fa286272f5929bafbe5229f9ec1bd6d`;
+complete manifest `4e5a26213ee36339cd4656ade8da2f42ccf2df4014917f040365715c5f0cc690`.
+The actual CLI is 37,847,850 bytes, SHA-256
+`2f5fa0897dea1778cb9e611f7294a07df01c1413ef8908a741237e9200e6f9fd`;
+actual test binary is 23,560,223 bytes, SHA-256
+`297260306bfb86f5feeff7f01f9ccde8dea2d3c595a23c22fc2b5869bc8f6b0c`.
+Both binaries remained identical before/after execution; the owned container
+was removed and the task build-cache lock was released.
+
+This scope passes actual App signing and Node-report-derived policy preview,
+persistent activation, response loss after commit, actual App/Hub restart,
+original protected-vault packet recovery, separate historical/current checks,
+normal Controller.Close/reopen with retained policy, and authenticated read/revoke
+with Node offline. The two earlier FAIL receipts remain unchanged. No additional
+product run followed this pass.
+
+The original result's older `not_run` list still contains the now-observed
+activation recovery and a combined App-close/login/report item. QA preserved
+that receipt and corrected only subsequent evidence classification: completed
+activation recovery and normal App Close are removed from NOT_RUN only for a
+successful full App gate. Actual Hub login expiry and Node-report expiry remain
+NOT_RUN. Replaying the captured PASS, FAIL and typed unsupported inputs through
+the corrected classifier preserved exits 0, 1 and 125 respectively. This is a
+metadata-only check, not another product run:
+`/home/zyf/Cicada/.local/evidence/native-pair-acceptance/domain-app-metadata-check-20261022-qeet32la/metadata-check.json`,
+SHA-256 `3816e57bef10e680197e807bb09e9b1c4ac0d7dfaa75aca42c034d6bf12749c7`.
+The separate `reclassified-result.json` in that same directory has SHA-256
+`ee3c4bf1b836d3f852aaf99a16927e07e5a4cd7934c8b8ed719b316ed16aa612`;
+it links the exact original receipt, log and classifier and explicitly records
+`additional_product_execution=false`.
+The evidence-classification/plan/documentation updates follow the measured source
+snapshot; the three executed QA Go files retain their measured bytes.
+
+Actual native A/B Join without Pair, Host ASK/Reply, new-domain other-UID context
+and signing, real login/report expiry and fresh C, empty-policy-cache full-page
+recovery, stale epochs/foreign scope, legacy Pair, real model/queue/automatic
+wake, Windows DPAPI/ACL/physical GUI, Android and public HTTPS remain **NOT_RUN**.

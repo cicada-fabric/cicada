@@ -121,17 +121,21 @@ that candidate nor earlier fcea942 Pair/cold evidence validates this new flow.
 
 ## Node/user/Network policy acceptance preparation
 
-2026-10-22, preparation baseline `96dcbe0`. **CONTRACT_PENDING / NOT_RUN**
-for the new business policy. This matrix extends the existing isolated driver;
-it introduces no production command, schema, grant or authorization bypass.
-Root freezes the Hub contract and App consumer together before business tests
-are connected. Historical Pair, N2 and three-stage results keep their scopes.
+2026-10-22, preparation baseline `96dcbe0`. The
+[formal contract](native-local-domain-contract.md) and Hub backend `2458552`
+now support the actual App policy workflow. Core recovery fix `bd0d901` plus
+the independent QA candidate have a bounded
+[actual App result](native-app-validation.md#2026-10-22-actual-domain-app-recovery-after-core-fix).
+The full Native issuer/Join/delivery adapter and actual Native business flow
+remain **NOT_RUN**. This matrix extends the existing isolated driver; it
+introduces no production command, schema, grant or authorization bypass.
+Historical Pair, N2 and three-stage results keep their scopes.
 Root has approved the design direction: the default policy lasts until explicit
 revocation, with optional Owner-selected expiry; a short activation proof is not
 the delegation's lifetime. A newly named private Network or an exact existing
-Network uses a dedicated non-Pair Group. The Hub proposal still needs updated
-frozen DTOs and implementation before consumers are connected. These are targets,
-not available product APIs.
+Network uses a dedicated non-Pair Group. The Hub capability advertises server
+availability, not a completed Native adapter or caller authorization.
+Unexecuted rows below remain acceptance targets.
 
 The current independent native positive lane retains an explicit manual Owner
 public-pin prerequisite, as frozen by Root. Use the actual App public export and
@@ -174,9 +178,9 @@ requests; closing App must not move that authority into an online UI dependency.
 | DOMAIN-02 — original `0002` writer | Observe the same daemon PID/start ticks and actual `/proc` Umask 0002 before/after installation and each fresh A/B. No per-record chmod, recursive repair or new-shell umask substitutes for the writer's policy. Record actual record/tree metadata and ordinary Hook trust. | Driver parameters prepared; execution NOT_RUN |
 | DOMAIN-03 — other UID, same group | A real UID 1001/GID 1000 process in the exact owned running container cannot read Node private keys, connect to private context/signing IPC, obtain a usable context proof or cause a signed business request. Observe actual denied operations, not only mode helpers. | OS file/IPC boundary SCOPED_PASS on dirty `18c54a6`; new domain context/signing still NOT_RUN. See [bounded run](native-app-validation.md#2026-10-22-actual-other-uid-private-file-and-node-ipc-boundary). |
 | DOMAIN-04 — foreign coordinates | Same Network/different Node; same Node/different Network; different Owner; absent/wrong/forged grant; stale grant or Node epoch all deny by current Guard. Capture redacted typed errors and unchanged unauthorized state. Group boundaries retain their existing contract. | NOT_RUN |
-| DOMAIN-05 — App/session lifetime | Close actual App process and cross the real authenticated Hub login deadline (currently 15 minutes), separately from short report/status TTLs. Newly created Threads and new permitted operations continue only within the independently granted domain lifetime. Domain expiry itself denies; restart Hub/Node and re-read the original persistent grant. An App logical-clock offset is not Hub expiry. | NOT_RUN; independent lifetimes pending |
+| DOMAIN-05 — App/session lifetime | Close actual App process and cross the real authenticated Hub login deadline (currently 15 minutes), separately from short report/status TTLs. Newly created Threads and new permitted operations continue only within the independently granted domain lifetime. Domain expiry itself denies; restart Hub/Node and re-read the original persistent grant. An App logical-clock offset is not Hub expiry. | Actual App normal Close/reopen retains policy on dirty `bd0d901`; Native communication, real login/report expiry and Node restart remain NOT_RUN. |
 | DOMAIN-06 — explicit revoke | Actual App revokes the exact domain. New discovery/business operations deny immediately according to the frozen linearization rule, including an already connected MCP client and a fresh Thread. Never confuse App close/logout with domain revoke. | NOT_RUN |
-| DOMAIN-07 — loss and original retry | Reuse existing method-specific barrier for loss before forward, loss after commit, unsigned/corrupt responses and uncertain result. Restart App/Hub/Node as appropriate; retry the original encrypted packet and reconcile the authenticated original outcome without new authority. | NOT_RUN; operation and recovery contract pending |
+| DOMAIN-07 — loss and original retry | Reuse existing method-specific barrier for loss before forward, loss after commit, unsigned/corrupt responses and uncertain result. Restart App/Hub/Node as appropriate; retry the original encrypted packet and reconcile the authenticated original outcome without new authority. | Activation response loss after commit plus actual App/Hub restart and original recovery SCOPED_PASS on dirty `bd0d901`. Other faults, Node restart and Native business recovery remain NOT_RUN. |
 | DOMAIN-08 — concurrency and replay | Concurrent exact retries produce one original grant/outcome; conflicting requests cannot claim a different domain. Pre-revoke accepted history may be readable only as the contract permits; retry never renews revoked authority or expands scope. | NOT_RUN |
 | DOMAIN-09 — legacy Pair migration | An old exact Pair, old pending packet or read cache retains its original scope and identity. It cannot silently become a Node/Network-wide grant, repair a wrong pin or revive a revoked Endpoint. | NOT_RUN; migration rule pending |
 | DOMAIN-10 — identity without inference | Account login alone cannot act as Root or issue a domain grant. With Control inference off, actual identity/Owner approval, explicit Join and deterministic Guard operations remain usable. | New domain extension NOT_RUN; older N2 evidence separate |
