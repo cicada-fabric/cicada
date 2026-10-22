@@ -41,6 +41,8 @@ func scheduleSnapshotRedraw(gtx layout.Context, snapshot appcore.Snapshot, now t
 	consider(snapshot.Node.Connectivity.FreshUntil, snapshot.Node.ConnectionState() == appcore.NodeOnline)
 	consider(snapshot.Pair.ReviewExpiresAt, slices.Contains(snapshot.AvailableActions, appcore.ActionCompletePair) || slices.Contains(snapshot.AvailableActions, appcore.ActionApprovePairSlot))
 	consider(snapshot.Pair.PeerExpiresAt, snapshot.Pair.Current)
+	consider(snapshot.LocalCollaboration.ReviewExpiresAt, slices.Contains(snapshot.AvailableActions, appcore.ActionActivateLocalCollaboration))
+	consider(snapshot.LocalCollaboration.ExpiresAt, snapshot.LocalCollaboration.State == "ACTIVE")
 	consider(snapshot.OwnerEndpoints.ParkAfter, snapshot.OwnerEndpoints.Pending && !slices.Contains(snapshot.AvailableActions, appcore.ActionParkOwnerEndpoints))
 	if immediate {
 		gtx.Execute(op.InvalidateCmd{})

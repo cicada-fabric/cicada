@@ -92,6 +92,8 @@ type nativeController struct {
 	ownerEndpointAvailable    bool
 	ownerEndpointError        string
 	ownerEndpointResult       *wire.OwnerEndpointReadResult
+
+	localDomain localDomainRuntime
 }
 
 func NewController(config Config) (Controller, error) {
@@ -153,6 +155,7 @@ func (c *nativeController) Snapshot() Snapshot {
 	}
 	expireNodeView(&view, c.cfg.Now().UTC())
 	expirePairView(&view, c.cfg.Now().UTC())
+	expireLocalCollaborationView(&view, c.cfg.Now().UTC())
 	expireOwnerEndpointView(&view, c.cfg.Now().UTC())
 	return view
 }
@@ -205,6 +208,9 @@ func (c *nativeController) Dispatch(ctx context.Context, action Action) (dispatc
 		if dispatchErr == nil && !nodeActionKind(action.Kind) && !pairActionKind(action.Kind) && !ownerEndpointActionKind(action.Kind) && action.Kind != ActionExportOwnerPublic {
 			c.initializeNode(operationCtx)
 		}
+		if dispatchErr == nil && !localCollaborationActionKind(action.Kind) {
+			c.initializeLocalCollaboration(operationCtx)
+		}
 	}()
 	if action.Kind == ActionRefresh {
 		c.nodeDiscoveryTried = false
@@ -216,6 +222,19 @@ func (c *nativeController) Dispatch(ctx context.Context, action Action) (dispatc
 	}
 
 	switch action.Kind {
+	case ActionPrepareLocalCollaboration:
+		return c.prepareLocalCollaboration(operationCtx, action.LocalCollaboration)
+	case ActionActivateLocalCollaboration:
+		return c.activateLocalCollaboration(operationCtx, action.LocalCollaboration)
+	case ActionRefreshLocalCollaboration:
+		if !c.hasLocalDomainPending() {
+			c.localDomain.discoveryTried = false
+		}
+		return c.refreshLocalCollaboration(operationCtx)
+	case ActionRevokeLocalCollaboration:
+		return c.revokeLocalCollaboration(operationCtx, action.LocalCollaboration)
+	case ActionRecoverLocalCollaboration:
+		return c.recoverLocalCollaboration(operationCtx)
 	case ActionReadOwnerEndpoints:
 		return c.readOwnerEndpoints(operationCtx, action.OwnerEndpoints)
 	case ActionRecoverOwnerEndpoints:
@@ -502,6 +521,11 @@ func (c *nativeController) connect(ctx context.Context, action Action) error {
 	}
 	if err := c.loadPairState(); err != nil {
 		return c.failPairStorage(err)
+	}
+	if c.device != nil && c.owner != nil {
+		if err := c.ensureLocalDomainLoaded(); err != nil {
+			return err
+		}
 	}
 	c.requireSessionRecheck()
 	c.publish()

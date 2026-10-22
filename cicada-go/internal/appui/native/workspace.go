@@ -108,7 +108,11 @@ func (v *view) workspaceRows(s appcore.Snapshot, flow appui.SetupFlow) []layout.
 	switch v.workspacePage {
 	case "devices":
 		if appui.NodeCardVisible(s, appui.Flow(s)) {
-			return []layout.Widget{v.sectionCard(v.nodeSection(s))}
+			rows := []layout.Widget{v.sectionCard(v.nodeSection(s))}
+			if appui.LocalCollaborationFlow(s, time.Now()).Visible {
+				rows = append(rows, v.sectionCard(v.localCollaborationSection(s)))
+			}
+			return rows
 		}
 		return []layout.Widget{v.sectionCard(v.labelRow(appui.Text(v.locale, "workspace.devices_unavailable")))}
 	case "sessions":
@@ -117,7 +121,11 @@ func (v *view) workspaceRows(s appcore.Snapshot, flow appui.SetupFlow) []layout.
 			rows = append(rows, v.sectionCard(v.ownerEndpointSection(s)))
 		}
 		if appui.PairFlow(s, time.Now()).Visible {
-			rows = append(rows, v.sectionCard(v.pairSection(s)))
+			rows = append(rows, v.sectionCard(func(gtx layout.Context) layout.Dimensions {
+				return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
+					layout.Rigid(v.headingRow(appui.Text(v.locale, "local_collaboration.legacy_pair"))),
+					layout.Rigid(v.disclosure("legacy-pair", v.pairSection(s))))
+			}))
 		}
 		if len(rows) == 0 {
 			rows = append(rows, v.sectionCard(v.labelRow(appui.Text(v.locale, "workspace.sessions_unavailable"))))
@@ -166,17 +174,12 @@ func (v *view) workspaceRows(s appcore.Snapshot, flow appui.SetupFlow) []layout.
 		return rows
 	}
 	rows := []layout.Widget{v.labelRow(appui.Text(v.locale, "workspace.overview_body"))}
-	// A session being registered or an account being logged in never implies
-	// peer authority. These links only navigate to the established review.
-	if appui.PairFlow(s, time.Now()).Visible {
+	if domain := appui.LocalCollaborationFlow(s, time.Now()); domain.Visible {
 		rows = append(rows, v.sectionCard(func(gtx layout.Context) layout.Dimensions {
-			label := strings.TrimSpace(s.Pair.Label)
-			if label == "" {
-				label = appui.Text(v.locale, "workspace.sessions")
-			}
 			return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
-				layout.Rigid(v.headingRow(label)),
-				layout.Rigid(v.nodeCaption(appui.Text(v.locale, "workspace.communication_body"))),
+				layout.Rigid(v.headingRow(appui.Text(v.locale, "local_collaboration.title"))),
+				layout.Rigid(v.nodeCaption(appui.Text(v.locale, "local_collaboration."+domain.Stage))),
+				layout.Rigid(v.workspaceLink("devices", appui.Text(v.locale, "workspace.view_device"))),
 				layout.Rigid(v.workspaceLink("sessions", appui.Text(v.locale, "workspace.review_sessions"))))
 		}))
 	}
@@ -211,6 +214,8 @@ func (v *view) workspaceAttention(s appcore.Snapshot, flow appui.SetupFlow) layo
 	}
 	page, message := "", ""
 	switch {
+	case s.LocalCollaboration.Pending:
+		page, message = "devices", "local_collaboration.pending"
 	case s.OwnerEndpoints.Pending:
 		page, message = "sessions", "directory.pending"
 	case s.Pair.Pending:

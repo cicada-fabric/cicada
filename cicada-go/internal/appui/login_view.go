@@ -52,6 +52,7 @@ func PresentScreen(s appcore.Snapshot, now time.Time) ScreenPresentation {
 	copy.Pair = appcore.PairSetupSnapshot{Pending: s.Pair.Pending}
 	copy.Storage = appcore.StorageSnapshot{}
 	copy.OwnerEndpoints = appcore.OwnerEndpointSnapshot{Pending: s.OwnerEndpoints.Pending}
+	copy.LocalCollaboration = appcore.LocalCollaborationSnapshot{Pending: s.LocalCollaboration.Pending}
 	copy.Authorization = appcore.AuthorizationSnapshot{}
 	copy.Management, copy.Canvas = appcore.ManagementUnavailable, appcore.CanvasSnapshot{}
 	copy.Setup.ExpectedOwnerKeyID = ""
@@ -82,6 +83,9 @@ func preLoginFlow(s appcore.Snapshot) SetupFlow {
 	}
 	if s.Pair.Pending && has(appcore.ActionRecoverPair) {
 		return SetupFlow{Stage: "recovery", Primary: appcore.ActionRecoverPair}
+	}
+	if s.LocalCollaboration.Pending && has(appcore.ActionRecoverLocalCollaboration) {
+		return SetupFlow{Stage: "recovery", Primary: appcore.ActionRecoverLocalCollaboration}
 	}
 	if s.Node.Pending && has(appcore.ActionRecoverNode) {
 		return SetupFlow{Stage: "recovery", Primary: appcore.ActionRecoverNode}

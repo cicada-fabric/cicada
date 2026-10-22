@@ -971,3 +971,80 @@ under `hook-diagnostics-20261022T172150Z` and are not attributed to the final
 typed-stage source. This README is a later documentation delta.
 Actual installed Host, Docker, Windows GUI, Android, physical devices and public
 HTTPS are **NOT_RUN** for this checkpoint.
+
+### 2026-10-22 local collaboration App client
+
+The default Devices workflow now consumes `native-local-domain-v1` using the
+existing vaulted Owner and App keys. After account login and Node selection,
+Core reads every authenticated policy-history page for that exact Node before
+offering setup. An empty local cache never means the Hub is unconfigured.
+An older Hub, malformed availability document or `available:false` permits no
+new domain request; explicit refresh can rediscover an upgraded/recovered Hub.
+Public availability itself supplies no caller authorization.
+
+The native English/Chinese card prepares a named private Network and dedicated
+Group. Friendly defaults are editable; the default policy lasts until revoke,
+with optional 24-hour, seven-day and thirty-day choices. No raw UID, Network ID
+or policy ID entry is required. The actual Node's signed fresh user report fixes
+the OS user. Explicit approval validates the exact retained prepare packet,
+challenge, report and lifetime before the local Owner signs the entire policy.
+Core exposes enabled state only after a fresh authenticated Node-policy read.
+App close, logout and account expiry do not revoke the domain. Account expiry
+removes administrative actions without changing the policy's independent life.
+The Overview links to this workflow and registered Threads; the previous Pair
+workflow remains under the Sessions advanced disclosure, with its own pending
+recovery prompt and unchanged authority model.
+
+Each original request and authenticated response is encrypted in the scoped
+vault before transmission or progress. Unauthenticated HTTP errors, redirects,
+invalid responses and response loss retain the uncertain original. Domain
+recovery retains one exact encrypted reconcile request containing the original
+packet, validates its operation/request/digest and reopens the exact nested
+receipt. Retried recovery uses identical bytes across restart, including after
+account expiry. Historical mutation receipts remain saved outcomes until a
+fresh authorized read. A still-live original prepare review can offer another
+explicit approval only after independent revalidation. No Owner replacement,
+private-key export, external signing tool, browser or new local database is used.
+
+Five bounded domain namespaces coexist with the existing base, Node and Pair
+records within the unchanged sixteen-record, 4 MiB vault limits. Raw encrypted
+packet frames avoid nested base64 duplication; prepare review and its exact
+response share one atomic state record. Metadata, response and target validation
+precede restoration. The client test actor uses actual local Owner signatures,
+shared PQ envelopes and disposable encrypted vaults; it is not Hub Store/Guard,
+Node IPC or real Thread authorization acceptance. Source-specific checks are
+recorded in [native App validation](../../../docs/native-app-validation.md).
+Actual domain backend/Node/Host interoperability and physical Windows execution
+remain separate gates. This checkpoint changes no public protocol or service.
+
+Pinned Go 1.27.3 verification used dirty
+`7ff12e8d506a0206a961d2ef9659cbd7811e55ec` plus the retained App sources.
+Full Core/UI normal tests recorded **361 PASS, 0 FAIL, 0 SKIP** in
+`/home/zyf/.cicada/acceptance/codex-context-checks/local-domain-client-20261022T183316Z/`.
+Its full Go/C/header/module manifest remained stable at
+`92112adad38e9a90a0e04e2f381be86791a15fc77ee4de9f2c829dacbc8d44ca`.
+The broader historical race matrix was deliberately interrupted, exit 1; its
+partial events are not a PASS. The exact original receipt is retained with
+SHA-256 `d522f46fa02594e52f4032a20950c8d0bc0a12a8a4ab064393da64b83fad28f1`.
+
+The final renderer-only delta adds native review/policy deadline wakeups and
+clears local-collaboration inputs when switching presentation scope. Core
+production/test bytes remain identical to the full normal run. Final UI/native
+normal tests recorded **170 PASS, 0 FAIL, 0 SKIP**; the scoped
+`LocalCollaboration` Core/UI/native race run recorded **20 PASS, 0 FAIL, 0 SKIP**.
+Linux vet, Windows vet and Windows amd64 GUI cross-build all exited 0. Evidence
+is retained at
+`/home/zyf/.cicada/acceptance/codex-context-checks/local-domain-client-final-20261022T184131Z/`,
+receipt SHA-256 `38b27598cd4a71ed799f2abcb51d06cfabf6d4582ca2836f91db96da1d058479`.
+The before/after source manifest is stable at
+`2a7e57430d4e6211ff66f52c31d963e01d081d3cd75ae192c76d7b68728a8d24`;
+the unsigned executable SHA-256 is
+`da9d1c5107958a8ea9c522dfc94cba5eebfd9b091ca729397169254983a347d2`.
+The real encrypted-vault coexistence test holds all sixteen base/Node/Pair/domain
+namespaces, a byte-bounded PQ page and detached recovery across two reopens and
+two hours of account expiry: 2,164,336 opaque payload bytes, 2,910,450 vault file
+bytes, 173,101 sealed-page bytes and 427,784 nested recovery-response bytes.
+No vault limit is widened. This README is a later documentation delta. Docker
+interop, actual Hub/Node/Host domain execution, physical Windows GUI/DPAPI/ACL,
+Android, physical devices and public HTTPS are **NOT_RUN** here; Root/QA own
+those separate acceptance gates.

@@ -15,7 +15,7 @@ func (c *nativeController) pairAccountReady() bool {
 }
 
 func (c *nativeController) pairCanStart() bool {
-	return c.pairAccountReady() && !c.storageFault && !c.hasPairPending() && !c.hasNodePending() &&
+	return c.pairAccountReady() && !c.storageFault && !c.hasPairPending() && !c.hasNodePending() && !c.hasLocalDomainPending() &&
 		canBeginOperation(c.state.Pending) && c.state.Recovery == nil
 }
 

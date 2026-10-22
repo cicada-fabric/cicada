@@ -8,6 +8,9 @@ import (
 )
 
 func (c *nativeController) pairActions() []ActionKind {
+	if c.hasLocalDomainPending() {
+		return nil
+	}
 	if c.storageFault || c.profileRecoveryRequired || !c.connected || c.vault == nil || c.device == nil {
 		return nil
 	}

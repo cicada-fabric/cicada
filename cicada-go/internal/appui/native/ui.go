@@ -120,6 +120,15 @@ type view struct {
 	statusMu             sync.Mutex
 	failed               bool
 	uiErrorCode          string
+
+	localDomainNetworkName   widget.Editor
+	localDomainGroupName     widget.Editor
+	localDomainExpiry        widget.Enum
+	localDomainConsent       widget.Bool
+	localDomainRevokeConsent widget.Bool
+	localDomainNodeID        string
+	localDomainReviewID      string
+	localDomainStateReviewID string
 }
 
 func newView(controller appcore.Controller, ctx context.Context, cancel context.CancelFunc, window *app.Window) *view {
@@ -504,6 +513,11 @@ func (v *view) resetPresentationInputs() {
 	v.pairLabel.SetText("")
 	v.pairBootstrapConsent.Value, v.pairSlotAConsent.Value, v.pairSlotBConsent.Value, v.pairRevokeConsent.Value = false, false, false, false
 	v.pairReviewID, v.pairStateReviewID = "", ""
+	v.localDomainNetworkName.SetText("")
+	v.localDomainGroupName.SetText("")
+	v.localDomainNodeID, v.localDomainReviewID, v.localDomainStateReviewID = "", "", ""
+	v.localDomainConsent.Value, v.localDomainRevokeConsent.Value = false, false
+	v.localDomainExpiry.Value = "until"
 	v.nodePinDetails = false
 	v.details, v.preview, v.replacementInput = false, false, false
 	v.canvas = canvasWidget{}
@@ -635,7 +649,7 @@ func (v *view) actionFor(kind appcore.ActionKind, s appcore.Snapshot) (appcore.A
 		}
 		action.PublicExportPath = path
 		return action, true
-	case appcore.ActionRecoverPair, appcore.ActionRecover, appcore.ActionRefresh, appcore.ActionActivationStatus, appcore.ActionDiscoverProfiles, appcore.ActionGenerateOwner, appcore.ActionClaimPrepare,
+	case appcore.ActionRecoverLocalCollaboration, appcore.ActionRecoverPair, appcore.ActionRecover, appcore.ActionRefresh, appcore.ActionActivationStatus, appcore.ActionDiscoverProfiles, appcore.ActionGenerateOwner, appcore.ActionClaimPrepare,
 		appcore.ActionSessionInspect, appcore.ActionLogout, appcore.ActionRetry:
 		return action, true
 	default:
@@ -771,6 +785,8 @@ func (v *view) actionLabel(kind appcore.ActionKind) (string, bool) {
 		appcore.ActionSessionInspect:        "account.refresh",
 		appcore.ActionLogout:                "account.logout",
 		appcore.ActionRetry:                 "operation.recover_exact",
+
+		appcore.ActionRecoverLocalCollaboration: "local_collaboration.recover",
 	}
 	label, ok := key[kind]
 	return appui.Text(v.locale, label), ok

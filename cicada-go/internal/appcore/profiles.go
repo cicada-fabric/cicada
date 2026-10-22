@@ -138,6 +138,11 @@ func (c *nativeController) resumeProfile(ctx context.Context, id string) error {
 	if err := c.loadPairState(); err != nil {
 		return c.failPairStorage(err)
 	}
+	if c.device != nil && c.owner != nil {
+		if err := c.ensureLocalDomainLoaded(); err != nil {
+			return err
+		}
+	}
 	c.profileRecoveryRequired = false
 	// Cached inspections are receipts, not current authorization. Recover an
 	// uncertain packet first, then ask for fresh authenticated session state.

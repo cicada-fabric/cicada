@@ -348,6 +348,9 @@ func (c *nativeController) applyResponse(operation string, value any, request, r
 }
 
 func (c *nativeController) clearSession() {
+	c.localDomain.state.View.Current = false
+	c.localDomain.state.View.StateReviewID = ""
+	c.localDomain.checkedTarget = ""
 	c.pair.View.Current, c.pair.View.AdministrativePermission = false, false
 	c.pair.View.StateReviewID = ""
 	c.pairCurrent = nil
@@ -361,6 +364,7 @@ func (c *nativeController) clearSession() {
 }
 
 func (c *nativeController) clearRuntimeSecrets() {
+	c.clearLocalDomainRuntime()
 	c.clearPairRuntime()
 	c.clearNodeRuntime()
 	if c.state.Pending != nil {
@@ -508,6 +512,7 @@ func (c *nativeController) publish() {
 	c.populateSetup(&view)
 	c.populateNode(&view)
 	c.populatePair(&view)
+	c.populateLocalCollaboration(&view)
 	c.populateOwnerEndpoints(&view)
 	if !c.profileRecoveryRequired {
 		view.AvailableActions = append(view.AvailableActions, c.nodeActions()...)

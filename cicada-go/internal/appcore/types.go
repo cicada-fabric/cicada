@@ -139,6 +139,8 @@ type Snapshot struct {
 	Pair             PairSetupSnapshot     `json:"pair"`
 	Storage          StorageSnapshot       `json:"storage"`
 	OwnerEndpoints   OwnerEndpointSnapshot `json:"owner_endpoints"`
+
+	LocalCollaboration LocalCollaborationSnapshot `json:"local_collaboration"`
 }
 
 // StorageSnapshot describes local file locations only. It is not Hub state or
@@ -213,6 +215,8 @@ type Action struct {
 	Kind           ActionKind
 	Pair           PairAction
 	OwnerEndpoints OwnerEndpointReadAction
+
+	LocalCollaboration LocalCollaborationAction
 
 	// Exactly one connection material field may be set for ActionConnect.
 	ConnectionCard string

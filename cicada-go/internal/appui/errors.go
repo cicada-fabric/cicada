@@ -5,6 +5,14 @@ package appui
 func ErrorText(locale Locale, code string) string {
 	id := msgRequestFailed
 	switch code {
+	case "APP_LOCAL_COLLABORATION_UNAVAILABLE":
+		id = "local_collaboration.unavailable"
+	case "APP_LOCAL_COLLABORATION_UNKNOWN", "APP_LOCAL_COLLABORATION_RESPONSE_UNCONFIRMED":
+		id = "local_collaboration.pending"
+	case "APP_LOCAL_COLLABORATION_REFUSED", "APP_LOCAL_COLLABORATION_READ_INVALID", "APP_LOCAL_COLLABORATION_READ_LIMIT", "APP_LOCAL_COLLABORATION_AMBIGUOUS":
+		id = msgRequestRejected
+	case "APP_LOCAL_COLLABORATION_COMMIT_FAILED":
+		id = msgLocalUnlockFailed
 	case "APP_OWNER_DIRECTORY_UNAVAILABLE":
 		id = "directory.unavailable"
 	case "APP_OWNER_DIRECTORY_REQUEST_UNKNOWN":

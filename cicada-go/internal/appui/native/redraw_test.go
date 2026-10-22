@@ -35,6 +35,38 @@ func redrawFrame(snapshot appcore.Snapshot, now time.Time) (time.Time, bool) {
 	return router.WakeupTime()
 }
 
+func TestNativeRedrawLocalCollaborationDeadlinesResampleOnce(t *testing.T) {
+	now := time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC)
+	deadline := now.Add(time.Minute)
+	for _, kind := range []string{"review", "policy"} {
+		t.Run(kind, func(t *testing.T) {
+			s := appcore.Snapshot{}
+			if kind == "review" {
+				s.LocalCollaboration.ReviewExpiresAt = deadline.Format(time.RFC3339Nano)
+				s.AvailableActions = []appcore.ActionKind{appcore.ActionActivateLocalCollaboration}
+			} else {
+				s.LocalCollaboration.State = "ACTIVE"
+				s.LocalCollaboration.ExpiresAt = deadline.Format(time.RFC3339Nano)
+			}
+			if at, wake := redrawFrame(s, now); !wake || !at.Equal(deadline) {
+				t.Fatal("domain expiry did not schedule native wakeup")
+			}
+			if at, wake := redrawFrame(s, deadline); !wake || !at.IsZero() {
+				t.Fatal("crossed domain deadline did not resample snapshot")
+			}
+			s.AvailableActions = nil
+			s.LocalCollaboration.State = "EXPIRED"
+			if _, wake := redrawFrame(s, deadline); wake {
+				t.Fatal("expired domain projection caused idle redraw loop")
+			}
+		})
+	}
+	s := appcore.Snapshot{LocalCollaboration: appcore.LocalCollaborationSnapshot{State: "ACTIVE", Current: true}}
+	if _, wake := redrawFrame(s, now); wake {
+		t.Fatal("until-revoke policy invented a deadline")
+	}
+}
+
 func TestNativeRedrawOwnerReadParkDeadlineResamplesOnce(t *testing.T) {
 	now := time.Date(2026, 10, 20, 12, 0, 0, 0, time.UTC)
 	deadline := now.Add(time.Minute)
