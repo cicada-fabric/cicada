@@ -16,7 +16,8 @@ elif [[ $# == 1 && "$1" == --endpoint-security-owner-directory-recovery ]]; then
 elif [[ $# == 1 && "$1" == --codex-product-guards ]]; then mode=codex-product-guards
 elif [[ $# == 1 && "$1" == --codex-product-cli ]]; then mode=codex-product-cli
 elif [[ $# == 1 && "$1" == --codex-product-cold ]]; then mode=codex-product-cold
-elif [[ $# != 0 ]]; then printf 'Usage: scripts/test-native-pair.sh [--store-regressions|--a3-core|--a3-http|--a3-size-store|--app-owner|--endpoint-security|--endpoint-security-boundaries|--endpoint-security-app-fixture|--endpoint-security-owner-directory|--endpoint-security-owner-directory-recovery|--codex-product-guards|--codex-product-cli|--codex-product-cold]\n' >&2; exit 2; fi
+elif [[ $# == 1 && "$1" == --codex-product-three-stage ]]; then mode=codex-product-three-stage
+elif [[ $# != 0 ]]; then printf 'Usage: scripts/test-native-pair.sh [--store-regressions|--a3-core|--a3-http|--a3-size-store|--app-owner|--endpoint-security|--endpoint-security-boundaries|--endpoint-security-app-fixture|--endpoint-security-owner-directory|--endpoint-security-owner-directory-recovery|--codex-product-guards|--codex-product-cli|--codex-product-cold|--codex-product-three-stage]\n' >&2; exit 2; fi
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source_root="$repo_root"
 if [[ "$mode" == endpoint-security* && ! -f "$source_root/docs/native-endpoint-directory-contract.md" ]]; then
@@ -38,7 +39,7 @@ module_cache="$local_root/cache/n2-acceptance/gomod-go1.27.2-stable"
 build_cache="$local_root/cache/native-pair-acceptance/go-build-go1.27.3"
 image='golang:1.27.3-bookworm@sha256:5c3e9b43cfd3bb95c7937462e29d87ada57b481a96fa23ad0eb61778d7a00110'
 codex_mount=()
-if [[ "$mode" == codex-product-cli || "$mode" == codex-product-cold ]]; then
+if [[ "$mode" == codex-product-cli || "$mode" == codex-product-cold || "$mode" == codex-product-three-stage ]]; then
  if [[ ! -f "$source_root/.agents/plugins/cicada/hooks/hooks.json" || ! -f "$source_root/.agents/plugins/cicada/.mcp.json" || ! -f "$source_root/.agents/plugins/cicada/.codex-plugin/plugin.json" ]]; then
   printf 'Installed-plugin gate requires the integrated existing-plugin assets; NOT_RUN.\n' >&2; exit 2
  fi
@@ -51,6 +52,22 @@ if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != '399ff
 PY
  export CICADA_NATIVE_PAIR_CODEX_BINARY="$codex_binary"
  codex_mount=(--mount "type=bind,src=$codex_binary,dst=/tools/codex,readonly" -e CICADA_N3_CODEX_BINARY=/tools/codex)
+fi
+license_mount=()
+if [[ "$mode" == codex-product-three-stage ]]; then
+ licenses="${CICADA_NATIVE_PAIR_LICENSES_DIR:-}"
+ if [[ -z "$licenses" || ! -f "$licenses/go/MODULES.json" || ! -f "$licenses/go/LICENSE" || ! -f "$licenses/cicada/LICENSE" ]]; then
+  printf 'Three-stage gate requires matching complete CLI notices through CICADA_NATIVE_PAIR_LICENSES_DIR; NOT_RUN.\n' >&2; exit 2
+ fi
+ licenses="$(cd "$licenses" && pwd -P)"
+ export CICADA_NATIVE_PAIR_LICENSES_DIR="$licenses"
+ license_mount=(--mount "type=bind,src=$licenses,dst=/licenses,readonly")
+ codex_package="$(dirname "$(dirname "$codex_binary")")"
+ if [[ ! -f "$codex_package/codex-package.json" || ! -f "$codex_package/bin/codex-code-mode-host" ]]; then
+  printf 'Persistent daemon gate requires the existing complete reviewed Codex package; NOT_RUN.\n' >&2; exit 2
+ fi
+ export CICADA_NATIVE_PAIR_CODEX_PACKAGE="$codex_package"
+ codex_mount+=(--mount "type=bind,src=$codex_package,dst=/tools/codex-package,readonly")
 fi
 if [[ "$(id -u)" != 1000 || ! -d "$module_cache" ]] || ! docker image inspect "$image" >/dev/null 2>&1; then
  printf 'Requires UID1000, pinned offline Go image and populated read-only module cache.\n' >&2; exit 2
@@ -87,6 +104,7 @@ common=(docker run --rm --name "$container" --label "cicada.native-pair.run=$run
  --mount "type=bind,src=$state,dst=/state"
  --mount "type=bind,src=$artifacts,dst=/out"
  "${codex_mount[@]}"
+ "${license_mount[@]}"
  --workdir /repo/cicada-go "$image")
 lane() {
  local name="$1"; shift
@@ -163,6 +181,9 @@ else
   elif [[ "$mode" == codex-product-cold ]]; then
    selector='^TestN3CodexProductColdLeaseBeforeFirstTool$'
    runtime_timeout=12m
+  elif [[ "$mode" == codex-product-three-stage ]]; then
+   selector='^TestN3CodexProductThreeStagePersistentDaemon$'
+   runtime_timeout=5m
   else
    selector='^TestN3NativePair(BootstrapAndExactReplay|WrongNodeScopeIsFenced|PrepareLossBeforeForward|CompleteLossAfterCommit|MissingOwnerProofCannotBootstrap)$'
   fi

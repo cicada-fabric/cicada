@@ -295,8 +295,14 @@ class ActualCLI:
         before = set(self.native_records())
         master, slave = pty.openpty()
         fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 45, 180, 0, 0))
-        prompt = 'cicada join "Synthetic installed-plugin Thread"'
-        argv = [self.binary, '--no-daemon', '--no-alt-screen', '-C', str(self.workspace), prompt]
+        prompt = self.config.get('literal_prompt', 'cicada join "Synthetic installed-plugin Thread"')
+        single_marker = self.config.get('literal_expected')
+        transport = ['--remote', self.config.get('persistent_remote', 'unix://')] if self.config.get('persistent_daemon') else ['--no-daemon']
+        argv = [self.binary, *transport, '--no-alt-screen', '-C', str(self.workspace)]
+        if self.config.get('literal_resume_sid'):
+            argv += ['resume', self.config['literal_resume_sid']]
+        if not self.config.get('startup_only'):
+            argv.append(prompt)
         private_json(self.state / 'tui.command.json', argv)
         # Attach a real controlling terminal before exec. Merely setsid with
         # inherited slave FDs leaves /dev/tty and its foreground group unset.
@@ -318,6 +324,7 @@ class ActualCLI:
         plain = ''
         frames = []
         foreground_verified = False
+        test_terminated = False
 
         def type_command(command):
             # Human-paced ordinary terminal keys. One write containing an
@@ -328,6 +335,39 @@ class ActualCLI:
                 time.sleep(.05)
             time.sleep(.2)
             os.write(master, b'\r')
+
+        def finish_tui():
+            nonlocal plain
+            # Remote turn-completion and terminal responses can arrive after
+            # the result body. Keep servicing the real PTY while exiting.
+            ready = time.monotonic() + .75
+            submitted = False
+            extra_enter = False
+            deadline = time.monotonic() + 10
+            while time.monotonic() < deadline and process.poll() is None:
+                if not submitted and time.monotonic() >= ready:
+                    type_command('/exit')
+                    submitted = True
+                if select.select([master], [], [], .1)[0]:
+                    try:
+                        data = os.read(master, 65536)
+                    except OSError:
+                        break
+                    captured.extend(data)
+                    if b'\x1b[6n' in data:
+                        os.write(master, b'\x1b[1;1R')
+                    if b'\x1b[c' in data:
+                        os.write(master, b'\x1b[?1;2c')
+                    plain = render_terminal(captured)
+                if (submitted and not extra_enter and time.monotonic() >= ready + 3 and
+                        re.search(r'›\s*/exit\s*(?:\n|$)', plain)):
+                    os.write(master, b'\r')
+                    extra_enter = True
+            if process.poll() is None:
+                try:
+                    process.wait(timeout=1)
+                except subprocess.TimeoutExpired:
+                    pass
         try:
             while time.monotonic() - started < 45 and process.poll() is None:
                 if trust_ready_at is not None and time.monotonic() >= trust_ready_at and not trusted_by_tui:
@@ -370,7 +410,22 @@ class ActualCLI:
                     assert all(h['trustStatus'] in ('untrusted', 'modified', 'trusted', 'managed') for h in hooks)
                     if trust_ready_at is None:
                         trust_ready_at = time.monotonic() + 2
-                if 'ThisThreadisregistered' in compact and peers_ready_at is None:
+                if self.config.get('startup_only') and 'AskCodextodoanything' in compact:
+                    visible = True
+                    frames.append({'stage': 'actual-native-TUI-initialization', 'screen': plain})
+                    finish_tui()
+                    break
+                if self.config.get('persistent_daemon') and 'Cicadacouldnotverifythecurrentnativerecord' in compact:
+                    frames.append({'stage': 'literal-native-record-refusal', 'screen': plain})
+                    raise AssertionError('ACTUAL_NATIVE_RECORD_REFUSED')
+                prompt_echo = '›' + re.sub(r'\s+', '', prompt)
+                current_result = compact.rsplit(prompt_echo, 1)[-1] if prompt_echo in compact else ''
+                if single_marker and re.sub(r'\s+', '', single_marker) in current_result:
+                    visible = True
+                    frames.append({'stage': 'literal-single-result', 'screen': plain})
+                    finish_tui()
+                    break
+                if not single_marker and 'ThisThreadisregistered' in compact and peers_ready_at is None:
                     peers_ready_at = time.monotonic() + .5
                 if (sent_peers and 'NodeThreaddirectorysnapshot' in compact and
                         'Syntheticinstalled-pluginThread' in compact and str(self.workspace) in compact and
@@ -387,14 +442,11 @@ class ActualCLI:
                                 'Offlineatsnapshot' in result_body), 'ACTUAL_PEERS_RESULT_FIELDS_NOT_VISIBLE'
                     visible = True
                     frames.append({'stage': 'literal-peers', 'screen': plain})
-                    type_command('/exit')
-                    try:
-                        process.wait(timeout=4)
-                    except subprocess.TimeoutExpired:
-                        pass
+                    finish_tui()
                     break
         finally:
             if process.poll() is None:
+                test_terminated = True
                 os.killpg(process.pid, signal.SIGTERM)
                 try:
                     process.wait(timeout=2)
@@ -412,11 +464,19 @@ class ActualCLI:
                     (self.state / 'sdk-tui.private.txt').write_bytes(stream.read(2 * 1024 * 1024))
             private_json(self.state / 'tui.exit.json', {'exit_code': process.returncode,
                          'normal_trust_control_used': trusted_by_tui, 'literal_join_peers_visible': visible,
-                         'controlling_terminal_foreground_verified': foreground_verified})
+                         'controlling_terminal_foreground_verified': foreground_verified,
+                         'test_initiated_termination': test_terminated,
+                         'graceful_TUI_exit': 'NOT_RUN' if test_terminated else 'OBSERVED_EXIT_0' if process.returncode == 0 else 'FAIL'})
         assert foreground_verified, 'ACTUAL_PTY_FOREGROUND_NOT_CONFIRMED'
         assert visible, 'ACTUAL_TUI_LITERAL_RESULT_NOT_VISIBLE'
-        assert process.returncode == 0, 'ACTUAL_TUI_EXIT_NONZERO'
+        assert process.returncode == 0 or (self.config.get('allow_test_termination') and test_terminated and visible), 'ACTUAL_TUI_EXIT_NONZERO'
+        if self.config.get('startup_only'):
+            return ''
         added = set(self.native_records()) - before
+        if self.config.get('literal_resume_sid'):
+            sid = self.config['literal_resume_sid']
+            assert not added and sid in self.native_records(), 'ACTUAL_ORIGINAL_THREAD_NOT_RESUMED'
+            return sid
         assert len(added) == 1, 'ACTUAL_TUI_NATIVE_IDENTITY_UNCONFIRMED'
         return added.pop()
 

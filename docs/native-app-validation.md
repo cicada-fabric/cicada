@@ -4655,3 +4655,159 @@ queue consumption, automatic wake, revocation and Leave results remain
 **NOT_RUN in this user batch**. Earlier source-bound independent Linux cold-gate
 and other validation results remain separate. No development, automated test,
 deployment or public-operation action was performed to add this record.
+
+## 2026-10-22 installed-plugin MCP startup failure and isolated launcher check
+
+After installing the fcea942 plugin, the user reports `/mcp` showing Cicada
+failed with zero tools: **USER_REPORTED_FAIL** for actual MCP startup. The
+earlier six native App observations remain separately attributed; they do not
+establish plugin startup. The original fcea942 binaries and package are not
+rebuilt or replaced by this investigation.
+
+QA independently reads only Cicada MCP startup warnings from the existing
+Codex log database. The exact error is:
+
+```text
+MCP server startup failed server_name="cicada" error=No such file or directory (os error 2)
+```
+
+Read-only process checks find that the existing shared app-server PATH includes
+`/home/zyf/.local/bin`, but cannot resolve `cicada`; all five selected Cicada
+configuration variables are absent. The new TUI resolves the executable and
+has those variables. The existing plugin manifest uses bare `command: cicada`.
+These observations support an executable lookup failure in the spawning
+process, before MCP initialization. The diagnostic exports only the startup
+error and configuration-presence booleans, not raw environments, conversation
+contents, credentials or queue data. Diagnostic receipt:
+`native-pair-acceptance/mcp-startup-readonly-20261022-tmkoz2gt/result.json`,
+SHA-256 `85f41d51d505a6c7d1094e06d6ef0a713f75bff74ac3d36184b648f0c318e658`.
+
+App freezes an external POSIX launcher candidate, **not yet applied** to the
+real user environment. Its proposed existing-PATH entry is
+`~/.local/bin/cicada` pointing to private `~/.cicada/bin/cicada`. Only the exact
+`mcp` and `codex-hook` subcommands receive the original five public deployment
+configuration values; the launcher then execs the existing absolute fcea942
+executable with unchanged arguments. Other subcommands pass through. It adds
+no SID, token, signing key or authority and changes no plugin/Hook definition
+or shared daemon. Merely fixing PATH is insufficient evidence: current product
+source can fall back to hostname, default Hub and default state when configuration
+is absent. The actual child configuration must also match.
+
+The frozen candidate and installation scheme are external artifacts under
+`/home/zyf/.cicada/acceptance/codex-context-checks/startup-review-20261022T141952Z/`:
+
+| Artifact | SHA-256 |
+| --- | --- |
+| `cicada-launcher.sh`, exact tested candidate | `9b0ffc53fbdd68f81cd5dc489f9c36848c109da2bb356db2b381048d5e06567f` |
+| `launcher-candidate.json`, proposed entry/configuration/install scheme | `de7975398e7a3ca265415ae0c44bc4b9515f181872d53ddc28ba18ab7120896a` |
+| `apply-launcher.py`, external user-run helper; not executed | `133fdf28518f0d67bbc5a14fe6b8cbfc5892e1c71fb5e9fc656e6d669aec6929` |
+
+Root statically reviews the external `apply-launcher.py` helper, which prepares
+the two proposed entries for user-controlled application. Only AST/compile
+checks are reported for that helper; it is not executed in this checkpoint and
+is not a product installer or a rebuild of the fcea942 package.
+
+One disposable `--network none` fixture tests only direct stdio startup,
+`initialize` and `tools/list`: **SCOPED_PASS**, exit **0**. The parent PATH
+already includes the empty entry directory and lacks all five variables.
+Without the entry, process creation returns ENOENT (errno 2), matching the
+observed startup error. Adding only the exact candidate and symlink in a fresh
+owned HOME starts the same read-only fcea942 executable at its fixed absolute
+path. Initialization negotiates `2025-06-18`; the server lists 71 tools, all
+requiring verified context. The actual MCP child's executable, original argv
+and all five configuration values match; only match booleans are exported.
+The child exits 0 with empty stderr and creates zero product state files.
+
+The container mounts no real HOME, Node state, credentials or sockets. Its
+absolute deployment-state paths refer only to the empty owned fixture HOME.
+No Hub or Node process, `tools/call`, Join, business operation or model turn is
+started. Inputs remain byte-identical and the exact owned container is absent.
+This does not exercise the actual Codex managed-MCP reconnection or Hook shell.
+
+Fixture evidence is under
+`/home/zyf/Cicada/.local/evidence/native-pair-acceptance/mcp-launcher-20261022-g1yddn68/`:
+
+| Artifact | SHA-256 |
+| --- | --- |
+| `result.json`, bounded result/cleanup/input identity | `08e0056b0d5c12014240d481b59e04bc620ee186a4f769d9485978c868f8a24d` |
+| `fixture-result.json`, exact negative and positive observations | `916673f1ea284c650dac75c516d778181835cc802d06dc65957e6940f70826ad` |
+| `fixture.py`, external stdlib orchestration | `1e0b78edc22ee4e61d9763d04f72f3d60aa8b1e7b75e3ac272e18938b1ba9003` |
+| `command.json`, exact Docker invocation; repeat only with a fresh owned HOME/state | `14a458110eda0b6522ba88bc60eaf21b5f80858357075cdecb0dd20fd7093ef4` |
+| Existing executed fcea942 CLI, before and after | `e5c36ff8be9031964fdb21cc9630d7aa9c0efe3069dc84c8ed9dc607b388c27f` |
+
+Applying the candidate to the user's environment is **NOT_RUN** at this
+checkpoint. Actual Codex reconnection and the user's `cicada help` confirmation
+of Hook lookup remain **NOT_RUN**. Context proofs, authorization, communication,
+Pair/cold recovery, native queue/model consumption and platform security are not
+validated by configuration initialization. No real daemon/configuration/state
+change or deployment is performed by QA; no installation helper is added to
+the repository.
+
+## 2026-10-22 persistent Codex daemon three-stage acceptance
+
+**SCOPED_PASS**, one required test event, 1/0/0. Reproduce with matching CLI
+notices and a fresh disposable fixture:
+
+```sh
+CICADA_NATIVE_PAIR_LICENSES_DIR=/home/zyf/Cicada/.local/artifacts/codex-startup-fix/licenses-x4gog722 scripts/test-native-pair.sh --codex-product-three-stage
+```
+
+Run `run-20261022T161017Z-aTS6FI/result.json` SHA-256
+`430144cd8930e31f2caa7b2308541ed8b3fee0042528373d92433401179b88c1`.
+Version, CLI/test compilation, harness and vet each exit 0; source and binaries
+remain identical before/after, and the exact owned container is absent. The
+source is `7bbcb84dfb59a7332b86c5c00b1b7515634f0361` plus dirty QA inputs,
+not a clean-build attribution. These three documentation updates are post-test.
+
+The actual Codex 0.163.0 managed daemon starts before component installation,
+with all five terminal Cicada deployment variables absent. A genuine native
+TUI initializes it before any observer; its PID/start time remain unchanged.
+The already installed same-ID plugin is updated only through normal marketplace
+remove/add and plugin add, then the new Hook receives normal TUI trust.
+**No `config/mcpServer/reload` or other manual reload is used.** The installed
+MCP/Hook assets select the absolute executable/root. Actual current MCP discovery
+has tools_count > 0 and no tools_error; literal register/peers execute through
+the real Hook/Node and the actual App signs the matching zero-right directory.
+The static provider sentinel receives zero POSTs; no real model is called.
+
+Installation preserves the existing owned root's 0755 mode, canary and original
+Node state. Node absence and explicit stop produce a visible NODE_NOT_RUNNING;
+the plugin does not start the Node. Only the driver's explicit operator action
+starts/restarts the original approved Node. Live discovery proves the same
+complete public connection pin after restart, with a newly verified instance,
+and the original native Thread resumes successfully. Resources, real crypto,
+TCP and persistent databases are confined to disposable network-none Docker;
+no real HOME, resident Node state or public deployment is touched.
+
+| Evidence | SHA-256 |
+| --- | --- |
+| Complete source input manifest | `a66606d5787e553b94d83d826a120fae4f4bd761bd6e2fa4d51f4a58d25c49a9` |
+| Identical before/after source JSON | `b885a31ad5ad7cc9a9336d4c17f1922b3c9ca755d18bc2d61b8f31e1c2641592` |
+| Executed CLI, 37,289,246 bytes | `0f6ea00dc1148a98393badc81c0758fb299f67bbfa1d4e8ed768edcdcc9e1d5c` |
+| Executed test, 23,070,152 bytes | `47ed934a2b602c91a31216f656b5decf7989f41de2195ef6beccfe091762f8af` |
+| Actual Codex binary, including its managed package copy | `399ff69c431c066e40de318fba45c2b07f45a76b19939d247ee4828fc70c4215` |
+| Private final child result | `7196160d1b86c987ed35adca1c3eebc1124bf73a9c9bf1f39df468c0e41785ac` |
+| Post-run current-viewport/trust/metadata check | `3d0037274a457ceab22ee24b157602733fc516b2d8b981f361464b0a5febe8bd` |
+| Separate attempt-receipt index; no aggregate across sources | `1ce8430aac0b5e2cf83727d565ec192575f0138202cab9e5dc1096cf1838e0d2` |
+
+The last two JSON files are separate post-run checks under this run's evidence
+directory. Complete read-only Codex package and CLI-license inventories are in
+the original result/source receipts. Earlier failures remain immutable. In
+particular, `ARHN1u` observes `(vscode, synthetic-three-stage)` after the QA
+observer initialized the daemon first; that is a fixture-origin fact. The
+separate genuine-TUI-first `I8KCar` observes `(vscode, codex-tui)` and is rejected
+by the old source whitelist: result SHA-256
+`96c4c563513c342c7774f358b34b1d6ceed1aefe172d95bfc23a73028700e2c3`,
+metadata-only check `e29e99280650325954d17f44dadf258485ce8495ceb5642c8cacae4d6e72826f`.
+That compatibility defect is fixed by the exact source/originator combination
+at `7bbcb84`; generic vscode and structured subagents remain refused, with
+record/UID/mode/inode/SID/cwd/context proof requirements unchanged.
+
+The initial idle TUI is visibly initialized, then boundedly terminated by the
+fixture with `test_initiated_termination: true`; graceful_TUI_exit is NOT_RUN.
+No unseen result is accepted. Pair/five-minute cold, multi-Node ambiguity,
+per-call ticket business dispatch, cross-pin cache/pending/outbox faults, real
+model/queue consumption, automatic wake, Windows DPAPI/ACL/GUI, Android and
+public HTTPS remain NOT_RUN in this scope. Earlier gates retain their own
+sources. The temporary launcher/helper remains unapplied; this acceptance does
+not install or alter anything in the user's real environment.

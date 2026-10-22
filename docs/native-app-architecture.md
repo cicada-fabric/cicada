@@ -82,6 +82,46 @@ keys stay in controlled local custody, never uploaded to Hub. If all copies of
 the sole Owner signing key are lost, recovery remains **NOT_IMPLEMENTED**;
 a new App/password cannot restore Root. See the [future acceptance targets](native-app-plan.md#composable-installation-and-shared-state-acceptance-target).
 
+## Three-stage installation and Node connection
+
+2026-10-22 user direction; **IN_PROGRESS**. The stages are download/install,
+explicitly start the Node daemon, then install/connect the Codex plugin to that
+running Node. The existing component file installer already leaves services,
+enrollment, grants and product state unchanged; the resident Node agent already
+exists. The work in progress supplies the formal local connection configuration
+and discovery needed between those components. It does not add another Node
+daemon, broaden C0 registration or implement a general installer/uninstaller.
+
+The file-only installer materializes the repository's single existing
+plugin asset set using the selected absolute executable and explicit
+`--user-root`. MCP and Hook consumers use the same selected-root
+resolver, without inheriting deployment choices from a terminal or shared Codex
+daemon environment. Plugin installation may make the MCP frontend available;
+neither installation nor that frontend starts the resident Node or registers
+an identity. Only the user's separate Node-start action starts that daemon.
+
+Discovery uses private locator hints under the selected root and a live
+description from the selected running Node, with same-UID checks and renewed
+verification of the configured identity/pins. A locator file or reachable local
+endpoint alone proves no authority. Missing/stale discovery, a stopped Node or
+ambiguous Node selection must report offline/unavailable or require explicit
+selection, without starting a Node, creating credentials, silently re-registering
+or choosing another Node/Hub. Reconnection retains the original selected root,
+state, identities and current authorization limits. Runtime-context proofs and
+Hub/Owner Guards remain separate requirements for business operations.
+
+Hub/Node owns discovery and its trust boundary; App owns file-install
+materialization and consumers. A [bounded actual Linux gate](native-app-validation.md#2026-10-22-persistent-codex-daemon-three-stage-acceptance)
+now passes installation/plugin update through the same existing Codex daemon,
+Node offline/start/stop/restart and original-pin recovery on the integrated
+source. Existing root mode 0755 and its canary remain unchanged. Rollout and
+remaining platform/adversarial observations are still IN_PROGRESS/NOT_RUN; see
+[three-stage acceptance conditions](native-app-plan.md#three-stage-installation-and-node-connection).
+The earlier startup failure and external launcher stdio check retain their
+[historical scope](native-app-validation.md#2026-10-22-installed-plugin-mcp-startup-failure-and-isolated-launcher-check).
+That temporary launcher has not been applied to the real environment and is
+not the implementation of this three-stage flow.
+
 ## Naming, Directory and native-context targets
 
 The 2026-10-20 feedback is tracked in the

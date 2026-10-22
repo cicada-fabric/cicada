@@ -56,6 +56,55 @@ and `CODEX_HOME`. Current priority is the consolidated product/security
 remediation below; the partial paths source has separate producer and affected
 integration receipts, not full installed-root or migration acceptance.
 
+## Three-stage installation and Node connection
+
+2026-10-22 user direction: **IN_PROGRESS**. The ordered flow is
+download/install → manually start Node daemon → install/connect the Codex plugin
+to that running Node. The existing `components install` is already file-only
+and the persistent Node agent already exists. Formal connection
+configuration/discovery and consumers are now implemented; the
+[bounded actual Linux gate](native-app-validation.md#2026-10-22-persistent-codex-daemon-three-stage-acceptance)
+passes on the integrated source. Rollout and broader acceptance remain in
+progress; no replacement installer or Node daemon is introduced.
+
+Hub/Node owns a private locator under the selected root, live Node description,
+same-UID checks and pin revalidation. App owns extending the file-only component
+installer to materialize the single existing plugin asset set with an absolute
+executable and explicit `--user-root`; MCP and Hook use one resolver rather
+than terminal deployment variables. Scope excludes C0 registration changes,
+general installer/uninstaller scripts, shared Codex-daemon environment repair
+and applying the earlier temporary user launcher. Concrete discovery fields,
+transport, commands and failure codes remain subject to interface review.
+
+The table retains the required observations. One source-bound Linux case now
+covers existing-root file installation, old-plugin update through a persistent
+environment-free Codex daemon, Node absence/start/stop/restart and original-pin
+recovery. Multi-Node ambiguity and unsafe-discovery adversaries remain **NOT_RUN**
+in this independent scope; producer checks and platform results stay separate.
+
+| Observation | Required evidence after the interfaces and code are frozen |
+| --- | --- |
+| Install without starting | In an isolated selected root, record installed executable/plugin assets and hashes plus the process/state inventory before and after file installation, preserving its existing 0755 mode and canary. No resident Node, service/autostart, identity registration or business grant is created by installing files. Existing state and unrelated components remain unchanged. |
+| Old shared daemon and old installed plugin | Start an owned Codex app-server before setup, with none of the five terminal Cicada deployment variables. Through the supported update path, update an already installed old copy of the same plugin and observe the intended current asset hashes and normal Hook trust. MCP and Hook resolve the same explicit executable/root without changing that daemon's environment, adding user-config Hook/MCP replacements or creating a duplicate plugin. Actual managed startup is required; direct stdio initialization alone cannot pass this row. |
+| Node absent | Install/connect the plugin while the selected Node is absent. Observe a clear offline/unavailable result; an MCP frontend or tool catalog is not Node liveness. No Node is spawned, no alternate hostname/Hub/root is guessed, no identity is registered and no cached authority is promoted to current. |
+| Explicit Node start | Start the intended existing Node only through the user's separate action. Match the live selected Node and original Hub/Owner pins through the reviewed discovery contract. MCP and Hook bind that same instance/root; connection does not itself Join a Thread, issue grants or replace keys. |
+| Stop and restart the original Node | Stop only the selected owned Node and observe loss of current availability without automatic restart. Restart it manually with the original state and verify the same identities/pins and permitted epochs; consumers reconnect to the original choice. Retain uncertain requests and their original recovery material. Missing, busy or corrupt state must not silently create a replacement identity. |
+| Ambiguous or unsafe discovery | Present multiple Nodes, stale hints or a same-label alternative and require explicit exact selection; a stopped/revoked selection cannot retarget another Node. Exercise the reviewed wrong-UID, substituted-instance and changed-pin refusals without inventing acceptance from a locator/socket alone. Exact errors and fixture inputs follow the delivered contract. |
+
+Execution will extend existing isolated process/TCP/persistent-state acceptance
+after Hub/App freeze the contract and implementation. Preserve the original
+Node/Hub/Owner IDs, keys, root/state, epochs and operation receipts; compare only
+qualified public identity and configuration observations, keeping secrets out of
+evidence. Use disposable resources and read-only dependency caches. Registration,
+context proof, current authorization, native consumption and platform security
+retain their own gates; connection/tool discovery grants none of them.
+
+The existing [startup diagnosis and external launcher check](native-app-validation.md#2026-10-22-installed-plugin-mcp-startup-failure-and-isolated-launcher-check)
+remain historical: user-reported zero tools, independently observed ENOENT and
+one direct-stdio candidate initialization PASS. The launcher/helper has not been
+applied, and actual managed reconnection/Hook lookup are NOT_RUN there. Neither
+that candidate nor earlier fcea942 Pair/cold evidence validates this new flow.
+
 ## Current feedback and acceptance ledger
 
 2026-10-20 consolidation on recording baseline
