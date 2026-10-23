@@ -60,13 +60,15 @@ type nativeDomainDaemon struct {
 }
 
 type nativeDomainCheckpoint struct {
-	Status       string              `json:"status"`
-	Daemon       nativeDomainDaemon  `json:"daemon"`
-	IDs          []string            `json:"native_session_ids"`
-	Actors       []nativeDomainActor `json:"actors"`
-	LiteralPosts int                 `json:"literal_provider_posts"`
-	Expired      bool                `json:"actual_wall_clock_expiry"`
-	Denied       bool                `json:"new_business_denied_after_current_revoke"`
+	Status          string              `json:"status"`
+	Daemon          nativeDomainDaemon  `json:"daemon"`
+	IDs             []string            `json:"native_session_ids"`
+	Actors          []nativeDomainActor `json:"actors"`
+	LiteralPosts    int                 `json:"literal_provider_posts"`
+	Expired         bool                `json:"actual_wall_clock_expiry"`
+	Denied          bool                `json:"new_business_denied_after_current_revoke"`
+	Directory       bool                `json:"directory_filters_verified"`
+	DirectoryDenied bool                `json:"directory_after_revoke_denied"`
 }
 
 func TestN3LocalDomainNativeOriginalDaemonAB(t *testing.T) {
@@ -218,7 +220,7 @@ func TestN3LocalDomainNativeOriginalDaemonAB(t *testing.T) {
 	closeLocalDomainApp(t, v)
 	send(2, map[string]any{"app_closed": true})
 	communicated := await(2)
-	if len(communicated.Actors) != 2 {
+	if len(communicated.Actors) != 2 || !communicated.Directory {
 		t.Fatal("actual A/B Host identity results missing")
 	}
 	checkActors := func(r nativeDomainCheckpoint, count int) {
@@ -286,7 +288,7 @@ func TestN3LocalDomainNativeOriginalDaemonAB(t *testing.T) {
 	}
 	send(4, map[string]any{"current_policy_state": wire.LocalDomainRevoked, "Hub_and_Node_healthy": true})
 	denied := await(4)
-	if !denied.Denied || !v.actualNode.running() || !v.f.hub.running() {
+	if !denied.Denied || !denied.DirectoryDenied || !v.actualNode.running() || !v.f.hub.running() {
 		t.Fatal("current native denial is not qualified by healthy original services")
 	}
 	select {
@@ -313,7 +315,8 @@ func TestN3LocalDomainNativeOriginalDaemonAB(t *testing.T) {
 			"host_provider_posts": final.HostPosts, "native_queue_provider_posts": final.QueuePosts,
 			"static_provider_posts": final.ProviderPosts, "real_model_turns_started": 0,
 			"Hub_and_Node_healthy_at_revoke": true, "authenticated_policy_state_after_revoke": revoked.State,
-			"new_business_denied_after_revoke": denied.Denied})
+			"new_business_denied_after_revoke": denied.Denied, "directory_filters_verified": communicated.Directory,
+			"directory_after_revoke_denied": denied.DirectoryDenied})
 	}
 	t.Logf("LOCAL_DOMAIN_NATIVE_MAIN original_0002_daemon=true no_record_chmod=true literal_AB_provider_posts=0 actual_named_ASK_Reply=true normal_App_Close_communication=true current_revoke_denied_healthy_Node_Hub=true actual_login_expiry_and_new_C=%t manual_Owner_public_pin=true real_model_and_real_model_automatic_wake_Windows=NOT_RUN", waitExpiry)
 }

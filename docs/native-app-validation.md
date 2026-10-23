@@ -5324,3 +5324,271 @@ wait retains automatic report refresh and does not isolate report expiry.
 Real model, queued-input model consumption and real-model automatic wake,
 Windows DPAPI/ACL/physical GUI, Android and public HTTPS remain **NOT_RUN**.
 Linux vault and cross-build evidence do not execute Windows requirements.
+
+## 2026-10-23 actual-model directory-filter failure
+
+**USER_REPORTED_FAIL**: native A Join succeeded, then the actual model's first
+`cicada_resolve` with `query` and target `workspace` was refused with
+`CODEX_TOOL_ARGUMENTS_INVALID`. Root's read-only extraction from the actual
+native record retained only redacted call/diagnostic facts:
+`/home/zyf/Cicada/.local/evidence/local-domain-root/directory-filter-incident-20261023-od8zj2jr/incident.json`,
+SHA-256 `1323abd86ec5daa6000ef823ef0b1402249ed73ce2830e13f3c075f48e5388e9`.
+No raw transcript or connection nonce was copied, and resident state was not
+changed. The declared resolve schema accepts a target workspace, while the
+shared validator rejects that key as a caller identity claim before ticket
+issuance. This is not attributed to strict-schema forced nulls: the actual
+0.163 consumer advertises `strict:false`.
+
+The earlier `88ff963` static-provider PASS and seven failed predecessors retain
+their original source and scope. Its `members({})` path did not cover this real
+model-selected resolve/filter shape. Independent disposable old-code RED and new-code GREEN are recorded below;
+no real-model conversation pass is claimed.
+The user now requests complete removal of the old installation followed by a
+fresh install. A repair ZIP or reuse of an old trust pin does not qualify that
+flow. Manual independent Owner public-key transfer remains an explicit step
+until automatic FB-03 delivery is implemented and independently accepted.
+
+### Independent directory-filter RED/GREEN
+
+The same four QA driver files ran against old and corrected production code,
+with `CICADA_NATIVE_PAIR_DOMAIN_WAIT_LOGIN_EXPIRY=0`. These are actual original
+Codex 0.163 daemon/installed Hook/MCP/Node, App-owner approval, real cryptography,
+TCP and persistent-store tests in owned disposable Docker, using a static
+provider. They do not use the user's Thread, Hub, credentials or deployment.
+Manual independent Owner public pin remains an explicit prerequisite. Each run
+starts new synthetic identities; this does not establish complete fresh install.
+
+| Observation | Required and observed result |
+| --- | --- |
+| Original failure shape | A resolves the real B by human name and target workspace; B Endpoint/name/workspace/Node must match the actual B WhoAmI, while identity comes from A's current Hook/ticket. |
+| Five directory tools | find/resolve/inspect with exact Node/workspace and members/list with exact Node/harness/limit succeed. Omitted, empty and whitespace string filters retain their existing meaning. |
+| Result narrowing | Wrong target workspace or Node returns 404 without B's card; this is a filter check, not a claim of a separate foreign-Owner authorization run. |
+| Caller and unknown fields | native_session_id and an unknown field each reject null, empty string and a supplied value with CODEX_TOOL_ARGUMENTS_INVALID. |
+| Optional filter types | workspace and node_id each reject explicit null, bool, number, array and object. No generic null stripping or caller-identity fallback is permitted. |
+| Original caller and Guard | A WhoAmI remains exactly its original SID/cwd/Node/Endpoint/Group/epoch after all probes. Existing App-close ASK/Reply still passes. After authenticated same-policy revoke with healthy Hub/Node, new ASK and the same valid resolve filters refuse. |
+
+Old-code **RED** is `run-20261023T035230Z-ZRfZNw`, **FAIL**, exit **1**, 0/1/0,
+on dirty `cd9a396` plus six QA/doc files and three pre-existing ignored generated
+build inputs. It stops at `HOST_APP_CLOSED/A_RESOLVE`, assertion
+`ACTUAL_DIRECTORY_RESULT_MISMATCH`, with safe product code
+`CODEX_TOOL_ARGUMENTS_INVALID`. Literal POSTs are 0, Host POSTs 6 and queue POSTs
+0. Version, CLI/test compilation and vet exit 0; harness exits 1. This is the
+required reproduced failure, not a successful regression gate.
+The earlier `run-20261023T035056Z-LPSViy` stopped in source-freeze preflight
+because an inherited inventory omitted those three generated assets. No product
+test ran there. It is retained as a fixture-preflight failure; input validation
+was not relaxed and no generated file was deleted to force the gate through.
+
+Corrected-code **GREEN** is `run-20261023T040143Z-QBj6Y7`, **SCOPED_PASS**, exit
+**0**, 1/0/0, on dirty `e902a8368a9beb0cdc99fd329168d5de45abfd13` plus the same
+four QA driver bytes, its six-file QA/doc overlay and the same three ignored
+assets. The actual test ran `04:02:01Z`–`04:05:55Z`, 234.66 seconds. All version,
+CLI/test compilation, harness and vet stages exit 0. The four driver hashes and
+ignored-asset hashes are identical between RED and GREEN; only producer code
+and explicitly recorded later documentation differ. There are 36 completed
+Host calls (START_OR_STEER), 72 Host POSTs, 2 actual queue static POSTs, total 74,
+zero literal POSTs and zero real-model turns. Login-expiry/new-C is explicitly
+NOT_RUN in this short gate; the prior clean-88ff expiry result is unchanged.
+
+| Artifact | SHA-256 |
+| --- | --- |
+| RED `result.json` | `1991f26bb347c6012f939c528174bdd09673e96d6db52fce4c81a1cd570d4c5f` |
+| RED freeze, 2469 inputs | `8398f371a905d8201380886ea4fed960297e6512a58d8056b6bb138752007649` |
+| RED source-before/source-after | `1b276b9acd35bdc03fa06e18a96d154acf7358d5a701589075dc85f426276224` |
+| RED full manifest | `bb6f03e79ecf3bc9d1785a2fd80078881e1eeaf94c9d0a5825ac4ba792f00599` |
+| GREEN `result.json` | `c3d3243e15fc96b79d84c2565cabcb95d36a9ffd723782dba442843e8b2b0936` |
+| GREEN freeze, 2471 inputs | `e78211c2bbcf03bf47390fc4435453afecd6fcfd257b1b596cf0433c74af3193` |
+| GREEN source-before/source-after | `ac97d31cce7569b2802ce5adb1e1f61cb6521fd7514e829d4c714707d2a8ccbe` |
+| GREEN full manifest | `36741cc1523d6791917f83538e16024386334d8bf71ac84a971128c3ff9c68e0` |
+| RED CLI, 38,144,036 bytes | `0a2f344714b9f68f851619e3e333a582e2926d045dba04a5b4cbe600071dc0fa` |
+| GREEN CLI, 38,141,735 bytes | `a27680e9d212e224e49d0fd6fd0475a6625ea4d944755712470c467288ca2834` |
+| Both actual test binaries, 23,569,679 bytes | `3ba5e312740f023c2069a54097477a8476c604a5eb19649084dd7f3a0a81f82b` |
+
+Run paths are under `/home/zyf/Cicada/.local/evidence/native-pair-acceptance/`,
+with binaries in matching `.local/artifacts/native-pair-acceptance/` run paths.
+The GREEN freeze is
+`directory-filter-green-freeze-20261023-_qm15bua/product-freeze.json` in that
+evidence root; the RED freeze is `directory-filter-red-freeze-20261023-59ddpo7n/product-freeze.json`.
+Both source and actual binaries remain stable during their run, owned containers
+are absent and the task cache lock is released. Independent rehash of the GREEN
+evidence/binaries and unchanged RED/GREEN driver inputs is recorded at
+`directory-filter-red-green-verification-20261023-0cwgo8w2/result.json`, SHA-256
+`177ce2fce023a391225b7b1fad7c506ffec54fd4c2065102debfbcc1a74dbc39`.
+Root independently rehashed all 20 evidence files and both actual binaries and
+checked exact container absence: `/home/zyf/Cicada/.local/evidence/local-domain-root/directory-filter-native-green-root-review-20261023.json`,
+SHA-256 `3010d298c16fae064f75f5ae417a86c7abf45df022878e6d747920a23baa9243`.
+
+Reproduction uses the exact recorded source/QA bytes and complete matching
+freeze, with no repeated 15-minute wait:
+
+```sh
+CICADA_NATIVE_PAIR_LICENSES_DIR=/home/zyf/Cicada/.local/artifacts/codex-startup-fix/licenses-x4gog722 \
+CICADA_NATIVE_PAIR_DOMAIN_WAIT_LOGIN_EXPIRY=0 \
+CICADA_NATIVE_PAIR_PRODUCT_FREEZE=/home/zyf/Cicada/.local/evidence/native-pair-acceptance/directory-filter-green-freeze-20261023-_qm15bua/product-freeze.json \
+scripts/test-native-pair.sh --codex-product-domain-native
+```
+
+The separately built complete package is clean e902. QA's three ignored embedded
+assets are present in its exact build inventory, while they are absent from the
+clean package build. Do not claim binary/input identity or relabel this dirty
+GREEN as the package executable. Root's clean-e902 default disposable Client/Hub
+interop is a separate PASS/0 with cleanup CONFIRMED, receipt
+`/home/zyf/Cicada/.local/evidence/local-domain-root/directory-filter-interop-20261023-yenXDfQN/result.json`,
+SHA-256 `7ed52b85f8c58a2d9abf96e49bd9cf63a3d3f1684dd6f8e3c762f02224d54b29`.
+Its source input fingerprint matches the clean delivery build; its test binary
+is still separate. Producer's normal 58/race 27/vet 0 result keeps its own
+[contract/producer evidence](native-endpoint-directory-validation.md).
+
+### Complete removal and fresh-install manual acceptance
+
+Status: **NOT_RUN** for complete removal/reinstallation, physical Windows
+DPAPI/ACL/GUI and public HTTPS. This is the requested operator procedure for a
+complete new installation, not a repair-package procedure. No removal or real
+deployment action was performed by the independent QA gate. Use the final
+reviewed complete package and its own SHA-256 manifest; its clean source and
+actual-model results must be recorded separately from the earlier static gate.
+
+1. Stop the actual old Cicada writers before removing files. Close the native
+   App; stop/disable the installed Node user unit (`cicada-node.service` when
+   that is the actual registered unit), old Hub service/container and any old
+   Worker/service registration. Record their exact executable, StateDir and
+   registration paths. Remove those specific registrations and stale autostart
+   entries so an old process cannot recreate deleted state. Do not stop an
+   unrelated service or prune Docker globally. In Codex, remove the installed
+   Cicada plugin and its old marketplace registration through the supported
+   plugin CLI/UI; remove only obsolete Cicada MCP/Hook entries from any earlier
+   manual configuration. Keep the original Codex installation/account and
+   history under `.codex`, all Git worktrees and `~/Cicada/.local` evidence.
+2. Before deleting a Cicada user root containing `acceptance`, move only the
+   reviewed non-sensitive receipts/logs/hashes out to an evidence directory
+   outside that root. Do not copy or back up real private keys, vaults, tokens,
+   activation material or outboxes: the user selected deletion of the old
+   identities. Delete the actual old installed binaries and known component
+   configuration/state/cache, Hub database and transport keys, Node private
+   state/MCP cache/outbox/pins, and App vaults. Scope removal to the recorded
+   installation roots; never recursively remove `~/Cicada` or `.codex`.
+   On Windows, clear the old selected install/user root and known Cicada vault
+   fallback locations, including `%LOCALAPPDATA%\CICADA\vaults` (and its nested
+   `CICADA\vaults` layout) and `%USERPROFILE%\.cicada\app\vaults`, plus any
+   previously selected custom root. Otherwise a new App can discover an old
+   profile even when its new primary root is empty. On Linux, clear the actual
+   old installed Node/Hub StateDirs; if the historical `~/Cicada/node` layout was
+   used, remove that installed component/state only, preserving repositories and
+   `.local`. Remove obsolete Cicada deployment/root environment overrides and
+   stale service command lines rather than reusing them for the new install.
+   Record absent processes, registrations, old vaults and old state paths.
+3. Verify/extract the complete package and follow its component-install commands
+   into the selected empty roots. Hub files/state belong under `/opt/cicada`;
+   Node user files belong under `~/.cicada`; Windows program and user files use
+   `F:\DOWNLOAD\Cicada-N2`. Installation is file-only: it must not silently start
+   a Node, recover old identities or grant business rights. Resolve the package's
+   actual executable/notices/plugin-asset paths from its manifest; do not substitute
+   a cached repair binary. For the following commands, `HUB_CLI` and `NODE_CLI`
+   denote the verified newly installed executables, `HUB_ORIGIN` the selected
+   trusted HTTPS origin, and the other uppercase placeholders the newly reviewed
+   public values. No old IDs, pins or credential files are input.
+4. With the new Hub stopped, initialize its empty persistent state and issue a
+   fresh finite initial activation code locally:
+
+   ```sh
+   "$HUB_CLI" hub setup --owner-label 'New installation Owner' \
+     --origin "$HUB_ORIGIN" --state-dir /opt/cicada/state \
+     --public-config /opt/cicada/public/hub-connection.json
+   "$HUB_CLI" hub activation-issue --purpose initial \
+     --state-dir /opt/cicada/state --code-file /opt/cicada/private/initial-activation.txt
+   "$HUB_CLI" serve --hub-nodes-only --state-dir /opt/cicada/state \
+     --host 127.0.0.1 --port 8787
+   ```
+
+   The chosen private/public parent directories must already exist with suitable
+   ownership. Use the same exact state path for setup, issuance and service.
+   The deployment operator supplies trusted HTTPS routing to this listener;
+   these commands do not configure DNS/TLS or validate public HTTPS. Privately
+   transfer the one-use activation material, without copying it into evidence.
+   Do not use legacy adoption, an old pending Owner or an imported old vault.
+5. Launch the new Windows App explicitly with the selected root, using the
+   actual verified executable path in the complete package:
+
+   ```powershell
+   & '<new-package-App-executable>' --user-root 'F:\DOWNLOAD\Cicada-N2'
+   ```
+
+   Expect initial setup, not an old profile/connection. Connect with the new
+   activation material; compare the exact origin/full Hub fingerprint with the
+   operator's independent public metadata. Generate a new Owner in the App,
+   approve the finite App device authority and create the new account credential.
+   Complete separate ordinary login: login itself does not activate Root or
+   create Node/Network business authority. Record Windows DPAPI, vault ACL and
+   GUI behavior individually when actually executed, without publishing secrets.
+6. Manually start one new Node as the intended OS user. Use explicit installed
+   root and private state paths, rather than relying on the older implicit
+   `<root>/state` default. `CODEX_BINARY` is the real complete-package/native
+   Codex executable and its `CODEX_HOME` remains the intended native account:
+
+   ```sh
+   CICADA_CODEX_BIN="$CODEX_BINARY" "$NODE_CLI" machine agent --relay-only \
+     --id "$NEW_NODE_ID" --name 'New local Node' --control-url "$HUB_ORIGIN" \
+     --user-root "$HOME/.cicada" --state-dir "$HOME/.cicada/node/state" \
+     --mcp-session-state-file "$HOME/.cicada/mcp/sessions.json" \
+     --mcp-outbox-state-file "$HOME/.cicada/mcp/outbox.sqlite3"
+   ```
+
+   Review the actual new Node code/candidate in the new App, including Hub/Node
+   fingerprints and scope, then explicitly approve it. No copied old Node
+   binding or trust state qualifies. Service installation is optional after
+   foreground approval and must preserve these exact flags/paths; no second
+   writer may run against them.
+7. **Manual independent Owner public pin remains required.** Export the new
+   Owner public identity through the actual App. Privately transfer only that
+   public file, independently compare its full key ID/fingerprint with the App,
+   stop the Node, and use its existing command:
+
+   ```sh
+   "$NODE_CLI" machine trust-owner-key --id "$NEW_NODE_ID" \
+     --state-dir "$HOME/.cicada/node/state" --writer-root "$HOME/.cicada/node/state" \
+     --owner-id "$NEW_OWNER_ID" --public "$NEW_OWNER_PUBLIC_FILE" \
+     --expect-key-id "$NEW_OWNER_KEY_ID" --expect-fingerprint "$NEW_OWNER_FINGERPRINT"
+   ```
+
+   Restart the same Node with the same explicit paths. The file is public;
+   private Owner keys remain in the new App vault. Automatic FB-03 trust delivery
+   is **NOT_IMPLEMENTED / NOT_RUN**; this manual step cannot be omitted or called
+   one-click fresh setup. Approve one explicit Node/user/Network local policy in
+   the App; Node registration alone is not a grant to every Network.
+8. Install/connect only the newly installed plugin asset set to that running
+   selected Node, using the full package's existing marketplace/plugin commands
+   and normal Hook trust controls. Keep one Cicada plugin/MCP/Hook registration;
+   do not replace them with user-config shims or rewrite the shared daemon's
+   deployment environment. Open genuinely new A/B native Threads/workspaces;
+   literal Join must retain each actual SID/cwd/name. Query B by its human name
+   and actual target workspace, then complete ASK/Reply in both directions and
+   check the original caller identity. A wrong target filter must not return B;
+   forged caller fields must refuse. Close the App and verify permitted work,
+   then explicitly revoke the same policy and require new discovery/business
+   calls to deny with Node/Hub still healthy. Record actual-model conversation
+   outcomes separately; synthetic static-provider GREEN is not that result.
+
+The current disposable fixture starts each Hub database/identity, App vault,
+Node state, owned HOME and CODEX_HOME under a new task temporary directory. Its
+Owner pin is generated from that run's actual App export, not borrowed from an
+old installation. However, identity/Node approval and manual pinning precede its
+selected-root Node-only component install and old-plugin update. It does not
+execute the complete sequence above, default-path installation, service removal,
+Windows fallback-vault removal or physical GUI. Those fresh-install/platform
+scopes remain **NOT_RUN** until the operator supplies their own receipts.
+
+Root executed a narrower disposable Linux fresh-component slice using the
+actual clean-e902 delivery CLI (`3d2e84fde76962ae3e2c7c2e8102ff4526071169a9ee3cd3c7524b0a0c8576f9`):
+file-only Hub/Node install; installed Hub setup and private initial-code file;
+manual Hub-only-nodes startup/health; component removal retaining existing state;
+then explicit deletion of only its owned fixture root and a second install/setup
+with all three Hub identities changed. Owned keys/processes were removed.
+Receipt `/home/zyf/Cicada/.local/evidence/local-domain-root/clean-e902-component-corrected-qefal3x4/result.json`,
+SHA-256 `b65d735465643ad570c4ca788a3593e22c634127ae2bd6ecfccf786806f0830c`,
+status PASS. The preceding `clean-e902-component-root-dayf9poj/result.json`
+remains a failed operator-command attempt: the test passed an unsupported
+workspace-root flag to serve, which correctly refused it. The corrected procedure
+passes workspace selection only where supported; no production flag was relaxed.
+This component/Hub-local slice does not execute Node enrollment, the complete
+user removal/new-install sequence, Windows or public HTTPS. Their NOT_RUN labels
+above remain in force.

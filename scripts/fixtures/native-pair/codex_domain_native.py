@@ -28,7 +28,8 @@ NATIVE_PHASES = frozenset(('SETUP', 'ORIGINAL_DAEMON', 'WAIT_OWNER_POLICY', 'PLU
                           'HOST_AFTER_REVOKE', 'CLEANUP'))
 NATIVE_TOOL_LABELS = {'cicada_whoami': 'WHOAMI', 'cicada_members': 'PEERS', 'cicada_ask': 'ASK',
                       'cicada_receive': 'RECEIVE', 'cicada_reply': 'REPLY',
-                      'cicada_operation_status': 'OPERATION_STATUS'}
+                      'cicada_operation_status': 'OPERATION_STATUS', 'cicada_resolve': 'RESOLVE',
+                      'cicada_find': 'FIND', 'cicada_inspect': 'INSPECT', 'cicada_list': 'LIST'}
 NATIVE_LABELS = frozenset(('NONE', 'DAEMON_START', 'TUI_INITIALIZE', 'HOST_CONNECT',
                           'MARKETPLACE_REMOVE', 'MARKETPLACE_ADD', 'PLUGIN_ADD', 'PLUGIN_INVENTORY', 'DAEMON_STOP')) | frozenset(
     actor + '_' + action for actor in 'ABC'
@@ -53,6 +54,9 @@ NATIVE_ASSERTION_CODES |= frozenset((
     'ACTUAL_DAEMON_RPC_REFUSED_thread/read', 'ACTUAL_HOST_THREAD_NOT_IDLE', 'ACTUAL_HOST_THREAD_STATUS_INVALID',
     'ACTUAL_PROVIDER_REQUEST_UNCLASSIFIED', 'ACTUAL_HOST_TURN_CORRELATION_FAILED',
     'ACTUAL_QUEUE_EXPECTATION_INVALID', 'ACTUAL_QUEUE_REQUEST_CORRELATION_FAILED',
+    'ACTUAL_DIRECTORY_RESULT_MISMATCH', 'ACTUAL_DIRECTORY_REFUSAL_MISSING',
+    'ACTUAL_DIRECTORY_REFUSAL_LEAKED_TARGET', 'ACTUAL_DIRECTORY_CALLER_CHANGED',
+    'ACTUAL_DIRECTORY_REVOKE_NOT_ENFORCED',
     'OWNED_PUBLIC_SUMMARY_PATH_REQUIRED', 'OWNED_PUBLIC_SUMMARY_SYMLINK_REFUSED',
     'ORIGINAL_0002_DAEMON_CHANGED', 'LITERAL_REACHED_PROVIDER', 'ACTUAL_ASK_REQUEST_ID_AMBIGUOUS',
     'ACTUAL_HOST_BINDING_EPOCH_MISSING_OR_AMBIGUOUS', 'ACTUAL_HOST_NATIVE_IDENTITY_CHANGED',
@@ -197,6 +201,9 @@ def run(config):
         raise RuntimeError('NATIVE_DOMAIN_PARENT_CHECKPOINT_TIMEOUT')
 
     def call(index, label, tool, arguments):
+        return require_successful_output(raw_call(index, label, tool, arguments))
+
+    def raw_call(index, label, tool, arguments):
         action = NATIVE_TOOL_LABELS[tool]
         if tool == 'cicada_receive':
             action = 'RECEIVE_QUESTION' if '-receive-question-' in label else 'RECEIVE_ANSWER'
@@ -204,7 +211,7 @@ def run(config):
         cli.workspace = workspaces[index]
         output, summary = cli.host_call(provider, ids[index], label, tool, arguments)
         summaries.append(summary)
-        return require_successful_output(output)
+        return output
 
     def request_id(index, output, prefix):
         values = {row['request_id'] for row in output_objects(output) if isinstance(row.get('request_id'), str) and row['request_id']}
@@ -270,6 +277,42 @@ def run(config):
         assert actual['node_id'] == expected['node_id'] and actual['group_id'] == expected['group_id'], 'ACTUAL_HOST_OWNER_POLICY_SCOPE_CHANGED'
         return actual
 
+    def directory_filters():
+        target = actors[1]
+        def resolved(tool, label, arguments):
+            output = call(0, label, tool, arguments)
+            rows = list(output_objects(output))
+            assert any(row.get('endpoint_id') == target['endpoint_id'] and row.get('name') == names[1] and
+                       row.get('workspace') == target['workspace'] and row.get('node_id') == target['node_id']
+                       for row in rows), 'ACTUAL_DIRECTORY_RESULT_MISMATCH'
+
+        # Reproduce the real model-selected business argument shape. Identity
+        # still comes from the actual A Hook/ticket, not B's target filter.
+        resolved('cicada_resolve', 'directory-original-workspace', {'query': names[1], 'workspace': target['workspace']})
+        for tool in ('cicada_find', 'cicada_resolve', 'cicada_inspect'):
+            resolved(tool, 'directory-filter-' + tool, {'query': names[1], 'workspace': target['workspace'], 'node_id': target['node_id']})
+        for index, value in enumerate(('', '  ')):
+            resolved('cicada_resolve', 'directory-empty-filters-' + str(index), {'query': names[1], 'workspace': value, 'node_id': value})
+        for tool in ('cicada_members', 'cicada_list'):
+            resolved(tool, 'directory-list-' + tool, {'node_id': target['node_id'], 'harness': 'codex', 'limit': 16})
+
+        def refused(label, arguments, pattern):
+            output = raw_call(0, label, 'cicada_resolve', arguments)
+            assert re.search(pattern, json.dumps(output)), 'ACTUAL_DIRECTORY_REFUSAL_MISSING'
+            assert not any(row.get('endpoint_id') == target['endpoint_id'] for row in output_objects(output)), 'ACTUAL_DIRECTORY_REFUSAL_LEAKED_TARGET'
+
+        refused('directory-wrong-workspace', {'query': names[1], 'workspace': str(workspaces[0])}, r'Cicada Hub 404\b')
+        refused('directory-wrong-node', {'query': names[1], 'node_id': 'synthetic-absent-node-' + provider.scope}, r'Cicada Hub 404\b')
+        for key in ('native_session_id', 'synthetic_unknown_argument'):
+            for index, value in enumerate((None, '', 'synthetic-untrusted-value')):
+                refused('directory-invalid-' + key + '-' + str(index), {'query': names[1], key: value}, r'CODEX_TOOL_ARGUMENTS_INVALID\b')
+        for key in ('workspace', 'node_id'):
+            for index, value in enumerate((None, False, 17, [], {})):
+                refused('directory-invalid-type-' + key + '-' + str(index), {'query': names[1], key: value}, r'CODEX_TOOL_ARGUMENTS_INVALID\b')
+        actual = whoami(0, expected, 'directory-original-caller-after-filters')
+        assert actual == actors[0], 'ACTUAL_DIRECTORY_CALLER_CHANGED'
+        return True
+
     try:
         configuration = cli.codex_home / 'config.toml'
         assert not configuration.exists()
@@ -290,7 +333,7 @@ enabled = false
 '''.replace('BASE_URL', json.dumps(provider.origin))
         for path in workspaces:
             text += '\n[projects.' + json.dumps(str(path)) + ']\ntrust_level = "trusted"\n'
-        for tool in ('cicada_whoami', 'cicada_members', 'cicada_ask', 'cicada_receive', 'cicada_reply', 'cicada_operation_status'):
+        for tool in NATIVE_TOOL_LABELS:
             text += '\n[plugins."cicada@cicada-repo".mcp_servers.cicada.tools.' + tool + ']\napproval_mode = "approve"\n'
         configuration.write_text(text)
         cli.workspace = workspaces[0]
@@ -341,10 +384,12 @@ enabled = false
         await_command(2)  # The actual App has completed normal Controller.Close.
         actors = [whoami(index, expected, 'initial-whoami-' + 'ab'[index]) for index in range(2)]
         assert actors[0]['endpoint_id'] != actors[1]['endpoint_id']
+        filters_verified = directory_filters()
         peers = call(0, 'initial-peers-a', 'cicada_members', {})
         assert names[1] in json.dumps(peers) and actors[1]['endpoint_id'] in json.dumps(peers), 'ACTUAL_NAMED_PEER_NOT_VISIBLE'
         first = roundtrip('app-closed')
-        checkpoint(2, {'actors': actors, 'roundtrip': first, 'actual_Host_MCP': True, 'App_closed': True})
+        checkpoint(2, {'actors': actors, 'roundtrip': first, 'actual_Host_MCP': True, 'App_closed': True,
+                       'directory_filters_verified': filters_verified})
 
         locate('WAIT_LOGIN_EXPIRY')
         timer = await_command(3)
@@ -389,7 +434,12 @@ enabled = false
         denial = json.dumps(denied)
         assert ('CODEX_NODE_TICKET_UNAVAILABLE' in denial or re.search(r'Cicada Hub (?:401|403)', denial)), 'CURRENT_DOMAIN_REVOKE_NOT_ENFORCED'
         assert not any(row.get('request_id') for row in output_objects(denied)), 'REVOKED_NEW_ASK_CREATED_REQUEST'
-        checkpoint(4, {'new_business_denied_after_current_revoke': True, 'native_session_ids': ids})
+        refused = raw_call(0, 'directory-after-current-policy-revoke', 'cicada_resolve',
+                           {'query': names[1], 'workspace': actors[1]['workspace'], 'node_id': actors[1]['node_id']})
+        assert ('CODEX_NODE_TICKET_UNAVAILABLE' in json.dumps(refused) or re.search(r'Cicada Hub (?:401|403)', json.dumps(refused))), 'ACTUAL_DIRECTORY_REVOKE_NOT_ENFORCED'
+        assert not any(row.get('endpoint_id') == actors[1]['endpoint_id'] for row in output_objects(refused)), 'ACTUAL_DIRECTORY_REFUSAL_LEAKED_TARGET'
+        checkpoint(4, {'new_business_denied_after_current_revoke': True, 'native_session_ids': ids,
+                       'directory_after_revoke_denied': True})
         reply.update(status='SCOPED_PASS', daemon=cli.original_daemon, native_session_ids=ids,
                      native_metadata=metadata, literal_provider_posts=0, actual_wall_clock_login_expiry=waited,
                      host_calls_completed=len(summaries), host_submission_mode='START_OR_STEER',

@@ -234,6 +234,8 @@ def finish(run, artifacts, image, owned, mode='protocol'):
                         and native.get('Hub_and_Node_healthy_at_revoke') is True
                         and native.get('authenticated_policy_state_after_revoke') == 'REVOKED'
                         and native.get('new_business_denied_after_revoke') is True
+                        and native.get('directory_filters_verified') is True
+                        and native.get('directory_after_revoke_denied') is True
                         and type(daemon.get('pid')) is int and daemon['pid'] > 0
                         and bool(daemon.get('start_ticks')) and daemon.get('umask') == '0002'
                         and daemon.get('five_deployment_variables_absent') is True

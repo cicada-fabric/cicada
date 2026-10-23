@@ -137,7 +137,7 @@ def host_output_diagnostic(value, issues=(), observed=True):
                        for name in HOST_PUBLIC_FIELDS},
             'product_error_codes': sorted(code for code in HOST_PRODUCT_ERROR_CODES
                                           if re.search(r'(?<![A-Z0-9_])' + code + r'(?![A-Z0-9_])', text)),
-            'hub_http_statuses': sorted({int(code) for code in re.findall(r'Cicada Hub (401|403|409|410|429|500|503)\b', text)}),
+            'hub_http_statuses': sorted({int(code) for code in re.findall(r'Cicada Hub (401|403|404|409|410|429|500|503)\b', text)}),
             'provider_issues': sorted({code if code in HOST_PROVIDER_ISSUES else 'UNCLASSIFIED' for code in issues})}
 
 
