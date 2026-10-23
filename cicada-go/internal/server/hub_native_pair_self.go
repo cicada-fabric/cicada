@@ -9,7 +9,7 @@ import (
 
 func (h *hubNodesHandler) nativePairSelf(w http.ResponseWriter, r *http.Request) {
 	want := http.MethodGet
-	if r.URL.Path == "/v2/fabric/endpoint-keys" || r.URL.Path == "/v2/fabric/heartbeat" || r.URL.Path == "/v2/fabric/resolve" {
+	if r.URL.Path == "/v2/fabric/endpoint-keys" || r.URL.Path == "/v2/fabric/heartbeat" || r.URL.Path == "/v2/fabric/resolve" || r.URL.Path == "/v2/fabric/find" || r.URL.Path == "/v2/fabric/inspect" {
 		want = http.MethodPost
 	}
 	if r.Method != want {
@@ -35,7 +35,7 @@ func (h *hubNodesHandler) nativePairSelf(w http.ResponseWriter, r *http.Request)
 		writeJSON(w, http.StatusOK, map[string]any{"endpoints": cards})
 		return
 	}
-	if r.URL.Path == "/v2/fabric/resolve" {
+	if r.URL.Path == "/v2/fabric/resolve" || r.URL.Path == "/v2/fabric/find" || r.URL.Path == "/v2/fabric/inspect" {
 		var input fabric.ResolveInput
 		if decodeStrictClientJSON(r.Body, 4096, &input) != nil {
 			writeError(w, http.StatusBadRequest, errors.New("invalid peer query"))

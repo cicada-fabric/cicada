@@ -187,6 +187,26 @@ filters cannot resolve a foreign Endpoint. Same-Owner resolution applies both
 Node and workspace constraints, including direct-ID and Pair paths. Authorized
 duplicate names still yield `AMBIGUOUS`; no partial or first-row result is chosen.
 
+The five existing MCP directory tools accept only their advertised query fields:
+`cicada_members` has `status,node_id,harness,limit`; `cicada_list` additionally
+has the existing `machine_id` compatibility filter; `cicada_find`,
+`cicada_resolve` and `cicada_inspect` have `query,node_id,workspace`. These are
+target filters within the authenticated caller's current Group, never caller
+identity claims. String properties retain their original values, including
+empty strings, in the Hook argument digest and consumed MCP call; the existing
+business handler still trims query/filter text. `limit` must be an integer.
+Null and wrong property types refuse. Unknown properties and caller identity or
+credential fields refuse even when null or empty. Other MCP tools retain their
+existing identity-field prohibition; no generic identity exception is added.
+
+Hub Nodes mode also serves the existing exact POST aliases
+`/v2/fabric/find` and `/v2/fabric/inspect` alongside `/v2/fabric/resolve` through
+the same Group session authentication, native-collaboration self guard, bounded
+ResolveInput decoder, `Fabric.Resolve` authorization and privacy projection.
+MCP retains each original HTTP alias. The two GET list aliases retain their
+existing implementation. Incorrect methods and extra path segments refuse;
+there is no general Fabric prefix, new permission, DTO or wire-version change.
+
 ## Validation boundary
 
 Implementation and exact source/artifact evidence belong in

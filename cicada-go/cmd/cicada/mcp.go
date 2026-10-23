@@ -720,6 +720,9 @@ func (m *mcpServer) callToolWithContext(name string, arguments map[string]any) (
 }
 
 func validateMCPArguments(name string, arguments map[string]any) error {
+	if directory, err := validateMCPDirectoryArguments(name, arguments); directory {
+		return err
+	}
 	if err := validateTaskPrivacyMCPArguments(name, arguments); err != nil {
 		return err
 	}

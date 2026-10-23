@@ -663,3 +663,85 @@ request ID without the required timestamp binding. Reusing the existing proper
 synthetic request constructor fixed the fixture; no production guard was relaxed.
 Actual App/Node domain communication, permission-mode diagnostics, external
 interop, other-UID domain signing, Windows/Android and public HTTPS are NOT_RUN.
+
+## 2026-10-23 MCP directory target filters and Hub Nodes lookup aliases
+
+The user reported a successful literal A Join followed by
+`CODEX_TOOL_ARGUMENTS_INVALID` while resolving the target UX-B.
+The sanitized invocation contained the advertised `query` and string
+`workspace`, plus the existing connection-nonce context. No real native record,
+conversation body, nonce, credential or full failure payload was read by this
+producer. The fixed-stage refusal happened before Node ticket issuance:
+`cicada_resolve` advertised `workspace`, but the common argument guard treated
+that target filter as a forbidden caller identity field. The same conflict
+affected the declared Node/harness filters of the five directory tools.
+
+The fix closes validation over the exact existing per-tool properties, allowing
+only declared target filters with their declared types. String values, including
+empty strings, are retained without stripping or rewriting in the Hook/MCP
+argument digest. Null and other wrong types refuse; `limit` uses the existing
+strict integer parser. Unknown and caller identity/credential properties refuse
+even when null or empty. Other tools retain their identity guards. The change
+does not supply a caller identity or alter current authorization, scope, Owner
+trust, message permissions, native records or the context-ticket lifecycle.
+
+Hub Nodes also omitted the existing `/v2/fabric/find` and `/v2/fabric/inspect`
+POST aliases. They now enter the same exact authentication, native self guard,
+bounded decoder and `Fabric.Resolve` privacy chain as `/v2/fabric/resolve`.
+MCP keeps each original HTTP path. No general Fabric prefix or new permission
+is enabled. Incorrect methods, extra segments, zero directory rights, wrong
+Group headers and current revocation still refuse.
+
+All producer gates used a dirty tree based on
+`cd9a396a6e91d874fbb821044e39221bc2e49a49`, synthetic keys/records and disposable
+loopback HTTP/private IPC. The pinned Go 1.27.3 Docker image is
+`sha256:5c3e9b43cfd3bb95c7937462e29d87ada57b481a96fa23ad0eb61778d7a00110`,
+with network disabled, UID 1000 and read-only source/module mounts. Every
+completed gate has a successful full source/base postcheck. Artifacts below are
+under `/home/zyf/Cicada/.local/evidence/node-endpoint-registration/`:
+
+| Gate / source manifest SHA-256 | Result | Artifact directory |
+|---|---|---|
+| Parameter RED, old production + new tests; `d76cb240074846b544d4c41c11707f600e41dca26657a6d0efc6d6b2ffdb3d14` | Exit 1, 0 pass / 13 fail / 0 skip; 3 top-level failures. All five declared-filter cases refuse; actual Hook emits the incident's fixed error code before a Node ticket | `mcp-directory-filter-red-20261023-20261023T034557Z` |
+| Alias RED, old production + new TCP assertions; `5f6f86945e331ba30484fe6ab5247f643f72fe37566cab1571f681f462259aa2` | Exit 1, 0 pass / 2 fail / 0 skip; exact find alias returns 404 before the expected existing zero-rights 403 guard | `mcp-directory-alias-red-20261023-20261023T034740Z` |
+| Final normal, `278897fc018e1108dbfbe78f958c34c2707b61048436e6d195aae988be66d03a` | Exit 0, 58 pass / 0 fail / 0 skip; 12 top-level, 28.507 seconds | `mcp-directory-filter-final-normal-20261023-20261023T035315Z` |
+| Final focused race, same source | Exit 0, 27 pass / 0 fail / 0 skip; 6 top-level, 146.847 seconds | `mcp-directory-filter-final-race-20261023-20261023T035315Z` |
+| Final vet, same source: `cmd/cicada`, `internal/server`, `internal/fabric` | Exit 0 | `mcp-directory-filter-final-vet-20261023-20261023T035315Z` |
+
+The final normal selector is
+`^Test(MCPDirectory|CodexDirectory|LocalDomainHookMCPRelayAndNativeCallbackRealTCP|CicadaMCPRejectsForgedIdentityAndCredentialArguments|CodexManaged|CodexHookInvocationDiagnosticsRemainClosedAndPrivate|LocalDomainRealTCPActivationDelegationDeliveryAndRevocation|NativePairPeerRealTCPConsentResolveAskClaimAndRevoke|FabricG5DirectoryPrivacyHTTP|DirectoryOwnerPrivacyAndExactContextResolution)`
+over `cmd/cicada`, `internal/server` and `internal/fabric`. The focused race
+selects the exact two new unit/Hook test names, existing caller-claim rejection,
+the Hook/MCP domain chain and ordinary domain/legacy Pair TCP tests; its exact
+arguments are retained in its receipt. It excludes the maximum-native-fields
+subcase, which passed in the final normal gate.
+
+Coverage includes all five advertised filter sets and wrong/null types; unknown
+and reserved keys; the same business digest at issue/consume; by-name synthetic
+UX-B resolution with workspace/Node filters; unchanged caller whoami; incorrect
+target filters and empty list results; alias methods and bounds; zero rights,
+wrong Group and revoke; foreign-Owner redaction; and original Pair peer-only
+resolution semantics. The integrated chain uses real Hook, Node IPC, Hub TCP,
+PQ signatures and persistent stores. Its queue subprocesses are visibly
+synthetic; it does not establish real Runtime consumption.
+
+An initial GREEN attempt is retained as failed: normal 54 pass / 4 fail and
+race 11 pass / 4 fail on manifest
+`3a032f41e32c9cacc229745491801853f97fc37a02709c723e9a96f29d9b4abe`.
+The added helper incorrectly expected a Pair caller to resolve itself; the
+existing Pair resolver permits only its other exact peer. Only that test
+expectation was corrected, preserving production Pair behavior and comparing
+whoami before/after filtering. That race command also omitted the two new unit
+tests through an overexact name selector; the final selector includes them.
+No earlier whole gate is relabeled passing. This validation section is a
+documentation-only overlay after the final gates; code/test hashes are unchanged.
+
+QA independently reproduced the old-source refusal through real Host on
+`run-20261023T035230Z-ZRfZNw`; its `result.json` SHA-256 is
+`1991f26bb347c6012f939c528174bdd09673e96d6db52fce4c81a1cd570d4c5f`.
+It crossed literal A/B and whoami before the filtered resolve refusal. QA owns
+the same-driver new-source Runtime GREEN and native App acceptance records;
+they are not claimed by these producer gates. Fresh-install automatic Owner
+pin establishment (FB-03), Windows, Android, public HTTPS, cleanup/install and
+deployment are outside this patch's executed acceptance. Existing scoped Native
+and login-expiry successes retain their own historical sources.

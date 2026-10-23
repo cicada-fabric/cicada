@@ -17,12 +17,19 @@ func assertNativeDirectoryStatus(t *testing.T, a *nativePairTCPActor, group, tok
 	for _, route := range []string{"members", "list"} {
 		a.pairHTTP(t, http.MethodGet, "/v2/fabric/"+route, "CicadaSession "+token, group, nil, status)
 	}
+	for _, route := range []string{"find", "resolve", "inspect"} {
+		a.pairHTTP(t, http.MethodPost, "/v2/fabric/"+route, "CicadaSession "+token, group, fabric.ResolveInput{Query: "synthetic-private-peer"}, status)
+	}
 }
 
 // Real Hub-Nodes-only TCP, current authentication and the existing Fabric
 // directory projection. No synthetic SQL membership/grant bypass is used.
 func assertNativeDirectoryHTTP(t *testing.T, a *nativePairTCPActor, group, token string, want map[string]nativeDirectoryExpected) {
 	t.Helper()
+	var caller fabric.NetworkCard
+	if json.Unmarshal(a.pairHTTP(t, http.MethodGet, "/v2/fabric/whoami", "CicadaSession "+token, group, nil, http.StatusOK), &caller) != nil || caller.EndpointID == "" {
+		t.Fatal("native directory caller is not authenticated")
+	}
 	for _, route := range []string{"members", "list"} {
 		t.Run("directory-"+route, func(t *testing.T) {
 			path := "/v2/fabric/" + route
@@ -58,5 +65,36 @@ func assertNativeDirectoryHTTP(t *testing.T, a *nativePairTCPActor, group, token
 			a.pairHTTP(t, http.MethodPost, path, "CicadaSession "+token, group, nil, http.StatusMethodNotAllowed)
 			a.pairHTTP(t, http.MethodGet, path+"/extra", "CicadaSession "+token, group, nil, http.StatusNotFound)
 		})
+	}
+	for _, route := range []string{"find", "resolve", "inspect"} {
+		t.Run("directory-"+route, func(t *testing.T) {
+			path := "/v2/fabric/" + route
+			for endpoint, expected := range want {
+				// The legacy Pair resolver intentionally accepts only its other
+				// exact peer, while WhoAmI remains the caller's identity endpoint.
+				if endpoint == caller.EndpointID {
+					continue
+				}
+				input := fabric.ResolveInput{Query: endpoint, NodeID: expected.node, Workspace: expected.workspace}
+				raw := a.pairHTTP(t, http.MethodPost, path, "CicadaSession "+token, group, input, http.StatusOK)
+				var card fabric.NetworkCard
+				if json.Unmarshal(raw, &card) != nil || card.EndpointID != endpoint || card.GroupID != group || card.Name != expected.name || card.Workspace != expected.workspace || card.NodeID != expected.node || card.NativeSessionID != "" || bytes.Contains(raw, []byte(token)) {
+					t.Fatal("native lookup alias lost its exact target or directory redaction")
+				}
+				input.Workspace = "/synthetic-other-workspace"
+				a.pairHTTP(t, http.MethodPost, path, "CicadaSession "+token, group, input, http.StatusNotFound)
+				input.Workspace, input.NodeID = expected.workspace, "synthetic-other-node"
+				a.pairHTTP(t, http.MethodPost, path, "CicadaSession "+token, group, input, http.StatusNotFound)
+			}
+			input := fabric.ResolveInput{Query: "synthetic-peer"}
+			a.pairHTTP(t, http.MethodPost, path, "", group, input, http.StatusUnauthorized)
+			a.pairHTTP(t, http.MethodPost, path, "CicadaSession "+token, "synthetic-other-group", input, http.StatusForbidden)
+			a.pairHTTP(t, http.MethodGet, path, "CicadaSession "+token, group, nil, http.StatusMethodNotAllowed)
+			a.pairHTTP(t, http.MethodPost, path+"/extra", "CicadaSession "+token, group, input, http.StatusNotFound)
+		})
+	}
+	var after fabric.NetworkCard
+	if json.Unmarshal(a.pairHTTP(t, http.MethodGet, "/v2/fabric/whoami", "CicadaSession "+token, group, nil, http.StatusOK), &after) != nil || after.EndpointID != caller.EndpointID || after.NativeSessionID != caller.NativeSessionID || after.Workspace != caller.Workspace || after.NodeID != caller.NodeID || after.GroupID != caller.GroupID || after.BindingID != caller.BindingID || after.BindingEpoch != caller.BindingEpoch {
+		t.Fatal("directory target filters changed the caller's current binding")
 	}
 }
