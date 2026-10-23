@@ -6123,3 +6123,40 @@ NOT_IMPLEMENTED/NOT_RUN. Natural full account/lease or certificate-time expiry
 is outside this short gate. Linux encrypted-vault and static-provider results
 do not establish those outcomes. No credentials, private keys, full sensitive
 payloads or synthetic fixture deployment initialization are delivered as evidence.
+
+## 2026-10-23 user-reported fresh Hub and Windows App batch
+
+After following Root's complete Hub/Windows fresh-install instructions, the user
+reported “完全正常、符合预期。继续” (fully normal, as expected; continue).
+Root relayed that report to independent QA for this record. This batch is
+**USER_REPORTED_PASS**, attributed to complete ZIP SHA-256
+`fb73d158b3466e868aacc427c67d36c395fce769f394c4e951485002e2a6ea5d`
+and production source `e8d31c693da00adaf0870c7dbf793c61e9e9c423`.
+The archive hash identifies the delivered package; it is distinct from the
+production Git revision and the QA checkpoint. The user supplied an overall
+confirmation, without raw command output, exit codes, screenshots, TLS traces,
+ACL listings or exact public-identity comparisons. This entry therefore does
+not claim independent physical execution or invent individual measurements.
+
+| Instructed batch item covered by the overall confirmation | Recorded result and limit |
+| --- | --- |
+| Clear the old Hub/App installation state and perform new Hub/Windows App setup | USER_REPORTED_PASS for the instructed Hub/App slice. Independent QA did not inspect deletion completeness or run cleanup. This does not complete the Node/plugin portion of the full removal procedure. |
+| Reach the single Hub at public numeric address `198.200.39.92:8787` using its built-in TLS | USER_REPORTED_PASS for the instructed public connection. No independent network/TLS probe, certificate-chain capture or adversarial transport check was supplied by this physical batch. |
+| New Owner setup and separate account login/logout | USER_REPORTED_PASS for the instructed positive identity/account flow. No new evidence that login creates Root or any broader Node/Network authority is inferred. |
+| Restart and recover the Hub/App configuration/profile | USER_REPORTED_PASS for the instructed restart/recovery flow. Exact retained key/identity hashes, original-packet reconciliation and failure injection were not supplied for this physical execution. |
+| Address copy and the exercised Windows App controls | USER_REPORTED_PASS for the instructed interaction. This does not establish comprehensive GUI, clipboard secrecy, DPI/font or multi-instance acceptance. |
+| Windows vault ACL inspection | USER_REPORTED_PASS for the instructed positive inspection only. No raw ACL listing or independent cross-user access attempt was supplied. |
+
+Independent Windows DPAPI execution and cross-user/copy/tamper negative tests
+remain **NOT_RUN**. Positive user-observed Windows interaction and ACL inspection
+do not become an independent GUI/ACL security PASS. Independent public-IP
+verification also remains NOT_RUN; its user-reported positive connection is
+recorded separately above. The preceding automated gate and historical platform
+limits retain their source-specific attribution.
+
+Node cleanup/reinstallation, service setup, new Node approval/Owner public pin,
+plugin installation/connection and new A/B native business work are **NOT_RUN in
+this batch**. Root is preparing the next operator batch; the user's “continue”
+does not supply results for it. No new product defect was reported. This
+documentation-only checkpoint performs no test, deployment, cleanup or key/state
+operation and does not change the earlier automated receipts.
