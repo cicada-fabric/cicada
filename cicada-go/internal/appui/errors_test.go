@@ -30,3 +30,19 @@ func TestBusyProfileFeedbackUsesExistingWindowWithoutRekeyInstructions(t *testin
 		}
 	}
 }
+
+func TestDirectConnectionFeedbackIsLocalizedAndUsesReviewedMessages(t *testing.T) {
+	for _, locale := range []Locale{English, Chinese} {
+		for _, code := range []string{"HUB_ADDRESS_INVALID", "HUB_BOOTSTRAP_INVALID", "HUB_TLS_UNVERIFIED", "HUB_TRANSPORT_SCOPE_MISMATCH"} {
+			message := ErrorText(locale, code)
+			if message == "" || message == ErrorText(locale, "UNKNOWN_SYNTHETIC_CODE") || strings.Contains(message, code) {
+				t.Fatalf("missing reviewed direct-connection feedback in %s for %s", locale, code)
+			}
+		}
+		for _, key := range []string{"connection.hub_address", "connection.bootstrap_code", "connection.saved_address_override", "connection.transport_verifying", "connection.transport_verified", "connection.transport_failed", "hub.address"} {
+			if Text(locale, key) == key || Text(locale, key) == "" {
+				t.Fatal("missing direct connection caption")
+			}
+		}
+	}
+}

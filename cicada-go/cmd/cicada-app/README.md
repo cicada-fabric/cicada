@@ -1346,3 +1346,91 @@ This README is a later documentation delta. Actual installed Native,
 disposable Docker interop, Windows Runtime and public HTTPS are **NOT_RUN**
 for this producer checkpoint and retain separate Hub/QA attribution. No
 executable was built or delivered.
+
+### 2026-10-23 numeric Hub address and trusted native bootstrap
+
+The default native connection step has separate visible numeric `IP:port`
+(or `[IPv6]:port`) and masked bootstrap inputs, in English and Chinese.
+The code must come from the trusted Hub installation channel. It is never
+fetched from an unverified endpoint. The explicit compatibility entry retains
+the original connection-card and activation-v1 inputs. Replacement material
+uses the same two-input form and preserves the original account/Owner scope,
+keys and pending-operation fences.
+
+`ActionConnect` accepts the paired `HubAddress` / `BootstrapCode` fields,
+mutually exclusive with the old material fields. The App consumes the shared
+[Hub native TLS contract](../../../docs/hub-native-tls-contract.md) without
+changing the protocol or server. Offline strict bootstrap validation precedes
+network traffic. The production `hubtransport` client performs standard TLS
+1.3 chain/name/time verification against the supplied private CA, verifies the
+live service SPKI, dials only the numeric locator and retains the exact logical
+URL/Host/Origin. The App independently checks the live full Client-Control Hub
+PQ fingerprint before displaying `VERIFIED`. Connection verification grants
+neither account login, Root nor finite App authorization.
+
+The existing encrypted `appcore.state.v1` optionally retains a public transport
+record: format/version, descriptor and numeric dial address. It retains no
+bootstrap wrapper or duplicate activation secret. The vault filename, DPAPI
+and AES context, account/Owner IDs, logical origin, Owner private keys and
+signed pending bytes stay in their original scope. All account, recovery,
+metadata, Node, Pair, local-domain and Owner-directory HTTP paths use the active
+per-Hub client. Reset and close release its idle connections. A missing or failed
+direct transport cannot select the compatibility/system-root client.
+
+Authenticated profile discovery sends no HTTP. Saved direct profiles resume
+without re-entering an expired bootstrap. Their optional address editor maps
+to `ActionResumeProfile.HubAddress`; bootstrap/activation fields are rejected
+on that action. The App checks the retained TLS descriptor and live Hub PQ pin
+at the candidate address before committing the locator with the existing state
+CAS. A failed validation leaves the saved address and uncertain request intact.
+The successful locator update precedes exact pending replay and changes no
+signed request bytes. Existing records accept only identical descriptor claims
+(with a valid re-signature); higher epochs, replacement CAs/SPKIs or changed
+Node-Control identities cannot implicitly rotate trust through a new code.
+A controlled transport-rotation protocol remains outside this checkpoint.
+
+The selected numeric target and transport verification progress remain visible
+before login; saved account/Hub identity details retain their existing visibility
+boundary. Logged-in connection details expose the full copyable numeric address.
+Bootstrap input bounds cover `hubtransport.MaxBootstrapText`; diagnostics and
+snapshots never contain the code, decoded activation secret or raw TLS errors.
+
+Pinned Go 1.27.3 full related Linux normal tests (`appcore`, `appkeys`,
+`appvault`, `appui`, `cmd/cicada-app`) passed **444 test events, 0 failures,
+0 skips**. The explicitly synthetic retained OpenSSL import fixture was enabled.
+Linux vet, Windows amd64 vet and cross-build exited 0. Tested source was dirty
+`12fe1be4498780052976570f895b3d1de2a49f3c` plus this App implementation, with
+1439 Go/module inputs stable at manifest SHA-256
+`9b05cfb60b825e53512f71e65819724b274e3dadc315a46c829b11e9d47807ab`.
+
+The full related race aggregate remains **FAIL**: its AppCore package hit Go's
+default 600-second timeout after 257 passing test events, with no assertion
+failure or skip before timeout. The current device-recovery subcase had run
+20.203 seconds; its captured goroutine was runnable inside CIRCL ML-DSA public-key
+validation during Owner proof creation. The captured stack shows no new
+transport-selector lock wait. This timing/stack observation does not turn the
+aggregate into a pass. The original result and log remain retained at
+`/home/zyf/Cicada/.local/evidence/n2-app/ip-bootstrap-consumer-20261023/`;
+result SHA-256 `eecd7719cf8067cfbd783f2b057e66eb8b15167cae643fccbf76a5f5c83fd3c6`,
+timeout-audit SHA-256 `7a060d5d746338971fa1aafa069b432470e42791535df779f07768a1c7372be8`.
+
+A subsequent bounded race selection (`-timeout=5m`) passed **32 test events,
+0 failures, 0 skips** for the direct TLS client, offline failures, original Owner
+and packet recovery, expired installer/profile restore, same-claims locator
+replacement, rotation rejection, recovery observations and client lifecycle.
+UI normal/race each passed **146 test events, 0 failures, 0 skips**. Windows
+vet and cross-build were rerun after the sole later Go delta, a Windows-only
+overview caption that now prefers the numeric address. Both exited 0. The
+bounded run retained its own stable input manifest and exact delta from the
+full normal run, under
+`/home/zyf/Cicada/.local/evidence/n2-app/ip-bootstrap-consumer-bounded-20261023/`;
+result SHA-256 `1cdb00be98450f757aaf7cad8c78dd67c4b682774afd716dbccf33eff57a29f7`.
+The README is a later documentation delta, not a Go test input.
+
+The new socket fixture uses actual production standard TLS and real synthetic
+PQ packets; its account authority is a scripted actor, not the production Hub
+Guard. Real Hub/direct Docker interop belongs to the separate QA/Root gate.
+Physical Windows GUI, DPAPI/ACL execution, real native Runtime, public-IP
+installation and Android are **NOT_RUN** for this producer checkpoint.
+The cross-build executable is a test artifact, not a delivered package; no
+resident installation or existing user state was changed.

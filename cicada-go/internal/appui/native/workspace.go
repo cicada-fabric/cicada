@@ -198,9 +198,13 @@ func (v *view) workspaceRows(s appcore.Snapshot, flow appui.SetupFlow) []layout.
 		rows = append(rows, v.sectionCard(v.workspaceLink("devices", appui.Text(v.locale, "workspace.connect_device"))))
 	}
 	rows = append(rows, v.sectionCard(func(gtx layout.Context) layout.Dimensions {
+		address := s.Hub.Address
+		if address == "" {
+			address = s.Hub.Origin
+		}
 		return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
 			layout.Rigid(v.headingRow(appui.Text(v.locale, "workspace.hub_verified"))),
-			layout.Rigid(v.nodeCaption(safeDisplay(s.Hub.Origin, 256))),
+			layout.Rigid(v.nodeCaption(safeDisplay(address, 256))),
 			layout.Rigid(v.disclosure("overview/connection", func(gtx layout.Context) layout.Dimensions {
 				return layout.Flex{Axis: layout.Vertical}.Layout(gtx, v.publicFieldRows("account/", appui.AccountPublicFields(s, time.Now()))...)
 			})))

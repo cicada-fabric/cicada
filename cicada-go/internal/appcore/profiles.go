@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/cicada-ai/cicada/internal/appvault"
+	"github.com/cicada-ai/cicada/internal/pqtls"
 )
 
 type localProfile struct {
@@ -63,7 +64,7 @@ func (c *nativeController) discoverProfiles(ctx context.Context) error {
 		if err != nil {
 			return c.failProfileOpen(err)
 		}
-		_, _, readErr := readProfile(vault, scope)
+		state, _, readErr := readProfile(vault, scope)
 		closeErr := vault.Close()
 		if readErr != nil || closeErr != nil {
 			return c.fail(PhaseLocked, "APP_PROFILE_INVALID", errors.New("local profile authentication failed"))
@@ -74,7 +75,7 @@ func (c *nativeController) discoverProfiles(ctx context.Context) error {
 		}
 		profiles = append(profiles, localProfile{scope: scope, view: ProfileSnapshot{
 			ID: strings.TrimSuffix(filepath.Base(path), ".vault"), Origin: scope.Origin,
-			AccountID: scope.AccountID, OwnerID: scope.OwnerID}})
+			AccountID: scope.AccountID, OwnerID: scope.OwnerID, Direct: state.Transport != nil}})
 	}
 	sort.Slice(profiles, func(i, j int) bool { return profiles[i].view.ID < profiles[j].view.ID })
 	c.profiles, c.profileRecoveryRequired = profiles, false
@@ -83,6 +84,10 @@ func (c *nativeController) discoverProfiles(ctx context.Context) error {
 }
 
 func (c *nativeController) resumeProfile(ctx context.Context, id string) error {
+	return c.resumeProfileAt(ctx, id, "")
+}
+
+func (c *nativeController) resumeProfileAt(ctx context.Context, id, address string) error {
 	var selected *localProfile
 	for i := range c.profiles {
 		if c.profiles[i].view.ID == id {
@@ -111,6 +116,21 @@ func (c *nativeController) resumeProfile(ctx context.Context, id string) error {
 	}
 	c.vault, c.state, c.stateVer = vault, state, version
 	card := state.Connection
+	transport := cloneLocalTransport(state.Transport)
+	c.directConnection = transport != nil
+	if address != "" {
+		if pqtls.ValidateIPDialAddress(address) != nil {
+			return c.failConnectionTransport("HUB_ADDRESS_INVALID")
+		}
+		if transport == nil {
+			return c.failConnectionTransport("HUB_TRANSPORT_SCOPE_MISMATCH")
+		}
+		transport.DialAddress = address
+	}
+	if err := c.useConnectionTransport(transport, card); err != nil {
+		return c.failConnectionTransport("HUB_TLS_UNVERIFIED")
+	}
+	c.publish()
 	// Expiry limits installer material, not an authenticated enrolled local
 	// profile. HTTP remains an explicit fixture policy on every reopen.
 	if strings.HasPrefix(card.Origin, "http://") && (!card.AllowLoopbackHTTP || !c.cfg.AllowLoopbackHTTP) {
@@ -119,8 +139,24 @@ func (c *nativeController) resumeProfile(ctx context.Context, id string) error {
 	}
 	hub, service, err := c.verifyHub(ctx, card)
 	if err != nil {
+		if transport != nil {
+			code := err.Error()
+			if code == "HUB_UNAVAILABLE" {
+				code = "HUB_TLS_UNVERIFIED"
+			}
+			return c.failConnectionTransport(code)
+		}
 		_ = c.resetConnection()
 		return c.fail(PhaseUnavailable, "APP_PROFILE_HUB_UNVERIFIED", err)
+	}
+	if transport != nil {
+		c.transportState = HubTransportVerified
+		if transport.DialAddress != state.Transport.DialAddress {
+			c.state.Transport = cloneLocalTransport(transport)
+			if err := c.persistState(); err != nil {
+				return c.failStorage("APP_STATE_UNAVAILABLE", err)
+			}
+		}
 	}
 	c.setConnectedHub(hub, card, service, nil)
 	if err := c.loadIdentities(false); err != nil {

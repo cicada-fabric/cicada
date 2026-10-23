@@ -151,7 +151,7 @@ func (c *nativeController) sendRecovery(ctx context.Context) error {
 	if r == nil {
 		return ErrInvalidAction
 	}
-	response, _, err := postAccountPacket(ctx, c.cfg.HTTP, c.connection.Origin, c.connection.Origin, r.Operation, r.Request)
+	response, _, err := postAccountPacket(ctx, c.httpClient(), c.connection.Origin, c.connection.Origin, r.Operation, r.Request)
 	if err != nil {
 		return c.fail(PhaseUnavailable, "APP_RECOVERY_RESPONSE_UNKNOWN", err)
 	}

@@ -11,7 +11,7 @@ import (
 
 func (c *nativeController) discoverPairAvailability(ctx context.Context) error {
 	c.pairDiscoveryTried, c.pairAvailable = true, false
-	if !c.connected || c.cfg.HTTP == nil {
+	if !c.connected || c.httpClient() == nil {
 		return ErrInvalidAction
 	}
 	target, err := joinOrigin(c.connection.Origin, wire.NativePairCapabilitiesPath)
@@ -24,7 +24,7 @@ func (c *nativeController) discoverPairAvailability(ctx context.Context) error {
 	}
 	r.Header.Set("Accept", "application/json")
 	r.Header.Set("Cache-Control", "no-store")
-	response, err := c.cfg.HTTP.Do(r)
+	response, err := c.httpClient().Do(r)
 	if err != nil {
 		return err
 	}

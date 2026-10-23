@@ -28,6 +28,7 @@ func AccountPublicFields(s appcore.Snapshot, now time.Time) []PublicField {
 		return nil
 	}
 	return presentPublicFields(
+		PublicField{"hub.address", s.Hub.Address},
 		PublicField{"hub.origin", s.Hub.Origin},
 		PublicField{"hub.identity", s.Hub.HubID},
 		PublicField{"hub.fingerprint", s.Hub.Fingerprint},

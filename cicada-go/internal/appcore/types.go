@@ -43,6 +43,15 @@ const (
 	HubHealthUnhealthy HubHealth = "UNHEALTHY"
 )
 
+type HubTransportState string
+
+const (
+	HubTransportUnknown   HubTransportState = "UNKNOWN"
+	HubTransportVerifying HubTransportState = "VERIFYING"
+	HubTransportVerified  HubTransportState = "VERIFIED"
+	HubTransportFailed    HubTransportState = "FAILED"
+)
+
 type AccountState string
 
 const (
@@ -73,12 +82,15 @@ const (
 )
 
 type HubSnapshot struct {
-	Verified    bool      `json:"verified"`
-	Origin      string    `json:"origin,omitempty"`
-	HubID       string    `json:"hub_id,omitempty"`
-	Fingerprint string    `json:"fingerprint,omitempty"`
-	Health      HubHealth `json:"health"`
-	Service     string    `json:"service,omitempty"`
+	Verified bool `json:"verified"`
+	// Address is the selected physical dial target, independent of Origin.
+	Address        string            `json:"address,omitempty"`
+	TransportState HubTransportState `json:"transport_state,omitempty"`
+	Origin         string            `json:"origin,omitempty"`
+	HubID          string            `json:"hub_id,omitempty"`
+	Fingerprint    string            `json:"fingerprint,omitempty"`
+	Health         HubHealth         `json:"health"`
+	Service        string            `json:"service,omitempty"`
 }
 
 type AccountSnapshot struct {
@@ -175,6 +187,7 @@ type ProfileSnapshot struct {
 	Origin    string `json:"origin"`
 	AccountID string `json:"account_id"`
 	OwnerID   string `json:"owner_id"`
+	Direct    bool   `json:"direct,omitempty"`
 }
 
 type ActionKind string
@@ -218,10 +231,16 @@ type Action struct {
 
 	LocalCollaboration LocalCollaborationAction
 
-	// Exactly one connection material field may be set for ActionConnect.
+	// ActionConnect accepts exactly one legacy material, or the direct pair below.
 	ConnectionCard string
 	ActivationCode string
-	ProfileID      string
+	// Direct connections supply a physical IP:port and a secret bootstrap code.
+	// They never replace the logical Origin in an existing profile or request.
+	HubAddress    string
+	BootstrapCode string
+	// ActionResumeProfile may supply HubAddress alone to retry the saved
+	// direct profile at a new address without changing its authenticated scope.
+	ProfileID string
 	// A native confirmation must name the exact finite scope shown to the user.
 	ConfirmLimitedAuthorization bool
 	// Node approval names the exact authenticated candidate displayed to the

@@ -26,7 +26,7 @@ func (c *nativeController) discoverLocalCollaboration(ctx context.Context) error
 	}
 	r.Header.Set("Accept", "application/json")
 	r.Header.Set("Cache-Control", "no-store")
-	response, err := c.cfg.HTTP.Do(r)
+	response, err := c.httpClient().Do(r)
 	if err != nil {
 		return err
 	}
@@ -55,7 +55,7 @@ func (c *nativeController) discoverLocalCollaboration(ctx context.Context) error
 }
 
 func (c *nativeController) postLocalDomainPacket(ctx context.Context, request *localDomainRecord) ([]byte, error) {
-	if request == nil || len(request.Packet) == 0 || c.cfg.HTTP == nil {
+	if request == nil || len(request.Packet) == 0 || c.httpClient() == nil {
 		return nil, ErrInvalidAction
 	}
 	path := wire.LocalDomainHTTPPath(request.Route.Operation)
@@ -76,7 +76,7 @@ func (c *nativeController) postLocalDomainPacket(ctx context.Context, request *l
 	r.Header.Set("Accept", "application/json")
 	r.Header.Set("Origin", c.connection.Origin)
 	r.Header.Set("Cache-Control", "no-store")
-	response, err := c.cfg.HTTP.Do(r)
+	response, err := c.httpClient().Do(r)
 	if err != nil {
 		return nil, errLocalDomainUnconfirmed
 	}

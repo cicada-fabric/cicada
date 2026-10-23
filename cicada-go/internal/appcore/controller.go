@@ -15,6 +15,8 @@ import (
 	"github.com/cicada-ai/cicada/internal/appvault"
 	"github.com/cicada-ai/cicada/internal/e2ee"
 	wire "github.com/cicada-ai/cicada/internal/hubaccountwire"
+	"github.com/cicada-ai/cicada/internal/hubtransport"
+	"github.com/cicada-ai/cicada/internal/pqtls"
 )
 
 var (
@@ -25,6 +27,7 @@ var (
 
 type Config struct {
 	HTTP              HTTPDoer
+	DirectHTTPFactory TransportClientFactory
 	OpenVault         VaultOpener
 	DiscoverVaults    func(context.Context) ([]appvault.Scope, error)
 	UserRoot          string
@@ -34,7 +37,11 @@ type Config struct {
 }
 
 type nativeController struct {
-	cfg Config
+	cfg                 Config
+	connectionHTTP      HTTPDoer
+	directConnection    bool
+	connectionTransport *localTransportRecord
+	transportState      HubTransportState
 
 	actionMu sync.Mutex
 	lifetime context.Context
@@ -282,7 +289,10 @@ func (c *nativeController) Dispatch(ctx context.Context, action Action) (dispatc
 	case ActionDiscoverProfiles:
 		return c.discoverProfiles(operationCtx)
 	case ActionResumeProfile:
-		return c.resumeProfile(operationCtx, action.ProfileID)
+		if action.ConnectionCard != "" || action.ActivationCode != "" || action.BootstrapCode != "" {
+			return ErrInvalidAction
+		}
+		return c.resumeProfileAt(operationCtx, action.ProfileID, action.HubAddress)
 	case ActionActivateApp:
 		return c.activateApp(operationCtx, action)
 	case ActionLogin:
@@ -347,6 +357,7 @@ func (c *nativeController) Close() error {
 	c.actionMu.Lock()
 	defer c.actionMu.Unlock()
 	c.clearRuntimeSecrets()
+	c.closeConnectionHTTP()
 	if c.vault != nil {
 		err := c.vault.Close()
 		c.vault = nil
@@ -359,14 +370,38 @@ func (c *nativeController) connect(ctx context.Context, action Action) error {
 	if err := c.resetConnection(); err != nil {
 		return c.fail(PhaseError, "APP_VAULT_CLOSE_FAILED", err)
 	}
-	if (action.ConnectionCard == "") == (action.ActivationCode == "") {
+	direct := action.HubAddress != "" || action.BootstrapCode != ""
+	c.directConnection = direct
+	if direct && (action.HubAddress == "" || action.BootstrapCode == "" || action.ConnectionCard != "" || action.ActivationCode != "") {
+		return c.fail(PhaseError, "INVALID_CONNECTION_MATERIAL", ErrInvalidCard)
+	}
+	if !direct && (action.ConnectionCard == "") == (action.ActivationCode == "") {
 		return c.fail(PhaseError, "INVALID_CONNECTION_MATERIAL", ErrInvalidCard)
 	}
 	now := c.cfg.Now().UTC()
 	var card HubConnectionCard
 	var activation *ActivationCode
 	var material *wire.ActivationMaterial
-	if strings.HasPrefix(action.ActivationCode, wire.ActivationCodePrefix) {
+	var connectionTransport *localTransportRecord
+	if direct {
+		if pqtls.ValidateIPDialAddress(action.HubAddress) != nil {
+			return c.fail(PhaseError, "HUB_ADDRESS_INVALID", ErrInvalidCard)
+		}
+		bootstrap, err := hubtransport.DecodeBootstrap(action.BootstrapCode)
+		if err != nil {
+			return c.fail(PhaseError, "HUB_BOOTSTRAP_INVALID", ErrInvalidCard)
+		}
+		parsed, err := hubtransport.ValidateBootstrap(bootstrap, now)
+		if err != nil {
+			return c.fail(PhaseError, "HUB_BOOTSTRAP_INVALID", ErrInvalidCard)
+		}
+		material = &parsed
+		card = HubConnectionCard{Format: connectionCardFormat, Version: 1, Purpose: connectionCardPurpose,
+			Origin: parsed.Origin, AllowLoopbackHTTP: parsed.AllowLoopbackHTTP, HubID: parsed.HubID,
+			HubFingerprint: parsed.HubFingerprint, AccountID: parsed.AccountID, OwnerID: parsed.OwnerID,
+			IssuedAt: parsed.IssuedAt, ExpiresAt: parsed.ExpiresAt}
+		connectionTransport = &localTransportRecord{Format: localTransportFormat, Version: 1, Descriptor: bootstrap.Descriptor, DialAddress: action.HubAddress}
+	} else if strings.HasPrefix(action.ActivationCode, wire.ActivationCodePrefix) {
 		parsed, err := wire.DecodeActivationCode(action.ActivationCode)
 		if err != nil || wire.ValidateActivationMaterial(parsed, now) != nil {
 			return c.fail(PhaseError, "INVALID_ACTIVATION_CODE", ErrActivationExpired)
@@ -402,11 +437,22 @@ func (c *nativeController) connect(ctx context.Context, action Action) error {
 			return c.fail(PhaseError, "LOOPBACK_HTTP_DISABLED", ErrInvalidCard)
 		}
 	}
+	if err := c.useConnectionTransport(connectionTransport, card); err != nil {
+		return c.failConnectionTransport("HUB_TLS_UNVERIFIED")
+	}
+	c.publish()
 	c.setPhase(PhaseVerifyingHub, "")
 
 	hub, service, err := c.verifyHub(ctx, card)
 	if err != nil {
-		return c.fail(PhaseUnavailable, err.Error(), err)
+		code := err.Error()
+		if direct && code == "HUB_UNAVAILABLE" {
+			code = "HUB_TLS_UNVERIFIED"
+		}
+		return c.failConnectionTransport(code)
+	}
+	if direct {
+		c.transportState = HubTransportVerified
 	}
 	if activation != nil && wire.ValidateClaimCard(activation.card, hub, now) != nil {
 		return c.fail(PhaseError, "INVALID_ACTIVATION_SCOPE", ErrActivationExpired)
@@ -447,7 +493,8 @@ func (c *nativeController) connect(ctx context.Context, action Action) error {
 	c.activation = activation
 	c.snapshotMu.Lock()
 	c.snapshot.Hub = HubSnapshot{Verified: true, Origin: card.Origin, HubID: card.HubID,
-		Fingerprint: card.HubFingerprint, Health: HubHealthHealthy, Service: service}
+		Fingerprint: card.HubFingerprint, Health: HubHealthHealthy, Service: service,
+		Address: c.connectionAddress(), TransportState: c.transportState}
 	c.snapshotMu.Unlock()
 
 	data, version, found, err := c.vault.LoadState(appStateNamespace)
@@ -460,9 +507,13 @@ func (c *nativeController) connect(ctx context.Context, action Action) error {
 		if decodeErr != nil || !sameScopeCard(state.Connection, card) {
 			return c.failStorage("APP_STATE_SCOPE_MISMATCH", errors.New("encrypted App state scope mismatch"))
 		}
+		if validateLocalTransportReplacement(state.Transport, connectionTransport, card) != nil {
+			return c.failConnectionTransport("HUB_TRANSPORT_SCOPE_MISMATCH")
+		}
 		c.state, c.stateVer = state, version
-		if c.state.Connection != card {
+		if c.state.Connection != card || connectionTransport != nil {
 			c.state.Connection = card
+			c.state.Transport = cloneLocalTransport(connectionTransport)
 			if err := c.persistState(); err != nil {
 				return c.failStorage("APP_STATE_UNAVAILABLE", err)
 			}
@@ -476,6 +527,7 @@ func (c *nativeController) connect(ctx context.Context, action Action) error {
 			return c.fail(PhaseLocked, "APP_DEVICE_NOT_ENROLLED", errors.New("this App has no enrolled device for the selected account"))
 		}
 		c.state, c.stateVer = newDurableState(card), version
+		c.state.Transport = cloneLocalTransport(connectionTransport)
 		if err := c.persistState(); err != nil {
 			return c.failStorage("APP_STATE_UNAVAILABLE", err)
 		}
@@ -533,6 +585,8 @@ func (c *nativeController) connect(ctx context.Context, action Action) error {
 }
 
 func (c *nativeController) resetConnection() error {
+	c.closeConnectionHTTP()
+	c.connectionTransport, c.transportState = nil, ""
 	c.clearRuntimeSecrets()
 	if c.vault != nil {
 		err := c.vault.Close()
@@ -571,7 +625,8 @@ func (c *nativeController) setConnectedHub(hub wire.HubIdentity, card HubConnect
 	c.service = service
 	c.snapshotMu.Lock()
 	c.snapshot.Hub = HubSnapshot{Verified: true, Origin: card.Origin, HubID: card.HubID,
-		Fingerprint: card.HubFingerprint, Health: HubHealthHealthy, Service: service}
+		Fingerprint: card.HubFingerprint, Health: HubHealthHealthy, Service: service,
+		Address: c.connectionAddress(), TransportState: c.transportState}
 	c.snapshotMu.Unlock()
 }
 
@@ -595,7 +650,7 @@ func sameScopeCard(a, b HubConnectionCard) bool {
 }
 
 func (c *nativeController) verifyHub(ctx context.Context, card HubConnectionCard) (wire.HubIdentity, string, error) {
-	healthData, healthStatus, err := getHubMetadata(ctx, c.cfg.HTTP, card.Origin, "/healthz")
+	healthData, healthStatus, err := getHubMetadata(ctx, c.httpClient(), card.Origin, "/healthz")
 	if err != nil || healthStatus != http.StatusOK {
 		return wire.HubIdentity{}, "", errors.New("HUB_UNAVAILABLE")
 	}
@@ -603,7 +658,7 @@ func (c *nativeController) verifyHub(ctx context.Context, card HubConnectionCard
 	if err != nil {
 		return wire.HubIdentity{}, "", errors.New("HUB_HEALTH_INVALID")
 	}
-	identityData, identityStatus, err := getHubMetadata(ctx, c.cfg.HTTP, card.Origin, "/v2/client/identity")
+	identityData, identityStatus, err := getHubMetadata(ctx, c.httpClient(), card.Origin, "/v2/client/identity")
 	if err != nil || identityStatus != http.StatusOK {
 		return wire.HubIdentity{}, "", errors.New("HUB_IDENTITY_UNAVAILABLE")
 	}

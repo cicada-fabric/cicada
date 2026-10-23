@@ -443,7 +443,8 @@ func (c *nativeController) publish() {
 	if c.suppressPublish {
 		return
 	}
-	view := Snapshot{Phase: PhaseNeedConnection, Hub: HubSnapshot{Health: HubHealthUnknown},
+	view := Snapshot{Phase: PhaseNeedConnection, Hub: HubSnapshot{Health: HubHealthUnknown,
+		Address: c.connectionAddress(), TransportState: c.transportState},
 		Account:    AccountSnapshot{State: AccountStateUnknown, RootState: RootStateUnknown},
 		Management: ManagementUnavailable, Canvas: CanvasSnapshot{State: CanvasNoAuthorization}}
 	for _, profile := range c.profiles {
@@ -458,7 +459,8 @@ func (c *nativeController) publish() {
 	}
 	if c.connected {
 		view.Hub = HubSnapshot{Verified: true, Origin: c.connection.Origin, HubID: c.connection.HubID,
-			Fingerprint: c.connection.HubFingerprint, Health: HubHealthHealthy, Service: c.service}
+			Fingerprint: c.connection.HubFingerprint, Health: HubHealthHealthy, Service: c.service,
+			Address: c.connectionAddress(), TransportState: c.transportState}
 		view.Phase = PhaseConnected
 		view.Account.State = AccountStateLoginRequired
 		view.Account.AccountID, view.Account.OwnerID = c.connection.AccountID, c.connection.OwnerID

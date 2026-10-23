@@ -19,30 +19,31 @@ const (
 )
 
 type durableState struct {
-	AccountDeviceEnrolled     bool                 `json:"account_device_enrolled,omitempty"`
-	Format                    string               `json:"format"`
-	Version                   int                  `json:"version"`
-	Connection                HubConnectionCard    `json:"connection"`
-	DeviceID                  string               `json:"device_id,omitempty"`
-	DeviceKeyID               string               `json:"device_key_id,omitempty"`
-	OwnerKeyID                string               `json:"owner_key_id,omitempty"`
-	AccountID                 string               `json:"account_id,omitempty"`
-	OwnerID                   string               `json:"owner_id,omitempty"`
-	Username                  string               `json:"username,omitempty"`
-	AccountState              AccountState         `json:"account_state"`
-	RootState                 RootState            `json:"root_state"`
-	OwnerKeyIDAtHub           string               `json:"owner_key_id_at_hub,omitempty"`
-	OwnerFingerprint          string               `json:"owner_fingerprint,omitempty"`
-	ClaimChallenge            *wire.ClaimChallenge `json:"claim_challenge,omitempty"`
-	LoginChallenge            *wire.LoginChallenge `json:"login_challenge,omitempty"`
-	Pending                   *pendingOperation    `json:"pending,omitempty"`
-	Enrollment                *enrollmentState     `json:"enrollment,omitempty"`
-	Recovery                  *pendingOperation    `json:"recovery,omitempty"`
-	LastRecovery              *pendingOperation    `json:"last_recovery,omitempty"`
-	PreviousActivationReceipt *pendingOperation    `json:"previous_activation_receipt,omitempty"`
-	ObservedAccountEpoch      uint64               `json:"observed_account_epoch,omitempty"`
-	ObservedDeviceEpoch       uint64               `json:"observed_device_epoch,omitempty"`
-	RecoveryHistory           []recoveryDigest     `json:"recovery_history,omitempty"`
+	AccountDeviceEnrolled     bool                  `json:"account_device_enrolled,omitempty"`
+	Format                    string                `json:"format"`
+	Version                   int                   `json:"version"`
+	Connection                HubConnectionCard     `json:"connection"`
+	Transport                 *localTransportRecord `json:"transport,omitempty"`
+	DeviceID                  string                `json:"device_id,omitempty"`
+	DeviceKeyID               string                `json:"device_key_id,omitempty"`
+	OwnerKeyID                string                `json:"owner_key_id,omitempty"`
+	AccountID                 string                `json:"account_id,omitempty"`
+	OwnerID                   string                `json:"owner_id,omitempty"`
+	Username                  string                `json:"username,omitempty"`
+	AccountState              AccountState          `json:"account_state"`
+	RootState                 RootState             `json:"root_state"`
+	OwnerKeyIDAtHub           string                `json:"owner_key_id_at_hub,omitempty"`
+	OwnerFingerprint          string                `json:"owner_fingerprint,omitempty"`
+	ClaimChallenge            *wire.ClaimChallenge  `json:"claim_challenge,omitempty"`
+	LoginChallenge            *wire.LoginChallenge  `json:"login_challenge,omitempty"`
+	Pending                   *pendingOperation     `json:"pending,omitempty"`
+	Enrollment                *enrollmentState      `json:"enrollment,omitempty"`
+	Recovery                  *pendingOperation     `json:"recovery,omitempty"`
+	LastRecovery              *pendingOperation     `json:"last_recovery,omitempty"`
+	PreviousActivationReceipt *pendingOperation     `json:"previous_activation_receipt,omitempty"`
+	ObservedAccountEpoch      uint64                `json:"observed_account_epoch,omitempty"`
+	ObservedDeviceEpoch       uint64                `json:"observed_device_epoch,omitempty"`
+	RecoveryHistory           []recoveryDigest      `json:"recovery_history,omitempty"`
 }
 
 type recoveryDigest struct {
@@ -84,7 +85,8 @@ func newDurableState(card HubConnectionCard) durableState {
 func decodeDurableState(data []byte) (durableState, error) {
 	var state durableState
 	if decodeStateJSON(data, &state) != nil || state.Format != appStateFormat || state.Version != 1 ||
-		state.AccountState == "" || state.RootState == "" || validateConnectionCard(state.Connection, time.Time{}) != nil {
+		state.AccountState == "" || state.RootState == "" || validateConnectionCard(state.Connection, time.Time{}) != nil ||
+		validateLocalTransport(state.Transport, state.Connection) != nil {
 		return durableState{}, errors.New("invalid encrypted App state")
 	}
 	for _, pending := range []*pendingOperation{state.Pending, state.Recovery, state.LastRecovery, state.PreviousActivationReceipt} {

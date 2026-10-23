@@ -12,7 +12,7 @@ import (
 )
 
 func (c *nativeController) postPairPacket(ctx context.Context, request *pairRequestRecord) ([]byte, error) {
-	if request == nil || c.cfg.HTTP == nil || len(request.Packet) == 0 {
+	if request == nil || c.httpClient() == nil || len(request.Packet) == 0 {
 		return nil, ErrInvalidAction
 	}
 	path := wire.NativePairHTTPPath(request.Route.Operation)
@@ -33,7 +33,7 @@ func (c *nativeController) postPairPacket(ctx context.Context, request *pairRequ
 	r.Header.Set("Accept", "application/json")
 	r.Header.Set("Origin", c.connection.Origin)
 	r.Header.Set("Cache-Control", "no-store")
-	response, err := c.cfg.HTTP.Do(r)
+	response, err := c.httpClient().Do(r)
 	if err != nil {
 		return nil, errors.New("native pair request outcome is unknown")
 	}

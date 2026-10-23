@@ -12,6 +12,7 @@ import (
 func TestPublicFieldsKeepFullValuesWithoutCopyingOtherSnapshotData(t *testing.T) {
 	now := time.Date(2026, 10, 20, 0, 0, 0, 0, time.UTC)
 	s := accountDisplayFixture(now)
+	s.Hub.Address = "[2001:db8::10]:8443"
 	s.Account.LocalOwnerKeyID = "pq1-" + strings.Repeat("a", 300)
 	s.Account.OwnerPeerFingerprint = "sha256:" + strings.Repeat("b", 64)
 	s.Account.Username = "SYNTHETIC_DO_NOT_COPY_USERNAME"
@@ -25,7 +26,7 @@ func TestPublicFieldsKeepFullValuesWithoutCopyingOtherSnapshotData(t *testing.T)
 		values[field.Key] = field.Value
 	}
 	if values["account.owner_key_id"] != s.Account.LocalOwnerKeyID || values["account.owner_peer_fingerprint"] != s.Account.OwnerPeerFingerprint ||
-		values["account.device_id"] != s.Account.DeviceID || values["hub.origin"] != s.Hub.Origin {
+		values["account.device_id"] != s.Account.DeviceID || values["hub.origin"] != s.Hub.Origin || values["hub.address"] != s.Hub.Address {
 		t.Fatal("public copy fields shortened or reformatted an original value")
 	}
 	all := append(account, NodePublicFields(s, now)...)

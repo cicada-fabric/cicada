@@ -77,10 +77,14 @@ type view struct {
 	theme                *material.Theme
 	locale               appui.Locale
 	activation           widget.Editor
+	hubAddress           widget.Editor
+	connectionMode       widget.Clickable
+	legacyConnection     bool
 	username             widget.Editor
 	password             widget.Editor
 	buttons              map[appcore.ActionKind]*widget.Clickable
 	profileButtons       map[string]*widget.Clickable
+	profileAddresses     map[string]*widget.Editor
 	pairButtons          map[string]*widget.Clickable
 	publicFields         map[string]*publicFieldState
 	workspacePage        string
@@ -153,6 +157,7 @@ func newView(controller appcore.Controller, ctx context.Context, cancel context.
 	v.contentList.Axis = layout.Vertical
 	v.activation.Mask = '•'
 	v.activation.SingleLine, v.username.SingleLine, v.password.SingleLine = true, true, true
+	v.hubAddress.SingleLine, v.hubAddress.MaxLen = true, 128
 	v.activation.MaxLen = appui.ActivationCodeInputLimit()
 	v.nodeCode.SingleLine, v.nodeCode.MaxLen = true, 32
 	v.username.MaxLen, v.password.MaxLen = 128, 1024
@@ -328,8 +333,22 @@ func (v *view) statusCard(gtx layout.Context, s appcore.Snapshot) layout.Dimensi
 		rows := []layout.FlexChild{
 			layout.Rigid(v.headingRow(v.phaseLabel(s.Phase))),
 		}
-		if s.Hub.Origin != "" {
+		if s.Hub.Address != "" {
+			rows = append(rows, layout.Rigid(v.labelRow(safeDisplay(s.Hub.Address, 128))))
+		} else if s.Hub.Origin != "" {
 			rows = append(rows, layout.Rigid(v.labelRow(safeDisplay(s.Hub.Origin, 256))))
+		}
+		transportLabel := ""
+		switch s.Hub.TransportState {
+		case appcore.HubTransportVerifying:
+			transportLabel = "connection.transport_verifying"
+		case appcore.HubTransportVerified:
+			transportLabel = "connection.transport_verified"
+		case appcore.HubTransportFailed:
+			transportLabel = "connection.transport_failed"
+		}
+		if transportLabel != "" {
+			rows = append(rows, layout.Rigid(v.labelRow(appui.Text(v.locale, transportLabel))))
 		}
 		if v.busy.Load() && !v.autoBusy.Load() {
 			rows = append(rows, layout.Rigid(v.labelRow(appui.Text(v.locale, "operation.in_progress"))))
@@ -383,6 +402,9 @@ func (v *view) contentRows(s appcore.Snapshot, flow appui.SetupFlow, information
 	switch flow.Stage {
 	case "profile-recovery":
 		rows = append(rows, v.headingRow(appui.Text(v.locale, "setup.profile_recovery_title")), v.labelRow(appui.Text(v.locale, "setup.profile_recovery_body")))
+		for index, profile := range s.Profiles {
+			rows = append(rows, v.profileRow(profile, index))
+		}
 	case "connect":
 		rows = append(rows, v.headingRow(appui.Text(v.locale, "setup.welcome")), v.labelRow(appui.Text(v.locale, "setup.welcome_body")))
 		if len(s.Profiles) > 0 {
@@ -391,11 +413,13 @@ func (v *view) contentRows(s appcore.Snapshot, flow appui.SetupFlow, information
 				rows = append(rows, v.profileRow(profile, index))
 			}
 		}
-		rows = append(rows, v.headingRow(appui.Text(v.locale, "setup.step_connect")), v.editorRow(&v.activation, appui.Text(v.locale, "connection.material"), false))
+		rows = append(rows, v.headingRow(appui.Text(v.locale, "setup.step_connect")))
+		rows = append(rows, v.connectionInputRows()...)
 	case "keys":
 		rows = append(rows, v.headingRow(appui.Text(v.locale, "setup.step_keys")), v.labelRow(appui.Text(v.locale, "setup.keys_body")))
 	case "replace":
-		rows = append(rows, v.headingRow(appui.Text(v.locale, "setup.replacement_code")), v.labelRow(appui.Text(v.locale, "setup.replacement_body")), v.editorRow(&v.activation, appui.Text(v.locale, "connection.material"), false))
+		rows = append(rows, v.headingRow(appui.Text(v.locale, "setup.replacement_code")), v.labelRow(appui.Text(v.locale, "setup.replacement_body")))
+		rows = append(rows, v.connectionInputRows()...)
 	case "activate":
 		rows = append(rows, v.headingRow(appui.Text(v.locale, "setup.activate_app")), v.labelRow(appui.Text(v.locale, "setup.grant_body")))
 		if expiry, err := time.Parse(time.RFC3339Nano, s.Setup.AuthorizationDeadline); err == nil {
@@ -498,12 +522,38 @@ func (v *view) publicStatusRows(s appcore.Snapshot) []layout.Widget {
 	return rows
 }
 
+func (v *view) connectionInputRows() []layout.Widget {
+	var rows []layout.Widget
+	if v.legacyConnection {
+		rows = append(rows, v.editorRow(&v.activation, appui.Text(v.locale, "connection.material"), false))
+	} else {
+		rows = append(rows, v.editorRow(&v.hubAddress, appui.Text(v.locale, "connection.hub_address"), false),
+			v.editorRow(&v.activation, appui.Text(v.locale, "connection.bootstrap_code"), false))
+	}
+	rows = append(rows, func(gtx layout.Context) layout.Dimensions {
+		if v.connectionMode.Clicked(gtx) && !v.busy.Load() {
+			v.legacyConnection = !v.legacyConnection
+			v.activation.SetText("")
+		}
+		label := "connection.legacy_input"
+		if v.legacyConnection {
+			label = "connection.direct_input"
+		}
+		style := material.Button(v.theme, &v.connectionMode, appui.Text(v.locale, label))
+		style.Background, style.Color = color.NRGBA{}, v.theme.ContrastBg
+		return style.Layout(gtx)
+	})
+	return rows
+}
+
 func (v *view) resetPresentationInputs() {
+	v.profileAddresses = make(map[string]*widget.Editor)
 	v.publicFields = make(map[string]*publicFieldState)
 	v.workspacePage = "overview"
 	v.workspaceButtons = make(map[string]*widget.Clickable)
 	v.disclosures = make(map[string]*disclosureState)
 	v.activation.SetText("")
+	v.hubAddress.SetText("")
 	v.username.SetText("")
 	v.password.SetText("")
 	v.nodeCode.SetText("")
@@ -552,10 +602,16 @@ func (v *view) actionButton(kind appcore.ActionKind, label string, s appcore.Sna
 			if kind == appcore.ActionConnect && strings.TrimSpace(v.activation.Text()) == "" {
 				enabled = false
 			}
+			if kind == appcore.ActionConnect && !v.legacyConnection && strings.TrimSpace(v.hubAddress.Text()) == "" {
+				enabled = false
+			}
 		}
 		if button.Clicked(gtx) && enabled {
 			if kind == appcore.ActionConnect && s.Hub.Verified && s.Setup.ReplacementAllowed && !v.replacementInput && appui.Flow(s).Stage != "replace" {
 				v.replacementInput = true
+				v.legacyConnection = s.Hub.Address == ""
+				v.hubAddress.SetText(s.Hub.Address)
+				v.activation.SetText("")
 				v.consent.Value = false
 				v.password.SetText("")
 				v.window.Invalidate()
@@ -603,16 +659,18 @@ func (v *view) actionFor(kind appcore.ActionKind, s appcore.Snapshot) (appcore.A
 		v.password.SetText("")
 		return action, action.Username != "" && action.Password != ""
 	case appcore.ActionConnect:
+		address := ""
+		if !v.legacyConnection {
+			address = v.hubAddress.Text()
+			if strings.TrimSpace(address) == "" {
+				return appcore.Action{}, false
+			}
+		}
 		v.replacementInput = false
 		v.consent.Value = false
-		if strings.HasPrefix(strings.TrimSpace(v.activation.Text()), "cicada-hub-connection-v1:") {
-			action.ConnectionCard = strings.TrimSpace(v.activation.Text())
-			v.activation.SetText("")
-			return action, true
-		}
-		action.ActivationCode = strings.TrimSpace(v.activation.Text())
+		action, ready := appui.ConnectionInputAction(address, v.activation.Text())
 		v.activation.SetText("")
-		return action, action.ActivationCode != ""
+		return action, ready
 	case appcore.ActionLoginPrepare:
 		action.Username = strings.TrimSpace(v.username.Text())
 		return action, action.Username != ""
@@ -1138,18 +1196,38 @@ func (v *view) profileRow(profile appcore.ProfileSnapshot, index int) layout.Wid
 		v.profileButtons[profile.ID] = button
 	}
 	return func(gtx layout.Context) layout.Dimensions {
+		var address *widget.Editor
+		if profile.Direct {
+			if v.profileAddresses == nil {
+				v.profileAddresses = make(map[string]*widget.Editor)
+			}
+			address = v.profileAddresses[profile.ID]
+			if address == nil {
+				address = new(widget.Editor)
+				address.SingleLine, address.MaxLen = true, 128
+				v.profileAddresses[profile.ID] = address
+			}
+		}
 		if button.Clicked(gtx) && !v.busy.Load() {
-			v.startDispatch(appcore.Action{Kind: appcore.ActionResumeProfile, ProfileID: profile.ID})
+			action := appcore.Action{Kind: appcore.ActionResumeProfile, ProfileID: profile.ID}
+			if address != nil {
+				action.HubAddress = strings.TrimSpace(address.Text())
+			}
+			v.startDispatch(action)
 		}
 		return v.card(gtx, func(gtx layout.Context) layout.Dimensions {
-			return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
-				layout.Rigid(v.labelRow(appui.SavedConnectionLabel(v.locale, index))),
+			rows := []layout.FlexChild{layout.Rigid(v.labelRow(appui.SavedConnectionLabel(v.locale, index)))}
+			if address != nil {
+				rows = append(rows, layout.Rigid(v.editorRow(address, appui.Text(v.locale, "connection.saved_address_override"), false)))
+			}
+			rows = append(rows,
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 					return layout.Inset{Top: 12}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 						return v.button(gtx, button, appui.Text(v.locale, "connection.resume_profile"), !v.busy.Load())
 					})
 				}),
 			)
+			return layout.Flex{Axis: layout.Vertical}.Layout(gtx, rows...)
 		})
 	}
 }

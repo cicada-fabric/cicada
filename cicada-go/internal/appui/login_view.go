@@ -46,7 +46,9 @@ func PresentScreen(s appcore.Snapshot, now time.Time) ScreenPresentation {
 	}
 	flow := preLoginFlow(s)
 	copy := s
-	copy.Hub = appcore.HubSnapshot{Verified: s.Hub.Verified}
+	// The user-selected physical target and verification progress remain
+	// visible before login; saved account/Hub identity details stay protected.
+	copy.Hub = appcore.HubSnapshot{Verified: s.Hub.Verified, Address: s.Hub.Address, TransportState: s.Hub.TransportState}
 	copy.Account = appcore.AccountSnapshot{State: s.Account.State, DeviceEnrolled: s.Account.DeviceEnrolled}
 	copy.Node = appcore.NodeSetupSnapshot{Pending: s.Node.Pending}
 	copy.Pair = appcore.PairSetupSnapshot{Pending: s.Pair.Pending}
@@ -62,7 +64,7 @@ func PresentScreen(s appcore.Snapshot, now time.Time) ScreenPresentation {
 	}
 	copy.Profiles = nil
 	for _, profile := range s.Profiles {
-		copy.Profiles = append(copy.Profiles, appcore.ProfileSnapshot{ID: profile.ID})
+		copy.Profiles = append(copy.Profiles, appcore.ProfileSnapshot{ID: profile.ID, Direct: profile.Direct})
 	}
 	return ScreenPresentation{Snapshot: copy, Flow: flow}
 }

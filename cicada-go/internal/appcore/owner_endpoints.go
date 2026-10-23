@@ -121,7 +121,7 @@ func sessionTokenDigest(token []byte) string {
 
 func (c *nativeController) discoverOwnerEndpoints(ctx context.Context) error {
 	c.ownerEndpointAvailable = false
-	if !c.connected || c.device == nil || c.owner == nil || c.cfg.HTTP == nil {
+	if !c.connected || c.device == nil || c.owner == nil || c.httpClient() == nil {
 		return ErrInvalidAction
 	}
 	target, err := joinOrigin(c.connection.Origin, wire.OwnerEndpointReadPath)
@@ -134,7 +134,7 @@ func (c *nativeController) discoverOwnerEndpoints(ctx context.Context) error {
 	}
 	request.Header.Set("Accept", "application/json")
 	request.Header.Set("Cache-Control", "no-store")
-	response, err := c.cfg.HTTP.Do(request)
+	response, err := c.httpClient().Do(request)
 	if err != nil {
 		return errors.New("Owner directory availability is unknown")
 	}

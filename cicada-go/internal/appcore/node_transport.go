@@ -16,7 +16,7 @@ import (
 // existing uncertain request or erase its original bytes.
 func (c *nativeController) discoverNodeAvailability(ctx context.Context) error {
 	c.nodeDiscoveryTried = true
-	if !c.connected || c.device == nil || c.owner == nil || c.cfg.HTTP == nil {
+	if !c.connected || c.device == nil || c.owner == nil || c.httpClient() == nil {
 		return ErrInvalidAction
 	}
 	target, err := joinOrigin(c.connection.Origin, wire.AppNodeCapabilitiesPath)
@@ -29,7 +29,7 @@ func (c *nativeController) discoverNodeAvailability(ctx context.Context) error {
 	}
 	r.Header.Set("Accept", "application/json")
 	r.Header.Set("Cache-Control", "no-store")
-	response, err := c.cfg.HTTP.Do(r)
+	response, err := c.httpClient().Do(r)
 	if err != nil {
 		c.nodeAvailable = false
 		return errors.New("Node feature availability is unknown")
@@ -60,7 +60,7 @@ func (c *nativeController) discoverNodeAvailability(ctx context.Context) error {
 }
 
 func (c *nativeController) postNodePacket(ctx context.Context, p *nodeOperation) ([]byte, error) {
-	if p == nil || len(p.Request) == 0 || c.cfg.HTTP == nil {
+	if p == nil || len(p.Request) == 0 || c.httpClient() == nil {
 		return nil, ErrInvalidAction
 	}
 	path := nodePacketHTTPPath(p.Operation)
@@ -82,7 +82,7 @@ func (c *nativeController) postNodePacket(ctx context.Context, p *nodeOperation)
 	r.Header.Set("Accept", "application/json")
 	r.Header.Set("Origin", c.connection.Origin)
 	r.Header.Set("Cache-Control", "no-store")
-	response, err := c.cfg.HTTP.Do(r)
+	response, err := c.httpClient().Do(r)
 	if err != nil {
 		return nil, errors.New("Node request outcome is unknown")
 	}

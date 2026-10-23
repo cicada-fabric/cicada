@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/cicada-ai/cicada/internal/hubaccountwire"
+	"github.com/cicada-ai/cicada/internal/hubtransport"
 )
 
 func TestActivationCodeInputLimitCoversRealWireCode(t *testing.T) {
@@ -35,7 +36,7 @@ func TestActivationCodeInputLimitCoversRealWireCode(t *testing.T) {
 	if len(code) > ActivationCodeInputLimit() {
 		t.Fatalf("wire code length %d exceeds editor limit %d", len(code), ActivationCodeInputLimit())
 	}
-	if ActivationCodeInputLimit() < hubaccountwire.MaxAppClaimCodeBytes || ActivationCodeInputLimit() < 32*1024 {
+	if ActivationCodeInputLimit() < hubaccountwire.MaxAppClaimCodeBytes || ActivationCodeInputLimit() < hubtransport.MaxBootstrapText || ActivationCodeInputLimit() < 32*1024 {
 		t.Fatalf("editor limit = %d, protocol limit = %d", ActivationCodeInputLimit(), hubaccountwire.MaxAppClaimCodeBytes)
 	}
 }

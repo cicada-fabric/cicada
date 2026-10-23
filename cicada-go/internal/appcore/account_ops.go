@@ -284,7 +284,7 @@ func (c *nativeController) sendPending(ctx context.Context) error {
 	if c.state.Pending == nil || len(c.state.Pending.Request) == 0 {
 		return ErrInvalidAction
 	}
-	response, status, err := postAccountPacket(ctx, c.cfg.HTTP, c.connection.Origin, c.connection.Origin,
+	response, status, err := postAccountPacket(ctx, c.httpClient(), c.connection.Origin, c.connection.Origin,
 		c.state.Pending.Operation, c.state.Pending.Request)
 	if err != nil {
 		_ = status // HTTP status is not authenticated and cannot settle a request.

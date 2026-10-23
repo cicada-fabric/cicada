@@ -29,6 +29,14 @@ const (
 	msgCanvas                    messageID = "section.canvas"
 	msgNotConnected              messageID = "connection.not_connected"
 	msgActivationCode            messageID = "connection.activation_code"
+	msgHubAddress                messageID = "connection.hub_address"
+	msgBootstrapCode             messageID = "connection.bootstrap_code"
+	msgSavedHubAddress           messageID = "connection.saved_address_override"
+	msgLegacyConnection          messageID = "connection.legacy_input"
+	msgDirectConnection          messageID = "connection.direct_input"
+	msgTransportVerifying        messageID = "connection.transport_verifying"
+	msgTransportVerified         messageID = "connection.transport_verified"
+	msgTransportFailed           messageID = "connection.transport_failed"
 	msgConnect                   messageID = "connection.connect"
 	msgVerifyHub                 messageID = "connection.verify_hub"
 	msgHealthPublic              messageID = "connection.health_public"
@@ -53,6 +61,7 @@ const (
 	msgHubIdentity               messageID = "hub.identity"
 	msgHubFingerprint            messageID = "hub.fingerprint"
 	msgOrigin                    messageID = "hub.origin"
+	msgHubCopyAddress            messageID = "hub.address"
 	msgHealth                    messageID = "hub.health"
 	msgNoData                    messageID = "common.no_data"
 	msgErrorCode                 messageID = "common.error_code"
@@ -126,6 +135,7 @@ const (
 	msgMaterialInvalid           messageID = "error.material_invalid"
 	msgLocalUnlockFailed         messageID = "error.local_unlock_failed"
 	msgHubTrustFailed            messageID = "error.hub_trust_failed"
+	msgHubAddressInvalid         messageID = "error.hub_address_invalid"
 	msgOwnerMismatch             messageID = "error.owner_mismatch"
 	msgEncryptedOwnerUnsupported messageID = "error.encrypted_owner_unsupported"
 	msgReplacementCode           messageID = "setup.replacement_code"
@@ -468,6 +478,14 @@ var catalog = map[Locale]map[messageID]string{
 		msgCanvas:                    "Canvas",
 		msgNotConnected:              "Connect to a Hub to continue.",
 		msgActivationCode:            "One-time activation code",
+		msgHubCopyAddress:            "Hub IP address:port",
+		msgBootstrapCode:             "Bootstrap code",
+		msgSavedHubAddress:           "New IP address:port (optional; blank keeps the saved address)",
+		msgLegacyConnection:          "Use an existing connection card or activation code",
+		msgDirectConnection:          "Connect using an IP address",
+		msgTransportVerifying:        "Verifying secure connection and Hub identity…",
+		msgTransportVerified:         "Secure connection and Hub identity verified",
+		msgTransportFailed:           "Secure connection or Hub identity could not be verified",
 		msgConnect:                   "Connect",
 		msgVerifyHub:                 "Verify Hub identity",
 		msgHealthPublic:              "Public health does not establish an account or management authority.",
@@ -492,6 +510,7 @@ var catalog = map[Locale]map[messageID]string{
 		msgHubIdentity:               "Hub identity",
 		msgHubFingerprint:            "Full Hub fingerprint",
 		msgOrigin:                    "Origin",
+		msgHubAddress:                "Hub IP address:port",
 		msgHealth:                    "Public health",
 		msgNoData:                    "No data",
 		msgErrorCode:                 "Error code",
@@ -561,6 +580,7 @@ var catalog = map[Locale]map[messageID]string{
 		msgMaterialInvalid:           "This connection code is invalid or expired. Get current material from your Hub operator.",
 		msgLocalUnlockFailed:         "This Windows account could not unlock the saved connection.",
 		msgHubTrustFailed:            "The Hub identity could not be verified. Check the trusted Hub address before continuing.",
+		msgHubAddressInvalid:         "Enter a numeric IP address and port, such as 192.0.2.10:8443 or [2001:db8::10]:8443.",
 		msgOwnerMismatch:             "Use the original Owner keys for this Hub. The selected identity does not match.",
 		msgEncryptedOwnerUnsupported: "This build supports unencrypted PKCS#8 Owner PEM files only. Encrypted PEM import is not supported. Your keys have not been changed.",
 		msgReplacementCode:           "Use a new activation code",
@@ -784,6 +804,14 @@ var catalog = map[Locale]map[messageID]string{
 		msgCanvas:                    "画布",
 		msgNotConnected:              "请先连接 Hub。",
 		msgActivationCode:            "一次性激活码",
+		msgHubCopyAddress:            "Hub IP 地址:端口",
+		msgBootstrapCode:             "安装引导码",
+		msgSavedHubAddress:           "新 IP 地址:端口（可选，留空使用保存的地址）",
+		msgLegacyConnection:          "使用已有连接卡或旧版激活码",
+		msgDirectConnection:          "使用 IP 地址连接",
+		msgTransportVerifying:        "正在验证安全连接与 Hub 身份…",
+		msgTransportVerified:         "安全连接与 Hub 身份已核验",
+		msgTransportFailed:           "未能验证安全连接或 Hub 身份",
 		msgConnect:                   "连接",
 		msgVerifyHub:                 "验证 Hub 身份",
 		msgHealthPublic:              "公开健康状态不能证明账户或管理权限。",
@@ -808,6 +836,7 @@ var catalog = map[Locale]map[messageID]string{
 		msgHubIdentity:               "Hub 身份",
 		msgHubFingerprint:            "完整 Hub 指纹",
 		msgOrigin:                    "来源地址",
+		msgHubAddress:                "Hub IP 地址:端口",
 		msgHealth:                    "公开健康状态",
 		msgNoData:                    "无数据",
 		msgErrorCode:                 "错误代码",
@@ -877,6 +906,7 @@ var catalog = map[Locale]map[messageID]string{
 		msgMaterialInvalid:           "连接码无效或已过期，请向 Hub 操作员获取当前连接材料。",
 		msgLocalUnlockFailed:         "当前 Windows 账户无法解锁已保存的连接。",
 		msgHubTrustFailed:            "无法验证 Hub 身份。请先核对可信的 Hub 地址。",
+		msgHubAddressInvalid:         "请输入数字 IP 地址和端口，例如 192.0.2.10:8443 或 [2001:db8::10]:8443。",
 		msgOwnerMismatch:             "此 Hub 需要原有 Owner 密钥，所选身份不匹配。",
 		msgEncryptedOwnerUnsupported: "此版本仅支持未加密的 PKCS#8 Owner PEM 文件，暂不支持加密 PEM。原有密钥未作修改。",
 		msgReplacementCode:           "使用新的激活码",
