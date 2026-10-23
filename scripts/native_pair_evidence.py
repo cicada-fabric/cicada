@@ -220,10 +220,15 @@ def finish(run, artifacts, image, owned, mode='protocol'):
         daemon, actors = native.get('original_daemon', {}), native.get('actors', [])
         expiry = before.get('native_domain_parameters', {}).get('wait_actual_login_expiry')
         native_valid = (expiry in ('0', '1') and native.get('status') == 'SCOPED_PASS'
+                        and native.get('scope') == 'ACTUAL_NATIVE_DOMAIN_MAIN_STATIC_PROVIDER_NOT_REAL_MODEL_OR_WINDOWS'
                         and native.get('actual_wall_clock_login_expiry') is (expiry == '1')
                         and native.get('literal_provider_posts') == 0
-                        and type(native.get('host_turns_started')) is int and native['host_turns_started'] >= 8
-                        and native.get('static_provider_posts') == 2 * native['host_turns_started']
+                        and native.get('host_submission_mode') == 'START_OR_STEER'
+                        and type(native.get('host_calls_completed')) is int and native['host_calls_completed'] >= 8
+                        and type(native.get('host_provider_posts')) is int
+                        and native['host_provider_posts'] == 2 * native['host_calls_completed']
+                        and type(native.get('native_queue_provider_posts')) is int and native['native_queue_provider_posts'] >= 0
+                        and native.get('static_provider_posts') == native['host_provider_posts'] + native['native_queue_provider_posts']
                         and native.get('real_model_turns_started') == 0
                         and native.get('manual_independent_Owner_pin') is True
                         and native.get('Hub_and_Node_healthy_at_revoke') is True
@@ -348,11 +353,13 @@ def finish(run, artifacts, image, owned, mode='protocol'):
             summary['scope'] = 'ACTUAL_HUB_CAPABILITY_PREFLIGHT_ONLY_NATIVE_DOMAIN_WORKFLOW_NOT_RUN'
         summary['native_domain_measurement'] = native
         summary['native_domain_measurement_valid'] = native_valid
-        summary['host_turns_started'] = native.get('host_turns_started') if native else None
+        summary['host_calls_completed'] = native.get('host_calls_completed') if native else None
+        summary['host_submission_mode'] = native.get('host_submission_mode') if native else None
         summary['model_turns_started'] = 0  # Static local provider; no real model.
         summary['native_daemon_touched'] = True if native and native.get('status') == 'SCOPED_PASS' else False if domain_not_run else 'UNKNOWN'
         summary['native_failure_location'] = ({key: native.get(key) for key in ('phase', 'label', 'failure_kind', 'failure_code',
                                                                               'hook_result', 'literal_provider_posts', 'provider_posts',
+                                                                              'host_provider_posts', 'native_queue_provider_posts',
                                                                               'host_diagnostic')}
                                               if native and native.get('status') in ('FAIL', 'IN_PROGRESS') else None)
         summary['not_run'] = ([] if passed else ['actual_native_domain_main']) + (
@@ -362,7 +369,7 @@ def finish(run, artifacts, image, owned, mode='protocol'):
             'cross_Node_Owner_Network_and_stale_epoch', 'original_business_request_response_loss_recovery',
             'empty_policy_cache_full_pagination_recovery', 'legacy_Pair_compatibility',
             'graceful_TUI_exit', 'ordinary_prompt_skill_plugin_passthrough', 'real_model_provider',
-            'native_queue_consumption', 'automatic_wake', 'Windows_DPAPI', 'Windows_ACL',
+            'native_queue_model_consumption', 'real_model_automatic_wake', 'Windows_DPAPI', 'Windows_ACL',
             'Windows_GUI', 'Android', 'public_HTTPS']
     elif mode == 'codex-product-other-uid':
         summary['not_run'] = ['Node_user_Network_business_policy', 'domain_context_proof', 'domain_signed_business_request',

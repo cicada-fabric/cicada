@@ -50,6 +50,9 @@ NATIVE_ASSERTION_CODES |= frozenset((
     'ACTUAL_ORIGINAL_THREAD_SCOPE_CHANGED', 'UNEXPECTED_NATIVE_HOST_APPROVAL_OR_RPC',
     'ACTUAL_DAEMON_NOTIFICATION_BOUND', 'ACTUAL_NATIVE_HOST_TURN_FAILED',
     'ACTUAL_DAEMON_RPC_REFUSED_thread/resume', 'ACTUAL_DAEMON_RPC_REFUSED_turn/start',
+    'ACTUAL_DAEMON_RPC_REFUSED_thread/read', 'ACTUAL_HOST_THREAD_NOT_IDLE', 'ACTUAL_HOST_THREAD_STATUS_INVALID',
+    'ACTUAL_PROVIDER_REQUEST_UNCLASSIFIED', 'ACTUAL_HOST_TURN_CORRELATION_FAILED',
+    'ACTUAL_QUEUE_EXPECTATION_INVALID', 'ACTUAL_QUEUE_REQUEST_CORRELATION_FAILED',
     'OWNED_PUBLIC_SUMMARY_PATH_REQUIRED', 'OWNED_PUBLIC_SUMMARY_SYMLINK_REFUSED',
     'ORIGINAL_0002_DAEMON_CHANGED', 'LITERAL_REACHED_PROVIDER', 'ACTUAL_ASK_REQUEST_ID_AMBIGUOUS',
     'ACTUAL_HOST_BINDING_EPOCH_MISSING_OR_AMBIGUOUS', 'ACTUAL_HOST_NATIVE_IDENTITY_CHANGED',
@@ -103,16 +106,19 @@ def classify_literal_hook(text, prompt):
 
 
 def native_stage_summary(phase, label, status='IN_PROGRESS', failure_kind='', failure_code='UNCLASSIFIED',
-                         hook_result='none', literal_provider_posts=None, provider_posts=None, host_diagnostic=None):
+                         hook_result='none', literal_provider_posts=None, provider_posts=None, host_diagnostic=None,
+                         host_provider_posts=None, native_queue_provider_posts=None):
     # Location is diagnostic only. It cannot establish a successful measurement.
     assert phase in NATIVE_PHASES and label in NATIVE_LABELS and status in ('IN_PROGRESS', 'FAIL')
     assert failure_kind in NATIVE_FAILURE_KINDS
     assert failure_code == 'UNCLASSIFIED' or failure_code in NATIVE_ASSERTION_CODES
     assert hook_result == 'none' or hook_result in NATIVE_HOOK_MARKERS
-    assert all(value is None or type(value) is int and value >= 0 for value in (literal_provider_posts, provider_posts))
+    assert all(value is None or type(value) is int and value >= 0 for value in
+               (literal_provider_posts, provider_posts, host_provider_posts, native_queue_provider_posts))
     return {'scope': 'NATIVE_DOMAIN_LOCATION_ONLY_NOT_ACCEPTANCE', 'status': status,
             'phase': phase, 'label': label, 'failure_kind': failure_kind, 'failure_code': failure_code,
             'hook_result': hook_result, 'literal_provider_posts': literal_provider_posts, 'provider_posts': provider_posts,
+            'host_provider_posts': host_provider_posts, 'native_queue_provider_posts': native_queue_provider_posts,
             'host_diagnostic': host_diagnostic}
 
 
@@ -136,7 +142,7 @@ def run(config):
     control.mkdir(mode=0o700)
     provider = StaticHostProvider(str(cli.root))
     reply = {'status': 'FAIL', 'real_model_turns': 0, 'manual_independent_Owner_pin_prerequisite': True,
-             'native_queue_automatic_wake_real_model_Windows': 'NOT_RUN'}
+             'real_model_and_real_model_automatic_wake_Windows': 'NOT_RUN'}
     daemon_started = False
     summaries = []
     active_literal = None
@@ -236,10 +242,16 @@ def run(config):
     def roundtrip(prefix, sender=0, receiver=1):
         question = 'SYNTHETIC_DOMAIN_QUESTION_' + provider.scope + '_' + prefix
         answer = 'SYNTHETIC_DOMAIN_ANSWER_' + provider.scope + '_' + prefix
+        provider.expect_queue(question, ids[receiver], actors[sender]['endpoint_id'], actors[receiver]['endpoint_id'],
+                              actors[receiver]['group_id'], 'ask')
         asked = call(sender, prefix + '-ask', 'cicada_ask', {'target': names[receiver], 'question': question,
                      'idempotency_key': 'synthetic-domain-' + provider.scope + '-' + prefix})
         original = request_id(sender, asked, prefix)
+        provider.bind_queue_request(question, original)
         inbound = receive(receiver, original, question, prefix + '-receive-question')
+        provider.expect_queue(answer, ids[sender], actors[receiver]['endpoint_id'], actors[sender]['endpoint_id'],
+                              actors[sender]['group_id'], 'reply')
+        provider.bind_queue_request(answer, inbound)
         call(receiver, prefix + '-reply', 'cicada_reply', {'request_id': inbound, 'body': answer,
              'idempotency_key': 'synthetic-domain-reply-' + provider.scope + '-' + prefix})
         receive(sender, original, answer, prefix + '-receive-answer')
@@ -380,7 +392,10 @@ enabled = false
         checkpoint(4, {'new_business_denied_after_current_revoke': True, 'native_session_ids': ids})
         reply.update(status='SCOPED_PASS', daemon=cli.original_daemon, native_session_ids=ids,
                      native_metadata=metadata, literal_provider_posts=0, actual_wall_clock_login_expiry=waited,
-                     host_turns_started=len(summaries), static_provider_posts=len(provider.requests),
+                     host_calls_completed=len(summaries), host_submission_mode='START_OR_STEER',
+                     host_provider_posts=provider.request_counts()['host'],
+                     native_queue_provider_posts=provider.request_counts()['native_queue'],
+                     static_provider_posts=len(provider.requests),
                      tool_summaries=summaries, provider_requests=provider.requests)
     except Exception as error:
         reply['failure_category'] = (type(error).__name__ + ': ' + str(error))[:180]
@@ -412,13 +427,21 @@ enabled = false
                 reply['cleanup_failed'] = True
         provider.close()
         assert digest(Path(cli.binary)) == cli.expected_binary
+        counts = provider.request_counts()
+        if reply['status'] == 'SCOPED_PASS':
+            reply.update(host_provider_posts=counts['host'], native_queue_provider_posts=counts['native_queue'],
+                         static_provider_posts=len(provider.requests))
+            if counts['literal']:
+                reply.update(status='FAIL', failure_phase='CLEANUP', failure_label='NONE', failure_kind='ASSERTION',
+                             failure_code='ACTUAL_PROVIDER_REQUEST_UNCLASSIFIED', hook_result='none', host_diagnostic=None)
         if reply['status'] != 'SCOPED_PASS':
             reply.update(provider_posts=len(provider.requests),
                          literal_provider_posts=sum(row['phase'] == 'literal' for row in provider.requests))
             location.clear()
             location.update(native_stage_summary(reply['failure_phase'], reply['failure_label'], 'FAIL', reply['failure_kind'],
                                                 reply['failure_code'], reply['hook_result'],
-                                                reply['literal_provider_posts'], reply['provider_posts'], reply['host_diagnostic']))
+                                                reply['literal_provider_posts'], reply['provider_posts'], reply['host_diagnostic'],
+                                                counts['host'], counts['native_queue']))
             publish_location()
         private_json(Path(config['result']), reply)
     return 0 if reply['status'] == 'SCOPED_PASS' else 1

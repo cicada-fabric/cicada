@@ -186,7 +186,8 @@ func TestN3LocalDomainNativeOriginalDaemonAB(t *testing.T) {
 	nodeCommand := exec.Command(installed, "machine", "agent", "--relay-only", "--id", v.actualNode.id, "--name", v.actualNode.id,
 		"--control-url", v.f.cfg.Origin, "--state-dir", v.actualNode.state, "--interval", "1s", "--user-root", prefix,
 		"--mcp-session-state-file", v.mcpState, "--mcp-outbox-state-file", outbox)
-	nodeCommand.Env, nodeCommand.Stdout, nodeCommand.Stderr = v.environment, log, log
+	nodeCommand.Env = append(append([]string(nil), v.environment...), "CICADA_CODEX_BIN=/tools/codex-package/bin/codex")
+	nodeCommand.Stdout, nodeCommand.Stderr = log, log
 	v.actualNode = &nodeProcess{process: startProcess(t, nodeCommand), id: v.actualNode.id, state: v.actualNode.state}
 	bound := v.actualNode.awaitState(t, v.f, true)
 	if bound.BindingID != v.bound.BindingID || bound.NodeKeyID != v.bound.NodeKeyID || bound.NodeKeyEpoch != v.bound.NodeKeyEpoch || bound.NodeFingerprint != v.bound.NodeFingerprint {
@@ -295,20 +296,24 @@ func TestN3LocalDomainNativeOriginalDaemonAB(t *testing.T) {
 	}
 	var final struct {
 		Status        string `json:"status"`
-		HostTurns     int    `json:"host_turns_started"`
+		HostCalls     int    `json:"host_calls_completed"`
+		HostPosts     int    `json:"host_provider_posts"`
+		QueuePosts    int    `json:"native_queue_provider_posts"`
 		ProviderPosts int    `json:"static_provider_posts"`
 	}
 	readJSON(t, result, &final)
-	if client.cmd.ProcessState.ExitCode() != 0 || final.Status != "SCOPED_PASS" || final.HostTurns < 8 || final.ProviderPosts != final.HostTurns*2 {
+	if client.cmd.ProcessState.ExitCode() != 0 || final.Status != "SCOPED_PASS" || final.HostCalls < 8 || final.HostPosts != final.HostCalls*2 || final.QueuePosts < 0 || final.ProviderPosts != final.HostPosts+final.QueuePosts {
 		t.Fatal("actual Native domain driver did not finish its measured main line")
 	}
 	if path := os.Getenv("CICADA_N3_DOMAIN_PUBLIC_SUMMARY"); path == "/state/domain-native-public-summary.json" {
-		writeJSON(t, path, map[string]any{"scope": "ACTUAL_NATIVE_DOMAIN_MAIN_NOT_REAL_MODEL_OR_AUTOMATIC_WAKE", "status": "SCOPED_PASS",
+		writeJSON(t, path, map[string]any{"scope": "ACTUAL_NATIVE_DOMAIN_MAIN_STATIC_PROVIDER_NOT_REAL_MODEL_OR_WINDOWS", "status": "SCOPED_PASS",
 			"original_daemon": originalDaemon, "literal_provider_posts": 0, "actors": aged.Actors,
 			"actual_wall_clock_login_expiry": waitExpiry, "manual_independent_Owner_pin": true,
-			"host_turns_started": final.HostTurns, "static_provider_posts": final.ProviderPosts, "real_model_turns_started": 0,
+			"host_calls_completed": final.HostCalls, "host_submission_mode": "START_OR_STEER",
+			"host_provider_posts": final.HostPosts, "native_queue_provider_posts": final.QueuePosts,
+			"static_provider_posts": final.ProviderPosts, "real_model_turns_started": 0,
 			"Hub_and_Node_healthy_at_revoke": true, "authenticated_policy_state_after_revoke": revoked.State,
 			"new_business_denied_after_revoke": denied.Denied})
 	}
-	t.Logf("LOCAL_DOMAIN_NATIVE_MAIN original_0002_daemon=true no_record_chmod=true literal_AB_provider_posts=0 actual_named_ASK_Reply=true normal_App_Close_communication=true current_revoke_denied_healthy_Node_Hub=true actual_login_expiry_and_new_C=%t manual_Owner_public_pin=true real_model_auto_wake_Windows=NOT_RUN", waitExpiry)
+	t.Logf("LOCAL_DOMAIN_NATIVE_MAIN original_0002_daemon=true no_record_chmod=true literal_AB_provider_posts=0 actual_named_ASK_Reply=true normal_App_Close_communication=true current_revoke_denied_healthy_Node_Hub=true actual_login_expiry_and_new_C=%t manual_Owner_public_pin=true real_model_and_real_model_automatic_wake_Windows=NOT_RUN", waitExpiry)
 }
