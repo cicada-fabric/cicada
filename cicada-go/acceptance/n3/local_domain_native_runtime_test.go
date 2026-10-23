@@ -29,6 +29,13 @@ type nativeHostFieldDiagnostic struct {
 	Types   []string `json:"types"`
 }
 
+type nativeHostErrorDiagnostic struct {
+	Present         bool     `json:"present"`
+	Types           []string `json:"types"`
+	SHA256          []string `json:"sha256"`
+	ErrnoCategories []string `json:"errno_categories"`
+}
+
 type nativeHostDiagnostic struct {
 	Observed          bool                                 `json:"observed"`
 	OutputType        string                               `json:"output_type"`
@@ -36,6 +43,8 @@ type nativeHostDiagnostic struct {
 	ParsedObject      bool                                 `json:"parsed_object_present"`
 	IsErrorObserved   bool                                 `json:"is_error_observed"`
 	IsError           *bool                                `json:"is_error"`
+	OperationStatuses []string                             `json:"operation_statuses"`
+	ErrorSummary      nativeHostErrorDiagnostic            `json:"error_summary"`
 	Fields            map[string]nativeHostFieldDiagnostic `json:"fields"`
 	ProductErrorCodes []string                             `json:"product_error_codes"`
 	HubHTTPStatuses   []int                                `json:"hub_http_statuses"`

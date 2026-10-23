@@ -70,6 +70,9 @@ HOST_PRODUCT_ERROR_CODES = frozenset(('CODEX_CALL_CONTEXT_REQUIRED', 'CODEX_NATI
                                      'CODEX_NODE_TICKET_UNAVAILABLE')) | frozenset(
     'CODEX_NATIVE_RECORD_' + stage for stage in
     ('ROOT', 'PATH', 'OWNERSHIP', 'PERMISSION', 'INODE', 'METADATA', 'SOURCE', 'SESSION', 'WORKSPACE'))
+HOST_OPERATION_STATUSES = frozenset(('PENDING', 'UNKNOWN', 'SENT', 'FAILED'))
+HOST_ERRNO_SUFFIXES = (('no such file or directory', 'NO_SUCH_FILE'), ('no such file', 'NO_SUCH_FILE'),
+                       ('connection refused', 'CONNECTION_REFUSED'), ('permission denied', 'PERMISSION_DENIED'))
 
 
 def host_value_type(value):
@@ -82,6 +85,8 @@ def host_output_diagnostic(value, issues=(), observed=True):
     # field names, types, booleans and public error-code enums leave memory.
     rows = list(output_objects(value)) if observed else []
     flags = [row['isError'] for row in rows if type(row.get('isError')) is bool]
+    errors = [row['error'] for row in rows if 'error' in row]
+    error_texts = {error for error in errors if isinstance(error, str)}
     prefix = 'not_string'
     if observed and isinstance(value, str):
         prefix = 'object' if value.lstrip().startswith('{') else 'array' if value.lstrip().startswith('[') else 'other'
@@ -92,6 +97,13 @@ def host_output_diagnostic(value, issues=(), observed=True):
     return {'observed': observed, 'output_type': host_value_type(value) if observed else 'not_observed',
             'json_string_prefix': prefix, 'parsed_object_present': bool(rows),
             'is_error_observed': bool(flags), 'is_error': any(flags) if flags else None,
+            'operation_statuses': sorted({row['status'] for row in rows
+                                          if isinstance(row.get('status'), str) and row['status'] in HOST_OPERATION_STATUSES}),
+            'error_summary': {'present': bool(errors), 'types': sorted({host_value_type(error) for error in errors}),
+                              'sha256': sorted(hashlib.sha256(error.encode()).hexdigest() for error in error_texts),
+                              'errno_categories': sorted({next((kind for suffix, kind in HOST_ERRNO_SUFFIXES
+                                                                 if error.lower().rstrip().endswith(suffix)), 'UNCLASSIFIED')
+                                                          for error in error_texts if error.strip()})},
             'fields': {name: {'present': any(name in row for row in rows),
                               'types': sorted({host_value_type(row[name]) for row in rows if name in row})}
                        for name in HOST_PUBLIC_FIELDS},
