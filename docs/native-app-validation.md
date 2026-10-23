@@ -6263,6 +6263,17 @@ The following constraints must be explicit before independent security acceptanc
    Preserve that pin and the exact pending operation without silently replacing
    either. Conditional local writes must reject changed/revoked/foreign existing
    trust and concurrent replacement; late replies may reconcile history only.
+   In particular, the current manual `TrustOwnerApprovalKeyLocal` looks up
+   `(owner_id,key_id)` and inserts when that pair is absent. The new automatic
+   carrier must not interpret another key ID for the same Owner as first trust:
+   an existing different ACTIVE key or a REVOKED old-key tombstone must refuse
+   the new key, with no new trust row, positive ACK or admission effect. Recheck
+   Owner-level conflicts/revocation in the conditional durable writer, including
+   changes after preflight. Trust-only must match the actual original Owner ID,
+   key ID, complete public keys/fingerprint, trust state/version and exact
+   Hub/Node/binding/epoch, not merely find an absent new pair. This constraint
+   belongs to the automatic carrier; changing the existing manual maintenance
+   API or introducing Owner-key rotation is outside this task.
 6. **Confirmed-Node trust-only use cannot impersonate INITIAL.** A confirmed
    Node must not create a new binding/bearer, reset epochs or revive trust through
    this fresh flow. Either reject that use or freeze a distinct, genuinely
@@ -6276,6 +6287,7 @@ Minimal future integration matrix; every row is **NOT_RUN for this new flow**:
 | Fresh Node with Hub address only | Actual request/code, actual App review/approval and automatic independent pin; no manual key/descriptor transfer |
 | Fake Hub/self-signed false Owner | No S/bearer disclosure, local trust installation or binding; same-response pin comparison cannot pass |
 | Wrong Hub/Node/Owner, changed request or missing key possession | Exact complete candidate/scope, proof and ACK mismatch refuses without mutation |
+| Same Owner, different key ID; old key ACTIVE or REVOKED; pin changed after preflight | Automatic first-trust/trust-only refuses; no new key row, tombstone reset, positive ACK or binding/grant effect; retain the complete original pin and binding |
 | Guessing/rapid requests | Frozen finite attempt/resource limits, no foreign-candidate disclosure; issuance cooldown alone is not a guessing-defense result |
 | Concurrent approval/ACK and duplicate request | One consumed approval/binding; exact originals return the same receipt, changed bytes conflict |
 | Expired code/proof and stale epoch | Strict original deadlines and current security state; poll/restart never renews them |
