@@ -5442,11 +5442,36 @@ is still separate. Producer's normal 58/race 27/vet 0 result keeps its own
 ### Complete removal and fresh-install manual acceptance
 
 Status: **NOT_RUN** for complete removal/reinstallation, physical Windows
-DPAPI/ACL/GUI and public HTTPS. This is the requested operator procedure for a
+DPAPI/ACL/GUI and public numeric-IP TLS. Use this batch after Root delivers the
+reviewed complete Hub/App/Node package. This is the requested operator procedure for a
 complete new installation, not a repair-package procedure. No removal or real
 deployment action was performed by the independent QA gate. Use the final
 reviewed complete package and its own SHA-256 manifest; its clean source and
 actual-model results must be recorded separately from the earlier static gate.
+
+A read-only gpu1 inventory on 2026-10-23 found the old unit file at
+`~/Cicada/node/systemd/cicada-node.service` and retained user drop-ins
+`~/.config/systemd/user/cicada-node.service.d/20-cicada-codex-bin.conf` and
+`40-installed-plugin.conf`, although `systemctl --user show cicada-node.service`
+reported not-found/inactive at that observation. The retained old state is
+`~/Cicada/node/state`; installed assets are under
+`~/.cicada/components/node/share/codex/.agents/plugins/`, with the installed
+Codex cache at `~/.codex/plugins/cache/cicada-repo/cicada/0.0.5/`.
+`~/.cicada/run/nodes` and `~/.cicada/codex/mcp` exist; the planned new explicit
+`~/.cicada/node/state` path was absent at that time. These are dated path
+observations, not proof of current deployment state or authorization to remove
+anything automatically. Only metadata was read; no key/token contents, process
+environment or unit/drop-in bodies were read and no resource was changed.
+
+The observed executable processes were MCP children, including children still
+holding deleted old executables, not a running Node agent. The user must exit
+the test Codex sessions or disable their Cicada plugin before checking remaining
+processes against the exact old executable path. Do not use broad `pkill cicada`
+or infer that every Cicada process is the Node service. Keep Codex history and
+unrelated sessions. Preserve reviewed `~/.cicada/acceptance/native-pair/A` and
+`B` workspaces and non-sensitive historical receipts outside the active root;
+`~/.cicada/acceptance/native-pair/mcp-state/mcp` is old authentication cache,
+not preserved history, and must not be copied back into the new installation.
 
 1. Stop the actual old Cicada writers before removing files. Close the native
    App; stop/disable the installed Node user unit (`cicada-node.service` when
@@ -5484,27 +5509,38 @@ actual-model results must be recorded separately from the earlier static gate.
    a Node, recover old identities or grant business rights. Resolve the package's
    actual executable/notices/plugin-asset paths from its manifest; do not substitute
    a cached repair binary. For the following commands, `HUB_CLI` and `NODE_CLI`
-   denote the verified newly installed executables, `HUB_ORIGIN` the selected
-   trusted HTTPS origin, and the other uppercase placeholders the newly reviewed
+   denote the verified newly installed executables. `HUB_ADDRESS` is the new
+   Hub's reachable numeric IPv4:port or bracketed [IPv6]:port; it is entered in
+   the App and Node. No domain, DNS/hosts alias, Caddy, reverse proxy or preset
+   external origin is required. Other uppercase placeholders are newly reviewed
    public values. No old IDs, pins or credential files are input.
 4. With the new Hub stopped, initialize its empty persistent state and issue a
    fresh finite initial activation code locally:
 
    ```sh
-   "$HUB_CLI" hub setup --owner-label 'New installation Owner' \
-     --origin "$HUB_ORIGIN" --state-dir /opt/cicada/state \
+   install -d -m 0700 /opt/cicada/state /opt/cicada/private
+   install -d -m 0755 /opt/cicada/public
+   "$HUB_CLI" hub setup --native-tls --owner-label 'New installation Owner' \
+     --state-dir /opt/cicada/state \
      --public-config /opt/cicada/public/hub-connection.json
-   "$HUB_CLI" hub activation-issue --purpose initial \
-     --state-dir /opt/cicada/state --code-file /opt/cicada/private/initial-activation.txt
-   "$HUB_CLI" serve --hub-nodes-only --state-dir /opt/cicada/state \
-     --host 127.0.0.1 --port 8787
+   "$HUB_CLI" hub connection-export --state-dir /opt/cicada/state \
+     --descriptor-file /opt/cicada/public/hub-transport.txt
+   "$HUB_CLI" hub activation-issue --native-tls --purpose initial \
+     --state-dir /opt/cicada/state --code-file /opt/cicada/private/initial-bootstrap.txt
+   "$HUB_CLI" serve --hub-nodes-only --native-tls \
+     --state-dir /opt/cicada/state --host 0.0.0.0 --port 8787
    ```
 
-   The chosen private/public parent directories must already exist with suitable
-   ownership. Use the same exact state path for setup, issuance and service.
-   The deployment operator supplies trusted HTTPS routing to this listener;
-   these commands do not configure DNS/TLS or validate public HTTPS. Privately
-   transfer the one-use activation material, without copying it into evidence.
+   Run with the intended installation owner and suitable directory ownership.
+   Use the same exact state path for setup, issuance and service. The single Hub
+   terminates TLS itself; setup derives its stable logical origin locally. Keep
+   its TLS bundle, public pin and application identities together. The operator
+   must make the numeric listener reachable through the chosen firewall/NAT;
+   public routing remains unverified until this real batch runs. Obtain the
+   public descriptor and full Hub fingerprint through the trusted local/operator
+   installation channel. Privately transfer the complete one-use bootstrap
+   wrapper, without copying it into evidence. The public descriptor contains no
+   activation code and is the only trust file needed by the fresh Node.
    Do not use legacy adoption, an old pending Owner or an imported old vault.
 5. Launch the new Windows App explicitly with the selected root, using the
    actual verified executable path in the complete package:
@@ -5514,20 +5550,28 @@ actual-model results must be recorded separately from the earlier static gate.
    ```
 
    Expect initial setup, not an old profile/connection. Connect with the new
-   activation material; compare the exact origin/full Hub fingerprint with the
-   operator's independent public metadata. Generate a new Owner in the App,
+   same-page numeric `IP:port` and complete `cicada-hub-bootstrap-v1:` material;
+   compare the displayed logical origin/full Hub fingerprint with the operator's
+   independently obtained public metadata. Require verified TLS and Hub identity
+   before generating a new Owner in the App. Then
    approve the finite App device authority and create the new account credential.
    Complete separate ordinary login: login itself does not activate Root or
    create Node/Network business authority. Record Windows DPAPI, vault ACL and
    GUI behavior individually when actually executed, without publishing secrets.
 6. Manually start one new Node as the intended OS user. Use explicit installed
    root and private state paths, rather than relying on the older implicit
-   `<root>/state` default. `CODEX_BINARY` is the real complete-package/native
-   Codex executable and its `CODEX_HOME` remains the intended native account:
+   `<root>/state` default. Obtain `HUB_DESCRIPTOR_FILE` from the Hub's public
+   export through the independent installation channel and store it under the
+   new Node root, for example `~/.cicada/config/hub-transport.txt`. Keep its exact
+   descriptor bytes; do not give the Node the secret App bootstrap wrapper.
+   `CODEX_BINARY` is the user's actual complete Codex installation; the current
+   target is verified `codex-cli 0.164.0`. Record its path/version/hash separately
+   from Cicada's package. Its `CODEX_HOME` remains the intended native account:
 
    ```sh
    CICADA_CODEX_BIN="$CODEX_BINARY" "$NODE_CLI" machine agent --relay-only \
-     --id "$NEW_NODE_ID" --name 'New local Node' --control-url "$HUB_ORIGIN" \
+     --id "$NEW_NODE_ID" --name 'New local Node' \
+     --hub-connection-file "$HUB_DESCRIPTOR_FILE" --hub-dial-address "$HUB_ADDRESS" \
      --user-root "$HOME/.cicada" --state-dir "$HOME/.cicada/node/state" \
      --mcp-session-state-file "$HOME/.cicada/mcp/sessions.json" \
      --mcp-outbox-state-file "$HOME/.cicada/mcp/outbox.sqlite3"
@@ -5564,9 +5608,30 @@ actual-model results must be recorded separately from the earlier static gate.
    and actual target workspace, then complete ASK/Reply in both directions and
    check the original caller identity. A wrong target filter must not return B;
    forged caller fields must refuse. Close the App and verify permitted work,
-   then explicitly revoke the same policy and require new discovery/business
-   calls to deny with Node/Hub still healthy. Record actual-model conversation
-   outcomes separately; synthetic static-provider GREEN is not that result.
+   while keeping the independently granted Node/user policy active. Record
+   actual-model conversation outcomes separately; synthetic static-provider
+   GREEN is not that result. Wrong Hub public metadata, missing approval or
+   copied caller fields must not create a second authorized identity.
+9. Exercise normal process/profile recovery before revoking. Restart the same
+   Hub with its original StateDir/native-TLS flags, then the same Node with its
+   original explicit paths and descriptor/locator. Reopen the Windows App with
+   `--user-root 'F:\DOWNLOAD\Cicada-N2'`, discover/unlock the original profile
+   and complete ordinary login if required. Compare the original Hub pin,
+   Owner/App-device public IDs and Node binding; do not issue a new bootstrap
+   or regenerate an Owner to make recovery succeed. Reconnect the original
+   installed plugin if needed, preserving actual A/B SIDs/workspaces and caller
+   identity, then repeat the named/workspace query and ASK/Reply. Record any
+   uncertain original request and its authenticated recovery separately.
+10. In the original recovered App, refresh and explicitly revoke that exact
+    current Node/user policy. Require new named/workspace discovery and ASK to
+    refuse while the original Hub/Node remain running and healthy. Closing the
+    App earlier must not be counted as this explicit revoke. Return one batch
+    record with UTC time, package/source/version distinctions, executed commands
+    and exit codes, artifact hashes, original public IDs, observed results,
+    defects and each unexecuted item. Do not include credentials, vaults, keys,
+    tickets or sensitive full request bodies. Windows DPAPI, ACL and GUI and
+    actual public-IP connectivity get their own user-observed result; Linux
+    automated evidence does not establish those platform outcomes.
 
 The current disposable fixture starts each Hub database/identity, App vault,
 Node state, owned HOME and CODEX_HOME under a new task temporary directory. Its
@@ -5592,3 +5657,469 @@ passes workspace selection only where supported; no production flag was relaxed.
 This component/Hub-local slice does not execute Node enrollment, the complete
 user removal/new-install sequence, Windows or public HTTPS. Their NOT_RUN labels
 above remain in force.
+
+## 2026-10-23 direct numeric-IP TLS matrix and driver preparation
+
+The user now requires one product Hub process, no domain/Caddy/reverse proxy,
+no deployment-preset external origin, and secure App input of numeric IP:port.
+The independent [DIP01–12 matrix](native-app-plan.md#direct-numeric-ip-tls-acceptance-driver)
+and opt-in selector `TestN3DirectIPTLSAcceptance` are prepared. The shared
+Hub/App/Node API is not yet reviewed/frozen; the new runtime test therefore
+explicitly skips every DIP case. `scripts/test-native-pair.sh --direct-ip-tls`
+must produce NOT_RUN/125 for that complete typed hold, and FAIL for missing cases,
+untyped skips, failed compilation, source/binary drift or incomplete cleanup.
+The parent test's pass event cannot establish transport acceptance. No new
+protocol DTO is invented here and no new product gate has run at this stage.
+A separate short `TestN3DirectIPTLSFaultFixture` lane checks only negative-peer
+counters, five redirect statuses, untrusted-CA-before-HTTP and real X.509
+verification at explicit synthetic validity boundaries. It cannot qualify any
+DIP product case or App TLS acceptance.
+
+Existing implementation seams are retained: Node IP locator v2 separates the
+numeric socket from stable HubID, logical TLS SAN, SPKI pin, trust anchor and
+signed application origin; strict PQ TLS has actual IPv4/IPv6 no-DNS primitive
+coverage. The earlier clean-`ab2362f` IP/ARM first-install A2 receipt was rehashed
+at its migrated location,
+`/home/zyf/Cicada/.local/evidence/legacy/CICADA-data/v00-docker-deployment-20261012/ip-arm64-clean-a2/result.json`,
+SHA-256 `9d5395a8e0aabee45e76b2694049252a0953de326342345ec94a63e8099dac5c`.
+Its 25 product Node command receipts (13 explicit ARM64 QEMU commands) hash to
+`e8a8688f6b7a4ab7dcf634bdbed8450e112109cf35af21564889c53074b08ea3`.
+Those old results are bounded protocol/Node/QEMU evidence, not current Windows
+App, real public IP, physical ARM or single-Hub first-contact acceptance.
+
+In particular, `firstInstallHTTPSFrontend` in the old
+`node_ip_first_install_test.go` creates a test HTTPS reverse proxy to the product
+HTTP listener. Its separately enrolled strict Node transport does not qualify
+the newly requested direct bootstrap. The old native IP socket test still uses
+an independently preconfigured logical service SAN and trust. The earlier manual
+HTTPS/origin procedure above retains its dated scope; it does not satisfy the
+new no-preset-origin target. No successful existing user Hub/App state was cleared.
+
+Before execution, Root must review the unique shared contract for independent
+initial pin/confirmation, TLS/complete-Hub identity binding and signed origin
+compatibility/migration. Positive acceptance must include actual App, Node pairing/bridge/relay and
+selected-Node MCP whoami/directory/ASK/Reply using the actual product TLS
+listener and transport, without a reverse-proxy front, injected test HTTPDoer,
+verification bypass or host CA-store modification. Malicious TLS/MITM/redirect
+fixtures are separate negative branches, with bounded secret-POST counters and
+unchanged unauthorized state. X.509 validity/renewal checks use real verification;
+any test clock is explicitly synthetic rather than natural elapsed-time evidence.
+IPv4/IPv6 are independent observations; an unavailable family remains NOT_RUN.
+
+The prepared runner retains read-only source/module mounts, task-exclusive build
+cache locking, unique output/state/container names, network-none isolation,
+pinned image, finite resource/time limits and exact owned cleanup. The final
+fresh installation must verify file-only installation, explicit Node start and
+later plugin connection using the selected component roots; it cannot borrow old
+trust or imply automatic FB-03 delivery. Windows DPAPI/ACL/physical GUI, public-IP
+routing, physical ARM, actual-model consumption and the new direct-IP workflow
+remain **NOT_RUN** until their own measured receipts exist.
+
+Preparation checks, not direct-IP product acceptance:
+
+- Eighteen synthetic receipt/source cases pass, including complete typed hold
+  → NOT_RUN/125 and rejection of parent-only/fabricated PASS, missing or unknown
+  cases, unexplained skips, compile/harness/fixture failure, source/binary drift
+  and failed cleanup. Receipt
+  `/home/zyf/Cicada/.local/evidence/native-pair-acceptance/direct-ip-oracle-preparation-20261023-pg4kz3la/result.json`,
+  SHA-256 `5189fe3163b8aab9e9c411e837c931313cb27a2aca7cf5ed799b474882186427`.
+- The actual pinned disposable Docker preparation run
+  `run-20261023T052729Z-YBwHUA` returns **NOT_RUN / 125** on dirty `3b1186d`
+  plus the exact five-path QA preparation overlay. Version, CLI/test compile,
+  fault-fixture, harness and vet stages exit 0. Only the seven negative-fixture
+  subcases plus their parent pass; all twelve DIP cases skip. No actual Hub,
+  App or Node process starts, and this proves neither the new transport nor
+  native Windows behavior. Receipt
+  `/home/zyf/Cicada/.local/evidence/native-pair-acceptance/run-20261023T052729Z-YBwHUA/result.json`,
+  SHA-256 `0473a896d8414e3ebcc558094675b45b57d5911946bb5095a3e82930ed9015b8`.
+  Source-before/source-after both hash to
+  `d6ee3a3472df163c19bc9e410d788136e5a5823c43e778d1544746bd109db080`;
+  manifest `51cea0c99512e54e024ee0b417b7bb0a1f50f10b170ca653189fdd3d1472383c`.
+  Compiled CLI is 38,141,735 bytes, SHA-256
+  `a27680e9d212e224e49d0fd6fd0475a6625ea4d944755712470c467288ca2834`;
+  test binary is 24,289,685 bytes, SHA-256
+  `d667146559f9412ba676ffcf1b3755168f9832ceed76d1a8bd1c58693912db37`.
+  Source/binary hashes are stable, the owned container is absent and the cache
+  lock is released. This later record update is outside that run's input snapshot;
+  executed Go/script bytes remain unchanged.
+
+Reproduce the preparation only with `scripts/test-native-pair.sh --direct-ip-tls`;
+expect exit 125 until the reviewed shared API and actual process assertions are
+connected. The fixture's X.509 boundary times are synthetic and its independent
+trusted test client is not supplied to the production App. Real deployment,
+public IP, IPv6 product execution, Windows and physical ARM stay NOT_RUN.
+
+Additional fixed acceptance obligations, still NOT_RUN pending shared API:
+leaf auto-renewal must retain the CA, SPKI, Hub epoch and application identity,
+with extended certificate validity verified through the real TLS path. Existing
+Hub state with a missing required application key must refuse without recreating
+that key or replacing other identities. The selected-Node MCP requestWithGroup
+path must exercise the shared transport directly, beyond the Node-private HTTP
+client path. These are matrix additions only; no new execution or preparation
+commit is attributed to them.
+
+## 2026-10-23 frozen direct-IP driver and independent attack lanes
+
+Root delivered shared contract/client `12fe1be4498780052976570f895b3d1de2a49f3c`
+and then App `3a0c632ca5a9af6a33dc80f5ea5ddf248ee229fb` to this task branch.
+The following observations are independent scoped checks. They do not establish
+the still-undelivered Hub runtime/Node consumer checkpoint, a full DIP pass,
+real deployment, real-model consumption or Windows behavior.
+
+The shared production transport was tested against independently generated
+synthetic TLS attack sockets in pinned network-none Docker. Twelve events pass,
+exit 0: CA/SAN/SPKI and current-clock expired/future leaf rejection before HTTP;
+unsigned changes to complete Hub/Node identity, epoch, origin or trust;
+canonical locators; all five redirect statuses across three destination modes;
+pre-dial Host/Origin/scheme rejection; proxy poisoning; and unchanged trust with
+two same-key leaf certificates. This last control is not Hub automatic renewal.
+Receipt `direct-ip-shared-faults-20261023-x5mi2trc/result.json` under
+`/home/zyf/Cicada/.local/evidence/native-pair-acceptance/` hashes to
+`a3c9427d7f2bbfa3da209b2afd469ce7b27f7d9ad48f67a11c48cae76fb3ba19`.
+Its source is dirty `12fe1be` plus the exact QA overlay, manifest
+`3217a36db9d441505fbcb7ddc70ad439d4a590b854da828852c05fd6bdd7618b`;
+source snapshots are identical, SHA-256
+`252a97958bf1e15fab72fba19cc49b8f1f9efb646800589b92c84b83963994a5`.
+The earlier shared-lane attempt
+`direct-ip-shared-faults-20261023-6wsk_o7x/result.json`, SHA-256
+`215ff0b07786141dcef6f8df5dab78cc4997818f95c1080acc160653eed8ed26`,
+retains FAIL/1 with zero test events: its temporary filesystem was non-executable.
+This is an orchestration failure, followed by a fresh isolated run with the
+executable test temporary directory. Neither receipt was rewritten.
+
+After the formal App delivery, the independent App-negative lane compiles the
+entire new driver and invokes the actual separate Controller child with HTTP,
+DirectHTTPFactory and Now unset. The Linux password-encrypted vault protector
+is synthetic; it does not stand in for DPAPI. DIP03/04/06/07 and their parent
+produce five PASS events, with compile, execution and vet all exit 0. Invalid or
+expired bootstrap/public-descriptor input, forbidden locators, wrong live TLS
+CA/SPKI/SAN/time and 15 metadata redirect combinations leave zero secret POSTs,
+zero observed credentials and no vault open/create. Secret-bearing follow-up
+actions remain unavailable. The separate shared lane qualifies the corresponding
+production transport's secret-request redirect behavior.
+Receipt `direct-ip-app-negative-20261023-j38ieqrq/result.json`, SHA-256
+`08f9c159486c5ad8a04b200de16dd58a0d25bd8cf6365aeeefa6aa07c82c35d4`,
+records dirty `3a0c632` plus seven QA paths, stable source and an absent owned
+container. Its source snapshot SHA-256 is
+`3c70c5a9fcc879f9928cecd238330a7b9f6ca29f2c4fe6ffd4ea8afa870aa8a2`,
+manifest `f7eeab54f5d4640d79a449c058e0c69c96625735cccd36e37dd2b6c97ea1a188`.
+The compiled test binary is 24,742,977 bytes, SHA-256
+`712fd7b82676060be8c16528fe09190ec00626011a2b013d151a8fa207adae50`.
+Later record updates are outside this receipt's frozen input. Reproduce these scoped checks from the retained `run.py` files in
+fresh owned directories; historical receipt paths are exclusive and cannot be
+rerun in place.
+
+The full driver now calls the frozen product API for twelve cases; no case is
+predeclared successful. It installs real component files to a temporary prefix,
+then explicitly initializes/starts the actual Hub TLS listener and actual Node.
+Both numeric address families have fresh Hub/App/Node state and the unchanged
+actual Codex/Hook/MCP short driver, original umask-0002 daemon, static provider,
+WHOAMI, directory filters, named ASK/Reply, normal App close and current revoke.
+Actual Host coordinates and original request/content digests are checked against
+the App's Owner-signed directory read. No native metadata is synthesized.
+The manual independent Owner public-pin step remains explicit. Real account
+session expiry/new C, paid-model turns and natural certificate-time passage are
+outside this short gate.
+
+The DIP12 negative lane forwards opaque TCP bytes while TLS still terminates at
+the real Hub. It authenticates a copied coherent encrypted App vault image to
+identify a durably pending original read before dropping returned cipher bytes;
+it does not infer the operation from TLS record counts. A read-only SQLite
+query must prove the exact request digest and committed cached result before
+Hub/App restart. Direct recovery must retain original request/response bytes,
+one cache row, original device/Owner identities and independently authenticated
+App-device ciphertext. The parent retrieves no Owner private key or proof signer.
+This code remains NOT_RUN until the real Hub/Node checkpoint is delivered.
+
+The evidence oracle additionally requires exact fixture/case terminal events,
+per-case true observations and complete IPv4/IPv6 native summaries. Twenty-seven
+synthetic receipt/source checks exit 0, including rejection of parent-only PASS,
+missing/false/duplicate observations, missing address families or original ASK
+IDs, mismatched App directory/daemon/provider accounting, invented elapsed expiry,
+source/binary drift and cleanup/compile/fixture failure. This is schema testing,
+not product execution. Receipt
+`direct-ip-oracle-integrated-20261023-geka41mb/result.json`, SHA-256
+`13e97993ea22cb78552a7c94ad76af83da7c076925fa4f7adb634584c344c9bc`.
+
+The full rerun command is
+`CICADA_NATIVE_PAIR_LICENSES_DIR=<reviewed-complete-notices> scripts/test-native-pair.sh --direct-ip-tls`.
+Do not run the old Hub CLI as the new implementation. Root must first deliver
+the runtime and Node consumers. The full gate and actual renewal, missing-key
+startup, retained-origin migration, original-response recovery and dual-family
+native business chain remain NOT_RUN. Windows DPAPI/ACL/GUI, physical ARM,
+public-IP deployment and final default-root installation remain separate NOT_RUN
+items. No shared Hub, public deployment, resident service or real key was touched.
+
+## 2026-10-23 actual native Hub/App scoped integration
+
+Root delivered runtime `a228a1b5d4adce9a90b9f4479ad6c33327f08a7a` after the
+formal App checkpoint. Independent QA compiled actual self-contained component
+CLI/test binaries and used the pinned network-none Docker envelope, read-only
+source/modules/notices and exclusive task build cache. All entries below have
+identical source-before/source-after and an absent owned container. The tested
+inputs are dirty HEAD plus their exact seven-path QA overlay, never HEAD alone.
+Node consumer flags and the full native Codex gate were deliberately not run
+against the old Node implementation.
+
+| Receipt under `/home/zyf/Cicada/.local/evidence/native-pair-acceptance/` | Result and scope | Receipt SHA-256 |
+| --- | --- | --- |
+| `direct-ip-app-negative-20261023-y7bzwte5/result.json` | On dirty `3a0c632`, compile/App-negative/vet all 0; 5 events pass. Adds valid pinned TLS returning a mismatched live Client-Control key, Hub ID or key version. Real App rejects before secret traffic/vault mutation. | `bbfad5e4e6491c00fa067068619509633f1ae98c8d63addac772646bbbedc7e8` |
+| `direct-ip-hub-app-20261023-r98xte0u/result.json` | FAIL/1, 0/7 events pass. Six shared prerequisites fail at bootstrap file issuance because the Go fixture's temporary output parent lacks required 0700 mode. This is a QA fixture failure; the CLI correctly rejects it. | `92e5af00205df1cf022c359a3de8799b0b70cdbbdd60520b6ec91765ed747acd` |
+| `direct-ip-hub-app-20261023-a0kfcqn2/result.json` | FAIL/1 aggregate, with 5 passed cases: DIP01/08/09/10/11. Actual native Hub/App first setup/activation/login, poisoned proxies/forwarding headers, bounded N2 rights, same-state restart, foreign-Hub refusal, missing keys/bundle/mixed epoch fencing, and stable old DNS/IP-origin cards/keys with explicit locator change. DIP05 and the parent fail because the injected short leaf starts before its newly created CA. | `a7b97ceba02786252c08caf058999248c0d723eeb97daaf44034d7b4b14dde24` |
+| `direct-ip-renewal-20261023-b78nvreu/result.json` | Targeted DIP05 plus parent, 2/2 PASS; Go version/CLI compile/test compile/execution/vet all 0. Controlled six-day leaf retains the actual original NotBefore/SAN/key shape and independently verifies at current and explicit fixture verification times. Actual Hub renewal extends validity while CA/SPKI, application keys, old trusted connection material and resumed App identity remain usable. Native/PQ selectors reject before attempting to read the deliberately absent PQ config. | `43f33f1578500a76f4eb82bd365aa64d39664b597ec87f34db615b1a69856177` |
+
+The first bootstrap fixture was corrected by creating a dedicated 0700 private
+parent. The later short-leaf fixture was corrected by retaining the original
+certificate shape and qualifying it against the installation CA before writing
+it. Existing receipts remain unchanged. These independent partial runs are not
+combined into a fabricated same-source full DIP PASS; the final gate must run
+all twelve cases on the complete integrated product source.
+
+All three Hub/App attempts compile the same 39,031,436-byte CLI, SHA-256
+`e34a1fa61d5b66960f8213ed43b5aa8d836eb20fb2198b91918f805394da4cb4`.
+The five-case mixed run source snapshot hashes to
+`5af02681afab34c0f0be2783b9a194ffe0d805f37d28ff75eb3299e0cf5202be`,
+manifest `4a6cb6f34f148ea5a40441612591955f9e3ffeabb9b730d947e3b43715f97c25`;
+test binary is 24,768,906 bytes, SHA-256
+`49a0596fcfbeb96ee7ee674f6ce8e82df1828c196c0c81df2189ef9bc3b28416`.
+The targeted renewal source snapshot hashes to
+`f2cf697f108f16383df7b70db7d842c37fe85577d92bcf8a1f3819dde9421f0c`,
+manifest `99eaf4f13b2911fcccdf75ffd89175690b8e03ca32365a4362e3749b68f661d4`;
+test binary is 24,770,290 bytes, SHA-256
+`1ec282eab1e379aae88c435892d82d3b9e2d4760bf42d030e069030000557e68`.
+The retained per-run `run.py` files provide exact scoped commands; copy one to
+a fresh owned run directory before invocation. They cannot overwrite historical
+artifacts. No production implementation was changed by QA.
+
+Root requires current installed Codex 0.164.0 for the new native lane. Read-only
+inspection resolves `/home/zyf/.local/bin/codex` to the complete
+`0.164.0-x86_64-unknown-linux-musl` package, confirms package metadata and actual
+`codex-cli 0.164.0`, and hashes its CLI to
+`b93f6811d3f653f0fb83be4050d857fb9abbb111dfa2ce160563327daff7f306`.
+The existing Python ActualCLI/DomainHostCLI consumes the supplied expected
+binary hash; 0.163 references there are historical comments, not version gates.
+Only the new direct-IP runner/Go/evidence paths select the reviewed 0.164 package,
+verify the version and pin, mount the complete package read-only and record its
+manifest. Existing 0.163 defaults/hashes and dated gates remain unchanged.
+This code review and binary preflight do **not** establish 0.164 native Hook/MCP
+compatibility or user acceptance; that result remains NOT_RUN until actual
+Node/Host execution.
+
+Thirty synthetic oracle/source checks pass after the version change, including
+rejection of a 0.163 runtime/version mislabeled as 0.164. Receipt
+`direct-ip-oracle-0164-20261023-yrj9gf1z/result.json`, SHA-256
+`7cca934d77c913c33a26e6559894ab91b03277039f26a4f14ecbe0bcc6c2c378`.
+This is schema discrimination only. The existing complete-removal chapter now
+uses direct native TLS setup/export/bootstrap, same-page App IP/code entry,
+explicit new Node descriptor/locator, current Codex, manual FB-03 public pin,
+new A/B business work, normal restart/recovery and explicit revoke. It remains
+an unexecuted user batch with the agreed roots. No actual cleanup was performed.
+
+Remaining: formal Node consumer delivery, dual-family actual 0.164 Host
+WHOAMI/directory/ASK/Reply, the real committed-response-loss recovery lane,
+same-source complete DIP gate, final package/default-root batch, physical
+Windows DPAPI/ACL/GUI, public-IP connectivity, physical ARM and real-model results.
+
+## 2026-10-23 cipher-fault qualification and Codex 0.164 offline preflight
+
+Work continues on the same seven QA paths after Root's Hub/App checkpoint.
+Passing Hub/App product cases were not rerun. The Node-dependent DIP02/12 and
+complete same-source gate remain NOT_RUN pending formal Node delivery.
+
+`TestN3DirectIPTLSCipherFaultFixture` now separately qualifies the opaque TCP
+negative peer: verified TLS still ends at its synthetic TLS endpoint; arming
+alone does not drop traffic; an explicit pending signal permits response loss
+only after the endpoint receives its request; and a fresh verified TLS connection
+works afterward. Ordinary and race executions each pass, with both compiles and
+vet exit 0, stable source and an absent owned container. Receipt
+`/home/zyf/Cicada/.local/evidence/native-pair-acceptance/direct-ip-cipher-fixture-20261023-o7ozae06/result.json`,
+SHA-256 `1d8dda1b0452ba3f84633348e16b6b7a1ed79acc9a932dc4f58052ba5466b7d5`.
+This is fault-observer qualification, not an actual Hub committed-result or
+original App recovery PASS. The final fixture lane requires this event in
+addition to the previously qualified shared/negative socket events.
+
+Actual pinned 0.164.0 also runs inside a fresh network-none container with its
+complete package mounted read-only and an empty owned HOME/CODEX_HOME. Version,
+existing global flags, plugin help, marketplace help and daemon flags each exit
+0. No model, native Thread, Hook or MCP business call starts. Package hashes are
+stable and the container is absent. Receipt
+`direct-ip-codex-0164-preflight-20261023-_54lyxd0/result.json` under the same
+evidence root, SHA-256
+`132e44f4c848dec22b85641d433120615ddc3b439ec3181ea5f12dba142d4cad`.
+Earlier preflight receipts retain FAIL/1 despite all individual CLI commands
+exiting 0: `direct-ip-codex-0164-preflight-20261023-u1w5s2q2/result.json`, SHA-256
+`63ff47f49da2bba15d4d91026858c0f8b853317cc634defd43fc6047868141f8`,
+used an absent CODEX_HOME; `direct-ip-codex-0164-preflight-20261023-krlcftsc/result.json`,
+SHA-256 `135942bcce923d2b4a31623c06fb6e0eace4e9900c419eb668f7e42ea230dcb1`,
+used CODEX_HOME under `/tmp`, where Codex refuses helper aliases. Their combined
+stderr/stdout failed the fixture's exact version check. The successful fresh
+preflight uses a precreated owned HOME under a separate `/work` mount. These
+fixture conditions are not 0.164 product defects or native compatibility results.
+
+The future native revoke check is also tightened: it must observe a new
+authorized Node heartbeat in the existing `machines` row through a read-only
+SQLite connection after the App's authenticated revoke response. Merely live
+Hub/Node processes cannot qualify healthy-service refusal. The per-family
+summary records ordered commit/heartbeat timestamps. This Node-dependent
+observation remains NOT_RUN. Thirty-three synthetic oracle/source checks pass,
+including rejection of stale/missing/malformed heartbeat evidence. Receipt
+`direct-ip-oracle-final-preparation-20261023-s5_d1r1k/result.json`, SHA-256
+`70d07917d65f15a595103a8e1dce1b3016b31db19a828bd1bf2526c13927d198`.
+It qualifies receipt discrimination only; no platform or product pass is inferred.
+
+Further offline 0.164 checks use the actual pinned executable's own generated
+experimental RPC schema, with no daemon/native/model runtime. All seven methods
+used by the retained driver are present (`initialize`, plugin/hooks list,
+MCP status, Thread resume/read and turn start). Ten AST-observed driver calls
+have no missing required keys or unknown parameter names against that schema;
+this is not full value validation or actual protocol execution. Successful
+export receipt `direct-ip-codex-0164-schema-export-20261023-33sp31q1/result.json`,
+SHA-256 `84ab3f4e28f78ccf9ec525deaf97e901264e24fec7cbfb21912c4486f9cbae0d`;
+its `driver-parameter-shape.json` hashes to
+`6da1d3f738399e81ebc15c6039c4fd1e134a769bc2e7c8c8d9a0cd537ccc01ba`.
+The earlier export attempt retains FAIL/1 at
+`direct-ip-codex-0164-schema-export-20261023-tbjkl8cu/result.json`, SHA-256
+`babd74cfe0402a0804c90d53aa0a69b820ecd5d3c3c1da8b6fdfeaab6ffb4c8e`:
+that code-generation command rejects `--strict-config`. Removing that flag for
+the standalone offline schema export succeeds. The actual driver never invokes
+schema generation and was not changed. Normal driver global/plugin flags keep
+their separate successful preflight receipt.
+
+The cipher fixture's normal test binary is 24,776,581 bytes, SHA-256
+`b55cad4984aa40a8df0f18553c587c6d714b400882a17c8e8f40723e310b9eed`;
+race binary is 37,533,121 bytes, SHA-256
+`c6eb50f3c2155c81f57a342864a9047d5a715a1a3cfe44d3c5c3ab0d86da9b45`.
+Its identical source snapshots hash to
+`8d3b864b73fc7a7234790227a5d960f906c5beb5dfeb32e2d57eabfe16952c61`,
+manifest `7465ceb1894c0e11c7a6d6e16ac0d89d2622665f2269ce6787be6bd1692bc889`.
+Later read-only heartbeat-witness/record edits retain their own unexecuted Node
+scope; they do not change attribution of the earlier fixture qualification.
+The final renewal case additionally exports and byte-compares the actual saved
+public descriptor after renewal, covering the persisted epoch/signature directly.
+This added assertion awaits the final integrated gate; the scoped renewal PASS
+is not rerun or extended by inference. New direct-IP summaries also distinguish
+an observed owned native daemon from untouched resident deployments; an absent
+completion summary leaves owned-daemon activity UNKNOWN.
+The completed driver then passes compile and vet, with zero runtime test events,
+in `direct-ip-driver-compile-20261023-o7c8hdms/result.json`, SHA-256
+`4d8899ab7f808068854d1cbd0ea17e2f7ab33f965c16d0295a95ec3bdc29c14b`.
+This is preparation for the formal Node delivery, not a rerun of passed product
+cases or qualification of pending assertions.
+
+## 2026-10-23 complete direct-IP TLS integration
+
+The same-source complete gate is **SCOPED_PASS / exit 0**. Root formally delivered
+Node consumers at `e8d31c693da00adaf0870c7dbf793c61e9e9c423`, including the
+earlier frozen shared client, App and Hub runtime checkpoints. QA changed only
+the seven acceptance/record paths. The tested source is dirty `e8d31c6` plus
+the recorded QA overlay, not the clean product commit alone. This final entry
+supersedes the preceding preparation entries' pending status for DIP01–12;
+their historical failures, source attribution and narrower scopes remain intact.
+
+Reproduce from this task's acceptance checkpoint, using matching reviewed complete
+component notices and the pinned complete Codex 0.164.0 installation:
+
+```sh
+cd /home/zyf/Cicada/.worktrees/cicada/n2-acceptance
+CICADA_NATIVE_PAIR_LICENSES_DIR=/home/zyf/Cicada/.local/artifacts/codex-startup-fix/licenses-x4gog722 \
+  scripts/test-native-pair.sh --direct-ip-tls
+```
+
+Each invocation allocates fresh owned evidence/artifact/state directories and
+ports. Historical run directories must not be reused. Exit 0 requires all
+measured product/fixture cases, both native summaries, stable inputs/binaries
+and cleanup; gate failure returns 1, invalid invocation returns 2, and a rejected
+preflight returns nonzero before product execution.
+The earlier preparation-only typed 125 receipt is not a product PASS.
+The pinned image is
+`golang:1.27.3-bookworm@sha256:5c3e9b43cfd3bb95c7937462e29d87ada57b481a96fa23ad0eb61778d7a00110`.
+The network-none, nonroot, read-only-source/module-cache container uses only
+owned persistent databases, vaults, HOME/CODEX_HOME and an exclusive locked
+task build cache. Actual Hub processes terminate positive TLS directly;
+the opaque TCP loss peer exists only in the negative recovery case.
+
+Final receipt:
+`/home/zyf/Cicada/.local/evidence/native-pair-acceptance/run-20261023T083550Z-ID83rd/result.json`,
+SHA-256 `a232c4498906169f36421b54699fb481e7c7a132c79c6b17994006c42ca1eebd`.
+Version, CLI compile, test compile, fixture, product harness and vet all exit 0.
+All twelve named DIP cases and their parent pass; all 21 named fixture events
+pass. There are **zero skips, zero missing cases and zero unavailable diagnostics**.
+The corresponding package terminal events also pass; they are not extra cases.
+Both exact fact-set and native-summary validators return true. Source and
+executed binary snapshots are identical before/after, and the exact owned Docker
+name/label is absent after execution. No shared development Hub, resident
+daemon or public deployment was touched. Only owned native daemons were started.
+After the run, only the plan's result/status prose and this validation record
+were updated. Rechecking all 1,533 recorded inputs finds only
+`docs/native-app-plan.md` changed; the other 1,532 inputs, including every Go,
+plugin and driver input, still match the tested manifest. The final commit's
+documentation therefore has its own later attribution; no clean-commit rerun
+is claimed.
+
+| Final artifact | SHA-256 / size where relevant |
+| --- | --- |
+| Source snapshot, before and after | `3363eabb8cb82410b522c4d1902a9580ccf17adf7a12c204b95519902eb89390` |
+| Source manifest, 1,533 inputs | `ce47ebac2f174a494ab5b49d61383119b0676747d93eedd4740d804e01582a0c` |
+| Actual CLI | `0b7e633a88734f9b5973d49f3490feca8fad60a75a3d22c2b861ab191dca39a7`, 39,090,423 bytes |
+| Actual test executable | `d27b3f64bbe41813eb7c5aff57f998ca31a252f584ec18c8d7515c215125b00a`, 24,781,766 bytes |
+| Binary snapshot, before and after | `ddc21809665c21c32befe7ce055618404c6c8836874f833c7f18ddeef1e2c619` |
+| Dual-family native public summary | `cbd3ee1e3066dd5514e1612946d7b4296f05057e9b441c2e2198788a07e2e7cb` |
+| Actual Codex CLI, 0.164.0 | `b93f6811d3f653f0fb83be4050d857fb9abbb111dfa2ce160563327daff7f306`, 308,139,304 bytes |
+
+IPv4 and IPv6 each use a fresh Hub/App/Node and the actual existing native
+daemon/plugin/Hook/MCP path. Each completes 36 Host calls and 74 static-provider
+POSTs (72 Host-provider plus two native-queue POSTs), with zero literal-provider
+POSTs and zero real-model turns. Actual original SIDs/workspaces/Endpoints and
+request/question/answer digests match the App's Owner-signed directory.
+The existing independent manual Owner public-pin step is explicit. Both families
+complete WHOAMI, positive/negative directory filters, named selected-Node
+ASK/Reply, normal App close with continued authorized communication, original
+profile resume and explicit current-policy revoke. New directory/business work
+then refuses while the original Node has an authenticated heartbeat newer than
+the revoke commit. Relay-only worker presentation is not used as Node liveness.
+
+DIP09 separately observes Root proof before ordinary login, zero implicit
+authority from discovery/login, finite N2 scope, unavailable Manager/canvas and
+the complete identity flow with Control inference disabled. DIP05 verifies actual
+near-expiry Hub renewal with a deliberately shortened valid synthetic leaf,
+retained CA/SPKI/application keys and byte-identical saved signed descriptor;
+this is not natural wall-clock certificate expiry. DIP10/11 retain original
+trust/identities across restart and explicit locator changes, reject missing or
+mixed key/epoch state without regeneration, and preserve legacy DNS/IP origins.
+
+DIP12 drops 4,118 returned TLS ciphertext bytes after observing the actual
+pending original encrypted App read and independently finding its committed
+SQLite result. The original protocol request digest is
+`465eac05839ace62fb8fd3b46b0dcafb430e27f33c5c76fc19ce19f768c2c169`
+(`wire.AppNodePacketDigest`, not generic SHA-256); cached response SHA-256 is
+`4e5fdbd6cb17cadf01bce0abd011d19980fa565d371960395a6a7ba8ab80b131`.
+Actual Hub/App restart and direct recovery preserve original request/response
+bytes, public identities and exactly one COMPLETED cache row. The parent uses
+the original App device to decrypt/authenticate the original result and retrieves
+no Owner private key. The applied Owner-directory receipt is exact; an optional
+subsequent applied read-only Node-status refresh is independently authenticated
+and cannot substitute for that original receipt.
+
+Retained same-product-source attempts under the same evidence root:
+
+| Receipt | Actual result and correction | Receipt SHA-256 |
+| --- | --- | --- |
+| `run-20261023T080001Z-FBcCxw/result.json` | FAIL/1. Ten DIP cases pass; DIP02 calls the wrong retained Python entrypoint and DIP12 compares the domain-separated request digest with generic SHA-256. QA now calls the existing `codex_domain_native.py` and the actual protocol digest function. | `592005de3b0bf1e61f852554708dc04df6629ba7f857f8b5e728b2d557576085` |
+| `direct-ip-node-native-recovery-20261023-x7vqasgt/result.json` | Targeted FAIL/1. Actual native work reaches the revoke checkpoint, but QA wrongly requires relay-only worker status to be online. Recovery also has an overstrict applied-state qualification. | `d6f49c2e7de19f29c0536563bce3b88d7f6d358f638664ed93081d7d56415173` |
+| `direct-ip-node-native-recovery-20261023-oxzgccjh/result.json` | Aggregate FAIL/1; DIP02 passes both families, DIP12 fails. Recovery can legitimately retain the applied read-only status refresh created after original-directory recovery. The fixture now checks that refresh independently while still requiring the exact original directory/ciphertext, COMPLETED state and count one. | `37b1d37bdb5bdec13285011829ec6d75e6a6efc68cad76d2bae0899f7b6e5a73` |
+| `direct-ip-original-recovery-20261023-nf08em6l/result.json` | Targeted DIP12 plus parent PASS/0, all five execution stages 0; exact original result and one cache row verified. This targeted receipt is not promoted into the complete gate; the final fresh full run above supplies that evidence. | `25903d5bcf35c421dc6f5b05a211260df179ed8c8db01ce1f3fd3799c1d9c604` |
+
+These are acceptance-fixture defects, corrected without production changes or
+weaker crypto/commit/exact-recovery requirements. No new unresolved product
+defect was observed in the frozen twelve-case scope. Root's clean-e8 standard
+disposable interop and producer normal/race receipts remain separate evidence;
+this full gate does not relabel a producer's retained aggregate race timeout.
+
+Remaining **NOT_RUN**: physical Windows DPAPI, ACL and GUI individually; public
+numeric-IP routing/deployment; physical ARM; real-model provider consumption;
+complete physical removal/default-root installation and the final package's
+user-operated batch. Automatic FB-03 Owner trust delivery remains
+NOT_IMPLEMENTED/NOT_RUN. Natural full account/lease or certificate-time expiry
+is outside this short gate. Linux encrypted-vault and static-provider results
+do not establish those outcomes. No credentials, private keys, full sensitive
+payloads or synthetic fixture deployment initialization are delivered as evidence.

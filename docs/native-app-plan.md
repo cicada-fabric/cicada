@@ -26,6 +26,56 @@ HTTPS is required by default, and HTTP is permitted only when a user/operator
 explicitly enables a loopback fixture. A native strict-PQTLS transport is not
 implemented or accepted by this plan.
 
+## Direct numeric-IP TLS acceptance driver
+
+2026-10-23 user target: one Hub process accepts secure App/Node connections by
+numeric `IP:port`, without a domain, Caddy, reverse proxy or deployment-preset
+external origin. Remediation and complete new acceptance are authorized; the
+shared contract `hub-native-tls-v1` and API are frozen at `12fe1be`. Hub owns
+the shared transport/protocol; App owns its core/UI; QA owns independent fixtures,
+this matrix and the existing validation record. No DTO, TLS mode, trust migration
+or implicit Owner authority is inferred by the driver.
+
+The selector is `TestN3DirectIPTLSAcceptance`, invoked with
+`CICADA_NATIVE_PAIR_LICENSES_DIR=<reviewed-complete-notices> scripts/test-native-pair.sh --direct-ip-tls`.
+It reuses the pinned disposable
+Docker envelope, actual Hub executable/App-core child and Node process seams,
+real TCP/cryptography, persistent stores and source/binary/cleanup receipts.
+The final same-source gate on integrated product `e8d31c6` plus its recorded QA
+overlay is **SCOPED_PASS / exit 0**: all twelve product cases and 21 named fixture
+events pass, with zero skips, both actual Codex 0.164.0/Hook/MCP address-family
+summaries, stable source/binaries and confirmed owned-container cleanup. Actual
+App children use their default production transport; the existing static
+provider supplies the native business turns. The opaque-TCP negative lane
+qualifies original committed-response recovery separately from positive direct
+TLS. See the [final receipt and retained failures](native-app-validation.md#2026-10-23-complete-direct-ip-tls-integration).
+A parent PASS alone cannot qualify this gate.
+The earlier explicit-skip preparation receipt retains its original 125 scope.
+No paid model, existing Hub, real credential or resident deployment is required.
+
+| Case | Independent observation required after contract/source freeze | Current status |
+| --- | --- | --- |
+| DIP01 — fresh single Hub | New owned state and explicit temporary component roots inside the disposable environment. The actual Hub process terminates TLS directly; observe argv/listener/process tree, no reverse proxy and no preset external origin. File installation, explicit Node start and plugin connection are distinct stages. Default installation roots remain a separate final-package/manual lane. | SCOPED_PASS; Linux temporary roots |
+| DIP02 — IPv4/IPv6 without DNS | Actual App-core input, Node first pairing/bridge/relay and selected-Node MCP whoami/directory/ASK/Reply (including requestWithGroup with a selected local Node, not only a Node-private HTTP client) use only IPv4:port or bracketed IPv6:port with no DNS/hosts alias or external proxy. Exercise both families with new state. Missing IPv6 is NOT_RUN, not a full dual-stack pass. | SCOPED_PASS; both numeric families, actual 0.164.0 Host |
+| DIP03 — independent first trust | Independently obtained Hub/bootstrap material binds complete Hub identity and TLS trust. Before actual confirmation, public metadata is not authority: zero secret POSTs, no secret vault mutation or Owner activation. A server-supplied pin compared with that same untrusted response cannot qualify MITM protection. | SCOPED_PASS |
+| DIP04 — canonical input | Valid numeric addresses/ports work; credentials, path/query/fragment, invalid port and ambiguous/forbidden IP spellings refuse according to the frozen shared codec. Socket location, cryptographic identity and signed application scope remain distinct. | SCOPED_PASS |
+| DIP05 — real X.509 trust/time | Missing/wrong CA, TLS identity/SAN/pin, complete Hub key/HubID, expired and not-yet-valid certificates reject through real verification. Any injected test clock is recorded as synthetic verification time, not natural elapsed expiry; leaf auto-renewal must extend validity without changing the independently trusted CA/SPKI/Hub epoch or application identity, and must be observed through actual verification. Selecting new Hub TLS and old enrolled Node PQ simultaneously refuses without fallback. | SCOPED_PASS; controlled near-expiry leaf, saved descriptor byte-identical |
+| DIP06 — fake Hub/MITM | Real attacker TLS/socket fixtures cannot receive password, code, credential or secret-bearing packets, change pins or create authority. Keep only bounded method/path/count/digest evidence, never sensitive bodies. | SCOPED_PASS; actual App and Node live-identity refusals |
+| DIP07 — redirects | Metadata and secret operations reject 301/302/303/307/308 to same/foreign origins and HTTP downgrade. Trap listeners observe no forwarded secret request or credential headers. | SCOPED_PASS; five statuses × three targets |
+| DIP08 — proxy/Host spoof | Poisoned proxy variables, DNS and Host/Forwarded/X-Forwarded-* cannot select trusted identity or persist a forged origin. Positive production TLS uses no custom test HTTPDoer, test TLS front or host trust-store modification. | SCOPED_PASS |
+| DIP09 — no implicit Owner | TLS/IP connection, identity discovery, registration and ordinary account login do not become Root, App-device enrollment, Node/Network rights or Manager power. Exact bootstrap possession, Owner proof and current Guard remain separate. | SCOPED_PASS; Root proof precedes login, Control off |
+| DIP10 — restart/replacement | Same-state process restart retains identity and current trust. Swapped Hub, TLS credentials, key version or epoch cannot silently re-pin, downgrade or recover another profile. An existing Hub missing any required application key refuses without regenerating identity; only a genuinely empty Hub initializes new keys. | SCOPED_PASS |
+| DIP11 — origin compatibility | Retain old DNS/IP origin cards, vaults, signed original packets/receipts and keys. A locator change or explicit migration follows the frozen protocol; do not rewrite old signed origin bytes or borrow credentials across Hubs. | SCOPED_PASS; fresh and legacy DNS/IP origins |
+| DIP12 — uncertain original recovery | Real response loss after commit and process restart retain original ciphertext/IDs/keys and authenticate the original result, without creating another authority or duplicating an uncertain operation. | SCOPED_PASS; actual Hub/App restart, one exact cache row |
+
+The final fresh-install lane must use the user's selected default roots within
+owned fixtures and the final reviewed artifacts; it must not reuse old pins or
+an old TLS reverse-proxy ceremony. The existing manual Owner public-pin step
+remains separately visible until FB-03 is implemented and accepted. Physical
+Windows DPAPI/ACL/GUI, real public-IP routing, physical ARM and real-model
+acceptance require distinct receipts. Older IP/PQ/ARM and Windows user reports
+retain their exact original scope and successful existing user state is preserved.
+
 ## Installed user-file root
 
 2026-10-20 user requirement: after installation, Cicada-owned user files
