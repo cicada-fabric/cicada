@@ -1434,3 +1434,36 @@ Physical Windows GUI, DPAPI/ACL execution, real native Runtime, public-IP
 installation and Android are **NOT_RUN** for this producer checkpoint.
 The cross-build executable is a test artifact, not a delivered package; no
 resident installation or existing user state was changed.
+
+### 2026-10-23 password Enter submits login
+
+The password editor was single-line but did not enable Gio's `Submit` option.
+A newline text-edit event could consequently become a password space. It now
+consumes the editor's `SubmitEvent` before the material editor layout consumes
+it, then uses the existing login action builder and foreground dispatcher.
+Passwords keep their exact bytes, including intentional surrounding spaces;
+the existing action builder clears the visible password before dispatch.
+No global Enter handler intercepts IME text editing or confirmation.
+
+Only the currently available login action can submit from this editor. Empty
+required fields, an unverified connection, disabled routing and busy/closed
+state cannot submit; Enter cannot grant activation consent or start account
+setup/recovery. The event consumer allows at most one submission per update and
+consumes events read-only during a busy request, preventing a deferred login.
+The existing dispatch CAS and cleared password also fence Enter plus a button
+click. Hub/account protocols, authorization and request persistence are unchanged.
+
+Actual Gio Editor/Router tests cover Return, keypad Enter, a newline edit event,
+repeated presses and releases, exact masked Unicode/space-bearing credentials,
+composition edits followed by committed text, and login readiness. This is
+portable headless routing evidence; physical Windows keyboard/IME execution is
+**NOT_RUN**. Pinned Go 1.27.3 UI normal/race each passed **194 test events,
+0 failures, 0 skips**. Linux vet, Windows vet and Windows amd64 GUI cross-build
+exited 0. Tested source was dirty
+`a22cb4bbdd8496d60d1b99aaa49c121b217b2790` plus this UI change, with a stable
+Go/C/header/module input manifest. Evidence:
+`/home/zyf/Cicada/.local/evidence/n2-app/password-enter-a22cb4b-20261023/`;
+result SHA-256 `d2f28cc4f184db9311839b0b309f7f5dbb8b57126c46b77e387659b1d99784b1`.
+This README is a later documentation delta. No Docker interop, resident user
+installation or physical Windows/DPAPI/ACL run is claimed for this UI-only
+checkpoint. The cross-build is a test artifact, not a new delivery package.

@@ -165,6 +165,7 @@ func newView(controller appcore.Controller, ctx context.Context, cancel context.
 	v.activation.InputHint = 1
 	v.username.InputHint = 1
 	v.password.Mask = '•'
+	v.password.Submit = true
 	v.password.InputHint = 2
 	return v
 }
@@ -462,7 +463,14 @@ func (v *view) contentRows(s appcore.Snapshot, flow appui.SetupFlow, information
 		rows = append(rows, v.editorRow(&v.username, appui.Text(v.locale, "account.username"), false))
 	}
 	if flow.Password {
-		rows = append(rows, v.editorRow(&v.password, appui.Text(v.locale, "account.password"), true))
+		rows = append(rows, func(gtx layout.Context) layout.Dimensions {
+			updatePasswordEditor(gtx, &v.password, v.username.Text(), s, flow, v.busy.Load() || v.closed.Load(), func() {
+				if action, ok := v.actionFor(flow.Primary, s); ok {
+					v.startDispatch(action)
+				}
+			})
+			return v.editorRow(&v.password, appui.Text(v.locale, "account.password"), true)(gtx)
+		})
 	}
 	if flow.LimitedConsent {
 		rows = append(rows, func(gtx layout.Context) layout.Dimensions {
