@@ -204,14 +204,14 @@ Network uses a dedicated non-Pair Group. The Hub capability advertises server
 availability, not a completed Native adapter or caller authorization.
 Unexecuted rows below remain acceptance targets.
 
-The current independent native positive lane retains an explicit manual Owner
-public-pin prerequisite, as frozen by Root. Use the actual App public export and
-the existing operator trust command in the isolated Node; never initialize trust
-from the arriving policy's own public key. Receiver verification uses the existing
+The accepted historical native positive lane used an explicit manual Owner
+public-pin prerequisite. Its receipts retain that limitation; it is not the
+new onboarding selected by the user below. Never initialize trust from the
+arriving policy's own public key. Receiver verification uses the existing
 CryptoState OwnerKeyTrust's complete public identity, current ACTIVE state and
 local trust version. Missing/wrong/revoked trust refuses; policy ACTIVE alone
 does not establish communication. Automatic FB-03 trust delivery is still NOT_RUN,
-and the manual prerequisite must remain visible in native acceptance receipts.
+and the historical manual prerequisite remains visible in those receipts.
 
 Root-frozen supplementary requirements and separately bounded acceptance:
 the actual agent automatically publishes a Node-signed local-user report with
@@ -376,7 +376,7 @@ were not supplied. This does not close every older N3-TT or Windows gate.
 | --- | --- | --- |
 | FB-01 | Optional Hub/Node/App on one host; ordinary registration allows only necessary self-auth/status, with zero business rights. Account login cannot create Root, Join, communication or execution authority. | Bounded actual installed-plugin registration/peers and Host context pass with an actual App-approved Node and signed offline card; Host whoami refuses the unjoined Thread. A separate actual cold gate matches original SID/Endpoint/binding/epoch through authenticated current App status and first joined Host identity, then verifies revocation; no direct database mapping or broader C0 acceptance is claimed. Broader C0.1/H1/H2 stay frozen/NOT_RUN. |
 | FB-02 | Owner chooses explicit software/business permissions or presets; Hub durably verifies the original Owner signing-key chain, exact actor/target/current versions and expiry. Unsigned/self-issued presets or revoked/stale authority deny. | Broader policy behavior DESIGN_PENDING. Existing finite Pair/status grants retain their contracts; UI presets cannot become a new authority. |
-| FB-03 | Node obtains a device code and App approves the actual candidate. Normal trusted-pin setup requires no manual Owner public-key/fingerprint transfer; wrong/replaced pin or missing proof rejects without fallback or key replacement. | Actual App Core approves the real fixture Node's original cryptographic candidate and it restarts with the same binding. Automatic Owner peer pin integration remains pending; the existing explicit public-key/full-fingerprint channel is a separately marked manual Pair prerequisite. |
+| FB-03 | Node takes only the Hub address, requests and displays a device code; the already trusted App accepts that code, reviews the exact candidate and approves once. Hub maintains the binding and Node establishes independent Owner trust without manual Owner-key/fingerprint or descriptor transfer. Business permissions are configured afterward. | DESIGN_REVIEW / NOT_RUN for the new flow. Root's current proposal extends the original Node INITIAL flow with selector + independent S + context, an Owner-to-Node capsule and private ACK before confirmation; no C0 carrier is enabled. First-trust, old-confirm bypass, loss/restart and confirmed-Node separation constraints await the frozen protocol. Historical manual-pin receipts remain scoped to their tested flow; see the [targeted security review](native-app-validation.md#2026-10-23-node-address-and-device-code-design-review). |
 | FB-04 | Own lists lead with name + workspace + Node + status and retain original SID/Endpoint ID/workspace/name. Renaming changes neither stable identity, keys nor permissions; removing an association preserves the original Thread/workspace. | The d3acd4b contract preserves original metadata; repeat registration cannot rename/revive. Actual App Core 07bd265 reads original names/workspaces and distinct same-name IDs through signed snapshots. Local bridge 97d8a1d is integrated; human plugin selection, rename and physical GUI remain separate. |
 | FB-05 | Duplicate names return AMBIGUOUS/require explicit choice. Matching name/workspace can use human labels; selection binds exact internal ID/current version. Revocation rejects an old choice rather than retargeting another same-name Endpoint. | `e902a836` corrects schema/validator disagreement for the five directory tools. Independent actual Host resolves the real B by name/workspace, rejects wrong filters/unknown or forged fields, preserves A identity and denies after revoke. Actual-model retest, ambiguity/stale-selection extension remain pending; no rename operation is added. |
 | FB-06 | Current-machine and remote lists filter by this Owner or exact authorized scope. Cross-Owner discovery hides absolute paths by default; qualified Owner inventory may show registered but unpermitted objects with that distinction visible. Hub persists inventory/permissions. | Backend and local bridge are integrated. Actual App Core signed own-Node zero-right cards, old-Hub refusal and original-read recovery pass source-bound independent scopes. Cross-Owner privacy, paging/cache expiry and old-N2-TTL independence retain producer evidence; broader independent cases remain NOT_RUN. |

@@ -5441,6 +5441,15 @@ is still separate. Producer's normal 58/race 27/vet 0 result keeps its own
 
 ### Complete removal and fresh-install manual acceptance
 
+Later 2026-10-23 steering supersedes the Node descriptor/manual Owner-key
+transfer portions of steps 6–7 for the next onboarding package: the user selected
+Hub address -> Node device code -> App review/approval -> Hub binding, with
+business permissions configured afterward. Those old-package commands remain
+historical and are not the next operator batch. The replacement is
+[under design review](#2026-10-23-node-address-and-device-code-design-review),
+NOT_RUN; do not infer it from the old manual-pin gate. The completed Hub/Windows
+slice has its separate user-reported record below.
+
 Status: **NOT_RUN** for complete removal/reinstallation, physical Windows
 DPAPI/ACL/GUI and public numeric-IP TLS. Use this batch after Root delivers the
 reviewed complete Hub/App/Node package. This is the requested operator procedure for a
@@ -6160,3 +6169,128 @@ this batch**. Root is preparing the next operator batch; the user's “continue�
 does not supply results for it. No new product defect was reported. This
 documentation-only checkpoint performs no test, deployment, cleanup or key/state
 operation and does not change the earlier automated receipts.
+
+## 2026-10-23 password Enter submission checkpoint
+
+App delivered `e1331dfa440e553b06a94a3c45e9d55e90f61f76`, parent `a22cb4b`.
+The password editor consumes the actual Gio SubmitEvent and routes it through
+the existing login action only when that action is available and ready. It
+preserves exact masked password text, prevents duplicate/busy submission and
+does not turn setup, activation or recovery into login. Portable Editor/Router
+checks cover Return, keypad Enter, newline submission, disabled/readiness cases
+and synthetic IME composition/commit behavior. Physical Windows keyboard/IME
+behavior remains **NOT_RUN**; this is not a new physical result for the earlier
+complete ZIP or the user's preceding batch.
+
+Producer receipt
+`/home/zyf/Cicada/.local/evidence/n2-app/password-enter-a22cb4b-20261023/result.json`,
+SHA-256 `d2f28cc4f184db9311839b0b309f7f5dbb8b57126c46b77e387659b1d99784b1`,
+records **194 pass / 0 fail / 0 skip** named events including subtests in each
+normal and race run. Linux vet, Windows vet and Windows cross-build all exit 0.
+Independent QA read the production change and counted those retained JSON test
+events without rerunning them. Root's independent review matches all 1,462
+selected source inputs to the delivery, receipt
+`/home/zyf/Cicada/.local/evidence/local-domain-root/password-enter-root-review-20261023.json`,
+SHA-256 `3457700ad56105db4d1c6ece6cb0a74a46a298c45e00e01ea099b1f694c0c5ce`.
+The producer ran dirty `a22cb4b` plus its exact App inputs; the later README is
+not a Go input. Stable source-manifest SHA-256 is
+`abaaf4ad71c335b0700aa8f03334cd0f97237af8306ba9b0323434a1e60c41e1`.
+The retained 14,387,200-byte Windows build hashes to
+`a8bcee111b9ab939b0faae52bfbed63c67b7c0b4c5a6aad5778195cfe8a06056`,
+independently checked by QA. No new Hub/Node interop, real deployment or resident
+installation was performed for this UI-only change; no old gate is rerun or
+extended. Windows GUI/DPAPI/ACL and physical input/IME acceptance stay separate.
+
+## 2026-10-23 Node address and device-code design review
+
+Status: **DESIGN_REVIEW / PROTOCOL_NOT_FROZEN / NOT_RUN**. The user corrected
+onboarding to Node input of only the Hub address, Node request/display of a
+device code, App input/review/one approval, Hub-maintained identity binding and
+later separate business permissions. Manual Owner public-key/fingerprint and
+descriptor transfer are not the selected new workflow. QA has only read the
+current code/contracts and reviewed Root's proposal; no new endpoint, executable
+driver, protocol implementation or repeated task book is introduced here.
+
+C0.1 v1.1 already supplies pure S/O/E, separate signature/KEM possession,
+private ACK and exact-original concepts. Its public availability remains false
+and its Store/HTTP/three-component carrier remains unimplemented. Its existing
+186-event pure check is historical, not a new Node integration result. Root's
+current narrower proposal instead extends the original Node INITIAL flow with
+a side record bound to its exact request/version/digest, complete Hub CC/NC,
+Node identity and descriptor, plus commitment O to independent local S. The one
+new code carries selector/S/context to the already trusted App. The App would
+issue an Owner-to-Node capsule containing S, independent X and full scope, with
+a purpose-specific proof/ACK commitment bound to the original confirmation
+packet. Hub would retain OWNER_APPROVED until the Node verifies S and durably
+saves its exact signed ACK; only then would the original confirmation transaction
+activate the binding. This is a proposal, not an accepted or delivered interface.
+
+The following constraints must be explicit before independent security acceptance:
+
+1. **S must never reach Hub plaintext.** The complete new code cannot be passed
+   unchanged into old preview/prepare/`nodes.confirm` code fields: Hub decrypts
+   those requests. App must retain S locally and send only the selector/commitment
+   and Owner-to-Node ciphertext on Hub-visible paths. Logs, error strings and
+   diagnostics must not print the complete new code. A fake Hub with its own
+   valid-looking TLS/PQ/Owner keys must still lack S and fail local capsule trust.
+2. **ACK must fence every confirmation writer.** Existing legacy
+   `nodes.confirm` and finite N3 confirmation both reach
+   `confirmNodeControlKeyRequestTx`. A new route-only check is insufficient.
+   New INITIAL requests must be durably marked before exposure and cannot
+   activate via the old path, missing-side-record fallback, a different App or
+   an alternate mode. ACK verification, one-time consumption, binding effects,
+   counters and exact receipts need one writer transaction. Failures roll back
+   all effects; concurrent original retries have one result.
+3. **Deferred confirmation needs an exact durable slot and deadline.** Retain
+   the original App packet/digest/counter and Node ACK bytes before sending.
+   OWNER_APPROVED cannot be mislabeled as completed `nodes.confirm`. Later
+   counter use, response loss or restart cannot justify resealing or re-signing
+   the App request. Node completion must need no live App callback or new Owner
+   signature after bounded approval is committed. Current security revocation
+   and immutable deadlines still apply; a historical/fake clock cannot rescue
+   an unadmitted expired confirmation.
+4. **Candidate TLS is not independently trusted TLS.** Certificates obtained
+   from a failed empty-root handshake and its descriptor GET remain CANDIDATE.
+   The second connection must still perform chain/name/time checks and match
+   the fetched descriptor's CA/SPKI/CC/NC/epoch; merely keeping SkipVerify false
+   does not independently trust a root obtained from that same peer. Restrict
+   this client to bounded public discovery, no redirects/proxies or credentials,
+   and never reuse it as an authenticated general client. App must match the
+   complete candidate against its already pinned Hub before signing. Pre-trust
+   polling/ACK cannot fall back to the old bearer-header polling path.
+5. **Local pin and confirmed admission are separate facts.** Crash after a
+   verified durable pin but before Hub ACK is not registered/authorized success.
+   Preserve that pin and the exact pending operation without silently replacing
+   either. Conditional local writes must reject changed/revoked/foreign existing
+   trust and concurrent replacement; late replies may reconcile history only.
+6. **Confirmed-Node trust-only use cannot impersonate INITIAL.** A confirmed
+   Node must not create a new binding/bearer, reset epochs or revive trust through
+   this fresh flow. Either reject that use or freeze a distinct, genuinely
+   Owner-approved trust-only operation bound to the exact current original
+   binding/Owner/Node/epoch, with zero registration or business-grant effects.
+
+Minimal future integration matrix; every row is **NOT_RUN for this new flow**:
+
+| Observation/fault | Required result |
+| --- | --- |
+| Fresh Node with Hub address only | Actual request/code, actual App review/approval and automatic independent pin; no manual key/descriptor transfer |
+| Fake Hub/self-signed false Owner | No S/bearer disclosure, local trust installation or binding; same-response pin comparison cannot pass |
+| Wrong Hub/Node/Owner, changed request or missing key possession | Exact complete candidate/scope, proof and ACK mismatch refuses without mutation |
+| Guessing/rapid requests | Frozen finite attempt/resource limits, no foreign-candidate disclosure; issuance cooldown alone is not a guessing-defense result |
+| Concurrent approval/ACK and duplicate request | One consumed approval/binding; exact originals return the same receipt, changed bytes conflict |
+| Expired code/proof and stale epoch | Strict original deadlines and current security state; poll/restart never renews them |
+| Revoke during approval or before ACK | No new effect after the applicable fence; historical receipt cannot revive admission |
+| Loss before forward or after commit | UNKNOWN retains original bytes; authenticated original receipt or terminal no-effect settlement, never a guessed outcome |
+| Node/Hub restart, local pin/ACK crash windows, App closed | Original keys/pin/packets recover; bounded committed approval requires no live App; no silent first setup |
+| Registration versus business rights, existing confirmed Node | Necessary own-state only until separate grants; no Root/Manager/peer/Worker rights or trust-only re-enrollment; Control-off identity flow |
+
+Reuse pure `TestInstallationRegistrationHubCannotSelfCertifyOwner`, dual KEM/
+subject ACK and exact/historical wire tests, existing candidate CAS/one-time
+device-code checks, and N3 process/commit/fault/epoch fixtures where their frozen
+semantics apply. The old device-code Store checks mainly establish issuance
+cooldown/create capacity, single consumption and legacy binding behavior; they
+do not prove the new first-trust or brute-force matrix. The previous DIP02 used
+manual descriptor and Owner public-pin input and cannot qualify this replacement.
+Actual future tests must use real crypto/TCP/persistent owned state and disposable
+Docker with read-only module cache. No tests or services were run by this review;
+Windows/platform and new end-to-end results remain NOT_RUN.
