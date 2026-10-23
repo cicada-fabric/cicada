@@ -1301,3 +1301,48 @@ This README is a later documentation delta. The actual Hook/MCP/Relay/native
 callback gate, Docker interop, real Windows Runtime and public HTTPS remain
 **NOT_RUN** for this producer checkpoint and retain their separate Hub/QA
 attribution. No executable was built or delivered.
+
+### 2026-10-23 selected Node socket for domain delivery
+
+The formal installed plugin selects its original Node with `--user-root` and
+an immutable connection pin. Same-Group SEND/ASK/REPLY nevertheless resolved
+their private socket from the process environment again after successful
+selected-Node discovery and fresh Hub card checks. Without a matching legacy
+environment this could leave the durable operation UNKNOWN, with no verified
+ASK request ID. Status reads do not retry that operation. The existing relay
+fixture supplied the legacy environment and did not expose this difference.
+
+The common delivery entry now uses the existing `m.joinSocketPath`, preserving
+the selected pin and its current discovery/identity checks. This is one
+production line. Receive already uses that selector. No protocol, Node,
+server, handoff, authorization, fallback or retry semantics change.
+
+A private-IPC/SQLite consumer regression first fails against the old routing:
+with routing environment unset it records zero selected-Node sends; with an
+unrelated deployment selected by environment it records three decoy sends.
+The corrected route sends through the original pin in both cases, with zero
+decoy or plaintext Hub sends. Synthetic Hub cards and Node receipts exercise
+SEND/ASK/REPLY, durable UNKNOWN before dispatch, a lost first ASK response,
+absence of an unverified request ID, read-only status, an unchanged original
+row after closing/reopening SQLite, and exact original-package explicit retry.
+This is consumer routing/recovery evidence, not sealed cryptography, Hub Guard
+or native Runtime acceptance.
+
+Pinned Go 1.27.3 scoped normal checks recorded **62 PASS, 0 FAIL, 0 SKIP**;
+the new routing/recovery regression under race recorded **9 PASS, 0 FAIL,
+0 SKIP**; CLI vet exited 0. Tested source is dirty
+`576d1de56b4b9455215268d6b5c2f53578ca4c9d` plus the one-line consumer fix and
+new regression, with stable Go/C/header/module manifest
+`20dc8aedc6120da3ce90a5e434b9d323195234f819a6505913ac78f11d8a03c9`.
+Evidence: `/home/zyf/.cicada/acceptance/codex-context-checks/domain-delivery-selected-socket-20261023T000430Z/`;
+behavioral red receipt SHA-256
+`d43f674b7d39a1c4f4d53012350344a91e9bf3b92056059ac650b5a42ba6a070`;
+final receipt SHA-256
+`36004afb6e525b4a40223c743b3e95311268e24d7a65d89e60b23c81695f1005`.
+Initial fixture path/state assertion failures and an earlier broader selection
+that also failed the existing `CodexLocalNodeConsumerRestartAndBindingFence`
+fixture at discovery validation are retained separately; they are not a pass.
+This README is a later documentation delta. Actual installed Native,
+disposable Docker interop, Windows Runtime and public HTTPS are **NOT_RUN**
+for this producer checkpoint and retain separate Hub/QA attribution. No
+executable was built or delivered.

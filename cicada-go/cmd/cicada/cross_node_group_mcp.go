@@ -240,7 +240,7 @@ func (m *mcpServer) dispatchCrossNodeGroupMCPOutbox(outbox *mcpOutboxStore,
 	default:
 		return m.recordSealedRPCError(outbox, scope, operation, errors.New("unsupported same-Group sealed operation"))
 	}
-	result, err := requestMachineAgentCrossNodeGroup(defaultMCPJoinSocketPath(harness.SessionContext{
+	result, err := requestMachineAgentCrossNodeGroup(m.joinSocketPath(harness.SessionContext{
 		Harness: request.Harness, NativeSessionID: request.NativeSessionID,
 		MachineID: request.NodeID, Workspace: request.Workspace,
 	}), request)
