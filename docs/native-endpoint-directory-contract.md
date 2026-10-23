@@ -502,6 +502,7 @@ type LocalNodeConnectionPin struct {
     UserRoot, HubID, APIOrigin, NodeID, SocketPath string
     StateDir, WriterRoot, MCPSessionStateFile, MCPOutboxStateFile string
     Binding LocalNodeBinding
+    HubTransportDescriptor, HubDialAddress string // optional native TLS metadata
 }
 type LocalNodeConnection struct {
     Pin LocalNodeConnectionPin
@@ -515,15 +516,25 @@ JSON pin fields use their snake_case names; `binding` contains `binding_id`,
 `binding_version`, `node_key_epoch`, `node_key_version`, `hub_key_version`,
 `node_key_id`, `node_key_fingerprint`, `hub_key_id`, and `hub_fingerprint`.
 Both full fingerprints reuse `nodewire.IdentityFingerprint`; no truncated ID or
-new fingerprint algorithm replaces them. All stable coordinates/paths are pinned.
-Only a newly live-verified instance may change after restart. The resolver checks
+new fingerprint algorithm replaces them. Optional native TLS fields are
+`hub_transport_descriptor` and `hub_dial_address`; both are absent in legacy
+JSON, and must be present together for native TLS. The exact signed descriptor
+matches Hub ID, origin and the approved Node-Control public binding. All stable
+coordinates/paths are pinned. A newly live-verified instance may change after
+restart. For an unchanged exact native descriptor and every other original pin
+field, only its canonical numeric dial address may also change, following the
+Agent's explicit verified relocation. Original persisted pins and pending
+packets retain their bytes; legacy/native mode, CA, epoch and authority changes
+remain refused. See the [native TLS contract](hub-native-tls-contract.md#node-persistence-readiness-and-selected-consumers).
+The resolver checks
 the nonce, instance, root, original locator digest, derived filename/socket path,
 normalized origin and complete binding. With an existing pin it addresses only
 that original locator and rejects any changed stable coordinate or path.
 
 One resolution has a single context budget of at most three seconds, shortened
 by its parent deadline; it is not a fresh timeout per candidate. Limits are 64
-locator entries, 4 KiB per locator, 1 KiB describe request, 32 KiB response,
+locator entries, 4 KiB per locator, 1 KiB describe request, 96 KiB pin JSON and
+97 KiB complete describe response,
 4096 UTF-8 bytes per path and 256 bytes per identifier. The resolver searches
 only the selected root, never other roots, process lists, historical SIDs or
 recent files. No live match returns `ErrLocalNodeNotRunning`/NODE_NOT_RUNNING;

@@ -172,8 +172,12 @@ func (b *machineAgentJoinBridge) localNodeDescribe(q localNodeDescribeRequest) (
 	public := client.identity.Public()
 	binding := LocalNodeBinding{BindingID: s.BindingID, BindingVersion: s.BindingVersion, NodeKeyEpoch: s.NodeKeyEpoch, NodeKeyVersion: s.NodeKeyVersion, HubKeyVersion: s.HubKeyVersion, NodeKeyID: s.NodeKeyID, NodeKeyFingerprint: s.NodeKeyFingerprint, HubKeyID: s.HubKeyID, HubFingerprint: s.HubFingerprint}
 	ready := s.HubID == hub.HubID && s.NodeID == hub.NodeID && s.HubOrigin == hub.Origin && s.NodeKeyID == public.ID && s.NodeKeyFingerprint == nodewire.IdentityFingerprint(public) && s.HubKeyID == s.HubPublicIdentity.ID && s.HubFingerprint == nodewire.IdentityFingerprint(s.HubPublicIdentity)
+	if s.HubTransportDescriptor != hub.HubTransportDescriptor || s.HubDialAddress != hub.HubDialAddress || (s.HubTransportDescriptor != "" && hub.NativeTransport == nil) {
+		ready = false
+	}
 	client.mu.Unlock()
 	pin := LocalNodeConnectionPin{UserRoot: p.config.UserRoot, HubID: hub.HubID, APIOrigin: hub.Origin, NodeID: hub.NodeID, SocketPath: p.socket, StateDir: hub.StateDir, WriterRoot: hub.WriterRoot, MCPSessionStateFile: p.config.MCPSessionStateFile, MCPOutboxStateFile: p.config.MCPOutboxStateFile, Binding: binding}
+	pin.HubTransportDescriptor, pin.HubDialAddress = s.HubTransportDescriptor, s.HubDialAddress
 	if !ready || validateLocalNodePin(pin) != nil {
 		return nil, ErrLocalNodeNotReady
 	}

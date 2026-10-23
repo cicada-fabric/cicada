@@ -147,6 +147,8 @@ type machineNodeControlState struct {
 	PendingSnapshotPath           string                                    `json:"pending_snapshot_path,omitempty"`
 	PendingSnapshotManifest       *nodewire.SnapshotManifest                `json:"pending_snapshot_manifest,omitempty"`
 	ClaimTicket                   *machineNodeControlClaimTicket            `json:"claim_ticket,omitempty"`
+	HubTransportDescriptor        string                                    `json:"hub_transport_descriptor,omitempty"`
+	HubDialAddress                string                                    `json:"hub_dial_address,omitempty"`
 }
 
 // ClaimTicket retains only the Hub's sealed response. The plaintext job is
@@ -200,6 +202,11 @@ func openMachineNodeControlClient(stateDir, base, nodeID string) (*machineNodeCo
 
 func openMachineNodeControlClientMode(stateDir, base, nodeID string, requireExisting bool) (*machineNodeControlClient, error) {
 	identityPath, statePath := machineNodeControlPaths(stateDir, nodeID)
+	if _, err := os.Lstat(statePath); err == nil {
+		requireExisting = true
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
 	if cached, ok := machineNodeControlClients.Load(statePath); ok {
 		client := cached.(*machineNodeControlClient)
 		if client.base != strings.TrimRight(base, "/") || client.nodeID != nodeID {
@@ -1222,6 +1229,9 @@ func machineNodeControlGetHubIdentity(ctx context.Context, client *machineNodeCo
 	var identity machineNodeControlHubIdentity
 	endpoint := strings.TrimRight(client.base, "/") + "/v2/node/identity"
 	if err := requestMachineNodeControlJSON(ctx, endpoint, http.MethodGet, "", nil, &identity); err != nil {
+		return identity, err
+	}
+	if err := validateMachineNativeHubIdentity(ctx, identity); err != nil {
 		return identity, err
 	}
 	if err := client.pinHubCandidate(identity); err != nil {

@@ -24,9 +24,10 @@ const machineNodeIdentityVersion = 1
 const machineNodeBindingPollInterval = 5 * time.Second
 
 type machineNodeIdentity struct {
-	Version    int    `json:"version"`
-	NodeID     string `json:"node_id"`
-	RelayToken string `json:"-"`
+	Version            int    `json:"version"`
+	NodeID             string `json:"node_id"`
+	RelayToken         string `json:"-"`
+	NativeHubTransport bool   `json:"native_hub_transport,omitempty"`
 }
 
 type machineNodeDeviceCode struct {

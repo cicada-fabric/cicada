@@ -254,8 +254,11 @@ func (s *mcpSessionStateStore) save(entry mcpCachedSession) error {
 		if (entry.ConnectionPin == nil) != (previous.ConnectionPin == nil) {
 			return ErrLocalNodeConfigRequired
 		}
-		if entry.ConnectionPin != nil && *entry.ConnectionPin != *previous.ConnectionPin {
+		if entry.ConnectionPin != nil && !sameLocalNodeAuthority(*entry.ConnectionPin, *previous.ConnectionPin) {
 			return ErrLocalNodeBindingChanged
+		}
+		if previous.ConnectionPin != nil {
+			entry.ConnectionPin = previous.ConnectionPin
 		}
 	}
 	disk.Sessions = []mcpCachedSession{entry}

@@ -295,7 +295,7 @@ func (c *codexOperatorIntentClient) prepareWithConnectionPin(q localEndpointRequ
 			if pin != nil && p.ConnectionPin == nil {
 				return ErrLocalNodeConfigRequired
 			}
-			if (pin == nil) != (p.ConnectionPin == nil) || pin != nil && *pin != *p.ConnectionPin {
+			if (pin == nil) != (p.ConnectionPin == nil) || pin != nil && !sameLocalNodeAuthority(*pin, *p.ConnectionPin) {
 				return ErrLocalNodeBindingChanged
 			}
 			if p.NodeID != nodeID || p.SemanticDigest != semantic {
@@ -501,5 +501,5 @@ func (c *codexOperatorIntentClient) ack(requestID, intentDigest string) error {
 }
 
 func sameCodexOperatorConnectionPin(a, b *LocalNodeConnectionPin) bool {
-	return a == nil && b == nil || a != nil && b != nil && *a == *b
+	return a == nil && b == nil || a != nil && b != nil && sameLocalNodeAuthority(*a, *b)
 }

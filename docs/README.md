@@ -5,8 +5,11 @@ stable logical origin, numeric dial locator and trusted public TLS descriptor
 with an unchanged activation-v1 wrapper. Its shared codecs/client have separate
 [producer validation](hub-native-tls-validation.md); the later
 [Hub runtime validation](hub-native-tls-runtime-validation.md) covers saved
-TLS profiles, CLI and native serving separately. Complete Node/App integration
-and direct public-IP installation remain unaccepted.
+TLS profiles, CLI and native serving separately. The
+[Node consumer validation](hub-native-tls-node-validation.md) covers protected
+routing persistence, selected MCP/heartbeat/Network and uncertain outbox recovery.
+Complete Node/App integration and direct public-IP installation remain separate
+acceptance scopes.
 
 [The clean IP/ARM64 checkpoint](docker-ip-arm64-validation.md) passed its scoped
 amd64/ARM64 first-install Docker gate; [manual installation](node-tls-first-install-cli.md)

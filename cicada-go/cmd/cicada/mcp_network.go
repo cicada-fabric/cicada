@@ -296,7 +296,19 @@ func (m *mcpServer) networkToolLocked(name string, arguments map[string]any,
 	if payload != nil {
 		request.Header.Set("Content-Type", "application/json")
 	}
-	response, err := networkHTTPClient().Do(request)
+	client := networkHTTPClient()
+	if m.localNode != nil {
+		if err := revalidateCodexLocalNode(request.Context(), m.localNode); err != nil {
+			return nil, err
+		}
+		if m.localNode.Pin.HubTransportDescriptor != "" {
+			client, err = m.selectedNodeHTTPPool().client(request.Context(), m.localNode, 30*time.Second)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	response, err := client.Do(request)
 	if err != nil {
 		return nil, err
 	}

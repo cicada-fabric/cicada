@@ -19,6 +19,9 @@ import (
 	"unicode/utf8"
 
 	"github.com/cicada-ai/cicada/internal/apppaths"
+	"github.com/cicada-ai/cicada/internal/hubtransport"
+	"github.com/cicada-ai/cicada/internal/nodewire"
+	"github.com/cicada-ai/cicada/internal/pqtls"
 )
 
 const (
@@ -27,7 +30,8 @@ const (
 	localNodeMaxLocators     = 64
 	localNodeMaxLocatorBytes = 4 << 10
 	localNodeMaxRequestBytes = 1 << 10
-	localNodeMaxReplyBytes   = 32 << 10
+	localNodeMaxPinBytes     = 96 << 10
+	localNodeMaxReplyBytes   = localNodeMaxPinBytes + (1 << 10)
 )
 
 var (
@@ -54,16 +58,18 @@ type LocalNodeBinding struct {
 	HubFingerprint     string `json:"hub_fingerprint"`
 }
 type LocalNodeConnectionPin struct {
-	UserRoot            string           `json:"user_root"`
-	HubID               string           `json:"hub_id"`
-	APIOrigin           string           `json:"api_origin"`
-	NodeID              string           `json:"node_id"`
-	SocketPath          string           `json:"socket_path"`
-	StateDir            string           `json:"state_dir"`
-	WriterRoot          string           `json:"writer_root"`
-	MCPSessionStateFile string           `json:"mcp_session_state_file"`
-	MCPOutboxStateFile  string           `json:"mcp_outbox_state_file"`
-	Binding             LocalNodeBinding `json:"binding"`
+	UserRoot               string           `json:"user_root"`
+	HubID                  string           `json:"hub_id"`
+	APIOrigin              string           `json:"api_origin"`
+	NodeID                 string           `json:"node_id"`
+	SocketPath             string           `json:"socket_path"`
+	StateDir               string           `json:"state_dir"`
+	WriterRoot             string           `json:"writer_root"`
+	MCPSessionStateFile    string           `json:"mcp_session_state_file"`
+	MCPOutboxStateFile     string           `json:"mcp_outbox_state_file"`
+	Binding                LocalNodeBinding `json:"binding"`
+	HubTransportDescriptor string           `json:"hub_transport_descriptor,omitempty"`
+	HubDialAddress         string           `json:"hub_dial_address,omitempty"`
 }
 type LocalNodeConnection struct {
 	Pin                       LocalNodeConnectionPin
@@ -104,6 +110,20 @@ func localNodePath(path string) bool {
 	return path != "" && len(path) <= 4096 && utf8.ValidString(path) && filepath.IsAbs(path) && filepath.Clean(path) == path && !strings.ContainsAny(path, "\x00\r\n")
 }
 func validateLocalNodePin(p LocalNodeConnectionPin) error {
+	raw, err := json.Marshal(p)
+	if err != nil || len(raw) > localNodeMaxPinBytes {
+		return ErrLocalNodeDiscoveryLimit
+	}
+	if (p.HubTransportDescriptor == "") != (p.HubDialAddress == "") {
+		return ErrLocalNodeDiscoveryInvalid
+	}
+	if p.HubTransportDescriptor != "" {
+		d, e := hubtransport.DecodeDescriptor(p.HubTransportDescriptor)
+		if e != nil || pqtls.ValidateIPDialAddress(p.HubDialAddress) != nil || d.Claims.Origin != p.APIOrigin || d.Claims.Hub.HubID != p.HubID ||
+			d.Claims.NodeControl.ID != p.Binding.HubKeyID || d.Claims.NodeControlKeyVersion != p.Binding.HubKeyVersion || nodewire.IdentityFingerprint(d.Claims.NodeControl) != p.Binding.HubFingerprint {
+			return ErrLocalNodeDiscoveryInvalid
+		}
+	}
 	for _, path := range []string{p.UserRoot, p.SocketPath, p.StateDir, p.WriterRoot, p.MCPSessionStateFile, p.MCPOutboxStateFile} {
 		if !localNodePath(path) {
 			return ErrLocalNodeDiscoveryInvalid
@@ -132,6 +152,20 @@ func validateLocalNodePin(p LocalNodeConnectionPin) error {
 		return ErrLocalNodeDiscoveryInvalid
 	}
 	return nil
+}
+
+// A current live Node may explicitly update numeric reachability while the
+// original authorization, descriptor and pending-packet pin stay immutable.
+// Empty legacy descriptors never compare equal to native transport identity.
+func sameLocalNodeAuthority(a, b LocalNodeConnectionPin) bool {
+	if a == b {
+		return true
+	}
+	if a.HubTransportDescriptor == "" || a.HubTransportDescriptor != b.HubTransportDescriptor || validateLocalNodePin(a) != nil || validateLocalNodePin(b) != nil {
+		return false
+	}
+	b.HubDialAddress = a.HubDialAddress
+	return a == b
 }
 
 // Strict shape plus duplicate-key detection at every object level. No canonical
@@ -286,7 +320,7 @@ func ResolveLocalNodeConnection(parent context.Context, s LocalNodeSelection, pi
 		if err != nil || !bytes.Equal(data, after) {
 			return zero, ErrLocalNodeDiscoveryUnavailable
 		}
-		if pin != nil && *pin != p {
+		if pin != nil && !sameLocalNodeAuthority(*pin, p) {
 			return zero, ErrLocalNodeBindingChanged
 		}
 		if s.HubID != "" && s.HubID != p.HubID || s.NodeID != "" && s.NodeID != p.NodeID {

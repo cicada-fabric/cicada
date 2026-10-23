@@ -38,14 +38,14 @@ func (s *mcpOutboxStore) connectionFence(db *sql.DB) error {
 	}
 	var format string
 	var data []byte
-	if err := db.QueryRow("SELECT format,CASE WHEN length(pin)<=65536 THEN pin ELSE NULL END FROM mcp_outbox_connection_pin WHERE slot=1").Scan(&format, &data); err != nil || format != mcpOutboxConnectionFormat {
+	if err := db.QueryRow("SELECT format,CASE WHEN length(CAST(pin AS BLOB))<=? THEN pin ELSE NULL END FROM mcp_outbox_connection_pin WHERE slot=1", localNodeMaxPinBytes).Scan(&format, &data); err != nil || format != mcpOutboxConnectionFormat {
 		return ErrLocalNodeDiscoveryInvalid
 	}
 	var pin LocalNodeConnectionPin
 	if decodeLocalNodeJSON(data, &pin) != nil || validateLocalNodePin(pin) != nil {
 		return ErrLocalNodeDiscoveryInvalid
 	}
-	if pin != *s.connectionPin {
+	if !sameLocalNodeAuthority(pin, *s.connectionPin) {
 		return ErrLocalNodeBindingChanged
 	}
 	return nil
@@ -127,6 +127,9 @@ func (s *mcpOutboxStore) prepareConnectionDB() (os.FileInfo, error) {
 }
 
 func (s *mcpOutboxStore) initializeConnectionDB(db *sql.DB, created os.FileInfo) error {
+	if s.connectionPin == nil {
+		return ErrLocalNodeConfigRequired
+	}
 	current, err := os.Lstat(s.path)
 	if err != nil || !os.SameFile(created, current) || !localNodePrivate(current, false) {
 		return ErrLocalNodeDiscoveryInvalid
@@ -156,6 +159,9 @@ func (s *mcpOutboxStore) initializeConnectionDB(db *sql.DB, created os.FileInfo)
 	data, err := json.Marshal(s.connectionPin)
 	if err != nil {
 		return err
+	}
+	if len(data) > localNodeMaxPinBytes || validateLocalNodePin(*s.connectionPin) != nil {
+		return ErrLocalNodeDiscoveryLimit
 	}
 	if _, err := conn.ExecContext(ctx, "INSERT INTO mcp_outbox_connection_pin(slot,format,pin) VALUES(1,?,?)", mcpOutboxConnectionFormat, string(data)); err != nil {
 		return err

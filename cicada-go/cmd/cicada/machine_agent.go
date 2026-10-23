@@ -40,6 +40,8 @@ func runMachineAgentWithContext(parent context.Context, args []string, pinned *m
 	name := flags.String("name", envOr("CICADA_MACHINE_NAME", ""), "machine display name")
 	controlURL := flags.String("control-url", envOr("CICADA_CONTROL_URL", "http://127.0.0.1:8787"), "Control base URL")
 	pqConfig := flags.String("pqtls-config", strings.TrimSpace(os.Getenv("CICADA_NODE_PQTLS_CONFIG")), "private enrolled Node PQ TLS configuration")
+	hubConnectionFile := flags.String("hub-connection-file", "", "independently supplied public native Hub transport descriptor")
+	hubDialAddress := flags.String("hub-dial-address", "", "explicit canonical numeric Hub socket locator")
 	stateDir := flags.String("state-dir", machineAgentStateDir(), "durable Node state directory")
 	interval := flags.Duration("interval", machineAgentInterval(), "heartbeat interval")
 	once := flags.Bool("once", false, "register, heartbeat, and process the current job queue once")
@@ -79,6 +81,9 @@ func runMachineAgentWithContext(parent context.Context, args []string, pinned *m
 		return localNodeConfigError("MCP discovery paths require --user-root")
 	}
 	if *hubsFile != "" {
+		if *hubConnectionFile != "" || *hubDialAddress != "" {
+			return errors.New("multi-Hub uses per-Hub native transport configuration")
+		}
 		if pinned != nil || *stateRoot == "" || !*relayOnly || *lanDiscovery || len(flags.Args()) != 0 {
 			return errors.New("multi-Hub mode requires --state-root and --relay-only, with no LAN discovery")
 		}
@@ -98,7 +103,20 @@ func runMachineAgentWithContext(parent context.Context, args []string, pinned *m
 	if *userRoot != "" && !localNodePath(*stateDir) {
 		return localNodeConfigError("original Node state directory must be absolute")
 	}
-	base, err := normalizeControlURL(*controlURL)
+	explicitOrigin := strings.TrimSpace(os.Getenv("CICADA_CONTROL_URL")) != ""
+	flags.Visit(func(f *flag.Flag) {
+		if f.Name == "control-url" {
+			explicitOrigin = true
+		}
+	})
+	nativeSelection, selectedOrigin, err := resolveMachineNativeSelection(*stateDir, *id, *hubConnectionFile, *hubDialAddress, *controlURL, *pqConfig, explicitOrigin)
+	if err != nil {
+		return err
+	}
+	if nativeSelection != nil {
+		defer nativeSelection.transport.CloseIdleConnections()
+	}
+	base, err := normalizeControlURL(selectedOrigin)
 	if err != nil {
 		return err
 	}
@@ -181,6 +199,14 @@ func runMachineAgentWithContext(parent context.Context, args []string, pinned *m
 	}
 	pinned.RequireNativeContext = true
 	pinned.Token = nodeIdentity.RelayToken
+	if err := activateMachineNativeSelection(parent, pinned, nativeSelection); err != nil {
+		return err
+	}
+	if nativeSelection != nil && !nodeIdentity.NativeHubTransport {
+		if err := persistMachineNativeMarker(*stateDir, *id, nodeIdentity); err != nil {
+			return err
+		}
+	}
 	inboxPath := machineNodeInboxPath(*stateDir, *id)
 	if err := os.MkdirAll(filepath.Dir(inboxPath), 0o700); err != nil {
 		return fmt.Errorf("create machine node state directory: %w", err)

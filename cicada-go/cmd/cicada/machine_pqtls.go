@@ -15,7 +15,7 @@ func configureMachinePQTransport(hub *machineHubContext, path string) error {
 	if path == "" {
 		return nil
 	}
-	if hub == nil || hub.TLSRuntime != nil || hub.NodeTransport != nil {
+	if hub == nil || hub.TLSRuntime != nil || hub.NodeTransport != nil || hub.NativeTransport != nil || hub.HubTransportDescriptor != "" || hub.HubDialAddress != "" {
 		return nodetransport.ErrTLSInstall
 	}
 	runtime, err := nodetransport.OpenRuntime(context.Background(), nodetransport.RuntimeOptions{StateRoot: hub.StateDir, WriterRoot: hub.WriterRoot, HubID: hub.HubID, NodeID: hub.NodeID, ApplicationOrigin: hub.Origin, ConfigPath: path, OpenLocal: func() (*nodetransport.LocalTLSInstaller, func(), error) { return machineTLSOpenLocal(hub) }, QueryCurrent: func(ctx context.Context, cfg *nodetransport.Config) (*store.NodeTLSAuthoritySnapshot, error) {
@@ -34,6 +34,28 @@ func configureMachinePQTransport(hub *machineHubContext, path string) error {
 func machineNodeHTTPClient(ctx context.Context, timeout time.Duration) (*http.Client, error) {
 	client := &http.Client{Timeout: timeout, CheckRedirect: rejectNodeRedirect}
 	if hub, ok := machineHubFrom(ctx); ok {
+		if (hub.HubTransportDescriptor == "") != (hub.HubDialAddress == "") || (hub.HubTransportDescriptor != "" && hub.NativeTransport == nil) {
+			return nil, nodetransport.ErrTLSCurrentAuthorityUnavailable
+		}
+		if hub.NativeTransport != nil {
+			if hub.NodeTransport != nil || hub.TLSRuntime != nil || strings.TrimSpace(os.Getenv("CICADA_NODE_PQTLS_CONFIG")) != "" {
+				return nil, nodetransport.ErrTLSInstall
+			}
+			client.Transport = hub.NativeTransport
+			return client, nil
+		}
+		native, err := machineSavedNativeTransport(hub)
+		if err != nil {
+			return nil, err
+		}
+		if native != nil {
+			if hub.NodeTransport != nil || hub.TLSRuntime != nil || strings.TrimSpace(os.Getenv("CICADA_NODE_PQTLS_CONFIG")) != "" {
+				native.CloseIdleConnections()
+				return nil, nodetransport.ErrTLSInstall
+			}
+			client.Transport = machineOneShotTransport{base: native}
+			return client, nil
+		}
 		if hub.NodeTransport == nil && strings.TrimSpace(os.Getenv("CICADA_NODE_PQTLS_CONFIG")) != "" {
 			return nil, nodetransport.ErrTLSCurrentAuthorityUnavailable
 		}

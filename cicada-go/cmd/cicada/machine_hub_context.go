@@ -15,6 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/cicada-ai/cicada/internal/hubtransport"
 	"github.com/cicada-ai/cicada/internal/nodeinbox"
 	"github.com/cicada-ai/cicada/internal/nodelock"
 	"github.com/cicada-ai/cicada/internal/nodetransport"
@@ -29,6 +30,8 @@ type machineHubContext struct {
 	NativeContexts                                                  *nodeinbox.NativeContextRegistry
 	ResourceExecutions                                              *nodelock.ResourceExecutionManager
 	NodeTransport                                                   http.RoundTripper
+	NativeTransport                                                 *hubtransport.Transport
+	HubTransportDescriptor, HubDialAddress                          string
 	TLSRuntime                                                      *nodetransport.Runtime
 	approvedHubID                                                   *atomic.Pointer[string]
 }
@@ -179,11 +182,13 @@ func machineHubOriginMatches(ctx context.Context, endpoint string) bool {
 }
 
 type machineHubConfig struct {
-	HubID       string `json:"hub_id"`
-	ControlURL  string `json:"control_url"`
-	NodeID      string `json:"node_id"`
-	Name        string `json:"name,omitempty"`
-	PQTLSConfig string `json:"pqtls_config,omitempty"`
+	HubID             string `json:"hub_id"`
+	ControlURL        string `json:"control_url"`
+	NodeID            string `json:"node_id"`
+	Name              string `json:"name,omitempty"`
+	PQTLSConfig       string `json:"pqtls_config,omitempty"`
+	HubConnectionFile string `json:"hub_connection_file,omitempty"`
+	HubDialAddress    string `json:"hub_dial_address,omitempty"`
 }
 
 type machineHubConfigFile struct {
@@ -218,6 +223,9 @@ func runMachineMultiHubAgentWithDiscovery(configPath, stateRoot string, interval
 		}
 		args := []string{"--id", entry.NodeID, "--name", name, "--control-url", entry.ControlURL,
 			"--state-dir", hubState, "--interval", interval.String(), "--relay-only", "--pqtls-config", entry.PQTLSConfig}
+		if entry.HubConnectionFile != "" || entry.HubDialAddress != "" {
+			args = append(args, "--hub-connection-file", entry.HubConnectionFile, "--hub-dial-address", entry.HubDialAddress)
+		}
 		if userRoot != "" {
 			args = append(args, "--user-root", userRoot, "--mcp-session-state-file", filepath.Join(hubState, "mcp", "sessions.json"), "--mcp-outbox-state-file", filepath.Join(hubState, "mcp", "outbox.sqlite3"))
 		}
@@ -250,6 +258,26 @@ func loadMachineHubConfig(configPath string) ([]machineHubConfig, error) {
 	for index := range config.Hubs {
 		entry := &config.Hubs[index]
 		entry.HubID, entry.NodeID, entry.Name = strings.TrimSpace(entry.HubID), strings.TrimSpace(entry.NodeID), strings.TrimSpace(entry.Name)
+		if entry.HubConnectionFile != "" {
+			if entry.PQTLSConfig != "" {
+				return nil, errors.New("native and PQ transport selections conflict")
+			}
+			raw, err := readPublicFile(entry.HubConnectionFile, int64(hubtransport.MaxDescriptorText+2))
+			if err != nil {
+				return nil, err
+			}
+			d, err := hubtransport.DecodeDescriptor(strings.TrimSuffix(strings.TrimSuffix(string(raw), "\n"), "\r"))
+			if err != nil {
+				return nil, err
+			}
+			if d.Claims.Hub.HubID != entry.HubID || (entry.ControlURL != "" && entry.ControlURL != d.Claims.Origin) {
+				return nil, hubtransport.ErrOrigin
+			}
+			if _, err = validateMachineNativeMetadata(strings.TrimSuffix(strings.TrimSuffix(string(raw), "\n"), "\r"), entry.HubDialAddress, d.Claims.Origin); err != nil {
+				return nil, err
+			}
+			entry.ControlURL = d.Claims.Origin
+		}
 		origin, err := normalizeControlURL(entry.ControlURL)
 		if err != nil {
 			return nil, err

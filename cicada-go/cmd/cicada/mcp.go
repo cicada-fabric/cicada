@@ -46,6 +46,8 @@ type mcpServer struct {
 	stop              chan struct{}
 	codexContext      *codexMCPContextState
 	localNode         *LocalNodeConnection
+	nativeHTTPOnce    sync.Once
+	nativeHTTP        *localNodeHTTPPool
 
 	sessionDomain codexDomainBinding
 }
@@ -212,7 +214,7 @@ func runMCP(args []string) error {
 			server.outbox = newMCPOutbox(filepath.Join(hubStateDir, "mcp", "outbox.sqlite3"))
 		}
 	}
-	defer func() { close(server.stop); server.stopCodexHeartbeat() }()
+	defer func() { close(server.stop); server.stopCodexHeartbeat(); server.selectedNodeHTTPPool().close() }()
 	// A cached credential is considered usable only after the trusted harness
 	// context and the server both validate it. Missing state is ordinary: MCP
 	// starts unjoined and never performs an implicit management join.
@@ -1064,7 +1066,10 @@ func (m *mcpServer) requestWithGroup(method, path string, body any, authorizatio
 	}
 	client := &http.Client{Timeout: 30 * time.Second}
 	if m.localNode != nil {
-		client.CheckRedirect = rejectNodeRedirect
+		client, err = m.selectedNodeHTTPPool().client(request.Context(), m.localNode, 30*time.Second)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if strings.HasPrefix(path, "/v2/fabric/") || strings.HasPrefix(path, "/v2/relay/") || strings.HasPrefix(path, "/v2/artifacts") || strings.HasPrefix(path, "/v2/artifact-refs") {
 		if m.pqtlsSelected {

@@ -51,7 +51,7 @@ func validateCodexCachedConnection(cached *mcpCachedSession, connection *LocalNo
 	if (cached.ConnectionPin == nil) != (connection == nil) {
 		return codexLocalNodeError(ErrLocalNodeConfigRequired)
 	}
-	if connection != nil && *cached.ConnectionPin != connection.Pin {
+	if connection != nil && !sameLocalNodeAuthority(*cached.ConnectionPin, connection.Pin) {
 		return codexLocalNodeError(ErrLocalNodeBindingChanged)
 	}
 	return nil

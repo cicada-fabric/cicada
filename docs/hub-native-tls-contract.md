@@ -7,7 +7,8 @@ The machine-readable inventory is
 [source-bound producer validation](hub-native-tls-validation.md). The subsequent
 Hub runtime checkpoint supplies certificate persistence, CLI and native listener;
 its [separate validation](hub-native-tls-runtime-validation.md) does not accept
-pending App/Node consumers or a complete installed deployment.
+App/Node consumers or a complete installed deployment. The subsequent Node
+consumer checkpoint has [its own validation](hub-native-tls-node-validation.md).
 
 ## Identity, origin and reachability
 
@@ -142,7 +143,7 @@ target and connects solely to the selected numeric address. Proxy and redirect
 following are disabled. Timeout zero supports Node streaming; per-request
 cancellation and bounded handshake/header waits still apply.
 
-## Hub runtime and remaining consumer implementation
+## Hub runtime
 
 The Hub uses Go standard-library TLS/x509, a private installation CA and a
 separate stable service key/certificate. It does not reuse application private
@@ -190,8 +191,8 @@ native TLS and enrolled Node PQ transport selection rejects. New setup may omit
 external origin; explicit old origin behavior and original public-config format
 remain compatible. Native activation issuance wraps the original v1 code;
 public descriptor export never contains that code. The Hub runtime supplies
-the Hub CLI surfaces below; Node flags remain reserved for the separate
-consumer checkpoint:
+the Hub CLI surfaces below; the Node consumer checkpoint implements the Node
+and protected-discovery selections in the same table:
 
 | Stage | CLI and selection |
 | --- | --- |
@@ -216,12 +217,80 @@ The explicit legacy selector for a native Hub is
 `serve --hub-nodes-only --legacy-http`; it does not enter Control composition.
 All three retained application keys are read strictly before service creation.
 
+## Node persistence, readiness and selected consumers
+
+`machine agent --hub-connection-file FILE --hub-dial-address IP:port` reads a
+controlled-channel public descriptor and derives the logical control URL. An
+explicit conflicting `--control-url`/`CICADA_CONTROL_URL`, a nonnumeric locator,
+or simultaneous PQ selection rejects before enrollment. A multi-Hub config may
+select `hub_connection_file` and `hub_dial_address` per entry; global selectors
+cannot override that file. Each Hub keeps its existing isolated state directory.
+
+The existing mode-0600 Node-Control state adds two optional strings,
+`hub_transport_descriptor` and `hub_dial_address`. The first contains the exact
+original canonical signed text, never a newly randomized signature. The second
+is reachability only. Empty fields are omitted from legacy JSON. No new state
+file, identity, grant or daemon is introduced. The retained private relay
+`identity.json` adds only an optional boolean `native_hub_transport`, written
+after the complete original keys and native state exist; its separate
+`relay.token` is never rewritten for this marker. The marker is a fail-closed
+mode reminder, not authority. Existing state with a missing Node-Control key,
+native state with missing original relay material, a marker with lost state or
+cleared descriptor, mismatched origin or incomplete routing fails rather than
+creating replacement identity or falling back to default HTTP. A partial first
+initialization with a Node-Control key but no state also refuses replacement.
+
+Before a device-code/credential/business request, activation of a native route
+performs an unauthenticated verified-TLS `GET /v2/node/identity` and checks the
+complete Node-Control public identity, ID, version, fingerprint and Hub ID
+against the signed descriptor. Failed TLS or identity verification leaves the
+old saved routing bytes intact. Later identity reads repeat the binding check
+before the existing candidate pin operation. Descriptor Hub ID is an expected
+transport/candidate coordinate, never the Agent's Owner-approved Hub ID.
+Original device-code approval, dual possession proof, finite Owner grants,
+current Guard, revocation and manual independent FB-03 Owner public pin remain
+required. Protected `local_node_describe` is ready only after the original
+Owner-approved binding is ready and its native metadata matches the Agent.
+
+An established native Node may resume without connection flags. Its descriptor
+cannot be replaced, and an already bound/pending legacy Node cannot silently
+adopt native TLS. Explicit numeric address changes validate TLS and the complete
+live Node-Control identity before persisting either new route or sending a
+credential. CA/service-key/transport-epoch or descriptor changes require a
+future controlled operation. Such changes cannot be disguised as relocation.
+
+Protected `LocalNodeConnectionPin` adds the same two optional strings. The
+descriptor must match exact Hub ID, origin and the complete approved
+Node-Control binding. All original path, ownership, nonce, instance, locator
+digest and binding checks remain. A freshly verified live Node may supply a
+different canonical numeric address only when every other pin field, including
+the exact descriptor, is identical. Session cache, operator intent, frozen
+heartbeat and SQLite outbox compare that authority while preserving the
+original persisted pin and original uncertain operation/packet bytes. Empty
+legacy and native descriptors are never interchangeable. Outbox reopen checks
+the pin size in UTF-8 bytes before JSON decoding and never updates its pin row.
+
+The pin JSON limit is 96 KiB; the describe response is bounded to 97 KiB,
+including its envelope. The unchanged describe request is still 1 KiB, locator
+4 KiB, identifier 256 bytes and each path 4096 bytes (subject also to platform
+path limits). These bounds accommodate the encoded bounded public descriptor
+without enlarging business or proof packets. Existing 256 KiB join and 1 MiB
+operator-pending bounds remain unchanged.
+
+Each native Agent uses one private per-Hub verified transport for existing
+Relay, Session, encrypted Node-Control and bridge consumers. Independent
+commands reload saved public routing and close their connection per response.
+Each selected MCP and its frozen heartbeat share one verified pool; request,
+heartbeat, Network directory and Network direct paths revalidate live local
+discovery before selecting the current numeric route. Pool replacement closes
+old idle connections and never rewrites the original pin. These clients use no
+global transport or DNS fallback. Legacy/no-selected Network clients retain
+their original TLS/proxy policy. Native TLS is kept separate from the enrolled
+PQ transport and its diagnostic wrapper; the two modes cannot be combined.
+
 App owns its locator/public-descriptor persistence and HTTP-client lifecycle,
-while preserving original protected vault scope and pending bytes. Node must
-carry the verified canonical descriptor and locator through protected discovery
-pins to MCP/Hook/bridge requests, including paths that currently construct a
-separate HTTP client. Standard native transport and original PQ mode are
-mutually exclusive with no silent fallback.
+while preserving original protected vault scope and pending bytes. Its producer
+and independent installation results remain separately attributed.
 
 This revision does not change Client wire 1, client-hub-v1.6.5/catalog 55,
 activation v1, Owner/Node grant semantics or deployed data. Standard TLS is not

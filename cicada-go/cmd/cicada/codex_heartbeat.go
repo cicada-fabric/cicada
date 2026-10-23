@@ -18,6 +18,7 @@ import (
 type codexFrozenHeartbeat struct {
 	cache             mcpCachedSession
 	connection        *LocalNodeConnection
+	nativeHTTP        *localNodeHTTPPool
 	principal, socket string
 	pqtls             bool
 	cancel            context.CancelFunc
@@ -40,7 +41,7 @@ func (m *mcpServer) codexHeartbeatSnapshot() *codexFrozenHeartbeat {
 	return &codexFrozenHeartbeat{connection: connection, cache: mcpCachedSession{ConnectionPin: pin, Scope: m.sessionScope, APIOrigin: m.baseURL, Harness: t.Harness, NativeSessionID: t.NativeSessionID,
 		NodeID: t.NodeID, Workspace: t.Workspace, GroupID: m.sessionGroupID, EndpointID: m.endpointID, OwnerID: m.sessionPublic.Endpoint.Owner,
 		BindingID: m.sessionPublic.BindingID, BindingEpoch: m.sessionPublic.BindingEpoch, LeaseExpiresAt: m.sessionPublic.LeaseExpiresAt, SessionToken: m.sessionToken, codexDomainBinding: m.sessionDomain},
-		principal: m.sessionPublic.NetworkCard.PrincipalID, socket: m.joinSocketPath(harness.SessionContext{MachineID: t.NodeID}), pqtls: m.pqtlsSelected}
+		principal: m.sessionPublic.NetworkCard.PrincipalID, socket: m.joinSocketPath(harness.SessionContext{MachineID: t.NodeID}), pqtls: m.pqtlsSelected, nativeHTTP: m.selectedNodeHTTPPool()}
 }
 
 func (h *codexFrozenHeartbeat) same(other *codexFrozenHeartbeat) bool {
@@ -48,7 +49,7 @@ func (h *codexFrozenHeartbeat) same(other *codexFrozenHeartbeat) bool {
 		return false
 	}
 	a, b := h.cache, other.cache
-	if (a.ConnectionPin == nil) != (b.ConnectionPin == nil) || a.ConnectionPin != nil && *a.ConnectionPin != *b.ConnectionPin {
+	if (a.ConnectionPin == nil) != (b.ConnectionPin == nil) || a.ConnectionPin != nil && !sameLocalNodeAuthority(*a.ConnectionPin, *b.ConnectionPin) {
 		return false
 	}
 	a.ConnectionPin, b.ConnectionPin = nil, nil
@@ -147,7 +148,7 @@ func (h *codexFrozenHeartbeat) runWithTicks(ctx context.Context, m *mcpServer, t
 func (h *codexFrozenHeartbeat) clearMemoryIfMatching(m *mcpServer) {
 	m.sessionMu.Lock()
 	defer m.sessionMu.Unlock()
-	if (h.connection == nil) != (m.localNode == nil) || h.connection != nil && h.connection.Pin != m.localNode.Pin {
+	if (h.connection == nil) != (m.localNode == nil) || h.connection != nil && !sameLocalNodeAuthority(h.connection.Pin, m.localNode.Pin) {
 		return
 	}
 	t := m.sessionContext
@@ -185,7 +186,17 @@ func (h *codexFrozenHeartbeat) renew(ctx context.Context) (any, error) {
 		request.Header.Set("Authorization", "CicadaSession "+h.cache.SessionToken)
 		request.Header.Set("Cicada-Group-Scope", h.cache.GroupID)
 		client := &http.Client{Timeout: 30 * time.Second, CheckRedirect: rejectNodeRedirect}
-		if h.connection == nil {
+		if h.connection != nil {
+			pool := h.nativeHTTP
+			if pool == nil {
+				pool = &localNodeHTTPPool{}
+				defer pool.close()
+			}
+			client, err = pool.client(ctx, h.connection, 30*time.Second)
+			if err != nil {
+				return nil, err
+			}
+		} else {
 			client, err = machineNodeHTTPClient(ctx, 30*time.Second)
 			if err != nil {
 				return nil, err
