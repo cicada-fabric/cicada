@@ -5184,3 +5184,143 @@ Actual native A/B Join without Pair, Host ASK/Reply, new-domain other-UID contex
 and signing, real login/report expiry and fresh C, empty-policy-cache full-page
 recovery, stale epochs/foreign scope, legacy Pair, real model/queue/automatic
 wake, Windows DPAPI/ACL/physical GUI, Android and public HTTPS remain **NOT_RUN**.
+
+## 2026-10-23 original-daemon domain Native integration
+
+The independent actual Native gate is **SCOPED_PASS**, exit **0**, one passing
+test event and no failures/skips. This is the manual independent Owner-public-pin,
+static-provider scope; Windows and real-model scopes remain separate. Actual
+Hub/App/Node processes use real cryptography, TCP and persistent stores in a
+unique disposable Docker environment. Control inference is off; the parent
+neither holds an Owner signing key nor injects SQL grants or queue ACKs.
+
+The tested source is clean `88ff963d2ebe7f4544b201b77115567033b2966e`.
+The approved complete product freeze has 2466 files,
+`/home/zyf/Cicada/.local/evidence/local-domain-root/native-real-queue-clean-88ff963-20261023.json`,
+SHA-256 `6be9a39c47d68ed147886b0edc5367d185c79b6b13d04c28ac1a78c0f6f82eee`.
+The separately built delivery is clean `9726e04505a8fce960c37803e504d265344c902e`;
+Root verified that all production/module/assets Git inputs are equal, with only
+four QA-file differences. Those are distinct HEADs; this does not assert equal
+build metadata or binary bytes. This later documentation update is outside the
+tested source snapshot.
+
+The actual test ran from `2026-10-23T00:58:43Z` to `01:14:56Z`, 973.13 seconds.
+All version, CLI compilation, test compilation, harness and vet stages exited 0.
+The original official Codex daemon starts before file installation under actual
+umask 0002 with the five deployment variables absent, then loads the normal
+installed-plugin update. Original PID/start ticks, executable hash, real native
+SID/cwd/UID/inode and positive binding epochs remain checked; records are not
+chmod-repaired and the daemon is not replaced.
+
+The actual App approves one persistent Node/user/Network policy with a dedicated
+non-Pair Group. Native A/B literal Join produces zero provider POSTs. Current
+by-name discovery resolves the real Endpoint. After the actual normal App
+Controller.Close, A ASK, B authenticated receive, B Reply and A authenticated
+receive pass. The driver then waits beyond the original authenticated Hub login
+deadline `2026-10-23T01:13:45.43011913Z` plus one second in real wall time,
+without a logical-clock offset or shortened server TTL. Post-expiry A/B ASK/Reply,
+fresh native C literal Join/WhoAmI and C-to-B ASK/Reply pass under the same daemon
+and independent policy. The actual App reopens its original protected profile,
+authenticates as needed, reads the same current ACTIVE policy/version and
+explicitly revokes it. A fresh Node heartbeat still succeeds with Hub/Node alive;
+a new ASK from the already connected Host is refused and creates no request ID.
+This does not qualify every post-revoke discovery or fresh-Thread adversary.
+
+There are **17 completed Host calls**, not a claim of 17 newly started turns:
+the SDK may start or steer within the original Thread. Each call retains exactly
+two correlated provider POSTs, its unique current label, actual returned turn ID,
+real `client_metadata`, schema nonce, installed Hook and original business
+assertions. Host POSTs are **34**, separately recognized actual queue static
+POSTs **6**, total **40**; literal POSTs and real-model turns are **0**. Only current
+registered full queue input with the actual verified route/SID is recognized;
+unknown POSTs fail. Queue input receives neutral static text and no tool call.
+The existing Node path executes the actual pinned full-package `codex queue`;
+its durable success boundary and actual scoped inbox read are not replaced by a
+fixture ACK. Static dispatch does not prove real-model consumption or real-model
+automatic wake.
+
+Manual independent Owner trust remains required: actual App public export plus
+the existing operator trust command populate the isolated Node. Trust is not
+initialized from an arriving policy's own public key. Automatic FB-03 delivery
+is **NOT_RUN**. The earlier [account/Root N2 result](#n2-hubapp-integration)
+retains its own source and proves account login does not imply Root; that older
+negative scope is not silently promoted to new-domain adversarial coverage.
+
+| Final independent artifact | SHA-256 |
+| --- | --- |
+| `run-20261023T005832Z-tNoboL/result.json` | `31f8e49faac14426555718ff81f90fddc43c0658d96a0ceeba0dd48726869500` |
+| Same run's `domain-native-public-summary.json` | `00e696fbe6b165c22c0199cbb21293aae5ab0741b1fb39d2b4508cf922ae747b` |
+| Same run's `source-before.json` and `source-after.json` | `3aef73a633e9375267d05b13b50023bdb355dbee54b7eb9e6ea2d71956cc5e29` |
+| Complete source manifest | `6108af0937bfce32ced83e9f419292cba00bedef72ee3915903cd95685780981` |
+| Actual `cicada`, 36,333,612 bytes | `483fa019c89ff8bde007b6d9240c650348b46cdca41c11ebc009c1a3d5ef7e0e` |
+| Actual `n3.test`, 23,565,935 bytes | `0a588045a932dfd15fc752573a912c82586caf239f909b082418b6891ecc7ef7` |
+| Reviewed complete-package Codex 0.163.0, 296,865,480 bytes | `399ff69c431c066e40de318fba45c2b07f45a76b19939d247ee4828fc70c4215` |
+
+Run-relative evidence is under
+`/home/zyf/Cicada/.local/evidence/native-pair-acceptance/`; binaries are under the
+matching `.local/artifacts/native-pair-acceptance/` run directory. Source and
+executed binary hashes are stable before/after; the owned container is absent
+and the exclusive task cache lock is released. Independent post-run rehash of
+all 20 evidence files and both actual binaries matches:
+`native-final-verification-20261023-k86yod0k/result.json`, SHA-256
+`b4caa28fc231953f5eef48b060598acbc4a3d70900565377e2f7830830de6195`.
+This rehash is not another product execution.
+
+Reproduce from a clean checkout of the tested source, with the pinned complete
+CLI package/notices and approved matching freeze already present:
+
+```sh
+CICADA_NATIVE_PAIR_LICENSES_DIR=/home/zyf/Cicada/.local/artifacts/codex-startup-fix/licenses-x4gog722 \
+CICADA_NATIVE_PAIR_DOMAIN_WAIT_LOGIN_EXPIRY=1 \
+CICADA_NATIVE_PAIR_PRODUCT_FREEZE=/home/zyf/Cicada/.local/evidence/local-domain-root/native-real-queue-clean-88ff963-20261023.json \
+scripts/test-native-pair.sh --codex-product-domain-native
+```
+
+The runner mounts source/module caches read-only, locks the task build cache,
+uses task-isolated state/ports/output and `--network none`, and cleans only its
+owned disposable container. No shared development Hub or public deployment is
+used. Seven predecessor attempts remain immutable FAILs (each 0/1/0); missing
+old diagnostics are not reconstructed from independent reproduction or fixes.
+
+| Retained run | Executed source | Recorded stop | Exit | Result SHA-256 |
+| --- | --- | --- | --- | --- |
+| `run-20261022T223355Z-WhxOtu` | `a52cf56` dirty | `LITERAL_AB/A_JOIN`; `NOT_RECORDED` | 1 | `a3b6cdd7e662728d5e19d24027e57c3529cada1a7332a6fd344ee776214123f5` |
+| `run-20261022T225021Z-nghDUR` | `0da74df` dirty | `LITERAL_AB/A_JOIN`; `ACTUAL_TUI_LITERAL_RESULT_NOT_VISIBLE` | 1 | `40b216ada516ed60a41f3cc26dcf88a5ea04e1b91d7cc9e10a05a8bcff9efbc5` |
+| `run-20261022T230207Z-3NUe5A` | `0da74df` dirty | `HOST_APP_CLOSED/A_WHOAMI`; `UNCLASSIFIED` | 1 | `6219be1790282693cda1dc07477f903152580a8b73a07718e7c5e494c2db4f67` |
+| `run-20261022T232204Z-MvhrQ4` | `135e4c9` clean | `HOST_APP_CLOSED/A_WHOAMI`; `ACTUAL_HOST_RESULT_FIELD_MISSING_OR_AMBIGUOUS_native_session_id` | 1 | `15239746b543f28301c768dad74238fe4121ac6b87851ec560766b357faa37cf` |
+| `run-20261022T233813Z-B26Oqy` | `c4cb7b9` clean | `HOST_APP_CLOSED/A_PEERS`; `ACTUAL_HOST_PHASE_INCOMPLETE` | 1 | `f7ac5bc35f048157355b6b775edcf201a6ae05438fdeb0da25223afe5ade18f6` |
+| `run-20261022T235417Z-46guDR` | `576d1de` clean | `HOST_APP_CLOSED/A_OPERATION_STATUS`; `UNCLASSIFIED` | 1 | `9c98f35e9f83a26e8a6b82dbd155d5ce659b111225732eb94520f6b6c581b183` |
+| `run-20261023T001742Z-0E8rNi` | `9726e04` clean | `HOST_APP_CLOSED/B_RECEIVE_QUESTION`; `UNCLASSIFIED` | 1 | `16740eae8d040c2ab4168b7d2e65946dde00d2cee89918c24edc2f77bbb8557b` |
+
+Producer-owned corrections were the exact literal UserPromptSubmit context
+shape, existing Hub members/list route and selected consumer send IPC socket.
+QA corrections were the exact pinned SDK Text framing, existing MCP tool name,
+real queue executable fixture dependency and strict concurrent provider lanes.
+The seventh runtime did not retain queue-error text or inbox count; the missing
+executable dependency was established separately by read-only preflight. It is
+not a retroactively captured error from that failed run. No Hub/App production
+implementation was edited by QA.
+
+The candidate's 70 offline boundary checks cover wrong SID/route, old markers,
+request-ID cross-check, concurrent queue POSTs interleaved with two Host POSTs,
+same-turn processing, bounded idle reads and original business-helper ASTs.
+They also replay the seventh captured FAIL as exit 1 without adding old queue
+facts. Receipt `native-queue-host-final-20261023-8tcqsvkb/result.json`, SHA-256
+`64bdfefa9d05672b775377c135617f128f847c86b69e005f54c4df6c1d8c3411`;
+these are driver/oracle checks, not Native product passes.
+
+Root's separate clean-`b5d58bd` default Client/Hub compatibility result remains
+4 top-level plus 3 subtests, 7/0/0, exit 0, cleanup CONFIRMED:
+`/home/zyf/Cicada/.local/evidence/local-domain-root/client-interop-b5d58bd-20261022T2153Z/result.json`,
+SHA-256 `72c718af31e97f3df9d9220fa57ba56476e395b85939f72d19f599ea740bbf33`.
+It does not become compatibility acceptance for a later source or delivery.
+
+Remaining independent scopes are new-domain other-UID context/signing beyond
+observed file/IPC denial; foreign Node/Owner/Network and stale epochs; optional
+policy expiry and report-expiry-only independence; original business-response
+loss recovery; empty-cache full bounded policy pagination; legacy Pair migration;
+literal Leave/ordinary-prompt passthrough and graceful TUI exit. The real login
+wait retains automatic report refresh and does not isolate report expiry.
+Real model, queued-input model consumption and real-model automatic wake,
+Windows DPAPI/ACL/physical GUI, Android and public HTTPS remain **NOT_RUN**.
+Linux vault and cross-build evidence do not execute Windows requirements.

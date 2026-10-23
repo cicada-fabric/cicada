@@ -75,9 +75,10 @@ its authoritative grants. Explicit Thread registration remains for identity and
 routing. Within an explicit Node/user/Network policy scope, local collaboration
 does not require human approval for every Thread pair. The current Pair flow
 remains a bounded implemented mode, not the default local product target.
-The new domain-level policy is **NOT_IMPLEMENTED / NOT_RUN**: Node approval is
-not authority over every Network, and old Pair rights are not retroactively
-expanded. Group boundaries, cryptography and current Guards remain. Record
+The new domain-level policy has bounded actual App and
+[Native SCOPED_PASS results](native-app-validation.md#2026-10-23-original-daemon-domain-native-integration).
+Node approval is not authority over every Network, and old Pair rights are not
+retroactively expanded. Group boundaries, cryptography and current Guards remain. Record
 identity/anti-misbinding checks and business authorization require separate
 review; no chmod or ACL solution is selected by this clarification.
 
@@ -121,15 +122,18 @@ that candidate nor earlier fcea942 Pair/cold evidence validates this new flow.
 
 ## Node/user/Network policy acceptance preparation
 
-2026-10-22, preparation baseline `96dcbe0`. The
-[formal contract](native-local-domain-contract.md) and Hub backend `2458552`
-now support the actual App policy workflow. Core recovery fix `bd0d901` plus
-the independent QA candidate have a bounded
-[actual App result](native-app-validation.md#2026-10-22-actual-domain-app-recovery-after-core-fix).
-The full Native issuer/Join/delivery adapter and actual Native business flow
-remain **NOT_RUN**. This matrix extends the existing isolated driver; it
-introduces no production command, schema, grant or authorization bypass.
-Historical Pair, N2 and three-stage results keep their scopes.
+2026-10-23 bounded integration results: the
+[formal contract](native-local-domain-contract.md), actual App recovery and
+original-daemon Native main line now have separate
+[source-specific receipts](native-app-validation.md#2026-10-23-original-daemon-domain-native-integration).
+The final Native gate is **SCOPED_PASS**, exit 0, on clean `88ff963`: original
+umask-0002 A/B, actual App Close and by-name Host ASK/Reply, real original login
+expiry, fresh native C and current-policy revoke with healthy Hub/Node.
+The earlier App recovery result retains its dirty `bd0d901` plus exact QA source.
+This matrix extends the isolated driver without adding production commands,
+grants or authorization bypasses. Historical Pair, N2 and three-stage results
+keep their scopes; the remaining adversarial and platform rows are not implied
+by the positive main line.
 Root has approved the design direction: the default policy lasts until explicit
 revocation, with optional Owner-selected expiry; a short activation proof is not
 the delegation's lifetime. A newly named private Network or an exact existing
@@ -146,7 +150,7 @@ local trust version. Missing/wrong/revoked trust refuses; policy ACTIVE alone
 does not establish communication. Automatic FB-03 trust delivery is still NOT_RUN,
 and the manual prerequisite must remain visible in native acceptance receipts.
 
-Root-frozen supplementary requirements, pending the full shared checkpoint:
+Root-frozen supplementary requirements and separately bounded acceptance:
 the actual agent automatically publishes a Node-signed local-user report with
 at most five minutes validity. Prepare may leave user scope empty so Hub derives
 it from that fresh exact report; App independently verifies the report in the
@@ -174,21 +178,21 @@ requests; closing App must not move that authority into an online UI dependency.
 
 | Case | Minimum independent observation after freeze | Current status |
 | --- | --- | --- |
-| DOMAIN-01 — one approval, new A/B | Actual App authorizes one exact Node/user/Network through its own signing action. The original persistent Codex daemon creates fresh A and B; literal Join has zero provider POSTs, exact original SID/cwd/name, and no per-Thread/Pair Owner approval. Current by-name discovery resolves exact IDs; actual Host ASK/Reply succeeds within scope. | NOT_RUN; business interface pending |
-| DOMAIN-02 — original `0002` writer | Observe the same daemon PID/start ticks and actual `/proc` Umask 0002 before/after installation and each fresh A/B. No per-record chmod, recursive repair or new-shell umask substitutes for the writer's policy. Record actual record/tree metadata and ordinary Hook trust. | Driver parameters prepared; execution NOT_RUN |
+| DOMAIN-01 — one approval, new A/B | Actual App authorizes one exact Node/user/Network through its own signing action. The original persistent Codex daemon creates fresh A and B; literal Join has zero provider POSTs, exact original SID/cwd/name, and no per-Thread/Pair Owner approval. Current by-name discovery resolves exact IDs; actual Host ASK/Reply succeeds within scope. | SCOPED_PASS on clean `88ff963`: one actual domain policy, native A/B and by-name Host ASK/Reply; fresh C also joins after original login expiry. See [final gate](native-app-validation.md#2026-10-23-original-daemon-domain-native-integration). |
+| DOMAIN-02 — original `0002` writer | Observe the same daemon PID/start ticks and actual `/proc` Umask 0002 before/after installation and each fresh A/B. No per-record chmod, recursive repair or new-shell umask substitutes for the writer's policy. Record actual record/tree metadata and ordinary Hook trust. | SCOPED_PASS on clean `88ff963`: same measured original daemon, actual umask 0002 and native metadata through installation and A/B/C, without record chmod. |
 | DOMAIN-03 — other UID, same group | A real UID 1001/GID 1000 process in the exact owned running container cannot read Node private keys, connect to private context/signing IPC, obtain a usable context proof or cause a signed business request. Observe actual denied operations, not only mode helpers. | OS file/IPC boundary SCOPED_PASS on dirty `18c54a6`; new domain context/signing still NOT_RUN. See [bounded run](native-app-validation.md#2026-10-22-actual-other-uid-private-file-and-node-ipc-boundary). |
 | DOMAIN-04 — foreign coordinates | Same Network/different Node; same Node/different Network; different Owner; absent/wrong/forged grant; stale grant or Node epoch all deny by current Guard. Capture redacted typed errors and unchanged unauthorized state. Group boundaries retain their existing contract. | NOT_RUN |
-| DOMAIN-05 — App/session lifetime | Close actual App process and cross the real authenticated Hub login deadline (currently 15 minutes), separately from short report/status TTLs. Newly created Threads and new permitted operations continue only within the independently granted domain lifetime. Domain expiry itself denies; restart Hub/Node and re-read the original persistent grant. An App logical-clock offset is not Hub expiry. | Actual App normal Close/reopen retains policy on dirty `bd0d901`; Native communication, real login/report expiry and Node restart remain NOT_RUN. |
-| DOMAIN-06 — explicit revoke | Actual App revokes the exact domain. New discovery/business operations deny immediately according to the frozen linearization rule, including an already connected MCP client and a fresh Thread. Never confuse App close/logout with domain revoke. | NOT_RUN |
+| DOMAIN-05 — App/session lifetime | Close actual App process and cross the real authenticated Hub login deadline (currently 15 minutes), separately from short report/status TTLs. Newly created Threads and new permitted operations continue only within the independently granted domain lifetime. Domain expiry itself denies; restart Hub/Node and re-read the original persistent grant. An App logical-clock offset is not Hub expiry. | SCOPED_PASS for actual normal App Close, real authenticated original login expiry, post-expiry A/B and fresh C communication on `88ff963`. Policy expiry, report-expiry-only behavior and a post-activation Native Node/Hub restart remain separate NOT_RUN scopes. |
+| DOMAIN-06 — explicit revoke | Actual App revokes the exact domain. New discovery/business operations deny immediately according to the frozen linearization rule, including an already connected MCP client and a fresh Thread. Never confuse App close/logout with domain revoke. | SCOPED_PASS on `88ff963` for authenticated current same-policy revoke with healthy Hub/Node and denial of a new ASK through the already connected Host, without a new request ID. Post-revoke fresh-Thread and discovery adversaries remain NOT_RUN. |
 | DOMAIN-07 — loss and original retry | Reuse existing method-specific barrier for loss before forward, loss after commit, unsigned/corrupt responses and uncertain result. Restart App/Hub/Node as appropriate; retry the original encrypted packet and reconcile the authenticated original outcome without new authority. | Activation response loss after commit plus actual App/Hub restart and original recovery SCOPED_PASS on dirty `bd0d901`. Other faults, Node restart and Native business recovery remain NOT_RUN. |
 | DOMAIN-08 — concurrency and replay | Concurrent exact retries produce one original grant/outcome; conflicting requests cannot claim a different domain. Pre-revoke accepted history may be readable only as the contract permits; retry never renews revoked authority or expands scope. | NOT_RUN |
 | DOMAIN-09 — legacy Pair migration | An old exact Pair, old pending packet or read cache retains its original scope and identity. It cannot silently become a Node/Network-wide grant, repair a wrong pin or revive a revoked Endpoint. | NOT_RUN; migration rule pending |
-| DOMAIN-10 — identity without inference | Account login alone cannot act as Root or issue a domain grant. With Control inference off, actual identity/Owner approval, explicit Join and deterministic Guard operations remain usable. | New domain extension NOT_RUN; older N2 evidence separate |
+| DOMAIN-10 — identity without inference | Account login alone cannot act as Root or issue a domain grant. With Control inference off, actual identity/Owner approval, explicit Join and deterministic Guard operations remain usable. | Actual App/Node/Join/Host main line passes with Control inference off on `88ff963`. Account-login-is-not-Root remains independently proved in the older N2 scope; new-domain account-only negative coverage is separate NOT_RUN. |
 | DOMAIN-11 — platform | Actual Windows DPAPI, ACL and physical GUI; Android and public HTTPS each require their own run. | NOT_RUN |
 | DOMAIN-12 — empty policy cache | Preserve the original protected Owner/device vault; reconstruct actual App Core with empty local domain cache and no retained policy ID. Read by exact Node from Hub through authenticated Owner actions, including all pages and original states, without requiring Node online. An independently enrolled App2 is a separate case and cannot be simulated by copying App1 private keys. | Scope confirmed by Root; execution NOT_RUN. Independent new-device enrollment remains separate NOT_RUN. |
-| DOMAIN-13 — signed user report | Actual Node publishes its exact signed writer scope automatically. Empty-scope Prepare derives that value and App verifies it. Wrong Node/UID/epoch, missing/forged/expired report refuses new setup; after a genuine activation, report expiry alone does not affect current work, status/revoke or original recovery, even with Node offline for Owner reads. | NOT_RUN |
-| DOMAIN-14 — bounded policy pages | Use real PQ identities/proofs so byte size, rather than row count, can truncate a page below the row cap. Verify valid continuation, bounded complete recovery, empty/bad/repeated cursors, no omitted/duplicated policies in a stable history, and no foreign Node/Owner disclosure. | NOT_RUN; byte/row contract implementation pending |
-| DOMAIN-15 — nested original receipts | Lose the actual encrypted activation response after commit; retain and reconcile the original packet/keys across restart. Real PQ proof/receipt sizes must fit the original, embedded base64, body and encrypted outer limits; exact/over-bound inputs fail atomically without fresh authorization or duplicate policy creation. | NOT_RUN |
+| DOMAIN-13 — signed user report | Actual Node publishes its exact signed writer scope automatically. Empty-scope Prepare derives that value and App verifies it. Wrong Node/UID/epoch, missing/forged/expired report refuses new setup; after a genuine activation, report expiry alone does not affect current work, status/revoke or original recovery, even with Node offline for Owner reads. | Actual Node signed report and independently verified derived-scope preparation are observed in the App/Native positive paths. Wrong/missing/forged/expired reports and report-expiry-only independence remain NOT_RUN; the Native login wait keeps reports refreshing. |
+| DOMAIN-14 — bounded policy pages | Use real PQ identities/proofs so byte size, rather than row count, can truncate a page below the row cap. Verify valid continuation, bounded complete recovery, empty/bad/repeated cursors, no omitted/duplicated policies in a stable history, and no foreign Node/Owner disclosure. | NOT_RUN; full independent byte/row and pagination fault gate remains pending. |
+| DOMAIN-15 — nested original receipts | Lose the actual encrypted activation response after commit; retain and reconcile the original packet/keys across restart. Real PQ proof/receipt sizes must fit the original, embedded base64, body and encrypted outer limits; exact/over-bound inputs fail atomically without fresh authorization or duplicate policy creation. | Actual original encrypted activation-response recovery passes in the bounded App slice. Exact/over-bound nested real-PQ receipt rejection remains NOT_RUN. |
 
 Freeze dependencies are the exact Node/user/Network identity binding and selectors,
 Owner/App action and signed-packet schema, grant lifetime independent of account
