@@ -172,6 +172,8 @@ func serve(args []string) error {
 	stateDir := flags.String("state-dir", "", "Hub StateDir override")
 	fabricOnly := flags.Bool("fabric-only", false, "serve an existing Fabric state without starting Control business services")
 	pqConfigPath := flags.String("node-pqtls-config", strings.TrimSpace(os.Getenv("CICADA_HUB_NODE_PQTLS_CONFIG")), "private enrolled Node listener configuration")
+	nativeTLS := flags.Bool("native-tls", false, "serve Hub Nodes directly with its existing native TLS profile")
+	legacyHTTP := flags.Bool("legacy-http", false, "explicit operator-requested legacy HTTP listener mode")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -179,11 +181,20 @@ func serve(args []string) error {
 	if *stateDir != "" {
 		config.StateDir = *stateDir
 	}
+	if *nativeTLS && (!*hubNodesOnly || *legacyHTTP || *pqConfigPath != "") {
+		return errors.New("native TLS requires Hub Nodes mode and cannot combine legacy HTTP or enrolled Node PQ transport")
+	}
+	if *legacyHTTP && !*hubNodesOnly {
+		return errors.New("explicit legacy HTTP for a native Hub requires --hub-nodes-only")
+	}
 	if *hubNodesOnly {
 		if *hubOnly || *fabricOnly || *pqConfigPath != "" {
 			return errors.New("Hub Nodes mode cannot combine Hub-only, Fabric-only or enrolled strict Node PQ listener configuration")
 		}
-		return serveHubNodesOnly(*host, *port, config)
+		return serveHubNodesWithNativeTLS(*host, *port, config, *nativeTLS, *legacyHTTP)
+	}
+	if err := checkHubNativeTLSMode(config, false, *legacyHTTP); err != nil {
+		return err
 	}
 	if *hubOnly {
 		if *fabricOnly || *pqConfigPath != "" {

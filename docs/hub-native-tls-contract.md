@@ -3,11 +3,11 @@
 Contract revision **hub-native-tls-v1** freezes the additive public connection
 descriptor, secret bootstrap wrapper and shared verified HTTP transport.
 The machine-readable inventory is
-`cicada-go/internal/hubtransport/contract.json`. This checkpoint implements
-those shared primitives only. Hub certificate persistence, CLI/listeners,
-App consumers and Node consumers are subsequent implementation work; their
-absence must not be reported as a usable single-Hub installation. See the
-[producer validation](hub-native-tls-validation.md).
+`cicada-go/internal/hubtransport/contract.json`. The shared primitives have
+[source-bound producer validation](hub-native-tls-validation.md). The subsequent
+Hub runtime checkpoint supplies certificate persistence, CLI and native listener;
+its [separate validation](hub-native-tls-runtime-validation.md) does not accept
+pending App/Node consumers or a complete installed deployment.
 
 ## Identity, origin and reachability
 
@@ -142,7 +142,7 @@ target and connects solely to the selected numeric address. Proxy and redirect
 following are disabled. Timeout zero supports Node streaming; per-request
 cancellation and bounded handshake/header waits still apply.
 
-## Required subsequent Hub and consumer implementation
+## Hub runtime and remaining consumer implementation
 
 The Hub uses Go standard-library TLS/x509, a private installation CA and a
 separate stable service key/certificate. It does not reuse application private
@@ -154,15 +154,44 @@ Leaf renewal may reuse the same service key/CA and stable transport epoch/SPKI.
 Root CA or service-key rotation requires a future explicit controlled update;
 there is no ACME, CA service, automatic key rotation or changed Node PQ PKI.
 
+Native Hub state uses `<StateDir>/native-tls/profile.json`, one compact private
+bundle containing version, the exact signed descriptor text, CA PKCS#8 key,
+service PKCS#8 key and leaf DER. Its directory is mode 0700 and bundle/lock are
+mode 0600. Initialization validates public shape and exact HTTPS origin before
+any profile I/O. A separate inode-checked `.lock` flock serializes init,
+load/renew and export; the shared StateDir guard separately excludes offline
+backup/restore. File fsync, atomic publication and parent-directory fsync precede
+the permanent public Store pin commit. Schema 67 adds only immutable
+`hub_native_tls_v1.descriptor_text`, with no private key or account grant.
+
+The pin remains after bundle loss. Missing, unsafe or mixed material rejects
+instead of creating new identity. A bundle published before its pin transaction
+may be recovered through local init using exactly that same signed text and
+original private keys. Concurrent pristine callers wait for the original
+creator rather than treating a new empty directory as permission to substitute
+keys. An abandoned incomplete directory times out and fails closed.
+
+The installation CA is ECDSA P-256 with a ten-year lifetime; the distinct stable
+P-256 service key receives a 90-day leaf, bounded by CA expiry. A valid bundle
+loads and renews an expired or seven-day-window leaf under the profile lock,
+including at restart. The TLS GetCertificate callback caches immutable leaf
+objects, reloads/renews on demand in that window, and limits repeated near-CA-
+expiry checks to once per hour. CA/private keys, SPKI, epoch and descriptor
+bytes remain unchanged. The actual Hub callback acquires its own StateDir
+restore guard, including when a handshake outlives HTTP shutdown. CA expiry,
+missing keys or failed renewal refuses new affected handshakes; it never creates
+a replacement CA or service key. Already cached valid certificates do not imply
+immediate file-loss detection outside the renewal window.
+
 The new server selector is `serve --hub-nodes-only --native-tls`; it directly
 serves the Hub handler with TLS, independently of Control inference. Legacy
 HTTP/reverse-proxy mode remains explicit and is not a fallback. Simultaneous
 native TLS and enrolled Node PQ transport selection rejects. New setup may omit
 external origin; explicit old origin behavior and original public-config format
 remain compatible. Native activation issuance wraps the original v1 code;
-public descriptor export never contains that code. The following CLI surfaces
-are reserved for the next implementation checkpoint; this shared-codec
-checkpoint does not implement them:
+public descriptor export never contains that code. The Hub runtime supplies
+the Hub CLI surfaces below; Node flags remain reserved for the separate
+consumer checkpoint:
 
 | Stage | CLI and selection |
 | --- | --- |
@@ -183,6 +212,9 @@ Once a StateDir has a native TLS profile, omitting the native selector must
 reject startup rather than silently opening plaintext for that state. An
 operator-requested legacy mode must be explicit. Existing legacy installations
 that have never enabled a native profile retain their original behavior.
+The explicit legacy selector for a native Hub is
+`serve --hub-nodes-only --legacy-http`; it does not enter Control composition.
+All three retained application keys are read strictly before service creation.
 
 App owns its locator/public-descriptor persistence and HTTP-client lifecycle,
 while preserving original protected vault scope and pending bytes. Node must

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
@@ -37,6 +38,9 @@ func loadHubPQTransport(path string) (*nodetransport.Config, error) {
 // serveProductHTTP serves both boundaries in one process with one authority.
 // Both listeners are acquired before either starts accepting HTTP requests.
 func serveProductHTTP(ctx context.Context, front *http.Server, service *fabric.Service, cfg *nodetransport.Config) error {
+	if front.TLSConfig != nil && (cfg != nil || front.TLSConfig.MinVersion < tls.VersionTLS13) {
+		return errors.New("native Hub TLS cannot combine enrolled Node PQ transport or an older TLS profile")
+	}
 	listeners := []net.Listener{}
 	servers := []*http.Server{front}
 	if cfg != nil {
@@ -61,6 +65,9 @@ func serveProductHTTP(ctx context.Context, front *http.Server, service *fabric.S
 		return err
 	}
 	defer frontListener.Close()
+	if front.TLSConfig != nil {
+		frontListener = tls.NewListener(frontListener, front.TLSConfig)
+	}
 	if cfg != nil {
 		listeners = append([]net.Listener{frontListener}, listeners...)
 	} else {

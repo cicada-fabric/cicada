@@ -22,13 +22,14 @@ import (
 	"github.com/cicada-ai/cicada/internal/hubauth"
 	"github.com/cicada-ai/cicada/internal/hubidentity"
 	"github.com/cicada-ai/cicada/internal/hubowner"
+	"github.com/cicada-ai/cicada/internal/hubtransport"
 	"github.com/cicada-ai/cicada/internal/ownerbootstrap"
 	"github.com/cicada-ai/cicada/internal/ownersigner"
 	"github.com/cicada-ai/cicada/internal/store"
 	"github.com/mattn/go-isatty"
 )
 
-const hubSetupUsage = "usage: cicada hub setup --owner-label NAME --origin HTTPS_ORIGIN --public-config FILE [--allow-loopback-http] [--adopt-legacy --expect-owner-id ID]"
+const hubSetupUsage = "usage: cicada hub setup --owner-label NAME --public-config FILE [--origin HTTPS_ORIGIN] [--native-tls] [--allow-loopback-http] [--adopt-legacy --expect-owner-id ID]"
 const hubIssueUsage = "usage: cicada hub owner-bootstrap-issue --candidate-manifest FILE --candidate-fingerprint FULL_SHA256 --pair-file NEW_0600_FILE"
 
 func hubCommand(args []string) error {
@@ -36,6 +37,10 @@ func hubCommand(args []string) error {
 		return errors.New("usage: cicada hub setup|account-claim-issue|owner-bootstrap-issue [options]")
 	}
 	switch args[0] {
+	case "native-tls-init":
+		return hubNativeTLSCommand(args[1:], os.Stdout, true)
+	case "connection-export":
+		return hubNativeTLSCommand(args[1:], os.Stdout, false)
 	case "activation-issue":
 		return hubActivationIssueCommand(args[1:], os.Stdout)
 	case "setup":
@@ -57,13 +62,14 @@ func hubSetupCommand(args []string, output io.Writer) error {
 	flags.SetOutput(io.Discard)
 	ownerLabel := flags.String("owner-label", "", "label for the stable Hub Owner principal")
 	origin := flags.String("origin", "", "exact advertised Hub HTTPS origin")
+	nativeTLS := flags.Bool("native-tls", false, "initialize native TLS with the exact logical origin")
 	publicConfigPath := flags.String("public-config", "", "new public Hub Owner connection file for the Owner machine")
 	allowLoopbackHTTP := flags.Bool("allow-loopback-http", false, "explicit development use of literal loopback HTTP")
 	adoptLegacy := flags.Bool("adopt-legacy", false, "adopt an exact existing legacy manager association")
 	expectOwnerID := flags.String("expect-owner-id", "", "exact existing legacy Owner ID to retain during adoption")
 	stateDir := flags.String("state-dir", "", "Hub StateDir (defaults to CICADA_STATE_DIR or /state)")
 	workspaceRoot := flags.String("workspace-root", "", "Hub workspace root (defaults to CICADA_WORKSPACE_ROOT or /workspace)")
-	if err := flags.Parse(args); err != nil || len(flags.Args()) != 0 || *ownerLabel == "" || *origin == "" || *publicConfigPath == "" {
+	if err := flags.Parse(args); err != nil || len(flags.Args()) != 0 || *ownerLabel == "" || *publicConfigPath == "" {
 		return errors.New(hubSetupUsage)
 	}
 	if !safeTerminalText(*ownerLabel) || strings.TrimSpace(*ownerLabel) == "" || strings.TrimSpace(*ownerLabel) != *ownerLabel {
@@ -71,6 +77,15 @@ func hubSetupCommand(args []string, output io.Writer) error {
 	}
 	if *adoptLegacy != (*expectOwnerID != "") {
 		return errors.New("legacy adoption requires both --adopt-legacy and --expect-owner-id")
+	}
+	if *adoptLegacy && *origin == "" {
+		return errors.New("legacy adoption requires its explicit original origin")
+	}
+	if *nativeTLS && *origin != "" {
+		canonical, e := ownerbootstrap.CanonicalOrigin(*origin, false)
+		if e != nil || canonical != *origin {
+			return errors.New("native TLS requires an exact HTTPS logical origin")
+		}
 	}
 	config := hubControlConfig(*stateDir, *workspaceRoot)
 	startup, err := store.AcquireStateStartup(config.StateDir)
@@ -83,6 +98,31 @@ func hubSetupCommand(args []string, output io.Writer) error {
 		return fmt.Errorf("open Hub StateDir: %w", err)
 	}
 	defer state.Close()
+	previous, err := state.GetHubOwnerSetup()
+	if err != nil {
+		return err
+	}
+	if *origin == "" {
+		if previous != nil {
+			*origin = previous.Origin
+		} else {
+			hubID, e := state.GetClientHubID()
+			if e != nil {
+				return e
+			}
+			*origin, err = hubtransport.DefaultOrigin(hubID)
+			if err != nil {
+				return err
+			}
+			*nativeTLS = true
+		}
+	}
+	if *nativeTLS {
+		canonical, e := ownerbootstrap.CanonicalOrigin(*origin, false)
+		if e != nil || canonical != *origin {
+			return errors.New("native TLS requires an exact HTTPS logical origin")
+		}
+	}
 	var setup *store.HubOwnerSetup
 	if *adoptLegacy {
 		setup, err = state.AdoptLegacyHubOwnerLocal(*expectOwnerID, *ownerLabel, *origin, *allowLoopbackHTTP)
@@ -93,7 +133,12 @@ func hubSetupCommand(args []string, output io.Writer) error {
 		return fmt.Errorf("initialize local Hub Owner setup: %w", err)
 	}
 
-	identities, err := hubidentity.LoadOrCreate(config.StateDir, config.IdentityFile)
+	var identities hubidentity.Set
+	if previous != nil || *adoptLegacy {
+		identities, err = existingHubNodeIdentities(config)
+	} else {
+		identities, err = hubidentity.LoadOrCreate(config.StateDir, config.IdentityFile)
+	}
 	if err != nil {
 		return fmt.Errorf("load Hub-owned identities after saving Owner setup: %w", err)
 	}
@@ -118,6 +163,11 @@ func hubSetupCommand(args []string, output io.Writer) error {
 	}
 	if connection.Hub.HubID != setup.HubID || connection.Validate() != nil {
 		return errors.New("Hub Client-Control identity does not match the saved Hub Owner setup")
+	}
+	if *nativeTLS {
+		if _, err = initializeHubNativeTLS(config, state, setup, identities); err != nil {
+			return err
+		}
 	}
 	if err := state.Close(); err != nil {
 		return err
@@ -181,7 +231,7 @@ func hubOwnerBootstrapIssueCommand(args []string, input io.Reader, output io.Wri
 	if candidate.AccountID != preflight.AccountID || candidate.OwnerID != preflight.OwnerID || candidate.Origin != preflight.Origin || candidate.AllowLoopbackHTTP != preflight.AllowLoopbackHTTP || candidate.Hub.HubID != preflight.HubID {
 		return store.ErrOwnerBootstrapRejected
 	}
-	identities, err := hubidentity.LoadOrCreate(config.StateDir, config.IdentityFile)
+	identities, err := hubIssuerIdentities(config, persistence)
 	if err != nil {
 		return err
 	}
@@ -534,7 +584,7 @@ func hubAccountClaimIssueCommand(args []string, input io.Reader, output io.Write
 	if _, e = db.HubAccountCredential(setup.AccountID); e == nil {
 		return store.ErrHubAccountRejected
 	}
-	ids, e := hubidentity.LoadOrCreate(config.StateDir, config.IdentityFile)
+	ids, e := hubIssuerIdentities(config, db)
 	if e != nil {
 		return e
 	}

@@ -10,7 +10,7 @@ import (
 
 	wire "github.com/cicada-ai/cicada/internal/hubaccountwire"
 	"github.com/cicada-ai/cicada/internal/hubauth"
-	"github.com/cicada-ai/cicada/internal/hubidentity"
+	"github.com/cicada-ai/cicada/internal/hubtransport"
 	"github.com/cicada-ai/cicada/internal/store"
 )
 
@@ -23,6 +23,7 @@ func hubActivationIssueCommand(args []string, output io.Writer) error {
 	keyID := flags.String("owner-key-id", "", "exact existing pending Owner key ID for legacy continuation")
 	fp := flags.String("owner-fingerprint", "", "full existing pending Owner public fingerprint")
 	cancel := flags.Bool("cancel-pending", false, "explicitly cancel pending installation authority before issue")
+	nativeTLS := flags.Bool("native-tls", false, "wrap activation-v1 in the existing native TLS trust descriptor")
 	if err := flags.Parse(args); err != nil || len(flags.Args()) != 0 || *path == "" || output == nil {
 		return errors.New("usage: cicada hub activation-issue --purpose initial|legacy-pending --code-file NEW_0600_FILE [--state-dir DIR] [--owner-key-id ID --owner-fingerprint FULL_SHA256] [--cancel-pending]")
 	}
@@ -70,13 +71,20 @@ func hubActivationIssueCommand(args []string, output io.Writer) error {
 			return errors.New("configured Hub identity is missing; activation cannot regenerate keys")
 		}
 	}
-	ids, err := hubidentity.LoadOrCreate(config.StateDir, config.IdentityFile)
+	ids, err := existingHubNodeIdentities(config)
 	if err != nil {
 		return err
 	}
 	service, err := hubauth.NewService(db, ids)
 	if err != nil {
 		return err
+	}
+	var nativeProfile *hubtransport.Profile
+	if *nativeTLS {
+		nativeProfile, err = loadHubNativeTLS(config, db, ids)
+		if err != nil {
+			return err
+		}
 	}
 	m, err := service.IssueActivationLocal(authorityPurpose, *keyID, *fp, *cancel)
 	if err != nil {
@@ -85,6 +93,16 @@ func hubActivationIssueCommand(args []string, output io.Writer) error {
 	code, err := wire.EncodeActivationCode(*m)
 	if err != nil {
 		return err
+	}
+	if nativeProfile != nil {
+		d, e := hubtransport.DecodeDescriptor(nativeProfile.DescriptorText())
+		if e != nil {
+			return e
+		}
+		code, err = hubtransport.EncodeBootstrap(d, code)
+		if err != nil {
+			return err
+		}
 	}
 	raw := []byte(code + "\n")
 	defer clear(raw)

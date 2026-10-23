@@ -43,6 +43,13 @@ func existingHubNodeIdentities(config control.Config) (hubidentity.Set, error) {
 }
 
 func serveHubNodesOnly(host string, port int, config control.Config) error {
+	return serveHubNodesWithNativeTLS(host, port, config, false, false)
+}
+
+func serveHubNodesWithNativeTLS(host string, port int, config control.Config, native, legacy bool) error {
+	if err := checkHubNativeTLSMode(config, native, legacy); err != nil {
+		return err
+	}
 	if err := checkHubServeReadiness(config); err != nil {
 		return err
 	}
@@ -77,6 +84,13 @@ func serveHubNodesOnly(host string, port int, config control.Config) error {
 		return err
 	}
 	front := newControlHTTPServer(host, port, server.NewHubNodesHandler(owner, auth, nodes))
+	if native {
+		profile, err := loadHubNativeTLS(config, db, ids)
+		if err != nil {
+			return err
+		}
+		front.TLSConfig = nativeHubTLSConfig(config, profile)
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	fmt.Printf("Cicada Hub Nodes listening on %s (finite App Node authority; Control business disabled)\n", front.Addr)

@@ -21,7 +21,7 @@ const (
 	// CurrentV2SchemaVersion is the highest versioned migration installed by
 	// Store initialization.  It is intentionally independent of the product
 	// version so a binary can refuse a ledger with a changed definition.
-	CurrentV2SchemaVersion = 66
+	CurrentV2SchemaVersion = 67
 
 	v2MigrationRunning = "running"
 	v2MigrationApplied = "applied"
@@ -569,6 +569,7 @@ var v2Migrations = []v2Migration{
 	{Version: 64, ID: "v1.hub.native_pair", Description: "add bounded explicit native Thread pair, immutable Owner/slot/plan/receipt history and durable message budgets", Objects: []string{"hub_native_pair_guard_v1", "hub_native_pairs_v1", "hub_native_pairs_v1_nonterminal", "hub_native_pair_slots_v1", "hub_native_pair_slots_v1_current", "hub_native_pair_slots_v1_native", "hub_native_pair_plans_v1", "hub_native_pair_plans_v1_current", "hub_native_pair_consents_v1", "hub_native_pair_operations_v1", "hub_native_pair_operations_v1_nonce", "hub_native_pair_reads_v1", "hub_native_pair_rates_v1", "hub_native_pair_messages_v1", "hub_native_pair_node_operations_v1", "hub_native_pairs_v1_no_delete", "hub_native_pairs_v1_coordinates", "hub_native_pair_slots_v1_no_delete", "hub_native_pair_slots_v1_coordinates", "hub_native_pair_plans_v1_no_delete", "hub_native_pair_plans_v1_coordinates", "hub_native_pair_consents_v1_no_delete", "hub_native_pair_consents_v1_no_update", "hub_native_pair_operations_v1_no_delete", "hub_native_pair_operations_v1_no_update", "hub_native_pair_messages_v1_no_delete", "hub_native_pair_messages_v1_no_update", "hub_native_pair_node_operations_v1_no_delete", "hub_native_pair_node_operations_v1_no_update"}, Apply: func(s *Store) error { return s.initializeHubNativePairSchema() }},
 	{Version: 65, ID: "v1.hub.native_pair_node", Description: "retain exact Node pair outcomes and bounded detached Node diagnostic caches without changing original epochs", Objects: []string{"hub_native_pairs_v1_account_hub", "hub_native_pairs_v1_node_history", "hub_native_pair_node_operations_v1", "hub_native_pair_node_reads_v1", "hub_native_pair_node_rates_v1"}, Apply: func(s *Store) error { return s.initializeHubNativePairNodeSchema() }},
 	{Version: 66, ID: "v1.hub.local_domain", Description: "add explicit Owner Node/user/Network delegation, persistent scoped members and exact immutable operation history", Objects: localDomainSchemaObjects, Apply: func(s *Store) error { return s.initializeHubLocalDomainSchema() }},
+	{Version: 67, ID: "v1.hub.native_tls", Description: "retain immutable public native TLS binding without changing account or Owner authority", Objects: []string{"hub_native_tls_v1", "hub_native_tls_v1_no_delete", "hub_native_tls_v1_no_update"}, Apply: func(s *Store) error { return s.initializeHubNativeTLSSchema() }},
 }
 
 // legacyInventoryColumns selects stable columns from the pre-v2 authority
