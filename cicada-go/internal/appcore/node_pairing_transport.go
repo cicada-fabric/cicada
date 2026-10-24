@@ -37,7 +37,9 @@ func (c *nativeController) discoverNodePairTrust(ctx context.Context) error {
 	raw, err := io.ReadAll(io.LimitReader(response.Body, 16385))
 	defer clear(raw)
 	var caps wire.NodePairTrustCapabilities
-	if err != nil || len(raw) > 16384 || decodeStateJSON(raw, &caps) != nil {
+	// HTTP JSON encoders append framing whitespace; vault and signed packet
+	// bytes keep their existing exact canonical validation.
+	if err != nil || len(raw) > 16384 || decodeStateJSON(bytes.TrimSpace(raw), &caps) != nil {
 		return wire.ErrInvalid
 	}
 	expected := wire.NodePairTrustContractCapabilities()

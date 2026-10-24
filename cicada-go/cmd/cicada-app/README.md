@@ -112,6 +112,18 @@ These two new cases bring the covered NPT top-level total to 24. This final
 validation paragraph was added after the delta checks; physical/native and
 three-component integration remain separately unrun in this producer scope.
 
+The real NPT01 gate exposed an HTTP framing defect in clean `1bbeceb9`: Hub's
+JSON encoder appends a newline, while the App capabilities reader required
+exact vault-style canonical bytes. The narrow fix trims only this public HTTP
+metadata framing before the existing closed/canonical contract checks. It
+leaves the raw size limit, vault and signed-packet parsing unchanged. One
+regression (five test events) passes normal/race with no failures/skips, and
+`appcore` vet exits zero; unknown/duplicate fields and a second JSON object
+remain refused. The pre-fix reproduction remains failed. Evidence is under
+`~/Cicada/.local/evidence/n2-app/node-pair-caps-framing-20261024/`; the old
+`1bbeceb9` complete candidate remains QA_PENDING, with actual QA rerun and a
+new complete build required before delivery.
+
 The 2026-10-15 local-profile checkpoint passed focused Linux tests (49 passed,
 one optional OpenSSL-fixture skip), race tests (40 passed, the same skip), Linux
 vet, Windows vet and Windows amd64 cross-build using the pinned Go 1.27.1

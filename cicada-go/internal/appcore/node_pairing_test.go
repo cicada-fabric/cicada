@@ -43,6 +43,7 @@ type nodePairingFixture struct {
 	expiredOuterPosts                             int
 	trap                                          *connectionHTTPProbe
 	caps                                          bool
+	capsResponse                                  []byte
 	descriptor                                    hubtransport.Descriptor
 }
 
@@ -101,6 +102,9 @@ func (f *nodePairingFixture) Do(req *http.Request) (*http.Response, error) {
 		return reply(nil, 503)
 	}
 	if req.URL.Path == wire.NodePairTrustCapabilitiesPath {
+		if f.capsResponse != nil {
+			return reply(f.capsResponse, 200)
+		}
 		caps := wire.NodePairTrustContractCapabilities()
 		caps.Available = f.caps
 		raw, _ := json.Marshal(caps)
@@ -522,6 +526,42 @@ func TestNodePairingRejectsWrongHubAndUnavailableBeforeSecretPost(t *testing.T) 
 	}
 	if f.trap.calls != 0 {
 		t.Fatal("new pairing fell back to another transport")
+	}
+}
+
+func TestNodePairingCapabilitiesHTTPEncoderFraming(t *testing.T) {
+	for _, kind := range []string{"encoder_newline", "unknown_field", "duplicate_field", "second_object"} {
+		t.Run(kind, func(t *testing.T) {
+			f := newNodePairingFixture(t)
+			caps := wire.NodePairTrustContractCapabilities()
+			caps.Available = true
+			var encoded bytes.Buffer
+			if err := json.NewEncoder(&encoded).Encode(caps); err != nil {
+				t.Fatal(err)
+			}
+			body := bytes.TrimSuffix(encoded.Bytes(), []byte("\n"))
+			switch kind {
+			case "encoder_newline":
+				f.capsResponse = bytes.Clone(encoded.Bytes())
+			case "unknown_field":
+				f.capsResponse = append(bytes.Clone(body[:len(body)-1]), []byte(",\"extra\":true}\n")...)
+			case "duplicate_field":
+				f.capsResponse = append(bytes.Clone(body[:len(body)-1]), []byte(",\"available\":true}\n")...)
+			case "second_object":
+				f.capsResponse = append(bytes.Clone(encoded.Bytes()), []byte("{}\n")...)
+			}
+			err := f.n.c.discoverNodePairTrust(context.Background())
+			if kind == "encoder_newline" {
+				if err != nil || !f.n.c.pairTrustAvailable {
+					t.Fatal("valid HTTP Encoder JSON framing was refused")
+				}
+			} else if err == nil || f.n.c.pairTrustAvailable {
+				t.Fatal("HTTP framing relaxed closed/canonical metadata checks")
+			}
+			if len(f.requests) != 0 || f.n.c.node.PairTrust != nil {
+				t.Fatal("availability parsing posted pairing secrets or created authority")
+			}
+		})
 	}
 }
 
