@@ -374,7 +374,7 @@ func checkPrivateProfile(data privateProfile, at time.Time) (*Profile, *ecdsa.Pr
 	if _, err = leaf.Verify(x509.VerifyOptions{Roots: roots, DNSName: d.Claims.ServerName, CurrentTime: when, KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}}); err != nil {
 		return bad()
 	}
-	return &Profile{text: data.Descriptor, certificate: &tls.Certificate{Certificate: [][]byte{bytes.Clone(data.LeafDER)}, PrivateKey: serviceKey, Leaf: leaf}}, caKey, serviceKey, nil
+	return &Profile{text: data.Descriptor, certificate: &tls.Certificate{Certificate: [][]byte{bytes.Clone(data.LeafDER), bytes.Clone(d.Claims.RootCertificateDER)}, PrivateKey: serviceKey, Leaf: leaf}}, caKey, serviceKey, nil
 }
 
 func newPrivateProfile(hub *e2ee.Identity, identity wire.HubIdentity, node e2ee.PublicIdentity, origin string, at time.Time) (privateProfile, error) {

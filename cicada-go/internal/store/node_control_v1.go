@@ -164,24 +164,7 @@ type NodeControlSnapshotRPCResponseProjection struct {
 	ErrorCode string
 }
 
-type nodeControlCandidateBasis struct {
-	RequestID          string              `json:"request_id"`
-	Version            int64               `json:"version"`
-	Mode               string              `json:"mode"`
-	HubID              string              `json:"hub_id"`
-	NodeID             string              `json:"node_id"`
-	NodeName           string              `json:"node_name"`
-	CredentialDigest   string              `json:"credential_digest"`
-	CodeDigest         string              `json:"code_digest"`
-	NodePublicIdentity e2ee.PublicIdentity `json:"node_public_identity"`
-	NodeFingerprint    string              `json:"node_fingerprint"`
-	HubPublicIdentity  e2ee.PublicIdentity `json:"hub_public_identity"`
-	HubKeyVersion      uint64              `json:"hub_key_version"`
-	HubFingerprint     string              `json:"hub_fingerprint"`
-	NodeKeyEpoch       uint64              `json:"node_key_epoch"`
-	TargetBindingID    string              `json:"target_binding_id"`
-	ExpiresAt          string              `json:"expires_at"`
-}
+type nodeControlCandidateBasis = nodewire.PairingCandidateBasis
 
 func nodeControlFingerprint(identity e2ee.PublicIdentity) string {
 	hash := sha256.New()
@@ -193,12 +176,7 @@ func nodeControlFingerprint(identity e2ee.PublicIdentity) string {
 }
 
 func nodeControlCandidateDigest(basis nodeControlCandidateBasis) (string, error) {
-	encoded, err := json.Marshal(basis)
-	if err != nil {
-		return "", err
-	}
-	hash := sha256.Sum256(append([]byte("cicada/node-control/candidate/v1\x00"), encoded...))
-	return hex.EncodeToString(hash[:]), nil
+	return nodewire.PairingCandidateDigest(basis)
 }
 
 func validateNodeControlOperation(operation string) bool {

@@ -41,6 +41,12 @@ Owner-approved Node PQ locator/epoch maintenance remains unchanged.
 
 ## Public descriptor and trusted installation channel
 
+The additive [Node pairing trust contract](node-pair-trust-contract.md) defines
+a pristine numeric-address discovery helper. It only obtains candidate public
+material until the independent Node-to-App secret and Owner capsule/ACK complete.
+Known pins never fall back to it. The native listener includes the retained
+public root in its leaf chain; the existing verified transport remains unchanged.
+
 Descriptor JSON has exactly `claims` and `signature`, in declaration order.
 Claims has exactly these fields, in this order:
 

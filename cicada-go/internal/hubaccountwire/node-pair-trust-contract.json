@@ -1,0 +1,205 @@
+{
+  "contract_revision": "node-pair-trust-v1",
+  "format": "cicada.node-pair-trust.v1",
+  "packet_format": "cicada.node-pair-trust-packet.v1",
+  "code_prefix": "cicada-npt1.",
+  "available": false,
+  "default_cli_flag": "--hub-address",
+  "secret_code_cli": "machine pairing-code",
+  "operations": [
+    "node.pair-trust.start",
+    "node.pair-trust.existing",
+    "node.pair-trust.commit",
+    "node.pair-trust.poll",
+    "node.pair-trust.ack",
+    "node.pair-trust.cancel",
+    "node.pair-trust.reconcile",
+    "owner.node-pair-trust.prepare",
+    "owner.node-pair-trust.lookup",
+    "owner.node-pair-trust.complete",
+    "owner.node-pair-trust.status",
+    "owner.node-pair-trust.cancel"
+  ],
+  "fields": {
+    "NodePairTrustCapabilities": [
+      "format",
+      "contract_revision",
+      "available",
+      "code_prefix",
+      "operations",
+      "trust_modes",
+      "max_code_bytes"
+    ],
+    "NodePairTrustContext": [
+      "format",
+      "attempt_id",
+      "hub",
+      "origin",
+      "descriptor_digest",
+      "node_nonce",
+      "mode",
+      "candidate",
+      "binding",
+      "issued_at",
+      "expires_at"
+    ],
+    "NodePairTrustApproval": [
+      "format",
+      "context_digest",
+      "oob_commitment",
+      "scope",
+      "grant_id",
+      "grant_proof_digest",
+      "confirmation_packet_digest",
+      "prepare_request_id",
+      "prepare_packet_digest",
+      "server_nonce",
+      "prepared_at",
+      "accept_before"
+    ],
+    "NodePairTrustOwnerClaims": [
+      "version",
+      "purpose",
+      "approval",
+      "capsule_digest",
+      "ack_commitment"
+    ],
+    "NodePairTrustOwnerProof": [
+      "claims",
+      "signature"
+    ],
+    "NodePairTrustCapsule": [
+      "format",
+      "approval",
+      "owner_public_identity",
+      "oob_secret",
+      "ack_nonce"
+    ],
+    "NodePairTrustPacket": [
+      "format",
+      "version",
+      "operation",
+      "request_id",
+      "attempt_id",
+      "sender_public_identity",
+      "packet"
+    ],
+    "NodePairTrustStart": [
+      "format",
+      "hub",
+      "origin",
+      "descriptor_digest",
+      "node_id",
+      "node_name",
+      "credential_digest",
+      "request_nonce",
+      "hub_node_control_public_identity",
+      "hub_node_control_key_version",
+      "pairing_proof",
+      "issued_at",
+      "expires_at"
+    ],
+    "NodePairTrustExistingStart": [
+      "format",
+      "context",
+      "issued_at"
+    ],
+    "NodePairTrustCommit": [
+      "format",
+      "context",
+      "oob_commitment",
+      "issued_at"
+    ],
+    "NodePairTrustACK": [
+      "format",
+      "context",
+      "oob_commitment",
+      "poll_packet_digest",
+      "poll_receipt_digest",
+      "owner_proof_digest",
+      "capsule_digest",
+      "ack_nonce",
+      "issued_at"
+    ],
+    "NodePairTrustReconcile": [
+      "format",
+      "original_packet",
+      "original_packet_digest",
+      "issued_at"
+    ],
+    "NodePairTrustOwnerLookup": [
+      "format",
+      "session_token",
+      "scope",
+      "selector",
+      "context_digest",
+      "issued_at"
+    ],
+    "NodePairTrustOwnerPrepare": [
+      "format",
+      "session_token",
+      "scope",
+      "context",
+      "oob_commitment",
+      "grant_proof",
+      "confirmation_packet",
+      "issued_at"
+    ],
+    "NodePairTrustOwnerComplete": [
+      "format",
+      "session_token",
+      "scope",
+      "context",
+      "oob_commitment",
+      "owner_proof",
+      "trust_capsule",
+      "issued_at"
+    ],
+    "NodePairTrustOwnerStatus": [
+      "format",
+      "session_token",
+      "scope",
+      "context",
+      "oob_commitment",
+      "issued_at"
+    ],
+    "NodePairTrustResult": [
+      "format",
+      "operation",
+      "request_id",
+      "attempt_id",
+      "request_packet_digest",
+      "state",
+      "error_code",
+      "context",
+      "oob_commitment",
+      "selector",
+      "approval",
+      "owner_proof",
+      "trust_capsule",
+      "binding",
+      "confirmation_response",
+      "observed_at",
+      "original_packet_digest",
+      "original_receipt"
+    ]
+  },
+  "ordinary_request_body_bytes": 262144,
+  "ordinary_request_packet_bytes": 524288,
+  "ordinary_response_body_bytes": 524288,
+  "ordinary_response_packet_bytes": 1048576,
+  "reconcile_request_body_bytes": 917504,
+  "reconcile_request_packet_bytes": 2097152,
+  "reconcile_response_body_bytes": 1572864,
+  "reconcile_response_packet_bytes": 3145728,
+  "max_original_receipt_bytes": 1048576,
+  "max_code_bytes": 1024,
+  "max_proof_bytes": 65536,
+  "max_capsule_bytes": 131072,
+  "first_trust_requires_independent_s": true,
+  "node_pending_sends_bearer": false,
+  "ack_required_all_confirmation_writers": true,
+  "same_owner_different_key_id_rejected": true,
+  "old_wire_identifiers_changed": false,
+  "installation_registration_enabled": false
+}
