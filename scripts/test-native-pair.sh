@@ -21,7 +21,8 @@ elif [[ $# == 1 && "$1" == --codex-product-other-uid ]]; then mode=codex-product
 elif [[ $# == 1 && "$1" == --codex-product-domain-app ]]; then mode=codex-product-domain-app
 elif [[ $# == 1 && "$1" == --codex-product-domain-native ]]; then mode=codex-product-domain-native
 elif [[ $# == 1 && "$1" == --direct-ip-tls ]]; then mode=direct-ip-tls
-elif [[ $# != 0 ]]; then printf 'Usage: scripts/test-native-pair.sh [--store-regressions|--a3-core|--a3-http|--a3-size-store|--app-owner|--endpoint-security|--endpoint-security-boundaries|--endpoint-security-app-fixture|--endpoint-security-owner-directory|--endpoint-security-owner-directory-recovery|--codex-product-guards|--codex-product-cli|--codex-product-cold|--codex-product-three-stage|--codex-product-other-uid|--codex-product-domain-app|--codex-product-domain-native|--direct-ip-tls]\n' >&2; exit 2; fi
+elif [[ $# == 1 && "$1" == --node-pair-trust ]]; then mode=node-pair-trust
+elif [[ $# != 0 ]]; then printf 'Usage: scripts/test-native-pair.sh [--store-regressions|--a3-core|--a3-http|--a3-size-store|--app-owner|--endpoint-security|--endpoint-security-boundaries|--endpoint-security-app-fixture|--endpoint-security-owner-directory|--endpoint-security-owner-directory-recovery|--codex-product-guards|--codex-product-cli|--codex-product-cold|--codex-product-three-stage|--codex-product-other-uid|--codex-product-domain-app|--codex-product-domain-native|--direct-ip-tls|--node-pair-trust]\n' >&2; exit 2; fi
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source_root="$repo_root"
 if [[ "$mode" == endpoint-security* && ! -f "$source_root/docs/native-endpoint-directory-contract.md" ]]; then
@@ -30,9 +31,12 @@ fi
 if [[ "$mode" == codex-product-* && ! -f "$source_root/cicada-go/cmd/cicada/codex_hook.go" ]]; then
  printf 'Codex product guards require the integrated consumer checkpoint; NOT_RUN.\n' >&2; exit 2
 fi
+if [[ "$mode" == node-pair-trust && ! -f "$source_root/docs/node-pair-trust-contract.md" ]]; then
+ printf 'Node pairing requires the formally delivered Node-only shared contract; NOT_RUN.\n' >&2; exit 2
+fi
 alternate_source="${CICADA_NATIVE_PAIR_SOURCE_ROOT:-${CICADA_NATIVE_PAIR_STORE_SOURCE_ROOT:-}}"
 if [[ -n "$alternate_source" ]]; then
- if [[ "$mode" == protocol || "$mode" == app-owner || "$mode" == endpoint-security* || "$mode" == codex-product-* || "$mode" == direct-ip-tls ]]; then printf 'Alternate source is limited to isolated core regressions.\n' >&2; exit 2; fi
+ if [[ "$mode" == protocol || "$mode" == app-owner || "$mode" == endpoint-security* || "$mode" == codex-product-* || "$mode" == direct-ip-tls || "$mode" == node-pair-trust ]]; then printf 'Alternate source is limited to isolated core regressions.\n' >&2; exit 2; fi
  source_root="$(cd "$alternate_source" && pwd -P)"
  if [[ ! -f "$source_root/cicada-go/go.mod" ]]; then printf 'Store source must be a Cicada worktree.\n' >&2; exit 2; fi
 fi
@@ -68,14 +72,14 @@ elif [[ -n "${CICADA_NATIVE_PAIR_DOMAIN_WAIT_LOGIN_EXPIRY:-}" ]]; then
  printf 'Domain login-expiry parameter requires --codex-product-domain-native.\n' >&2; exit 2
 fi
 codex_mount=()
-if [[ "$mode" == codex-product-cli || "$mode" == codex-product-cold || "$mode" == codex-product-three-stage || "$mode" == codex-product-domain-native || "$mode" == direct-ip-tls ]]; then
+if [[ "$mode" == codex-product-cli || "$mode" == codex-product-cold || "$mode" == codex-product-three-stage || "$mode" == codex-product-domain-native || "$mode" == direct-ip-tls || "$mode" == node-pair-trust ]]; then
  if [[ ! -f "$source_root/.agents/plugins/cicada/hooks/hooks.json" || ! -f "$source_root/.agents/plugins/cicada/.mcp.json" || ! -f "$source_root/.agents/plugins/cicada/.codex-plugin/plugin.json" ]]; then
   printf 'Installed-plugin gate requires the integrated existing-plugin assets; NOT_RUN.\n' >&2; exit 2
  fi
  codex_binary='/home/zyf/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/bin/codex'
  codex_expected_sha='399ff69c431c066e40de318fba45c2b07f45a76b19939d247ee4828fc70c4215'
  codex_expected_version=''
- if [[ "$mode" == direct-ip-tls ]]; then
+ if [[ "$mode" == direct-ip-tls || "$mode" == node-pair-trust ]]; then
   codex_binary='/home/zyf/.codex/packages/standalone/releases/0.164.0-x86_64-unknown-linux-musl/bin/codex'
   codex_expected_sha='b93f6811d3f653f0fb83be4050d857fb9abbb111dfa2ce160563327daff7f306'
   codex_expected_version='0.164.0'
@@ -96,7 +100,7 @@ PY
  codex_mount=(--mount "type=bind,src=$codex_binary,dst=/tools/codex,readonly" -e CICADA_N3_CODEX_BINARY=/tools/codex)
 fi
 license_mount=()
-if [[ "$mode" == codex-product-three-stage || "$mode" == codex-product-domain-native || "$mode" == direct-ip-tls ]]; then
+if [[ "$mode" == codex-product-three-stage || "$mode" == codex-product-domain-native || "$mode" == direct-ip-tls || "$mode" == node-pair-trust ]]; then
  licenses="${CICADA_NATIVE_PAIR_LICENSES_DIR:-}"
  if [[ -z "$licenses" || ! -f "$licenses/go/MODULES.json" || ! -f "$licenses/go/LICENSE" || ! -f "$licenses/cicada/LICENSE" ]]; then
   printf 'File-install gate requires matching complete CLI notices through CICADA_NATIVE_PAIR_LICENSES_DIR; NOT_RUN.\n' >&2; exit 2
@@ -105,7 +109,7 @@ if [[ "$mode" == codex-product-three-stage || "$mode" == codex-product-domain-na
  export CICADA_NATIVE_PAIR_LICENSES_DIR="$licenses"
  license_mount=(--mount "type=bind,src=$licenses,dst=/licenses,readonly")
 fi
-if [[ "$mode" == codex-product-three-stage || "$mode" == codex-product-domain-native || "$mode" == direct-ip-tls ]]; then
+if [[ "$mode" == codex-product-three-stage || "$mode" == codex-product-domain-native || "$mode" == direct-ip-tls || "$mode" == node-pair-trust ]]; then
  codex_package="$(dirname "$(dirname "$codex_binary")")"
  if [[ ! -f "$codex_package/codex-package.json" || ! -f "$codex_package/bin/codex-code-mode-host" ]]; then
   printf 'Persistent daemon gate requires the existing complete reviewed Codex package; NOT_RUN.\n' >&2; exit 2
@@ -130,6 +134,9 @@ other_uid_parameters=()
 direct_ip_parameters=()
 if [[ "$mode" == direct-ip-tls ]]; then
  direct_ip_parameters=(-e CICADA_N3_DIRECT_IP_TLS=1)
+elif [[ "$mode" == node-pair-trust ]]; then
+ direct_ip_parameters=(-e CICADA_N3_NODE_PAIR_TRUST=1
+  -e CICADA_N3_NODE_PAIR_CONSUMER_PUBLIC_SUMMARY=/state/node-pair-native-consumer-public-summary.json)
 fi
 if [[ "$mode" == codex-product-other-uid ]]; then
  mkdir "$state/other-uid-control"
@@ -187,7 +194,7 @@ other_uid_worker() {
  fi
  bash "$repo_root/scripts/fixtures/native-pair/other_uid_host.sh" "$container" "$run_id" "$state/other-uid-control/request.json" "$state/other-uid-control/result.json"
 }
-if [[ "$mode" != protocol && "$mode" != app-owner && "$mode" != endpoint-security* && "$mode" != codex-product-* && "$mode" != direct-ip-tls ]]; then
+if [[ "$mode" != protocol && "$mode" != app-owner && "$mode" != endpoint-security* && "$mode" != codex-product-* && "$mode" != direct-ip-tls && "$mode" != node-pair-trust ]]; then
  if [[ "$mode" == store ]]; then
   overlay=/qa/scripts/fixtures/native-pair/overlay.json
   package=./internal/store
@@ -264,6 +271,9 @@ else
   elif [[ "$mode" == direct-ip-tls ]]; then
    selector='^TestN3DirectIPTLSAcceptance$'
    runtime_timeout=20m
+  elif [[ "$mode" == node-pair-trust ]]; then
+   selector='^TestN3NodePairTrustAcceptance$'
+   runtime_timeout=20m
   else
    selector='^TestN3NativePair(BootstrapAndExactReplay|WrongNodeScopeIsFenced|PrepareLossBeforeForward|CompleteLossAfterCommit|MissingOwnerProofCannotBootstrap)$'
   fi
@@ -273,6 +283,8 @@ else
   fi
   if [[ "$mode" == direct-ip-tls ]]; then
    lane direct-ip-fixture go tool test2json -t /out/n3.test -test.v -test.count=1 -test.timeout=45s '-test.run=^TestN3DirectIPTLS(FaultFixture|SharedFaults|CipherFaultFixture)$'
+  elif [[ "$mode" == node-pair-trust ]]; then
+   lane node-pair-fixture go tool test2json -t /out/n3.test -test.v -test.count=1 -test.timeout=45s '-test.run=^TestN3NodePairTrust(DiscoveryBoundary|OpaqueFaultBoundary)$'
   fi
   lane harness go tool test2json -t /out/n3.test -test.v -test.count=1 "-test.timeout=$runtime_timeout" "-test.run=$selector"
   if [[ "$mode" == codex-product-domain-native && -f "$state/domain-native-public-summary.json" ]]; then
@@ -280,6 +292,9 @@ else
   fi
   if [[ "$mode" == direct-ip-tls && -f "$state/direct-ip-native-public-summary.json" ]]; then
    cp "$state/direct-ip-native-public-summary.json" "$evidence/direct-ip-native-public-summary.json"
+  fi
+  if [[ "$mode" == node-pair-trust && -f "$state/node-pair-native-consumer-public-summary.json" ]]; then
+   cp "$state/node-pair-native-consumer-public-summary.json" "$evidence/node-pair-native-consumer-public-summary.json"
   fi
   if [[ "$mode" == codex-product-other-uid ]]; then
    set +e

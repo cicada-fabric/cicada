@@ -81,6 +81,33 @@ DIRECT_IP_FIXTURE_EXPECTED |= {'TestN3DirectIPTLSSharedFaults/TLS-before-HTTP/' 
                               ('wrong-CA', 'wrong-SPKI', 'wrong-SAN', 'expired', 'not-yet-valid')}
 DIRECT_IP_FIXTURE_EXPECTED.add('TestN3DirectIPTLSCipherFaultFixture')
 
+# Independent QA observations, not product DTOs. Each fact is emitted only
+# after its actual process/crypto/persistent-state assertions have completed.
+NODE_PAIR_TRUST_PARENT = 'TestN3NodePairTrustAcceptance'
+NODE_PAIR_TRUST_FACTS = {
+    'NPT01_AddressOnlyBootstrap': {'actual_Hub_App_Node', 'IPv4', 'IPv6', 'no_manual_descriptor_or_Owner_key', 'actual_private_TTY_code', 'automatic_pin_existing_daemon_MCP', 'zero_model_provider_posts'},
+    'NPT02_SecretNeverUploaded': {'Hub_plaintexts_without_S', 'no_pretrust_bearer', 'no_S_in_snapshots_or_diagnostics', 'complete_case_preserving_code'},
+    'NPT03_FakeHubOwnerRefused': {'self_consistent_fake_Hub_Owner', 'local_S_required', 'zero_new_pin_or_binding', 'zero_secrets_disclosed'},
+    'NPT04_ExactCandidateAndPossession': {'wrong_Hub_Node_Owner_refused', 'wrong_key_or_scope_refused', 'missing_possession_refused', 'original_tuple_retained'},
+    'NPT05_LegacyConfirmRequiresACK': {'all_confirmation_writers_fenced', 'OWNER_APPROVED_not_bound', 'no_missing_side_record_fallback', 'original_counter_slot_retained'},
+    'NPT06_CodeLimitsExpiryRevocation': {'bounded_attempts_and_resources', 'approved_ACK_settles_under_unapproved_pressure', 'strict_immutable_expiry', 'current_revocation_and_epoch_fences', 'restore_unknown_no_ACK_bypass', 'no_deadline_renewal'},
+    'NPT07_ConcurrentAndExactReplay': {'one_atomic_binding', 'one_consumption', 'identical_original_receipt', 'changed_original_conflicts'},
+    'NPT08_OriginalResponseLoss': {'actual_TLS_response_loss', 'independent_commit_observation', 'same_request_and_receipt_bytes', 'authenticated_original_recovery', 'unadmitted_original_fenced'},
+    'NPT09_AppClosedAndRestart': {'normal_App_close_before_ACK', 'no_live_App_callback', 'actual_Hub_Node_App_restart', 'original_keys_pin_and_pending_bytes'},
+    'NPT10_OwnerPinConflict': {'same_Owner_different_key_ID_refused', 'ACTIVE_and_REVOKED_pin_refused', 'conditional_writer_rechecks_pin', 'zero_new_pin_ACK_or_binding'},
+    'NPT11_ExistingBindingTrustOnly': {'exact_original_binding_and_pin', 'no_new_bearer_or_binding', 'no_epoch_or_tombstone_reset', 'no_business_grant'},
+    'NPT12_ZeroBusinessRights': {'necessary_self_operations_only', 'business_operations_denied', 'login_not_Root', 'Control_off_identity_flow'},
+}
+NODE_PAIR_TRUST_EXPECTED = {NODE_PAIR_TRUST_PARENT} | {
+    NODE_PAIR_TRUST_PARENT + '/' + name for name in NODE_PAIR_TRUST_FACTS}
+NODE_PAIR_TRUST_FIXTURE_PARENT = 'TestN3NodePairTrustDiscoveryBoundary'
+NODE_PAIR_TRUST_FIXTURE_EXPECTED = {NODE_PAIR_TRUST_FIXTURE_PARENT} | {
+    NODE_PAIR_TRUST_FIXTURE_PARENT + '/' + name for name in
+    ('changed-SPKI', 'changed-root', 'same-key-new-leaf', 'IPv6', 'extra-chain-certificate', 'future-leaf',
+     'redirect-301', 'redirect-302', 'redirect-303', 'redirect-307', 'redirect-308')}
+NODE_PAIR_TRUST_FIXTURE_EXPECTED |= {'TestN3NodePairTrustOpaqueFaultBoundary'} | {
+    'TestN3NodePairTrustOpaqueFaultBoundary/' + name for name in ('before-forward-original-retries', 'after-response')}
+
 
 def sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -90,6 +117,66 @@ def save(path, value):
     # Every invocation owns a fresh run. Historical receipts are never rewritten.
     with path.open('x') as stream:
         stream.write(json.dumps(value, indent=2, sort_keys=True) + '\n')
+
+
+def valid_node_pair_trust_facts(facts, results, terminal_counts):
+    if set(results) != NODE_PAIR_TRUST_EXPECTED or any(v != 'pass' for v in results.values()):
+        return False
+    if terminal_counts != {name: 1 for name in NODE_PAIR_TRUST_EXPECTED} or len(facts) != len(NODE_PAIR_TRUST_FACTS):
+        return False
+    seen = set()
+    for item in facts:
+        measurement = item.get('measurement')
+        if not isinstance(measurement, dict) or set(measurement) != {'case', 'observed'}:
+            return False
+        name, observed = measurement['case'], measurement['observed']
+        if not isinstance(name, str) or name not in NODE_PAIR_TRUST_FACTS or name in seen:
+            return False
+        if item.get('test') != NODE_PAIR_TRUST_PARENT + '/' + name or not isinstance(observed, dict):
+            return False
+        if set(observed) != NODE_PAIR_TRUST_FACTS[name] or any(v is not True for v in observed.values()):
+            return False
+        seen.add(name)
+    return seen == set(NODE_PAIR_TRUST_FACTS)
+
+
+def decode_node_pair_measurement(raw):
+    def closed_object(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError('Duplicate observation field')
+            result[key] = value
+        return result
+    return json.loads(raw, object_pairs_hook=closed_object)
+
+
+def valid_node_pair_native(value, runtime_tools):
+    if not isinstance(value, dict):
+        return False
+    daemon = value.get('original_daemon')
+    required = {'scope', 'status', 'codex_version', 'original_daemon', 'hub_id', 'node_id',
+                'node_binding_id', 'Owner_key_id', 'native_session_id', 'workspace', 'endpoint_id',
+                'group_id', 'policy_id', 'binding_epoch', 'MCP_tools_count', 'provider_posts',
+                'real_model_turns', 'manual_Owner_pin_used', 'automatic_pin', 'same_original_Node',
+                'delegated_grant_verified', 'cleanup_confirmed'}
+    return (set(value) == required and isinstance(daemon, dict)
+            and value.get('scope') == 'ACTUAL_AUTOMATIC_PIN_EXISTING_DAEMON_PLUGIN_ZERO_MODEL'
+            and value.get('status') == 'SCOPED_PASS' and value.get('codex_version') == DIRECT_IP_CODEX_VERSION
+            and set(daemon) == {'pid', 'start_ticks', 'umask', 'five_deployment_variables_absent', 'executable_sha256'}
+            and type(daemon.get('pid')) is int and daemon['pid'] > 0
+            and isinstance(daemon.get('start_ticks'), str) and daemon['start_ticks'].isdigit()
+            and daemon.get('umask') == '0002' and daemon.get('five_deployment_variables_absent') is True
+            and daemon.get('executable_sha256') == DIRECT_IP_CODEX_SHA256
+            and daemon.get('executable_sha256') == runtime_tools.get('codex', {}).get('sha256')
+            and all(isinstance(value.get(name), str) and 0 < len(value[name]) <= 4096 for name in
+                    ('hub_id', 'node_id', 'node_binding_id', 'Owner_key_id', 'native_session_id',
+                     'workspace', 'endpoint_id', 'group_id', 'policy_id'))
+            and all(type(value.get(name)) is int and value[name] > 0 for name in ('binding_epoch', 'MCP_tools_count'))
+            and all(type(value.get(name)) is int and value[name] == 0 for name in ('provider_posts', 'real_model_turns'))
+            and value.get('manual_Owner_pin_used') is False
+            and all(value.get(name) is True for name in ('automatic_pin', 'same_original_Node',
+                                                        'delegated_grant_verified', 'cleanup_confirmed')))
 
 
 def valid_direct_ip_native(value, runtime_tools):
@@ -165,6 +252,9 @@ def snapshot(repo, dest, harness=None):
     domain_contract = repo / 'docs/native-local-domain-contract.md'
     if domain_contract.exists():
         paths.append(domain_contract)
+    node_pair_contract = repo / 'docs/node-pair-trust-contract.md'
+    if node_pair_contract.exists():
+        paths.append(node_pair_contract)
     paths += [repo / 'scripts/native-pair-contract.py']
     files = {'source/' + str(p.relative_to(repo)): sha(p) for p in sorted(paths)}
     files.update({'source/' + str(p.relative_to(repo)): sha(p)
@@ -238,11 +328,26 @@ def terminal_events(path):
     return result
 
 
+def terminal_event_counts(path):
+    counts = {}
+    if not path.exists():
+        return counts
+    for line in path.read_text(errors='replace').splitlines():
+        try:
+            item = json.loads(line)
+        except ValueError:
+            continue
+        if item.get('Test') and item.get('Action') in ('pass', 'fail', 'skip'):
+            counts[item['Test']] = counts.get(item['Test'], 0) + 1
+    return counts
+
+
 def finish(run, artifacts, image, owned, mode='protocol'):
-    if mode not in ('protocol', 'store', 'a3', 'a3-http', 'a3-size-store', 'app-owner', 'endpoint-security', 'endpoint-security-boundaries', 'endpoint-security-app-fixture', 'endpoint-security-owner-directory', 'endpoint-security-owner-directory-recovery', 'codex-product-guards', 'codex-product-cli', 'codex-product-cold', 'codex-product-three-stage', 'codex-product-other-uid', 'codex-product-domain-app', 'codex-product-domain-native', 'direct-ip-tls'):
+    if mode not in ('protocol', 'store', 'a3', 'a3-http', 'a3-size-store', 'app-owner', 'endpoint-security', 'endpoint-security-boundaries', 'endpoint-security-app-fixture', 'endpoint-security-owner-directory', 'endpoint-security-owner-directory-recovery', 'codex-product-guards', 'codex-product-cli', 'codex-product-cold', 'codex-product-three-stage', 'codex-product-other-uid', 'codex-product-domain-app', 'codex-product-domain-native', 'direct-ip-tls', 'node-pair-trust'):
         raise ValueError('Only protocol and isolated core regression modes are active.')
     before, after = [json.loads((run / f'source-{side}.json').read_text()) for side in ('before', 'after')]
     results, diagnostics, metrics, direct_ip_facts = {}, [], [], []
+    node_pair_facts, node_pair_terminals = [], {}
     rank = {'pass': 0, 'skip': 1, 'fail': 2}
     for line in (run / 'harness.log').read_text(errors='replace').splitlines():
         try:
@@ -252,8 +357,10 @@ def finish(run, artifacts, image, owned, mode='protocol'):
         test, action = item.get('Test'), item.get('Action')
         if test and action in rank and rank[action] >= rank.get(results.get(test), -1):
             results[test] = action
+        if test and action in rank and mode == 'node-pair-trust':
+            node_pair_terminals[test] = node_pair_terminals.get(test, 0) + 1
         output = item.get('Output', '').strip()
-        if 'NATIVE_PAIR_UNAVAILABLE' in output or 'LOCAL_DOMAIN_NOT_RUN' in output or 'DIRECT_IP_NOT_RUN' in output:
+        if 'NATIVE_PAIR_UNAVAILABLE' in output or 'LOCAL_DOMAIN_NOT_RUN' in output or 'DIRECT_IP_NOT_RUN' in output or 'NODE_PAIR_TRUST_NOT_RUN' in output:
             diagnostics.append({'test': test, 'reason': output})
         if 'NATIVE_PAIR_HTTP ' in output:
             metrics.append({'test': test, 'measurement': output.split('NATIVE_PAIR_HTTP ', 1)[1]})
@@ -262,6 +369,12 @@ def finish(run, artifacts, image, owned, mode='protocol'):
                 direct_ip_facts.append({'test': test, 'measurement': json.loads(output.split('DIRECT_IP_FACTS ', 1)[1])})
             except ValueError:
                 direct_ip_facts.append({'test': test, 'measurement': None})
+        if mode == 'node-pair-trust' and 'NODE_PAIR_TRUST_FACTS ' in output:
+            try:
+                measurement = decode_node_pair_measurement(output.split('NODE_PAIR_TRUST_FACTS ', 1)[1]) if action == 'output' else None
+            except ValueError:
+                measurement = None
+            node_pair_facts.append({'test': test, 'measurement': measurement})
     exits = {p.stem: int(p.read_text().strip()) for p in run.glob('*.exit')}
     matched = before == after
     expected = {'store': STORE_EXPECTED, 'a3': A3_EXPECTED, 'a3-http': A3_HTTP_EXPECTED,
@@ -278,8 +391,9 @@ def finish(run, artifacts, image, owned, mode='protocol'):
                 'codex-product-domain-app': LOCAL_DOMAIN_APP_EXPECTED,
                 'codex-product-domain-native': LOCAL_DOMAIN_NATIVE_EXPECTED,
                 'direct-ip-tls': DIRECT_IP_EXPECTED,
+                'node-pair-trust': NODE_PAIR_TRUST_EXPECTED,
                 'protocol': EXPECTED}[mode]
-    core = mode not in ('protocol', 'app-owner', 'endpoint-security', 'endpoint-security-boundaries', 'endpoint-security-app-fixture', 'endpoint-security-owner-directory', 'endpoint-security-owner-directory-recovery', 'codex-product-guards', 'codex-product-cli', 'codex-product-cold', 'codex-product-three-stage', 'codex-product-other-uid', 'codex-product-domain-app', 'codex-product-domain-native', 'direct-ip-tls')
+    core = mode not in ('protocol', 'app-owner', 'endpoint-security', 'endpoint-security-boundaries', 'endpoint-security-app-fixture', 'endpoint-security-owner-directory', 'endpoint-security-owner-directory-recovery', 'codex-product-guards', 'codex-product-cli', 'codex-product-cold', 'codex-product-three-stage', 'codex-product-other-uid', 'codex-product-domain-app', 'codex-product-domain-native', 'direct-ip-tls', 'node-pair-trust')
     owner_directory = mode.startswith('endpoint-security-owner-directory')
     stages = ('version', 'compile-tests', 'compile-race', 'harness', 'race', 'vet') if core else ('version', 'compile-cli', 'compile-tests', 'harness', 'vet')
     if mode == 'codex-product-other-uid':
@@ -289,6 +403,12 @@ def finish(run, artifacts, image, owned, mode='protocol'):
         set(direct_ip_fixture) == DIRECT_IP_FIXTURE_EXPECTED and all(v == 'pass' for v in direct_ip_fixture.values()))
     if mode == 'direct-ip-tls':
         stages += ('direct-ip-fixture',)
+    node_pair_fixture = terminal_events(run / 'node-pair-fixture.log') if mode == 'node-pair-trust' else None
+    node_pair_fixture_valid = mode != 'node-pair-trust' or (
+        set(node_pair_fixture) == NODE_PAIR_TRUST_FIXTURE_EXPECTED and all(v == 'pass' for v in node_pair_fixture.values())
+        and terminal_event_counts(run / 'node-pair-fixture.log') == {name: 1 for name in NODE_PAIR_TRUST_FIXTURE_EXPECTED})
+    if mode == 'node-pair-trust':
+        stages += ('node-pair-fixture',)
     direct_ip_passed_cases = {name for name in DIRECT_IP_CASES
                               if results.get('TestN3DirectIPTLSAcceptance/' + name) == 'pass'}
     direct_ip_measured_cases = [item['measurement'].get('case') for item in direct_ip_facts
@@ -303,6 +423,7 @@ def finish(run, artifacts, image, owned, mode='protocol'):
                                     and set(item['measurement']['observed']) == DIRECT_IP_FACTS[item['measurement']['case']]
                                     and all(value is True for value in item['measurement']['observed'].values())
                                     for item in direct_ip_facts))
+    node_pair_facts_valid = mode != 'node-pair-trust' or valid_node_pair_trust_facts(node_pair_facts, results, node_pair_terminals)
     race = terminal_events(run / 'race.log') if core else None
     race_passed = not core or (set(race) == expected and all(v == 'pass' for v in race.values()))
     binary_records = [json.loads((run / f'binaries-{side}.json').read_text())
@@ -325,15 +446,23 @@ def finish(run, artifacts, image, owned, mode='protocol'):
                          'codex-product-domain-app': {'cicada', 'n3.test'},
                          'codex-product-domain-native': {'cicada', 'n3.test'},
                          'direct-ip-tls': {'cicada', 'n3.test'},
+                         'node-pair-trust': {'cicada', 'n3.test'},
                          'protocol': {'cicada', 'n3.test'}}[mode]
     binaries_stable = set(binary_records[0]) == expected_binaries and binary_records[0] == binary_records[1]
     runtime_tools = before.get('external_runtime_tools', {})
     runtime_tools_valid = (mode not in ('codex-product-cli', 'codex-product-cold', 'codex-product-three-stage', 'codex-product-domain-native') or
                            (set(runtime_tools) == {'codex'} and runtime_tools['codex']['sha256'] ==
                             '399ff69c431c066e40de318fba45c2b07f45a76b19939d247ee4828fc70c4215'))
-    if mode == 'direct-ip-tls':
+    if mode in ('direct-ip-tls', 'node-pair-trust'):
         runtime_tools_valid = (set(runtime_tools) == {'codex'} and runtime_tools['codex'].get('sha256') == DIRECT_IP_CODEX_SHA256
                                and runtime_tools['codex'].get('version') == DIRECT_IP_CODEX_VERSION)
+    node_pair_native = None
+    if mode == 'node-pair-trust':
+        try:
+            node_pair_native = decode_node_pair_measurement((run / 'node-pair-native-consumer-public-summary.json').read_text())
+        except (OSError, ValueError):
+            pass
+    node_pair_native_valid = mode != 'node-pair-trust' or valid_node_pair_native(node_pair_native, runtime_tools)
     direct_ip_native = None
     if mode == 'direct-ip-tls':
         try:
@@ -377,6 +506,7 @@ def finish(run, artifacts, image, owned, mode='protocol'):
     passed = (all(exits.get(n) == 0 for n in stages)
               and set(results) == expected and all(v == 'pass' for v in results.values())
               and race_passed and binaries_stable and runtime_tools_valid and native_valid and matched and owned == 'false'
+              and node_pair_facts_valid and node_pair_fixture_valid and node_pair_native_valid and (mode != 'node-pair-trust' or not diagnostics)
               and (mode != 'direct-ip-tls' or (direct_ip_fixture_valid and direct_ip_facts_valid and direct_ip_native_valid)))
     # WIRE_ONLY + actual 404 is retained as expected RED, with nonzero exit. It
     # cannot turn a missing service, absent scenario, skip, or compiler error green.
@@ -418,6 +548,7 @@ def finish(run, artifacts, image, owned, mode='protocol'):
              'codex-product-domain-app': 'ACTUAL_APP_OWNER_LOCAL_POLICY_PREVIEW_ACTIVATE_OFFLINE_NODE_READ_AND_REVOKE_NOT_NATIVE_THREADS',
              'codex-product-domain-native': 'ACTUAL_ORIGINAL_0002_NATIVE_DAEMON_LITERAL_AB_NAMED_HOST_ASK_REPLY_APP_CLOSED_AND_CURRENT_REVOKE_MANUAL_OWNER_PIN',
              'direct-ip-tls': 'DIRECT_NUMERIC_IP_NATIVE_TLS_REAL_HUB_APP_CORE_WITH_EXPLICIT_REMAINING_GATES',
+             'node-pair-trust': 'NODE_ADDRESS_DEVICE_CODE_AUTOMATIC_OWNER_PIN_AND_EXPLICIT_NATIVE_POLICY_ZERO_MODEL_NOT_PHYSICAL_OR_A_B_BUSINESS',
              'protocol': 'REAL_TCP_PQ_BOOTSTRAP_AND_RECOVERY_ONLY'}[mode]
     summary = {'scope': scope,
                'status': 'SCOPED_PASS' if passed else 'NOT_RUN' if not_run else ('EXPECTED_RED_SERVICE_UNAVAILABLE' if expected_red else 'FAIL'),
@@ -459,7 +590,22 @@ def finish(run, artifacts, image, owned, mode='protocol'):
                            ['Node_reserved_slot_Join', 'dual_Owner_consent']),
                'private_payloads_exported': False, 'model_turns_started': 0,
                'native_daemon_touched': False, 'public_deployment_touched': False}
-    if mode == 'direct-ip-tls':
+    if mode == 'node-pair-trust':
+        summary['fault_fixture_tests'] = node_pair_fixture
+        summary['fault_fixture_valid'] = node_pair_fixture_valid
+        summary['node_pair_trust_facts'] = node_pair_facts
+        summary['node_pair_trust_facts_valid'] = node_pair_facts_valid
+        summary['node_pair_trust_terminal_counts'] = node_pair_terminals
+        summary['native_automatic_pin_consumer'] = node_pair_native
+        summary['native_automatic_pin_consumer_valid'] = node_pair_native_valid
+        summary['native_daemon_touched'] = True if node_pair_native_valid else 'UNKNOWN'
+        summary['resident_native_daemon_touched'] = False
+        summary['not_run'] = [name for name in NODE_PAIR_TRUST_FACTS
+                              if results.get(NODE_PAIR_TRUST_PARENT + '/' + name) != 'pass'] + [
+            'Windows_DPAPI', 'Windows_ACL', 'Windows_GUI', 'physical_keyboard_IME',
+            'public_IP_deployment', 'physical_ARM', 'real_model_provider',
+            'business_grant_and_native_A_B_acceptance', 'physical_complete_removal_default_root_install']
+    elif mode == 'direct-ip-tls':
         summary['fault_fixture_tests'] = direct_ip_fixture
         summary['fault_fixture_valid'] = direct_ip_fixture_valid
         summary['direct_ip_facts'] = direct_ip_facts

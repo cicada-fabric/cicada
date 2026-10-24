@@ -5,7 +5,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -64,6 +63,7 @@ type directIPCipherFault struct {
 	armed    atomic.Bool
 	dropped  atomic.Bool
 	bytes    atomic.Int64
+	cuts     atomic.Int64
 	mu       sync.Mutex
 	stopped  bool
 	conns    []net.Conn
@@ -71,6 +71,15 @@ type directIPCipherFault struct {
 }
 
 func newDirectIPCipherFault(t *testing.T, target string, pending func() bool) *directIPCipherFault {
+	t.Helper()
+	return newDirectIPCipherFaultDirection(t, target, pending, false, false)
+}
+
+// The new pairing fault also cuts the client direction before forwarding, and
+// can keep cutting only the same durably pending original until its separately
+// persisted reconcile exists. The predicate observes owned state, never TLS
+// record counts, HTTP, plaintext or keys.
+func newDirectIPCipherFaultDirection(t *testing.T, target string, pending func() bool, clientSide, repeat bool) *directIPCipherFault {
 	t.Helper()
 	f := &directIPCipherFault{listener: must(net.Listen("tcp", "127.0.0.1:0"))}
 	f.wg.Add(1)
@@ -96,24 +105,25 @@ func newDirectIPCipherFault(t *testing.T, target string, pending func() bool) *d
 			f.conns = append(f.conns, client, server)
 			f.mu.Unlock()
 			f.wg.Add(2)
-			go func() { defer f.wg.Done(); defer server.Close(); _, _ = io.Copy(server, client) }()
-			go func() {
+			copyDirection := func(destination, source net.Conn, canCut bool) {
 				defer f.wg.Done()
 				defer client.Close()
 				defer server.Close()
 				buffer := make([]byte, 32*1024)
 				for {
-					n, err := server.Read(buffer)
+					n, err := source.Read(buffer)
 					if n > 0 {
 						// The Controller durably saves its original request before
 						// sending it. Observing that coherent encrypted vault image
 						// here distinguishes the secret POST from capability GETs;
 						// record boundaries and packet timing are never guessed.
-						if f.armed.Load() && !f.dropped.Load() && pending() && f.dropped.CompareAndSwap(false, true) {
+						if canCut && f.armed.Load() && (repeat || !f.dropped.Load()) && pending() && (repeat || f.dropped.CompareAndSwap(false, true)) {
+							f.dropped.Store(true)
 							f.bytes.Add(int64(n))
+							f.cuts.Add(1)
 							return
 						}
-						if _, writeErr := client.Write(buffer[:n]); writeErr != nil {
+						if _, writeErr := destination.Write(buffer[:n]); writeErr != nil {
 							return
 						}
 					}
@@ -121,7 +131,9 @@ func newDirectIPCipherFault(t *testing.T, target string, pending func() bool) *d
 						return
 					}
 				}
-			}()
+			}
+			go copyDirection(server, client, clientSide)
+			go copyDirection(client, server, !clientSide)
 		}
 	}()
 	t.Cleanup(func() {

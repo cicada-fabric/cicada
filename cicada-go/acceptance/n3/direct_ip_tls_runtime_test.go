@@ -230,6 +230,10 @@ func newDirectIPHub(t *testing.T, host string) *directIPHub {
 }
 
 func newDirectIPHubOrigin(t *testing.T, host, oldOrigin string) *directIPHub {
+	return newDirectIPHubSetup(t, host, oldOrigin, true)
+}
+
+func newDirectIPHubSetup(t *testing.T, host, oldOrigin string, issueActivation bool) *directIPHub {
 	t.Helper()
 	f := &directIPHub{dir: t.TempDir()}
 	f.state = filepath.Join(f.dir, "hub-state")
@@ -276,18 +280,20 @@ func newDirectIPHubOrigin(t *testing.T, host, oldOrigin string) *directIPHub {
 	if err := os.Mkdir(privateDir, 0700); err != nil {
 		t.Fatal("owned private activation directory unavailable")
 	}
-	codeFile := filepath.Join(privateDir, "bootstrap.txt")
-	if directIPCLIAt(t, f.binary, "hub", "activation-issue", "--native-tls", "--purpose", "initial", "--state-dir", f.state, "--code-file", codeFile) != 0 {
-		t.Fatal("native bootstrap issue failed")
-	}
-	if info := must(os.Stat(codeFile)); info.Mode().Perm() != 0600 {
-		t.Fatal("native bootstrap file lacks private permissions")
-	}
-	f.bootstrap = strings.TrimSpace(string(readPrivate(t, codeFile)))
-	b := must(hubtransport.DecodeBootstrap(f.bootstrap))
-	f.material = must(hubtransport.ValidateBootstrap(b, time.Now().UTC()))
-	if !reflect.DeepEqual(b.Descriptor, f.descriptor) || f.material.Origin != f.descriptor.Claims.Origin {
-		t.Fatal("bootstrap and independently exported public transport disagree")
+	if issueActivation {
+		codeFile := filepath.Join(privateDir, "bootstrap.txt")
+		if directIPCLIAt(t, f.binary, "hub", "activation-issue", "--native-tls", "--purpose", "initial", "--state-dir", f.state, "--code-file", codeFile) != 0 {
+			t.Fatal("native bootstrap issue failed")
+		}
+		if info := must(os.Stat(codeFile)); info.Mode().Perm() != 0600 {
+			t.Fatal("native bootstrap file lacks private permissions")
+		}
+		f.bootstrap = strings.TrimSpace(string(readPrivate(t, codeFile)))
+		b := must(hubtransport.DecodeBootstrap(f.bootstrap))
+		f.material = must(hubtransport.ValidateBootstrap(b, time.Now().UTC()))
+		if !reflect.DeepEqual(b.Descriptor, f.descriptor) || f.material.Origin != f.descriptor.Claims.Origin {
+			t.Fatal("bootstrap and independently exported public transport disagree")
+		}
 	}
 	listener, err := net.Listen("tcp", net.JoinHostPort(host, "0"))
 	if err != nil {

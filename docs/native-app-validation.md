@@ -5532,8 +5532,6 @@ not preserved history, and must not be copied back into the new installation.
    "$HUB_CLI" hub setup --native-tls --owner-label 'New installation Owner' \
      --state-dir /opt/cicada/state \
      --public-config /opt/cicada/public/hub-connection.json
-   "$HUB_CLI" hub connection-export --state-dir /opt/cicada/state \
-     --descriptor-file /opt/cicada/public/hub-transport.txt
    "$HUB_CLI" hub activation-issue --native-tls --purpose initial \
      --state-dir /opt/cicada/state --code-file /opt/cicada/private/initial-bootstrap.txt
    "$HUB_CLI" serve --hub-nodes-only --native-tls \
@@ -5545,11 +5543,17 @@ not preserved history, and must not be copied back into the new installation.
    terminates TLS itself; setup derives its stable logical origin locally. Keep
    its TLS bundle, public pin and application identities together. The operator
    must make the numeric listener reachable through the chosen firewall/NAT;
-   public routing remains unverified until this real batch runs. Obtain the
-   public descriptor and full Hub fingerprint through the trusted local/operator
-   installation channel. Privately transfer the complete one-use bootstrap
-   wrapper, without copying it into evidence. The public descriptor contains no
-   activation code and is the only trust file needed by the fresh Node.
+   public routing remains unverified until this real batch runs. Privately
+   obtain one complete one-use bootstrap wrapper through the trusted local
+   operator channel, without copying it into evidence. It already contains the
+   signed descriptor and full Hub identity for the App's automatic verification.
+   The default App inputs are the numeric address and that one wrapper; neither
+   App nor fresh Node setup requires another public-key or descriptor-file
+   handoff. Optional local read-only operator evidence can be exported with
+   `hub connection-export --state-dir /opt/cicada/state --descriptor-file /opt/cicada/public/hub-transport.txt`.
+   That public export/fingerprint view is for advanced checking or evidence,
+   rather than an additional onboarding input. Never send the App bootstrap
+   wrapper to the Node.
    Do not use legacy adoption, an old pending Owner or an imported old vault.
 5. Launch the new Windows App explicitly with the selected root, using the
    actual verified executable path in the complete package:
@@ -5559,20 +5563,29 @@ not preserved history, and must not be copied back into the new installation.
    ```
 
    Expect initial setup, not an old profile/connection. Connect with the new
-   same-page numeric `IP:port` and complete `cicada-hub-bootstrap-v1:` material;
-   compare the displayed logical origin/full Hub fingerprint with the operator's
-   independently obtained public metadata. Require verified TLS and Hub identity
+   same-page numeric `IP:port` and the one complete `cicada-hub-bootstrap-v1:`
+   wrapper obtained through the trusted channel. The App automatically matches
+   its embedded descriptor/full identity to the live Hub. The public origin and
+   fingerprint view remains available for optional operator checking; separate
+   file transfer or manual character-by-character comparison is not a default
+   setup step. Require verified TLS and Hub identity
    before generating a new Owner in the App. Then
    approve the finite App device authority and create the new account credential.
    Complete separate ordinary login: login itself does not activate Root or
    create Node/Network business authority. Record Windows DPAPI, vault ACL and
    GUI behavior individually when actually executed, without publishing secrets.
-6. Manually start one new Node as the intended OS user. Use explicit installed
-   root and private state paths, rather than relying on the older implicit
-   `<root>/state` default. Obtain `HUB_DESCRIPTOR_FILE` from the Hub's public
-   export through the independent installation channel and store it under the
-   new Node root, for example `~/.cicada/config/hub-transport.txt`. Keep its exact
-   descriptor bytes; do not give the Node the secret App bootstrap wrapper.
+   Retest both the login button and Enter in the password field with this exact
+   package/root. Each must perform the same ordinary login once; Enter must not
+   activate Root, skip finite authorization or select another profile. A later
+   build/automated UI check does not replace this Windows physical retest.
+6. **Stage 2: manually start the Node after file-only installation (stage 1).**
+   Run one foreground Node as the intended OS user, using a real terminal and
+   the selected private root. `~/.cicada` is the Node user root; retain the
+   explicit `~/.cicada/node/state` path for the original state and all restarts.
+   Enter only the same numeric Hub address. The Node discovers candidate Hub
+   metadata and requests its own candidate; independent trust is completed by
+   the private code transfer below. A known old pin or binding cannot be
+   replaced by fresh discovery to hide a mismatch.
    `CODEX_BINARY` is the user's actual complete Codex installation; the current
    target is verified `codex-cli 0.164.0`. Record its path/version/hash separately
    from Cicada's package. Its `CODEX_HOME` remains the intended native account:
@@ -5580,35 +5593,45 @@ not preserved history, and must not be copied back into the new installation.
    ```sh
    CICADA_CODEX_BIN="$CODEX_BINARY" "$NODE_CLI" machine agent --relay-only \
      --id "$NEW_NODE_ID" --name 'New local Node' \
-     --hub-connection-file "$HUB_DESCRIPTOR_FILE" --hub-dial-address "$HUB_ADDRESS" \
+     --hub-address "$HUB_ADDRESS" \
      --user-root "$HOME/.cicada" --state-dir "$HOME/.cicada/node/state" \
      --mcp-session-state-file "$HOME/.cicada/mcp/sessions.json" \
      --mcp-outbox-state-file "$HOME/.cicada/mcp/outbox.sqlite3"
    ```
 
-   Review the actual new Node code/candidate in the new App, including Hub/Node
-   fingerprints and scope, then explicitly approve it. No copied old Node
-   binding or trust state qualifies. Service installation is optional after
-   foreground approval and must preserve these exact flags/paths; no second
-   writer may run against them.
-7. **Manual independent Owner public pin remains required.** Export the new
-   Owner public identity through the actual App. Privately transfer only that
-   public file, independently compare its full key ID/fingerprint with the App,
-   stop the Node, and use its existing command:
+   Read the complete case-preserving `cicada-npt1.` code from that actual Node's
+   trusted terminal. If the Node runs in the background, use a second real local
+   terminal with the same exact ID/state path:
 
    ```sh
-   "$NODE_CLI" machine trust-owner-key --id "$NEW_NODE_ID" \
-     --state-dir "$HOME/.cicada/node/state" --writer-root "$HOME/.cicada/node/state" \
-     --owner-id "$NEW_OWNER_ID" --public "$NEW_OWNER_PUBLIC_FILE" \
-     --expect-key-id "$NEW_OWNER_KEY_ID" --expect-fingerprint "$NEW_OWNER_FINGERPRINT"
+   "$NODE_CLI" machine pairing-code --id "$NEW_NODE_ID" \
+     --state-dir "$HOME/.cicada/node/state"
    ```
 
-   Restart the same Node with the same explicit paths. The file is public;
-   private Owner keys remain in the new App vault. Automatic FB-03 trust delivery
-   is **NOT_IMPLEMENTED / NOT_RUN**; this manual step cannot be omitted or called
-   one-click fresh setup. Approve one explicit Node/user/Network local policy in
-   the App; Node registration alone is not a grant to every Network.
-8. Install/connect only the newly installed plugin asset set to that running
+   Do not redirect that command, lowercase the complete code, copy it into
+   logs/evidence or send only its short selector. The code contains a private
+   one-use independent secret. No copied old Node binding or trust state
+   qualifies. Service installation is optional after foreground approval and
+   must preserve these exact flags/paths; no second writer may run against them.
+7. In the already verified original Owner App, paste that complete code, review
+   the actual Node/Hub identities and approve once. Wait for the original Node's
+   authenticated ACK and saved Hub binding; Owner approval alone is still
+   pending. The Node verifies the independently transferred secret and installs
+   the original Owner public pin automatically. The default new flow does not
+   export an Owner public file, run `machine trust-owner-key`, or import a
+   descriptor into the Node. Do not use those advanced legacy commands to mask
+   a failed new ceremony. Private Owner keys stay in the original App vault.
+   Reuse the same attempt for retries/uncertain recovery; an expired original
+   cannot be renewed by login or a historical success receipt.
+   Then separately approve one explicit Node/user/Network local policy in the
+   App when local collaboration is wanted. Node registration alone grants no
+   business rights or access to every Network. This replacement procedure is
+   implemented in the new producer checkpoints; its final independent full
+   Node/App/Hub and physical Windows acceptance remain **NOT_RUN** until the
+   corresponding new receipts are recorded below. Historical manual-pin passes
+   do not qualify the new automatic trust path.
+8. **Stage 3: install the plugin after the same Node is running and approved.**
+   Install/connect only the newly installed plugin asset set to that running
    selected Node, using the full package's existing marketplace/plugin commands
    and normal Hook trust controls. Keep one Cicada plugin/MCP/Hook registration;
    do not replace them with user-config shims or rewrite the shared daemon's
@@ -5623,7 +5646,8 @@ not preserved history, and must not be copied back into the new installation.
    copied caller fields must not create a second authorized identity.
 9. Exercise normal process/profile recovery before revoking. Restart the same
    Hub with its original StateDir/native-TLS flags, then the same Node with its
-   original explicit paths and descriptor/locator. Reopen the Windows App with
+   original explicit paths and `--hub-address`/retained verified transport.
+   Reopen the Windows App with
    `--user-root 'F:\DOWNLOAD\Cicada-N2'`, discover/unlock the original profile
    and complete ordinary login if required. Compare the original Hub pin,
    Owner/App-device public IDs and Node binding; do not issue a new bootstrap
@@ -6306,3 +6330,442 @@ manual descriptor and Owner public-pin input and cannot qualify this replacement
 Actual future tests must use real crypto/TCP/persistent owned state and disposable
 Docker with read-only module cache. No tests or services were run by this review;
 Windows/platform and new end-to-end results remain NOT_RUN.
+
+## 2026-10-24 Node-pair-trust independent preparation
+
+Work resumed at clean QA `cfe33e0a735ea838f14eda7d3f283f5603cac36f` after
+the user's pause. The existing FB-03/security matrix remains the acceptance
+boundary. Hub owns the narrower Node-only shared protocol and production
+consumers; C0 registration is not expanded. QA does not copy unfinished Hub WIP,
+guess DTOs or rerun the previously accepted full DIP/native gates. New product
+integration and physical Windows remain **NOT_RUN**.
+
+Independent read-only review found that the first shared draft had no original
+receipt field and accepted a reconcile result without matching its original.
+This could only project current state, not authenticate the exact old result.
+QA reported it directly to Hub and Root. Static source/line/hash receipt
+`/home/zyf/Cicada/.local/evidence/native-pair-acceptance/node-pair-shared-review-20261024-k1o2mk0y/review.json`,
+SHA-256 `b95781343468cbca5cb0ef184c66bff6a109607f2b5f7185e0d4612684a81bd0`,
+is explicitly WIP review, not a runtime test or frozen-source PASS. Hub's revised
+source now has a RECOVERED-only original receipt, dedicated nested encoding
+budgets and old-original second authentication. QA also checked the authenticated
+lookup and independent retained origin/descriptor matching added after Root's
+review. Their execution remains attributed to the later producer/frozen gate;
+reading the correction does not establish runtime acceptance. Follow-up review
+requires temporary/UNKNOWN failures never to settle as a no-effect FENCED result,
+and the recovered-response consumer to reject nested reconcile explicitly.
+
+The existing runner now has the separate `--node-pair-trust` selector, reusing
+the pinned disposable Docker envelope, exclusive locked build cache, read-only
+source/module mounts, real CLI/test executable builds and source/binary/cleanup
+receipts. It selects only `TestN3NodePairTrustAcceptance`. Its twelve required
+case names map to the existing matrix: address-only setup; secret boundaries;
+fake Hub/Owner; exact candidate/possession; all-writer ACK fencing; limits/expiry/
+revocation; concurrency/exact replay; lost-response originals; App close/restart;
+Owner-pin conflict; existing-binding trust-only; and zero business authority.
+Every case must emit its exact true measured facts only after actual assertions.
+Missing/duplicate cases or terminal events, a skip, unavailable diagnostic or
+missing/false/extra measurement makes this gate fail. It has no preparation-only
+skip-to-success path. The actual test bodies are not connected until the formal
+Hub/Node/App APIs arrive; invoking an empty selector cannot qualify acceptance.
+
+The standalone oracle mutation checks are reproducible without a Hub or model:
+
+```sh
+python3 scripts/fixtures/native-pair/node_pair_trust_evidence_checks.py \
+  /home/zyf/Cicada/.local/evidence/native-pair-acceptance/<new-owned-output-directory>
+```
+
+The output directory must not already exist. Twenty-nine synthetic checks pass,
+exit 0, in
+`node-pair-oracle-preparation-20261024-hww9j0_y/checks/result.json` under the
+same evidence root, SHA-256
+`c2286131aeb29bb321baf12fd45d1b2b0e88d16b5e8b03dae2c3804a6d6b808f`.
+They exercise complete synthetic control, empty/parent-only/skip/fail/missing or
+unexpected events, duplicate terminals/facts/JSON fields, wrong measurement
+owner, malformed facts, boolean-versus-integer confusion, unavailable diagnostics,
+every failed stage, missing compile stage, source/binary drift, absent executable
+and a remaining container. All nested apparent PASS receipts are visibly
+synthetic and are not product evidence. No Go compilation, product process,
+Docker integration, native Runtime or model ran in these checks.
+
+After formal integration the intended product command is
+`CICADA_NATIVE_PAIR_LICENSES_DIR=<reviewed-complete-notices> scripts/test-native-pair.sh --node-pair-trust`.
+Runtime status is **NOT_RUN**, not an extension of the synthetic 29 checks.
+The driver will take the actual Node's private code through a real PTY/interactive
+CLI as delivered, pass it only to the actual App child, and keep it out of
+snapshots/diagnostics/evidence. It must not synthesize a code from SQL or install
+an Owner pin manually. Actual response-loss injection reuses the opaque TCP
+negative peer with independent durable-commit observation; positive TLS still
+ends directly at the real Hub. Tests/scripts/records will be delivered together
+in one complete checkpoint after requesting Root's serialized Git window.
+
+### Formal shared delivery and independent discovery qualification
+
+Root reviewed and fast-forwarded shared checkpoint
+`a9b1f43a38bbea896ba9eda1ff4667d2b97e3902` while preserving QA WIP. The
+authoritative Node-only contract is now [node-pair-trust-v1](node-pair-trust-contract.md).
+The producer's 168 normal / 50 race events and later 14 normal / 14 race recovery
+delta, with vet exit 0, retain their separate producer receipts; QA does not
+rerun or relabel them. Public availability remains false. This checkpoint is
+codecs/cryptography/public discovery, not production handlers or App/Node flow.
+
+QA independently qualifies the new `DiscoverCandidate` API through new actual
+TLS sockets. `TestN3NodePairTrustDiscoveryBoundary` changes SPKI or CA root
+between the failed first handshake and the verified second handshake; both
+refuse before HTTP. A same-key new leaf remains only public candidate data,
+and another independently pinned client still refuses it. A fresh IPv6 socket,
+extra chain certificate, future leaf and each of 301/302/303/307/308 to a real
+HTTP trap have separate assertions. Successful candidate controls observe two
+TLS handshakes and exactly one bodyless, credential-free metadata GET. These
+are independent negative peers, not positive product Hub/Node/App fixtures.
+
+Receipt:
+`/home/zyf/Cicada/.local/evidence/native-pair-acceptance/node-pair-discovery-20261024-fksa8_es/result.json`,
+SHA-256 `8f2e4ff099b017e96f373975abb3861997d35a4ac652d90fd4905e644d871a85`.
+Normal and race each pass **12 named events / 0 fail / 0 skip**. Go version,
+both test compiles, both executions and scoped vet all exit 0. Pinned network-none
+Docker uses read-only source/modules, a locked exclusive build cache and owned
+artifacts only. The exact labeled container is absent, and source/binaries
+are identical before/after. The retained `run.py` contains exact commands; copy
+it to a fresh owned run directory rather than overwriting any historical run.
+
+| Tested input/artifact | Exact identity |
+| --- | --- |
+| Source | Dirty `a9b1f43` plus the six then-current QA paths; 1,550 recorded inputs including the new contract |
+| Source snapshot before/after | `a094c185cb1cc04bb4de035c2bf1d28ede1c3cab8eb348ecd60a2aaefb217899` |
+| Source manifest | `3a7116c1fa7b305c57050be4728a38473131d133d127b8bd77f00e9798bb884a` |
+| Normal test binary | 24,855,216 bytes; `141af20b3e96b5e0454aab9ad0f62d32c652c18bec67b461651de41616c52169` |
+| Race test binary | 37,630,068 bytes; `28a429b87529af5babc68718d3406faf4901bd09b03005d829268335d3a9a502` |
+
+Later script/record/private-TTY helper changes have their own attribution; no
+later clean commit or new state machine result is inferred from this frozen
+qualification. The new full runner requires these exact twelve fixture events
+in addition to its twelve product cases. Its resulting oracle now has 33
+synthetic mutation controls, exit 0, receipt
+`node-pair-oracle-integrated-20261024-oup7mwig/checks/result.json`, SHA-256
+`6825138f66d48ab2a647470d3c148dfa657df0261147477100cc757cc644a34f`.
+The four added checks reject the failed fixture stage, missing fixture events,
+a skipped fixture and a parent-only fixture. This remains synthetic receipt
+validation, not product execution.
+
+The generic private-TTY adapter uses Python standard-library PTY/session/ioctl
+support with bounded output/time and a new mode-0600 capture in an owned private
+directory. It invokes the exact delivered argv without a shell, returning only
+length/hash/exit metadata. Terminal bytes stay inside the private fixture.
+Its standalone qualification proves actual TTY on all three child streams,
+redirected control refusal, timeout child cleanup and bounded overflow, with no
+Node code or physical keyboard. Receipt
+`node-pair-tty-fixture-20261024-2_5u1aau/result.json`, SHA-256
+`1338a242fb52c956e3f967f08971cacc4b6047bd81eb60a2f0393ab7df39209c`,
+exits 0 with three PTY cases and the separate redirected control. This adapter
+does not invent a code or prove the forthcoming product CLI's TTY policy.
+
+Hub/App have aligned terminal confirmation recovery with the existing N3 API.
+Before ACK, direct original `nodes.confirm` and its old reconcile return
+ACK_REQUIRED/409 without counter/receipt effects. After NPT terminal state
+releases its RESERVED slot, App still retains the original Client confirmation
+and expected response sequence; only the old app-node reconcile of that exact
+CLIENT_CONTROL original can return a sealed negative receipt, authenticated via
+`OpenAppNodeConfirmationResponse` before one settlement. NPT terminal state
+alone does not advance counters. Epoch replacement cannot settle across a new
+counter space. Actual fault execution remains NOT_RUN pending carrier delivery.
+
+The next carrier's schema/restore review must retain RequireACK independently
+of a missing side record: the draft no-row-to-legacy-confirm fallback was reported
+to Hub and Root. Quarantine/UNKNOWN restore cannot bypass ACK, restore a pending
+slot into authority or revive counters/receipts. If schema 68 recovery is not
+reviewed and tested, it must remain UNSUPPORTED/fail closed. This is a bounded
+anti-bypass assertion, not a new backup/restore campaign. Carrier/Node/App
+integration, native business work and Windows physical acceptance remain NOT_RUN.
+
+Root additionally identified the draft receipt-capacity denial-of-service path:
+unapproved self-signed Node traffic must not permanently consume the global
+receipt budget and prevent already approved ACK settlement. NPT06 must exercise
+bounded unapproved pressure and then settle the exact approved original under
+that pressure, not merely inspect rate/capacity constants. Reclaimable read
+caches must remain distinct from immutable effect/ACK history and its reserved
+settlement budget. This test is restricted to owned fixtures; no shared/public
+Hub load is authorized or performed. Actual saturation behavior is NOT_RUN.
+
+### Server delivery and full new driver preparation (2026-10-24)
+
+Root reviewed and fast-forwarded server checkpoint
+`1bba17666ee68843f58e3fa7ea74488b102f235d`, preserving acceptance WIP.
+It delivers the durable candidate ACK marker, common confirmation gate,
+reserved original counter slot, current revocation/epoch checks, historical
+observations with fresh issuance, request-specific recovery fences and separate
+bounded unapproved/read/effect budgets. Producer failures, the historical fixture
+skip and race timeout remain attributed to their original runs and completion
+deltas; they are not a new QA product pass. The App producer has separately
+delivered `26cdacc996faf0ed3dc1b8cebb5b0ab770b17cc9`; its formal integration
+and the Node consumer are prerequisites for actual three-component execution.
+
+Root's separate old Client-wire Docker compatibility receipt is
+`/home/zyf/Cicada/.local/evidence/local-domain-root/npt-server-client-interop-20261024T083244Z-to9ex9lf/result.json`,
+SHA-256 `5e122a1837e53f82517bc30acb8d105bc7f6817bc281e2e2b946ca74a2569a3c`.
+Root reports PASS/exit 0 for four old compatibility tops, clean server `1bba176`,
+stable source fingerprint
+`db4573c31f931f64ad6e4ac3b754ba137473439c1384252ab7185ba0425a7938`
+and cleanup CONFIRMED. This is Root-owned old-wire compatibility evidence;
+it is not the new Node pairing acceptance result.
+
+QA has now written all twelve named product-case functions and the exact parent
+selector. They are **NOT_RUN** until frozen producer interfaces and actual
+executables are integrated, compiled and exercised. There are no placeholder
+passing cases. The complete gate still requires every named case and its exact
+true fact set, with zero failures/skips and stable source/binaries/cleanup.
+
+| Case | Concrete new driver boundary (execution remains NOT_RUN) |
+| --- | --- |
+| NPT01 | Actual address-only CLI on IPv4/IPv6, actual private PTY code, original App actions, automatic independent Owner pin and original bound state |
+| NPT02 | Complete case-preserving code, actual App wrong-case refusal, actual Node/App Hub-readable PQ plaintext audit, no pretrust credentials or secret diagnostics |
+| NPT03 | Self-consistent malicious Hub/Owner with valid purpose signature, capsule digest and existing PQ encryption, wrong unknown S, actual receiver independent-trust rejection, zero new pin/ACK/binding |
+| NPT04 | Actual TCP wrong Hub/Node/Owner/App key/epochs, missing/forged proof and stale request; unchanged original slot/counters/rights |
+| NPT05 | Actual old Client confirmation and N3 reconcile return ACK_REQUIRED; exported compatibility Store writer refuses; malformed owned missing-side fixture retains independent marker and fails closed |
+| NPT06 | Real short expiry and immutable retry, post-approval device revoke/epoch change, unsupported nonempty NPT restore read-only fence, rate-respecting owned unapproved START traffic reaches the actual delivered creation/storage hard bound, followed by the actual original Node ACK |
+| NPT07 | Original actual Node key signs one ACK sent concurrently twice; one binding/grant consumption/counter settlement/exact receipt; changed bytes under the same ID conflict |
+| NPT08 | Committed Complete response loss with independent DB observation and restart; unforwarded Prepare/Complete/ACKed Status requests and original retries; exact no-effect fence and late replay; lost outer observation, actual >60s offline, fresh query for unchanged target and original negative settlement if expired |
+| NPT09 | Normal actual App close before ACK, actual Hub/Node/App restart, no live callback, unchanged keys/context/proof/capsule/original confirmation and automatic pin |
+| NPT10 | Pre-existing same-Owner different key ID ACTIVE and REVOKED conflicts; actual Node refuses admission; independent conditional DB writers serialize to one key winner |
+| NPT11 | Genuine old retained local subset with verified transport takes EXISTING_BINDING, original full rows/credential/key/epoch/counters/grant count and unrelated tombstone remain unchanged |
+| NPT12 | Actual finite App scope denies business RPC, actual relay heartbeat with zero Workers, Root proof is completed separately before account login, Control inference remains disabled |
+
+NPT01/08/09 use direct production native TLS; response-loss peers forward opaque
+ciphertext without Hub/App/TLS keys. NPT02/03 deliberately use a **controlled
+Hub-side TLS/CC observation/adversary** forwarding to the actual Hub over another
+verified TCP/TLS connection. That endpoint has only owned synthetic Hub keys and
+an invented synthetic Owner; it never receives the real code/S, Node private key
+or original Owner signer. Its scope must not be described as a blind proxy or
+direct end-to-end Node-to-Hub-binary TLS. The fake proof is verified under its
+own stated purpose before delivery; the actual Node must reach the stable local
+`NODE_PAIR_INDEPENDENT_TRUST_REJECTED` receiver category and leave zero pin/ACK
+or binding effects. Plaintexts remain bounded private fixture memory and are
+cleared; public evidence contains only digests, counters and sanitized facts.
+
+The original App-vault draft duplicated enough actual PQ material to exceed
+the existing per-record 1 MiB limit: the App producer reproduced 1,397,132 bytes
+using the actual vault. QA reported this to App and Root. The producer correction
+reuses the mutually exclusive existing `appcore.node-recovery.v1` namespace,
+keeps primary Recovery out of JSON, retains one original packet with a compact
+committed body and preflights actual vault budgets. QA's copied encrypted-image
+observer reads this delivered shape and rehydrates only a local typed query;
+it never reseals the original mutation. Independent real recovery execution is
+still required before considering the defect accepted as fixed.
+
+The current oracle, including the expanded **15** discovery/opaque-fault fixture
+events, passes 33 synthetic mutations with exit 0. Receipt:
+`/home/zyf/Cicada/.local/evidence/native-pair-acceptance/node-pair-oracle-current-20261024-wbnmu18r/checks/result.json`,
+SHA-256 `44c353cc362db2a2046e6f3d82ba1c7e7ed6a4f2c4e51bc12f97b4d993070df5`.
+This qualifies the current receipt oracle only. The three new opaque fixture
+events and all product cases have not yet executed against this current driver
+source; the earlier 12-event discovery receipt retains its original source.
+
+Reproduce the synthetic oracle in a fresh private output directory with
+`python3 scripts/fixtures/native-pair/node_pair_trust_evidence_checks.py NEW_OUTPUT`.
+The intended complete product command remains
+`CICADA_NATIVE_PAIR_LICENSES_DIR=<reviewed-complete-notices> scripts/test-native-pair.sh --node-pair-trust`.
+No old full direct-IP/Codex campaign is rerun for this preparation. Windows
+DPAPI, cross-user ACL, native GUI/physical device, new business Runtime and
+public deployment are **NOT_RUN**. No shared Hub, public deployment, real key
+rotation, push or integration mutation is performed by QA.
+
+### Formal App integration and new fixture qualification
+
+Root fast-forwarded formal App checkpoint
+`26cdacc996faf0ed3dc1b8cebb5b0ab770b17cc9`, retaining all 19 QA WIP paths.
+The first driver compile found two QA adapter errors (an unused import and the
+public binding key field) and returned exit 1 before any test event. Its FAIL
+receipt remains at
+`node-pair-driver-qualification-20261024-21suvf5u/result.json`, SHA-256
+`d283eac7b599e75f76cc9948311072664d96fe1064197ae4101d79929242f22c`.
+These were corrected in QA code; no production change was made.
+
+The corrected frozen dirty `26cdacc` plus 19 then-current QA paths compiles all
+twelve product-case functions with the formal App actions/schema. New discovery
+and opaque before-forward/after-response qualification runs pass **15 named
+events normal and 15 race**, zero fail/skip. Version, normal/race compiles, both
+fixture executions and scoped vet all exit 0. Receipt:
+`/home/zyf/Cicada/.local/evidence/native-pair-acceptance/node-pair-driver-qualification-20261024-na07en08/result.json`,
+SHA-256 `75882e5d75242ae977c0a595cbc65ac5891d67673c464a9724e75a80b60b68c8`.
+Pinned disposable Docker uses no network, read-only source/modules, the exclusive
+locked QA build cache, owned artifacts and confirmed exact-container cleanup.
+Source and executable hashes are identical before/after.
+
+| Frozen qualification artifact | Exact identity |
+| --- | --- |
+| Source snapshot, 1,589 inputs | `95d62ab48826d46a1a0c757dbf7072d4b0ff230e0a3117ab8239224b5a13e670` |
+| Source manifest | `9ec520437195eb408d155174926464d8c223c2aa895b593eb82f1e8a7700f58f` |
+| Normal `n3.test`, 25,908,665 bytes | `db098e6593467a3a9e3f0f8288c25d2213fcb5799593faf5ffc7c5e6440ed1b1` |
+| Race `n3-race.test`, 39,159,501 bytes | `6ae9e11f50be8756b42dcb8768545355754b3f15118d5487a3ff70244e7e9c50` |
+
+The retained `run.py` records each exact command and reproduces this narrow
+qualification when copied into a fresh owned run directory. This is
+**SCOPED_PASS for compile and fixture mechanics only**; none of the actual
+Node/App/Hub product cases has run. The conditional Node pin adapter fails at
+runtime if its formal producer method is unavailable; it does not copy or
+compile the Node producer's WIP. Later zero-model consumer coupling/guide
+changes receive their own source attribution. Source is now unfrozen pending
+the Node consumer checkpoint. Windows DPAPI/ACL/GUI remain NOT_RUN.
+
+### Automatic-pin consumer coupling and updated fresh procedure preparation
+
+Root requested a concrete connection from the new automatic Owner pin to the
+existing daemon/plugin consumer. NPT01 now installs the original complete
+Node/plugin files into its owned `~/.cicada` analogue before starting anything,
+then reuses that same IPv4 Node after actual ACK/automatic pin. The same actual
+App separately approves its Node/user local policy. One actual 0.164 persistent
+daemon loads the installed plugin, one real native Thread performs literal
+Join, and MCP must become ready with the original coordinates. QA correlates
+the real Hub member with Node-local delegated key-grant state and verifies it
+using the original automatically installed Owner public pin. No manual Owner
+pin, fabricated native record/ticket, A/B exchange, Host model turn or provider
+POST is part of this extension. NPT12 retains a separate zero-business-rights
+fixture before any explicit local policy.
+
+The full runner now requires the existing exact 0.164 runtime hash/version and
+read-only complete package mount. Missing runtime, missing/malformed public
+consumer summary, wrong daemon hash, substituted coordinates, manual pin,
+nonzero provider traffic or failed cleanup must fail the gate. Native summary
+and actual Node/Hub assertions are additional requirements for NPT01, not a
+substitute for all twelve cases. Scope is Linux disposable integration only;
+the resident user daemon, real provider and public deployment are untouched.
+
+The consumer Go adapter's normal compile and scoped vet exit 0 in pinned owned
+Docker, with stable source/binary and confirmed cleanup. Receipt:
+`/home/zyf/Cicada/.local/evidence/native-pair-acceptance/node-pair-consumer-compile-20261024-91b_5jpb/result.json`,
+SHA-256 `85fa9d3b7693725f27004956b08e4ade1c1e9a33e50858e6a7e2de23a6dd5809`.
+It has **zero runtime test events** and does not qualify native Join/MCP.
+The expanded oracle passes **49 synthetic controls**, exit 0, including missing
+runtime/summary, false/missing native facts, wrong hash/version, boolean numeric
+confusion, nonzero provider requests, missing endpoint, failed cleanup and
+duplicate fixture terminal events. Receipt:
+`/home/zyf/Cicada/.local/evidence/native-pair-acceptance/node-pair-consumer-oracle-20261024-iritj171/checks/result.json`,
+SHA-256 `1a73e13eab3c12deabe732c0d21ca773351d67ecaff81f64abdb01dc03fe7c19`.
+These are synthetic receipt checks, not a daemon or product pass.
+
+To strengthen account-login separation, NPT12 additionally has a separate fresh
+account-only compatibility fixture: local actual `hub account-claim-issue`, real
+trusted TLS/PQ claim and password-login requests, then authenticated Session
+Inspect must report `RootActive=false` and `PENDING_PROOF`. It uses an Owner
+public candidate without an Owner private-key proof or N2 control grant and
+never downgrades an existing Root. Default N2 Bootstrap/App onboarding remains
+the separate positive lane. This new negative case is **NOT_RUN** pending the
+final Node source gate.
+
+The existing [complete fresh procedure](#complete-removal-and-fresh-install-manual-acceptance)
+now separates file-only installation, manual numeric-address Node start and
+one private code approval/automatic pin, then installation of the existing
+plugin. It retains `~/.cicada`, the Windows `F:\DOWNLOAD\Cicada-N2` root, and
+explicit button/Enter login physical retesting. It removes descriptor-file and
+manual Owner-public-pin transfer as default new prerequisites. Historical
+manual-pin receipts retain their original scope. New full Node/App/Hub,
+zero-model consumer runtime and physical Windows results remain **NOT_RUN**;
+the guide update executes no real cleanup, installation or deployment.
+
+
+## 2026-10-24 Node pair trust scoped acceptance closure
+
+**SCOPED_PASS coverage, assembled from the original raw events and narrowly
+continued failed cases; no fresh all-green twelve-case gate is claimed.** Root
+requested that already successful cases not be repeated. The original full
+run remains FAIL. All sources below include the recorded QA WIP; a dirty build
+is not attributed solely to HEAD. Product baseline `aa2cf326` includes formal
+Hub `1bba176`, App `26cdacc` and Node `1bbeceb`; `47a1a4d` is the reviewed App
+REVIEW-resume correction. Subsequent QA deltas correct fixture preconditions,
+readonly observations and public UI sequencing, without production edits.
+
+Receipt paths below are relative to
+`/home/zyf/Cicada/.local/evidence/native-pair-acceptance/`.
+
+| Raw receipt | Product HEAD | Overall exit | Accepted original scope | result.json SHA-256 |
+| --- | --- | --- | --- | --- |
+| `run-20261024T104703Z-KPxc95` | `aa2cf326` | 1 | NPT01–05, 07, 09–11 PASS; 06/08/12 FAIL | `88f06fdc407cb2afafb94ad95f919dc8c25b352252586312d25b936857c51ef5` |
+| `npt06-12-continuation-20261024-n7r_mrop` | `aa2cf326` | 1 | NPT12 PASS; NPT06 pressure expectation FAIL | `4ed1eaee63c285d7a0dfa10895d6aa2726a0bdbaf88fa134841ca4c58b5f9c76` |
+| `npt06-continuation-20261024-6mg0x0b8` | `aa2cf326` | 0 | NPT06 complete PASS | `6e010e6bfe442fa144a76b5f1a91581ab68c9ec6b958647694f3ce90e54fb446` |
+| `npt08-continuation-20261024-pvkt_osr` | `47a1a4d` | 1 | Actual committed loss/restart and original Prepare/Complete/Status fences PASS; aged final UI expectation FAIL | `eed9be9a845fb99b531026607aa413bf2ebc60ec5550978f754aa1e56d910626` |
+| `npt08-aged-continuation-20261024-gnoxljoj` | `47a1a4d` | 0 | Only the existing aged helper with public-session UI sequencing, through a temporary Go overlay entry, PASS; no whole-NPT08 facts emitted | `fe88158726d145a38d0bba889c07f9ce0c11a648ec83afd45ce0fd9cf621cbc8` |
+
+Each run confirms stable source/executable hashes and absence of its exact owned
+container. The full run's 15 discovery/fault fixture events and vet pass; final
+focused normal compilation and n3 vet also exit 0. Shared modules and complete
+0.164 package are mounted read-only; the QA build cache has an exclusive lock.
+All TCP, PQ crypto, persistent SQLite, private PTY and child processes belong to
+the disposable fixture. No shared Hub, resident daemon or deployment is touched.
+
+NPT01 also qualifies the distinct actual automatic-pin-to-existing-daemon/plugin
+consumer: one literal native Join, 71 MCP tools, exact original Node/delegated
+grant and automatic Owner pin, provider POSTs/model turns both zero, daemon
+umask 0002, five deployment variables absent, exact executable identity and
+cleanup confirmed. This follows a separate explicit local policy in the same
+App; identity admission itself grants no business authority. NPT12 separately
+proves actual password login remains Root `PENDING_PROOF`, finite App business
+RPC refusals, real Relay `machines.last_seen` advancement with unchanged binding,
+credential and keys, zero Workers, and refusal of an actual signed successor
+ordinary Control heartbeat while Control inference is disabled.
+
+NPT06 observes the *earlier existing* 256-create/10-minute hard limit, not
+saturation of the newer 512-row/16-MiB ceilings. It issues 257 requests for 255
+unapproved subjects, verifies the precise old creation count and the same refused
+original after 1.1 quiet seconds, and observes all newer budgets within their
+bounds (258 read rows, 11,100,964 bytes). The already approved real Node then
+ACKs with automatic pin, unchanged original slot digest and one counter/grant
+settlement. Real 65-second expiry respects the existing minimum-one-minute
+candidate guard; expiry renewal, revocation/epoch and readonly restore fences
+all pass. No limit is disabled and no pressure state is seeded with SQL.
+
+The aged helper observes a real 77-second offline interval, two lost outer
+responses and a fresh query targeting the exact original bytes. Actual public
+state is `SESSION_RECHECK_REQUIRED`, no outer recovery remains, the original
+Complete is applied and its known-no-effect fence waits for current authority.
+Only the publicly available `SESSION_INSPECT`, followed by the original public
+recovery action, continues. Code including S, approval, proof, capsule, reserved
+confirmation and original deadlines remain unchanged; the exact original FENCED
+receipt is double-authenticated. Expired approvals additionally require their
+exact negative Client receipt; historical recovery cannot renew rights. This
+safety pause is not a deadlock.
+
+QA reported two production defects and their owners delivered fixes: public
+capabilities JSON framing rejected by the private canonical decoder (`aa2cf326`),
+and reopened REVIEW lacking fresh context / Check replacing it with PENDING
+(`47a1a4d`). Their original red receipts remain. QA also corrected its own empty
+descriptor observation, five-second candidate premise, Control-vs-Relay heartbeat
+observer, recovery nil-payload versioned tombstone handling, stopped-daemon zombie
+classification and missing session-inspection UI step. Zombie acceptance requires
+a successful official stop plus the same PID/start ticks in state Z; live states
+still fail. Earlier diagnostic FAILs, including `npt08-ui-check-20261024-r27f9m4g`
+(`9b202083b0afd62b2873b9a6d9798e282fd05dbe3458d6e83be6d7c93a1c6078`)
+and `npt08-continuation-20261024-1so5aia5`
+(`6a2b347d25dd65165004562c2275528621a89192bbd5dad893820c1768c1a9bd`),
+are retained without rewriting their status or tested source.
+
+All listed runs execute CLI SHA-256
+`3a6397532ad835565573e89f27d0c57afff6f4675ccaf323410091afe9acc178`.
+The full-run test binary is `a2766cacf5f80104ae36587a76317c9a6e135cae44b6f09fbe025cbb1a5bac00`;
+the final focused test binary is `d768ce90777aae6b624d12790fae8f61eac36d99ac515fd934a5b770325ff8c4`.
+Their source-before JSON hashes are respectively
+`066d8915f1a42ec06cb33c0d1135f6c53117793e13302d1e7a9ccad5653f7c4f`
+and `da07864e41ff5af5cb668428622c6623e4d5b3be771576f766ec15695c43326f`.
+The final focused entry/overlay/original-helper hashes are
+`1b4626209c0795240ba12831127115762d8ceaefa8dbdd527fd53cd913cbda16`,
+`c93fa0fe3649ec1829e23c36772f7aacf0501967e611b50743d4e897e8003e3e`, and
+`ffaeeab20592d5f8c1fcfeefdc8fff32e4d80e669f91954245e341510800d421`;
+exact compiler/run argv and orchestration bytes are retained with each receipt.
+The temporary entry only calls the existing helper and is not a new product gate.
+
+Canonical complete rerun from this worktree (allocates fresh owned resources):
+
+```sh
+CICADA_NATIVE_PAIR_LICENSES_DIR=/home/zyf/Cicada/.local/artifacts/codex-startup-fix/licenses-x4gog722 \
+  bash scripts/test-native-pair.sh --node-pair-trust
+```
+
+Focused receipts retain `run.py` and command JSON; replay requires copying them
+(and the last run's overlay/entry/input files) into a **fresh private run directory**.
+Do not rerun an old directory in place. Receipt/source/command hashes identify
+exact tested inputs; later documentation changes do not retroactively change them.
+Windows DPAPI, cross-user ACL, native Windows GUI/Enter/IME, complete physical
+removal/reinstall, public-IP deployment, physical ARM, real provider/model turns
+and native A/B business communication are **NOT_RUN** for this new flow. These
+runs do not execute or qualify the candidate ZIP/Windows executable. Historical
+manual-pin and old direct-IP/full-Codex receipts retain their original scope.
