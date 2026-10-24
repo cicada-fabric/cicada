@@ -246,6 +246,9 @@ type Action struct {
 	// Node approval names the exact authenticated candidate displayed to the
 	// user. The controller rechecks it; a UI checkbox never grants authority.
 	NodeCode            string
+	DevicePairingCode   string
+	NodePairingReviewID string
+	ConfirmNodePairing  bool
 	NodeReviewID        string
 	ConfirmNodeIdentity bool
 	ConfirmNodeAccess   bool

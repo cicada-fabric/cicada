@@ -32,6 +32,7 @@ type nodeAuthorityState struct {
 	DeviceID              string                       `json:"device_id"`
 	DeviceKeyID           string                       `json:"device_key_id"`
 	OwnerKeyID            string                       `json:"owner_key_id"`
+	PairTrust             *nodePairTrustState          `json:"pair_trust,omitempty"`
 	Proposal              *nodeProposal                `json:"proposal,omitempty"`
 	Grant                 *wire.AppNodeChallenge       `json:"grant,omitempty"`
 	Pending               *nodeOperation               `json:"pending,omitempty"`
@@ -64,6 +65,7 @@ type nodeClientState struct {
 }
 
 type nodeOperation struct {
+	PairTrustRecovery        *nodePairTrustRecoveryRecord   `json:"pair_trust_recovery,omitempty"`
 	Kind                     string                         `json:"kind"`
 	Operation                string                         `json:"operation"`
 	GrantID                  string                         `json:"grant_id"`
@@ -135,6 +137,9 @@ func (c *nativeController) persistNode() error {
 }
 
 func (c *nativeController) persistNodeRecovery() error {
+	if t := c.node.PairTrust; t != nil && t.Recovery != nil {
+		return ErrInvalidAction
+	}
 	var value any
 	if c.nodeRecovery != nil {
 		value = c.nodeRecovery
@@ -201,10 +206,15 @@ func (c *nativeController) loadNodeState() error {
 	if ok, err := c.loadNodeRecord(nodeRecoveryNamespace, &c.nodeRecoveryVer, &recovery); err != nil {
 		return err
 	} else if ok {
-		if recovery.Operation != wire.OperationAppNodeReconcile || c.validateNodeStoredPacket(&recovery) != nil {
+		if recovery.PairTrustRecovery != nil {
+			if err := c.restoreNodePairRecovery(recovery); err != nil {
+				return err
+			}
+		} else if recovery.Operation != wire.OperationAppNodeReconcile || c.validateNodeStoredPacket(&recovery) != nil {
 			return appvault.ErrScopeMismatch
+		} else {
+			c.nodeRecovery = &recovery
 		}
-		c.nodeRecovery = &recovery
 	}
 	var confirmation nodeConfirmationRecord
 	if ok, err := c.loadNodeRecord(nodeConfirmationNamespace, &c.nodeConfirmationVer, &confirmation); err != nil {
@@ -227,6 +237,9 @@ func (c *nativeController) loadNodeState() error {
 	if err := c.restoreOwnerDirectory(); err != nil {
 		return err
 	}
+	if err := c.restoreNodePairTrust(); err != nil {
+		return err
+	}
 	return c.restoreNodeReceipts()
 }
 
@@ -244,6 +257,9 @@ func (c *nativeController) nodeScopeIdentityMatches(s e2ee.OwnerAppNodeScope) bo
 func (c *nativeController) validateNodeStoredPacket(p *nodeOperation) error {
 	if p == nil {
 		return nil
+	}
+	if p.PairTrustRecovery != nil {
+		return wire.ErrInvalid
 	}
 	limit := wire.MaxAppNodeOriginalBytes
 	if p.Operation == wire.OperationAppNodeReconcile {
@@ -287,6 +303,7 @@ func (c *nativeController) validateNodeStoredPacket(p *nodeOperation) error {
 }
 
 func (c *nativeController) clearNodeRuntime() {
+	c.clearNodePairTrust()
 	operations := []*nodeOperation{c.node.Pending, c.nodeRecovery, c.node.OwnerDirectory}
 	for i := range c.node.OwnerDirectoryUnknown {
 		operations = append(operations, &c.node.OwnerDirectoryUnknown[i].Original)

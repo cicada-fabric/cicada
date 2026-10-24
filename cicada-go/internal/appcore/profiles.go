@@ -193,6 +193,11 @@ func (c *nativeController) resumeProfileAt(ctx context.Context, id, address stri
 		}
 		c.requireSessionRecheck()
 	}
+	if c.nodePairTrustPending() {
+		if err := c.recoverNodePairing(ctx); err != nil {
+			return err
+		}
+	}
 	if c.hasPairPending() {
 		if err := c.recoverPair(ctx); err != nil {
 			return err

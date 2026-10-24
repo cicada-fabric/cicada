@@ -12,6 +12,9 @@ import (
 )
 
 func (c *nativeController) initializeNode(ctx context.Context) {
+	if c.nodePairTrustBusy() && !c.pairTrustWorking {
+		return
+	}
 	if !c.nodeAccountReady() || !c.canBeginOperation() || c.hasNodePending() {
 		return
 	}
@@ -22,6 +25,9 @@ func (c *nativeController) initializeNode(ctx context.Context) {
 		}
 	}
 	if !c.nodeAvailable || c.nodeContextChecked {
+		if c.nodeAccountReady() && !c.pairTrustDiscovery && c.state.Transport != nil {
+			_ = c.discoverNodePairTrust(ctx)
+		}
 		return
 	}
 	if c.nodeVer == 0 {
@@ -33,6 +39,9 @@ func (c *nativeController) initializeNode(ctx context.Context) {
 	}
 	if c.node.Grant != nil {
 		_ = c.refreshNode(ctx)
+	}
+	if !c.pairTrustDiscovery && c.state.Transport != nil {
+		_ = c.discoverNodePairTrust(ctx)
 	}
 	c.publish()
 }
@@ -312,6 +321,11 @@ func (c *nativeController) acceptNodeCounters(result wire.AppNodeResult, fresh b
 			return wire.ErrInvalid
 		}
 		c.node.Client = nodeClientState{Initialized: true, Epoch: got.SessionEpoch, NextRequest: got.LastRequestSequence + 1, NextResponse: got.NextResponseSequence}
+		return nil
+	}
+	if c.observesReservedNodeConfirmation(got) {
+		// A status counter is not the exact original receipt. Preserve the
+		// reserved local slot until the independently opened ACK response.
 		return nil
 	}
 	if got.SessionEpoch != c.node.Client.Epoch || got.LastRequestSequence+1 != c.node.Client.NextRequest || got.NextResponseSequence != c.node.Client.NextResponse {

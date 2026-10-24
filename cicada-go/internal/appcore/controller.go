@@ -37,11 +37,15 @@ type Config struct {
 }
 
 type nativeController struct {
-	cfg                 Config
-	connectionHTTP      HTTPDoer
-	directConnection    bool
-	connectionTransport *localTransportRecord
-	transportState      HubTransportState
+	cfg                   Config
+	connectionHTTP        HTTPDoer
+	directConnection      bool
+	connectionTransport   *localTransportRecord
+	transportState        HubTransportState
+	pairTrustWorking      bool
+	pairTrustAvailable    bool
+	pairTrustDiscovery    bool
+	pairTrustAvailability string
 
 	actionMu sync.Mutex
 	lifetime context.Context
@@ -161,6 +165,7 @@ func (c *nativeController) Snapshot() Snapshot {
 		}
 	}
 	expireNodeView(&view, c.cfg.Now().UTC())
+	expireNodePairingView(&view, c.cfg.Now().UTC())
 	expirePairView(&view, c.cfg.Now().UTC())
 	expireLocalCollaborationView(&view, c.cfg.Now().UTC())
 	expireOwnerEndpointView(&view, c.cfg.Now().UTC())
@@ -187,6 +192,9 @@ func (c *nativeController) Dispatch(ctx context.Context, action Action) (dispatc
 	c.snapshotMu.RUnlock()
 	if closed {
 		return ErrClosed
+	}
+	if c.nodePairTrustBusy() && (nodeActionKind(action.Kind) || pairActionKind(action.Kind) || localCollaborationActionKind(action.Kind) || ownerEndpointActionKind(action.Kind) || action.AutoNodeStatus != nil) {
+		return ErrInvalidAction
 	}
 	if action.AutoNodeStatus != nil && action.Kind != ActionRefreshNode {
 		return ErrInvalidAction
@@ -229,6 +237,16 @@ func (c *nativeController) Dispatch(ctx context.Context, action Action) (dispatc
 	}
 
 	switch action.Kind {
+	case ActionReviewNodePairing:
+		return c.reviewNodePairing(operationCtx, action.DevicePairingCode)
+	case ActionApproveNodePairing:
+		return c.approveNodePairing(operationCtx, action.NodePairingReviewID, action.ConfirmNodePairing)
+	case ActionRefreshNodePairing:
+		return c.refreshNodePairing(operationCtx)
+	case ActionRecoverNodePairing:
+		return c.recoverNodePairing(operationCtx)
+	case ActionCancelNodePairing:
+		return c.cancelNodePairing(operationCtx, action.NodePairingReviewID)
 	case ActionPrepareLocalCollaboration:
 		return c.prepareLocalCollaboration(operationCtx, action.LocalCollaboration)
 	case ActionActivateLocalCollaboration:

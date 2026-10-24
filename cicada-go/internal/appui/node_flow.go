@@ -86,7 +86,7 @@ func NodeFlow(s appcore.Snapshot) NodeSetupFlow {
 // NodeCardVisible keeps authenticated saved connection information independent
 // of the current account flow. Visibility never establishes current access.
 func NodeCardVisible(s appcore.Snapshot, account SetupFlow) bool {
-	return s.Node.Binding != nil || s.Node.Pending || account.Stage == "node-diagnostic" ||
+	return s.Node.Pairing != nil || s.Node.Binding != nil || s.Node.Pending || account.Stage == "node-diagnostic" ||
 		(account.Stage == "ready" && s.Node.Available)
 }
 

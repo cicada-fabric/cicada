@@ -5,6 +5,20 @@ package appui
 func ErrorText(locale Locale, code string) string {
 	id := msgRequestFailed
 	switch code {
+	case "APP_NODE_PAIRING_UNKNOWN":
+		id = "node_pairing.recovery_body"
+	case "APP_NODE_PAIRING_INVALID", "APP_NODE_PAIRING_CODE_INVALID":
+		id = "node_pairing.invalid"
+	case "APP_NODE_PAIRING_TRUST_MISMATCH":
+		id = "node_pairing.trust_mismatch"
+	case "APP_NODE_PAIRING_UNAVAILABLE":
+		id = "node_pairing.unavailable"
+	case "APP_NODE_PAIRING_EXPIRED":
+		id = "node_pairing.expired"
+	case "APP_NODE_PAIRING_REFUSED":
+		id = "node_pairing.refused"
+	case "APP_NODE_PAIRING_STORAGE_FULL":
+		id = "node_pairing.storage_full"
 	case "APP_LOCAL_COLLABORATION_UNAVAILABLE":
 		id = "local_collaboration.unavailable"
 	case "APP_LOCAL_COLLABORATION_UNKNOWN", "APP_LOCAL_COLLABORATION_RESPONSE_UNCONFIRMED":

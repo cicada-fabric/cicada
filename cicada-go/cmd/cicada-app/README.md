@@ -9,7 +9,9 @@ therefore stays empty unless a future authorized provider supplies objects.
 Hub status or sends a request.
 
 The UI dispatches one typed action at a time on a worker goroutine. The window
-event loop does not perform network or KDF work and does not poll for updates.
+event loop does not perform network or KDF work. While an approved device
+pairing awaits the Node, a bounded five-second typed status read runs on the
+same worker; uncertainty, expiry, logout or closing the window stops it.
 Closing the window cancels the controller context, waits for the in-flight
 action to return, closes its local handles, and exits the process. Gio's
 platform main loop remains the final call on the process main goroutine.
@@ -34,6 +36,81 @@ session readiness. Account readiness still grants no Manager authorization.
 The native UI presents connection, local keys, account and recovery steps in
 English and Chinese with a shared card and button style. Actual Windows visuals,
 DPAPI and ACL execution require a Windows acceptance run.
+
+The direct trusted-Hub profile also offers one device-pairing-code field. Paste
+the Node's `cicada-npt1.` code, review the authenticated computer name and approve
+once. The original Owner signs locally. The whole code and its local secret are
+never sent to Hub. Matching includes the saved logical origin and complete
+signed transport descriptor, including CA/SPKI and epoch. A successful Owner
+approval displays a waiting state; only the authenticated Node ACK and exact
+original Client confirmation receipt establish the connected binding. Current
+business status remains a separate authenticated read. Existing short-code
+pairing is available through an explicit advanced compatibility choice.
+
+The original pairing request, secret, finite consent, proof/capsule and reserved
+confirmation stay in the existing encrypted Node record. NPT recovery and N3
+recovery reuse the existing recovery namespace mutually exclusively, keeping
+the vault's sixteen-record limit. Recovery's local DTO references the durable
+original by digest instead of duplicating its base64 bytes; canonical body-digest
+verification reconstructs only the typed DTO, never reseals the saved packet.
+Authenticated responses are durable before application, and storage-budget
+checks include future response, recovery and immutable confirmation records.
+No vault bounds are increased. Per-operation local response ceilings are below
+the shared transport limits; an oversized or unauthenticated response preserves
+the uncertain original. A request-specific no-effect fence is followed by a
+fresh attempt observation and does not invent an attempt terminal state.
+
+Failed INITIAL pairing cleanup first recovers the exact sealed negative Client
+receipt, then uses the existing authenticated cancellation/status flow for only
+that unfinished original grant. It preserves the Node and its keys and allows
+a new code. Closing App does not send cancellation or stop Hub/Node; account
+logout and server revocation retain their separate safety behavior. The shared
+capability remains unavailable until the integrated Hub and Node producer
+explicitly enable it; synthetic App tests do not establish service, TLS or
+physical Windows acceptance.
+
+The 2026-10-24 App producer checks used pinned Go 1.27.3 on dirty baseline
+`1bba17666ee68843f58e3fa7ea74488b102f235d`, with an identical before/after
+module manifest SHA-256
+`a5f9e0da083cb3779806f0c07f0605e3ee2fc378ce0ec4659c9c2f7dffd63d79`.
+Core targeted normal checks passed 101 tests; vault/UI normal and race each
+passed 263, with zero failures/skips. The NPT core race aggregate timed out at
+480 seconds after 29 passing test events; that command remains **FAIL_TIMEOUT**.
+Only its six unfinished tests were continued in two successful groups. All 22
+NPT top-level tests and 35 unique test events completed across those runs, with
+no test failure, skip or data-race report. Linux/Windows vet and the Windows
+amd64 CGO-disabled cross-build exited zero. Physical Windows, real Runtime,
+new three-component TLS/Docker integration and public HTTPS remain NOT_RUN
+in this App producer scope.
+
+Actual PQ/vault tests measured a 744,647-byte maximum main record and a
+704,203-byte recovery record, including maximum escaped candidate fields and
+lost-response recovery. The earlier 1,397,132-byte overflow is retained as a
+failed precheck. Evidence lives under
+`~/Cicada/.local/evidence/n2-app/node-pairing-consumer-1bba176-20261024/`;
+`result.json` SHA-256 is
+`492c1963df740a1a365984d864252e4bd7b16f737d4a10e75f2c89218fc79478`.
+This validation prose was added after the frozen checks; implementation and
+test bytes remain those in the tested manifest. The cross-built executable is
+a validation artifact, not the final delivery package.
+
+The same checkpoint also fixes an outer-recovery query lost before an offline
+period longer than sixty seconds. If no outer response has been saved, only
+that expired observation may get a fresh request ID/nonce/time for the exact
+same original target. It is persisted before POST. Original packets, consent,
+S/proof/capsule, confirmation and finite deadlines stay unchanged. An already
+durable outer response is opened historically before any query is replaced.
+The delta passed five targeted normal and five race tests, both platform vets
+and the Windows cross-build. Its before/after manifest is
+`59682f727760a73dc73e00d93e77c950f9c155d18b574aaaa285f2d6d9e97889`;
+`~/Cicada/.local/evidence/n2-app/node-pairing-outer-age-delta-20261024/result.json`
+has SHA-256
+`8d5ae5bf28e5fdfd7c8afdba66b7143a8175dff2780637fe1dc903234c8f2e66`.
+Only recovery-response implementation and its crypto-actor tests changed from
+the previous frozen checks; the original failures and results remain intact.
+These two new cases bring the covered NPT top-level total to 24. This final
+validation paragraph was added after the delta checks; physical/native and
+three-component integration remain separately unrun in this producer scope.
 
 The 2026-10-15 local-profile checkpoint passed focused Linux tests (49 passed,
 one optional OpenSSL-fixture skip), race tests (40 passed, the same skip), Linux

@@ -63,6 +63,9 @@ func (c *nativeController) localCollaborationReady(ctx context.Context) error {
 }
 
 func (c *nativeController) initializeLocalCollaboration(ctx context.Context) {
+	if c.nodePairTrustBusy() {
+		return
+	}
 	if !c.nodeAccountReady() || c.localCollaborationNodeID() == "" || c.hasPairPending() || c.hasNodePending() || !canBeginOperation(c.state.Pending) || c.state.Recovery != nil {
 		return
 	}

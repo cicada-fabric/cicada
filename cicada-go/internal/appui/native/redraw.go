@@ -38,6 +38,9 @@ func scheduleSnapshotRedraw(gtx layout.Context, snapshot appcore.Snapshot, now t
 		consider(candidate.ExpiresAt, reviewLive)
 		consider(candidate.AuthorizationExpiresAt, reviewLive)
 	}
+	if pairing := snapshot.Node.Pairing; pairing != nil {
+		consider(pairing.ExpiresAt, !pairing.DeadlineReached && (pairing.State == "OWNER_APPROVED" || slices.Contains(snapshot.AvailableActions, appcore.ActionApproveNodePairing)))
+	}
 	consider(snapshot.Node.Connectivity.FreshUntil, snapshot.Node.ConnectionState() == appcore.NodeOnline)
 	consider(snapshot.Pair.ReviewExpiresAt, slices.Contains(snapshot.AvailableActions, appcore.ActionCompletePair) || slices.Contains(snapshot.AvailableActions, appcore.ActionApprovePairSlot))
 	consider(snapshot.Pair.PeerExpiresAt, snapshot.Pair.Current)

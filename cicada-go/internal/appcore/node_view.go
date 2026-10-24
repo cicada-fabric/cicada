@@ -18,6 +18,7 @@ type NodeSetupSnapshot struct {
 	Binding      *NodeBindingSnapshot     `json:"binding,omitempty"`
 	Connectivity NodeConnectivitySnapshot `json:"connectivity"`
 	ErrorCode    string                   `json:"error_code,omitempty"`
+	Pairing      *NodePairingSnapshot     `json:"pairing,omitempty"`
 }
 
 // ReviewID identifies all authenticated authorization claims, including the
@@ -147,6 +148,10 @@ func expireNodeView(view *Snapshot, now time.Time) {
 }
 
 func cloneNodeSnapshot(n NodeSetupSnapshot) NodeSetupSnapshot {
+	if n.Pairing != nil {
+		pairing := *n.Pairing
+		n.Pairing = &pairing
+	}
 	if n.Candidate != nil {
 		candidate := *n.Candidate
 		n.Candidate = &candidate
@@ -250,6 +255,9 @@ func (c *nativeController) nodeCanStartInitial() bool {
 }
 
 func (c *nativeController) nodeActions() []ActionKind {
+	if c.nodePairTrustBusy() && !c.pairTrustWorking {
+		return nil
+	}
 	if c.storageFault || !c.connected || c.device == nil || c.vault == nil {
 		return nil
 	}
@@ -347,4 +355,5 @@ func (c *nativeController) populateNode(view *Snapshot) {
 		}
 	}
 	view.Node = n
+	c.populateNodePairing(view)
 }

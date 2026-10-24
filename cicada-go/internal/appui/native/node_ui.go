@@ -14,7 +14,7 @@ import (
 	"github.com/cicada-ai/cicada/internal/appui"
 )
 
-func (v *view) nodeSection(s appcore.Snapshot) layout.Widget {
+func (v *view) legacyNodeSection(s appcore.Snapshot) layout.Widget {
 	return func(gtx layout.Context) layout.Dimensions {
 		flow := appui.NodeFlow(s)
 		updating := v.updates.showingProgress(s, time.Now())

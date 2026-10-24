@@ -334,6 +334,35 @@ func (v *Vault) CompareAndSwapState(namespace string, expectedVersion uint64, pa
 	return current.version + 1, nil
 }
 
+// CheckStateUpdates checks the existing per-record, record-count and complete
+// encrypted payload budgets without writing or changing any CAS generation.
+// Callers still persist their exact request before network. It reserves no
+// permission and does not replace CompareAndSwapState's concurrency check.
+func (v *Vault) CheckStateUpdates(updates map[string][]byte) error {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if err := v.requireOpen(); err != nil {
+		return err
+	}
+	states := cloneStates(v.states)
+	defer clearStates(states)
+	for namespace, payload := range updates {
+		if !validNamespace(namespace) || len(payload) > maxStateBytes {
+			return ErrInvalidVault
+		}
+		state := states[namespace]
+		if state.version == 0 {
+			state.version = 1
+		}
+		clear(state.payload)
+		state.payload = append([]byte(nil), payload...)
+		states[namespace] = state
+	}
+	data, err := encodePayload(v.entries, states)
+	clear(data)
+	return err
+}
+
 func (v *Vault) Close() error {
 	if v == nil {
 		return nil

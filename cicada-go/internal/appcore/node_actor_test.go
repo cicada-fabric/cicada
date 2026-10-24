@@ -24,6 +24,7 @@ import (
 // Store service. It uses real shared PQ packets, proofs and the frozen Store
 // binding DTO. It is not Hub Guard, process, Windows or HTTPS acceptance.
 type nodeActorFixture struct {
+	candidateOverride         *e2ee.OwnerAppNodeCandidate
 	t                         *testing.T
 	n2                        *activationActorFixture
 	c                         *nativeController
@@ -206,6 +207,10 @@ func (f *nodeActorFixture) Do(req *http.Request) (*http.Response, error) {
 				claims.Candidate = &e2ee.OwnerAppNodeCandidate{RequestID: "nctrlreq_synthetic", Version: 1, Mode: "INITIAL", State: "PENDING", HubID: f.scope.HubID, NodeID: "synthetic-node", NodeName: "Synthetic Ubuntu Node",
 					NodePublic: f.nodeKey.Public(), NodeKeyFingerprint: nodewire.IdentityFingerprint(f.nodeKey.Public()), NodeKeyEpoch: 1, HubNodeControlPublic: f.controlKey.Public(), HubNodeControlKeyVersion: 1,
 					HubNodeControlFingerprint: nodewire.IdentityFingerprint(f.controlKey.Public()), CandidateDigest: strings.Repeat("c", 64), CodeDigest: codeDigest, ExpiresAt: f.stamp(f.n2.now.Add(10 * time.Minute))}
+				if f.candidateOverride != nil {
+					candidate := *f.candidateOverride
+					claims.Candidate = &candidate
+				}
 			}
 			ch := wire.AppNodeChallenge{Format: wire.AppNodeChallengeFormat, RequestID: intent.RequestID, RequestPacketDigest: digest, Claims: claims, ObservedAt: f.stamp(f.n2.now)}
 			f.proposal = &ch

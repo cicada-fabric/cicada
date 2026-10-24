@@ -106,6 +106,10 @@ type view struct {
 	details              bool
 	consent              widget.Bool
 	nodeCode             widget.Editor
+	devicePairingCode    widget.Editor
+	nodePairingMode      widget.Clickable
+	legacyNodePairing    bool
+	pairingPoll          nodePairingPollScheduler
 	nodeIdentityConsent  widget.Bool
 	nodeAccessConsent    widget.Bool
 	nodeReviewID         string
@@ -160,6 +164,7 @@ func newView(controller appcore.Controller, ctx context.Context, cancel context.
 	v.hubAddress.SingleLine, v.hubAddress.MaxLen = true, 128
 	v.activation.MaxLen = appui.ActivationCodeInputLimit()
 	v.nodeCode.SingleLine, v.nodeCode.MaxLen = true, 32
+	v.devicePairingCode = newDevicePairingEditor()
 	v.username.MaxLen, v.password.MaxLen = 128, 1024
 	v.pairLabel.MaxLen, v.pairLabel.SingleLine = 128, true
 	v.activation.InputHint = 1
@@ -293,8 +298,10 @@ func (v *view) layout(gtx layout.Context) {
 	// Foreground controls above have already processed this frame's clicks.
 	// The background due decision can neither block them nor issue I/O here.
 	if presentation.InformationVisible {
+		v.scheduleNodePairingPoll(gtx, raw)
 		v.scheduleAutomaticNodeStatus(gtx)
 	} else {
+		v.pairingPoll.reset()
 		v.updates.pauseForAccountScreen()
 	}
 }
@@ -565,9 +572,12 @@ func (v *view) resetPresentationInputs() {
 	v.username.SetText("")
 	v.password.SetText("")
 	v.nodeCode.SetText("")
+	v.devicePairingCode.SetText("")
 	v.consent.Value = false
 	v.nodeIdentityConsent.Value, v.nodeAccessConsent.Value = false, false
 	v.nodeReviewID = ""
+	v.legacyNodePairing = false
+	v.pairingPoll.reset()
 	v.pairLabel.SetText("")
 	v.pairBootstrapConsent.Value, v.pairSlotAConsent.Value, v.pairSlotBConsent.Value, v.pairRevokeConsent.Value = false, false, false, false
 	v.pairReviewID, v.pairStateReviewID = "", ""
@@ -753,6 +763,8 @@ func (v *view) dispatchForeground(action appcore.Action) {
 	action.ActivationCode = ""
 	action.Username = ""
 	action.NodeCode = ""
+	action.DevicePairingCode = ""
+	action.BootstrapCode = ""
 	v.statusMu.Lock()
 	v.failed = err != nil
 	v.uiErrorCode = ""
@@ -823,6 +835,7 @@ func (v *view) clearSensitiveInputs() {
 	v.username.SetText("")
 	v.password.SetText("")
 	v.nodeCode.SetText("")
+	v.devicePairingCode.SetText("")
 	v.nodeIdentityConsent.Value, v.nodeAccessConsent.Value = false, false
 	v.cancel()
 }

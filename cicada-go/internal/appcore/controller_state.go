@@ -520,6 +520,16 @@ func (c *nativeController) publish() {
 		view.AvailableActions = append(view.AvailableActions, c.nodeActions()...)
 		view.AvailableActions = append(view.AvailableActions, c.pairActions()...)
 		view.AvailableActions = append(view.AvailableActions, c.ownerEndpointActions()...)
+		view.AvailableActions = append(view.AvailableActions, c.nodePairingActions()...)
+	}
+	if c.nodePairTrustBusy() {
+		kept := view.AvailableActions[:0]
+		for _, kind := range view.AvailableActions {
+			if !nodeActionKind(kind) && !pairActionKind(kind) && !localCollaborationActionKind(kind) && !ownerEndpointActionKind(kind) {
+				kept = append(kept, kind)
+			}
+		}
+		view.AvailableActions = kept
 	}
 	if c.storageFault {
 		view.Phase = PhaseError
