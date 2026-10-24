@@ -110,6 +110,7 @@ type machineNodeControlState struct {
 	PendingLocalEndpointIntentID  string                                    `json:"pending_local_endpoint_intent_id,omitempty"`
 	Version                       int                                       `json:"version"`
 	NodeID                        string                                    `json:"node_id"`
+	NodePairTrustAttemptID        string                                    `json:"node_pair_trust_attempt_id,omitempty"`
 	HubOrigin                     string                                    `json:"hub_origin"`
 	HubCandidateID                string                                    `json:"hub_candidate_id,omitempty"`
 	HubCandidateFingerprint       string                                    `json:"hub_candidate_fingerprint,omitempty"`

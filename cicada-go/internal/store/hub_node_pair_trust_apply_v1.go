@@ -73,7 +73,7 @@ func nodePairApply(tx *sql.Tx, in HubNodePairTrustInput, r *nodePairTrustRecord)
 			return wire.NodePairTrustResult{}, err
 		}
 	case wire.OperationNodePairTrustPoll:
-		if r.OOB == "" {
+		if r.OOB == "" && !terminal {
 			return wire.NodePairTrustResult{}, ErrNodePairTrustRejected
 		}
 	case wire.OperationOwnerNodePairTrustLookup:

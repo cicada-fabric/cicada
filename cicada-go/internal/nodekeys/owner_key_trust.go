@@ -29,6 +29,18 @@ var (
 // This operation stores no private key and cannot reactivate a revoked key.
 func (s *CryptoState) TrustOwnerApprovalKeyLocal(ownerID, keyID string,
 	expectedPublic e2ee.PublicIdentity, expectedFingerprint string) (*OwnerKeyTrust, error) {
+	return s.trustOwnerApprovalKeyLocal(ownerID, keyID, expectedPublic, expectedFingerprint, false)
+}
+
+// TrustOwnerApprovalKeyForPairLocal is the automatic independent-S ceremony
+// boundary. Unlike explicit local administration, it cannot install another
+// key ID for an Owner with any existing ACTIVE or REVOKED trust record.
+func (s *CryptoState) TrustOwnerApprovalKeyForPairLocal(ownerID, keyID string,
+	expectedPublic e2ee.PublicIdentity, expectedFingerprint string) (*OwnerKeyTrust, error) {
+	return s.trustOwnerApprovalKeyLocal(ownerID, keyID, expectedPublic, expectedFingerprint, true)
+}
+func (s *CryptoState) trustOwnerApprovalKeyLocal(ownerID, keyID string,
+	expectedPublic e2ee.PublicIdentity, expectedFingerprint string, rejectOther bool) (*OwnerKeyTrust, error) {
 	if err := validateCryptoToken("Owner ID", ownerID); err != nil {
 		return nil, err
 	}
@@ -61,6 +73,15 @@ func (s *CryptoState) TrustOwnerApprovalKeyLocal(ownerID, keyID string,
 	}
 	var trust *OwnerKeyTrust
 	err = s.writeTx(context.Background(), func(conn *sql.Conn) error {
+		if rejectOther {
+			var conflict bool
+			if err := conn.QueryRowContext(context.Background(), `SELECT EXISTS(SELECT 1 FROM node_crypto_owner_key_trust WHERE owner_id=? AND key_id!=?)`, ownerID, keyID).Scan(&conflict); err != nil {
+				return err
+			}
+			if conflict {
+				return ErrNodeOwnerKeyTrustConflict
+			}
+		}
 		current, err := loadNodeOwnerKeyTrust(context.Background(), conn, ownerID, keyID)
 		if err == nil {
 			if current.State == NodeOwnerKeyTrustRevoked {

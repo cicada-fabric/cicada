@@ -40,6 +40,8 @@ func runMachineAgentWithContext(parent context.Context, args []string, pinned *m
 	name := flags.String("name", envOr("CICADA_MACHINE_NAME", ""), "machine display name")
 	controlURL := flags.String("control-url", envOr("CICADA_CONTROL_URL", "http://127.0.0.1:8787"), "Control base URL")
 	pqConfig := flags.String("pqtls-config", strings.TrimSpace(os.Getenv("CICADA_NODE_PQTLS_CONFIG")), "private enrolled Node PQ TLS configuration")
+	hubAddress := flags.String("hub-address", "", "canonical numeric Hub socket for independent Owner pairing")
+	retryPairing := flags.Bool("retry-pairing", false, "explicit new code after authenticated old pairing termination; preserve identities")
 	hubConnectionFile := flags.String("hub-connection-file", "", "independently supplied public native Hub transport descriptor")
 	hubDialAddress := flags.String("hub-dial-address", "", "explicit canonical numeric Hub socket locator")
 	stateDir := flags.String("state-dir", machineAgentStateDir(), "durable Node state directory")
@@ -81,7 +83,7 @@ func runMachineAgentWithContext(parent context.Context, args []string, pinned *m
 		return localNodeConfigError("MCP discovery paths require --user-root")
 	}
 	if *hubsFile != "" {
-		if *hubConnectionFile != "" || *hubDialAddress != "" {
+		if *hubAddress != "" || *retryPairing || *hubConnectionFile != "" || *hubDialAddress != "" {
 			return errors.New("multi-Hub uses per-Hub native transport configuration")
 		}
 		if pinned != nil || *stateRoot == "" || !*relayOnly || *lanDiscovery || len(flags.Args()) != 0 {
@@ -109,6 +111,24 @@ func runMachineAgentWithContext(parent context.Context, args []string, pinned *m
 			explicitOrigin = true
 		}
 	})
+	if *interval < time.Second || *stateDir == "" {
+		return errors.New("valid Node state directory and heartbeat interval of at least 1s are required")
+	}
+	if *retryPairing && *hubAddress == "" {
+		return errors.New("--retry-pairing requires the original --hub-address")
+	}
+	if *hubAddress != "" {
+		if pinned != nil || *hubConnectionFile != "" || *hubDialAddress != "" || *pqConfig != "" {
+			return errors.New("--hub-address requires one original Node state, without alternate transport configuration")
+		}
+		expected, e := normalizeControlURL(*controlURL)
+		if e != nil {
+			return e
+		}
+		if e = prepareMachineNodePairTrust(parent, *stateDir, *id, *name, *hubAddress, expected, explicitOrigin, *once, *retryPairing, os.Stderr); e != nil {
+			return e
+		}
+	}
 	nativeSelection, selectedOrigin, err := resolveMachineNativeSelection(*stateDir, *id, *hubConnectionFile, *hubDialAddress, *controlURL, *pqConfig, explicitOrigin)
 	if err != nil {
 		return err
@@ -182,6 +202,9 @@ func runMachineAgentWithContext(parent context.Context, args []string, pinned *m
 		return errors.New("shared WriterRoot is quarantined after restore; reconcile shared fences before starting any Hub Agent")
 	}
 	if err := rejectMachineNodePendingRecovery(*stateDir, *id); err != nil {
+		return err
+	}
+	if err := requireMachineNodePairAdmission(*stateDir, *id); err != nil {
 		return err
 	}
 	var nodeIdentity *machineNodeIdentity

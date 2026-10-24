@@ -277,6 +277,9 @@ func clientCommand(args []string) error {
 		if len(args) >= 2 && args[1] == "agent" {
 			return runMachineAgent(args[2:])
 		}
+		if len(args) >= 2 && args[1] == "pairing-code" {
+			return machineNodePairingCodeCommand(args[2:], os.Stdout)
+		}
 		if len(args) >= 2 && args[1] == "node-control" {
 			return machineNodeControlOperatorCommand(args[2:], os.Stdout)
 		}
@@ -290,7 +293,7 @@ func clientCommand(args []string) error {
 			return printJSON(control.DiscoverMachineCapabilities())
 		}
 		if len(args) != 2 || args[1] != "list" {
-			return errors.New("usage: cicada machine list|discover|discover-lan|agent|trust-owner-key|revoke-owner-key [options]")
+			return errors.New("usage: cicada machine list|discover|discover-lan|agent|pairing-code|trust-owner-key|revoke-owner-key [options]")
 		}
 		method, path = http.MethodGet, "/v1/machines"
 	case "worker":

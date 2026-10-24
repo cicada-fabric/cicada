@@ -19,7 +19,7 @@ const (
 	NodePairTrustRevoked                         = "REVOKED"
 	NodePairTrustFenced                          = "FENCED"
 	NodePairTrustRecovered                       = "RECOVERED"
-	NodePairTrustPublicAvailable                 = false
+	NodePairTrustPublicAvailable                 = true
 	NodePairTrustDescriptorPath                  = "/v2/hub/transport"
 	NodePairTrustCapabilitiesPath                = "/v2/node/pair-trust/capabilities"
 	OperationNodePairTrustStart                  = "node.pair-trust.start"
@@ -149,9 +149,30 @@ type NodePairTrustStart struct {
 
 // Existing bindings use this strictly authenticated start instead of INITIAL.
 type NodePairTrustExistingStart struct {
-	Format   string               `json:"format"`
-	Context  NodePairTrustContext `json:"context"`
-	IssuedAt string               `json:"issued_at"`
+	Format          string                        `json:"format"`
+	Context         NodePairTrustContext          `json:"context"`
+	IssuedAt        string                        `json:"issued_at"`
+	RetainedBinding *NodePairTrustRetainedBinding `json:"retained_binding,omitempty"`
+}
+
+// The exact subset retained by historical Node-Control local state. Unknown
+// Owner/device/credential versions are read from the unchanged original Hub
+// binding, never invented by the Node. CredentialDigest is not a bearer.
+type NodePairTrustRetainedBinding struct {
+	NodeID                    string              `json:"node_id"`
+	OwnerBindingID            string              `json:"owner_binding_id"`
+	BindingVersion            uint64              `json:"binding_version"`
+	NodeKeyID                 string              `json:"node_key_id"`
+	NodeKeyVersion            uint64              `json:"node_key_version"`
+	NodeKeyEpoch              uint64              `json:"node_key_epoch"`
+	NodeKeyFingerprint        string              `json:"node_key_fingerprint"`
+	HubNodeControlPublic      e2ee.PublicIdentity `json:"hub_node_control_public_identity"`
+	HubNodeControlKeyVersion  uint64              `json:"hub_node_control_key_version"`
+	HubNodeControlFingerprint string              `json:"hub_node_control_fingerprint"`
+	ApprovedRequestID         string              `json:"approved_request_id"`
+	ApprovedRequestVersion    uint64              `json:"approved_request_version"`
+	ApprovedCandidateDigest   string              `json:"approved_candidate_digest"`
+	CredentialDigest          string              `json:"credential_digest"`
 }
 
 type NodePairTrustCommit struct {

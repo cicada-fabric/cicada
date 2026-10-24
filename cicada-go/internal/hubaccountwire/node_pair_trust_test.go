@@ -137,8 +137,8 @@ func TestNodePairTrustIndependentCodeCapsuleACKAndOriginalPacket(t *testing.T) {
 			t.Fatal("secret diagnostic escaped redaction")
 		}
 	}
-	if InstallationPublicAvailable || NodePairTrustPublicAvailable || InstallationContractRevision != "installation-registration-v1.1" {
-		t.Fatal("pure checkpoint changed availability or C0")
+	if InstallationPublicAvailable || !NodePairTrustPublicAvailable || InstallationContractRevision != "installation-registration-v1.1" {
+		t.Fatal("Node qualification or frozen C0 availability drift")
 	}
 }
 
@@ -611,7 +611,7 @@ func TestNodePairTrustExistingTrustOnlyCannotCreateInitialAuthority(t *testing.T
 	if local.Selector != "" {
 		t.Fatal("trust-only fabricated old INITIAL code")
 	}
-	q := NodePairTrustExistingStart{NodePairTrustFormat, c, formatUTC(f.f.now)}
+	q := NodePairTrustExistingStart{Format: NodePairTrustFormat, Context: c, IssuedAt: formatUTC(f.f.now)}
 	h := nodePairHeaderFor(f, OperationNodePairTrustExisting, f.node)
 	raw, e := SealNodePairTrustRequest(f.node, f.f.hub, h, q, f.f.now)
 	if e != nil {
@@ -669,5 +669,59 @@ func TestNodePairTrustCancelReturnsExistingTerminalWithoutRenewal(t *testing.T) 
 		if e != nil || opened.State != state || len(opened.ConfirmationResponse) != 0 {
 			t.Fatal("cancel changed terminal or settled old Client", e)
 		}
+	}
+}
+
+func TestNodePairTrustRetainedSubsetOnlyCompletesExistingBinding(t *testing.T) {
+	f := nodePairCrypto(t)
+	n := f.c.Candidate
+	b := e2ee.OwnerAppNodeBinding{OwnerBindingID: "nbind_SYNTHETIC", OwnerID: f.a.Scope.OwnerID, HubID: f.c.Hub.HubID, NodeID: n.NodeID, NodeName: n.NodeName, ClientDeviceID: f.a.Scope.DeviceID, OwnerKeyID: f.a.Scope.OwnerPublic.ID, CredentialVersion: 1, BindingVersion: 1, NodePublic: n.NodePublic, NodeKeyFingerprint: n.NodeKeyFingerprint, NodeKeyVersion: 1, NodeKeyEpoch: n.NodeKeyEpoch, HubNodeControlPublic: n.HubNodeControlPublic, HubNodeControlFingerprint: n.HubNodeControlFingerprint, HubNodeControlKeyVersion: 1, ApprovedRequestID: n.RequestID, ApprovedRequestVersion: n.Version, ApprovedCandidateDigest: n.CandidateDigest, ApprovedAt: formatUTC(f.f.now.Add(-time.Hour)), State: "ACTIVE"}
+	c := f.c
+	c.Candidate = nil
+	c.Binding = &b
+	c.Mode = NodePairTrustExisting
+	r := NodePairTrustRetainedBinding{NodeID: b.NodeID, OwnerBindingID: b.OwnerBindingID, BindingVersion: b.BindingVersion, NodeKeyID: b.NodePublic.ID, NodeKeyVersion: b.NodeKeyVersion, NodeKeyEpoch: b.NodeKeyEpoch, NodeKeyFingerprint: b.NodeKeyFingerprint, HubNodeControlPublic: b.HubNodeControlPublic, HubNodeControlKeyVersion: b.HubNodeControlKeyVersion, HubNodeControlFingerprint: b.HubNodeControlFingerprint, ApprovedRequestID: b.ApprovedRequestID, ApprovedRequestVersion: b.ApprovedRequestVersion, ApprovedCandidateDigest: b.ApprovedCandidateDigest, CredentialDigest: base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{0x44}, 32))}
+	partial := c
+	partial.Binding = nil
+	if ValidateNodePairTrustContext(partial, f.f.now) == nil {
+		t.Fatal("partial existing binding became an ordinary Context")
+	}
+	q := NodePairTrustExistingStart{Format: NodePairTrustFormat, Context: partial, IssuedAt: formatUTC(f.f.now), RetainedBinding: &r}
+	h := nodePairHeaderFor(f, OperationNodePairTrustExisting, f.node)
+	raw, e := SealNodePairTrustRequest(f.node, f.f.hub, h, q, f.f.now)
+	if e != nil {
+		t.Fatal(e)
+	}
+	out := NodePairTrustResult{Format: NodePairTrustFormat, Operation: h.Operation, RequestID: h.RequestID, AttemptID: h.AttemptID, RequestPacketDigest: NodePairTrustPacketDigest(raw), State: NodePairTrustPending, Context: &c, ObservedAt: formatUTC(f.f.now)}
+	receipt, e := SealNodePairTrustResponse(f.f.hubPrivate, f.f.hub, raw, q, out)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e := OpenNodePairTrustResponse(f.node, f.f.hub, raw, receipt, q); e != nil {
+		t.Fatal(e)
+	}
+	changed := nodePairClone(out)
+	changed.Context.Binding.BindingVersion++
+	if _, e := SealNodePairTrustResponse(f.f.hubPrivate, f.f.hub, raw, q, changed); e == nil {
+		t.Fatal("response changed retained binding")
+	}
+	changed = nodePairClone(out)
+	changed.Context.NodeNonce = strings.Repeat("bc", 32)
+	if _, e := SealNodePairTrustResponse(f.f.hubPrivate, f.f.hub, raw, q, changed); e == nil {
+		t.Fatal("response changed Context beyond Binding")
+	}
+	both := q
+	both.Context = c
+	if _, e := SealNodePairTrustRequest(f.node, f.f.hub, h, both, f.f.now); e == nil {
+		t.Fatal("full and retained binding both admitted")
+	}
+	absent := q
+	absent.RetainedBinding = nil
+	if _, e := SealNodePairTrustRequest(f.node, f.f.hub, h, absent, f.f.now); e == nil {
+		t.Fatal("missing original binding admitted")
+	}
+	commit := NodePairTrustCommit{Format: NodePairTrustFormat, Context: partial, OOBCommitment: f.o, IssuedAt: formatUTC(f.f.now)}
+	if _, e := SealNodePairTrustRequest(f.node, f.f.hub, nodePairHeaderFor(f, OperationNodePairTrustCommit, f.node), commit, f.f.now); e == nil {
+		t.Fatal("partial Context escaped existing start")
 	}
 }

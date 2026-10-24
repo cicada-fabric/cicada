@@ -375,7 +375,14 @@ func matchNodePairResult(h NodePairTrustPacket, body any, r NodePairTrustResult)
 		}
 		return nil
 	case NodePairTrustExistingStart:
-		c = &b.Context
+		copy := b.Context
+		if b.RetainedBinding != nil {
+			if b.Context.Binding != nil || r.Context.Binding == nil || MatchNodePairTrustRetainedBinding(*b.RetainedBinding, *r.Context.Binding, h.SenderPublic) != nil {
+				return ErrInvalid
+			}
+			copy.Binding = r.Context.Binding
+		}
+		c = &copy
 	case NodePairTrustCommit:
 		c = &b.Context
 		o = b.OOBCommitment

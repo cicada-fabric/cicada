@@ -3,7 +3,7 @@
   "format": "cicada.node-pair-trust.v1",
   "packet_format": "cicada.node-pair-trust-packet.v1",
   "code_prefix": "cicada-npt1.",
-  "available": false,
+  "available": true,
   "default_cli_flag": "--hub-address",
   "secret_code_cli": "machine pairing-code",
   "operations": [
@@ -102,7 +102,8 @@
     "NodePairTrustExistingStart": [
       "format",
       "context",
-      "issued_at"
+      "issued_at",
+      "retained_binding"
     ],
     "NodePairTrustCommit": [
       "format",
@@ -182,6 +183,22 @@
       "observed_at",
       "original_packet_digest",
       "original_receipt"
+    ],
+    "NodePairTrustRetainedBinding": [
+      "node_id",
+      "owner_binding_id",
+      "binding_version",
+      "node_key_id",
+      "node_key_version",
+      "node_key_epoch",
+      "node_key_fingerprint",
+      "hub_node_control_public_identity",
+      "hub_node_control_key_version",
+      "hub_node_control_fingerprint",
+      "approved_request_id",
+      "approved_request_version",
+      "approved_candidate_digest",
+      "credential_digest"
     ]
   },
   "ordinary_request_body_bytes": 262144,
@@ -216,5 +233,9 @@
     "ACKED"
   ],
   "owner_cancel_acked_initial_requires_original_confirmation_response": true,
-  "reconcile_fences_original_packet_only": true
+  "reconcile_fences_original_packet_only": true,
+  "retained_binding_existing_request_only": true,
+  "retained_binding_requires_existing_trusted_transport": true,
+  "explicit_retry_preserves_original_identity": true,
+  "uncommitted_terminal_observation_original_node_only": true
 }

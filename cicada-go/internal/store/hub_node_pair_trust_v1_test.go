@@ -24,7 +24,8 @@ type nptStoreFixture struct {
 	confirmation *HubAppNodeClientInput
 }
 
-func newNPTStoreFixture(t *testing.T) *nptStoreFixture {
+func newNPTStoreFixture(t *testing.T) *nptStoreFixture { return newNPTStoreFixtureMode(t, true) }
+func newNPTStoreFixtureMode(t *testing.T, commitO bool) *nptStoreFixture {
 	t.Helper()
 	p := &nptStoreFixture{f: n3Fixture(t, true), s: bytes.Repeat([]byte{0x53}, 32), x: bytes.Repeat([]byte{0x58}, 32)}
 	f := p.f
@@ -50,7 +51,9 @@ func newNPTStoreFixture(t *testing.T) *nptStoreFixture {
 		t.Fatal("START lost response changed original", e)
 	}
 	commit := wire.NodePairTrustCommit{Format: wire.NodePairTrustFormat, Context: p.context, OOBCommitment: p.o, IssuedAt: appNodeStamp(f.now)}
-	p.call(t, p.input(t, wire.OperationNodePairTrustCommit, commit, f.node, f.now), f.node)
+	if commitO {
+		p.call(t, p.input(t, wire.OperationNodePairTrustCommit, commit, f.node, f.now), f.node)
+	}
 	return p
 }
 func mustNPTCodeDigest(t *testing.T, hub, code string) string {
@@ -517,6 +520,7 @@ func TestNodePairStoreExistingBindingIsTrustOnlyAndExpiredReadsRemainFresh(t *te
 	f := p.f
 	a, proof, capsule := p.approve(t)
 	first, _ := p.call(t, p.ack(t, proof, capsule, f.now.Add(4*time.Second)), f.node)
+	credential := confirmCredentialDigestForTest(t, f.db, p.context.Candidate.RequestID)
 	id, e := wire.NewRequestID()
 	if e != nil {
 		t.Fatal(e)
@@ -525,6 +529,42 @@ func TestNodePairStoreExistingBindingIsTrustOnlyAndExpiredReadsRemainFresh(t *te
 	d, _ := wire.NodePairTrustContextDigest(p.context)
 	p.o, _ = wire.NodePairTrustOOBCommitment(d, p.s)
 	start := wire.NodePairTrustExistingStart{Format: wire.NodePairTrustFormat, Context: p.context, IssuedAt: appNodeStamp(f.now.Add(5 * time.Second))}
+	binding := *first.Binding
+	retained := wire.NodePairTrustRetainedBinding{NodeID: binding.NodeID, OwnerBindingID: binding.OwnerBindingID, BindingVersion: binding.BindingVersion, NodeKeyID: binding.NodePublic.ID, NodeKeyVersion: binding.NodeKeyVersion, NodeKeyEpoch: binding.NodeKeyEpoch, NodeKeyFingerprint: binding.NodeKeyFingerprint, HubNodeControlPublic: binding.HubNodeControlPublic, HubNodeControlKeyVersion: binding.HubNodeControlKeyVersion, HubNodeControlFingerprint: binding.HubNodeControlFingerprint, ApprovedRequestID: binding.ApprovedRequestID, ApprovedRequestVersion: binding.ApprovedRequestVersion, ApprovedCandidateDigest: binding.ApprovedCandidateDigest, CredentialDigest: credential}
+	start.Context.Binding = nil
+	start.RetainedBinding = &retained
+	for _, kind := range []string{"binding", "version", "epoch", "request", "request-version", "candidate", "credential", "NC", "Node"} {
+		wrong := start
+		r := retained
+		key := f.node
+		switch kind {
+		case "binding":
+			r.OwnerBindingID += "-other"
+		case "version":
+			r.BindingVersion++
+		case "epoch":
+			r.NodeKeyEpoch++
+		case "request":
+			r.ApprovedRequestID += "-other"
+		case "request-version":
+			r.ApprovedRequestVersion++
+		case "candidate":
+			r.ApprovedCandidateDigest = strings.Repeat("ac", 32)
+		case "credential":
+			r.CredentialDigest = base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{0x45}, 32))
+		case "NC":
+			r.HubNodeControlPublic = f.owner.Public()
+			r.HubNodeControlFingerprint = nodewire.IdentityFingerprint(r.HubNodeControlPublic)
+		case "Node":
+			key = f.owner
+			r.NodeKeyID = key.Public().ID
+			r.NodeKeyFingerprint = nodewire.IdentityFingerprint(key.Public())
+		}
+		wrong.RetainedBinding = &r
+		if _, e := f.db.ProcessHubNodePairTrust(p.input(t, wire.OperationNodePairTrustExisting, wrong, key, f.now.Add(5*time.Second))); e == nil {
+			t.Fatal("retained original mismatch was adopted", kind)
+		}
+	}
 	p.call(t, p.input(t, wire.OperationNodePairTrustExisting, start, f.node, f.now.Add(5*time.Second)), f.node)
 	commit := wire.NodePairTrustCommit{Format: wire.NodePairTrustFormat, Context: p.context, OOBCommitment: p.o, IssuedAt: appNodeStamp(f.now.Add(5 * time.Second))}
 	p.call(t, p.input(t, wire.OperationNodePairTrustCommit, commit, f.node, f.now.Add(5*time.Second)), f.node)
@@ -642,5 +682,96 @@ func TestNodePairStoreNoEffectFencesAndTerminalCancelCannotBurnCriticalHistory(t
 	p.call(t, p.input(t, wire.OperationOwnerNodePairTrustCancel, ownerCancel, f.device, f.now.Add(5*time.Second)), f.device)
 	if e := f.db.db.QueryRow(`SELECT critical_rows FROM hub_node_pair_trust_budget_v1 WHERE id=1`).Scan(&after); e != nil || after != before+1 {
 		t.Fatal("repeat cancel burned another permanent receipt", e)
+	}
+}
+
+func TestNodePairStoreTerminalRetiresOriginalCandidateBeforeExplicitNewAttempt(t *testing.T) {
+	for _, kind := range []string{"cancel", "approval-expiry"} {
+		t.Run(kind, func(t *testing.T) {
+			p := newNPTStoreFixture(t)
+			f := p.f
+			old := *p.context.Candidate
+			digest := confirmCredentialDigestForTest(t, f.db, old.RequestID)
+			at := f.now.Add(6 * time.Second)
+			if kind == "cancel" {
+				q := wire.NodePairTrustCancel{Format: wire.NodePairTrustFormat, Context: p.context, OOBCommitment: p.o, IssuedAt: appNodeStamp(at)}
+				p.call(t, p.input(t, wire.OperationNodePairTrustCancel, q, f.node, at), f.node)
+			} else {
+				a, _, _ := p.approve(t)
+				end, e := time.Parse(time.RFC3339Nano, a.AcceptBefore)
+				if e != nil {
+					t.Fatal(e)
+				}
+				at = end.Add(time.Second)
+				contextEnd, _ := time.Parse(time.RFC3339Nano, p.context.ExpiresAt)
+				if !at.Before(contextEnd) {
+					t.Fatal("fixture did not exercise approval expiring before candidate")
+				}
+				q := wire.NodePairTrustPoll{Format: wire.NodePairTrustFormat, Context: p.context, OOBCommitment: p.o, IssuedAt: appNodeStamp(at)}
+				r, _ := p.call(t, p.input(t, wire.OperationNodePairTrustPoll, q, f.node, at), f.node)
+				if r.State != wire.NodePairTrustExpired {
+					t.Fatal("approval did not expire")
+				}
+			}
+			var state string
+			var required, version int
+			if e := f.db.db.QueryRow(`SELECT state,require_pair_trust_ack,version FROM node_control_key_requests_v1 WHERE id=?`, old.RequestID).Scan(&state, &required, &version); e != nil || state == "PENDING" || required != 1 || version <= int(old.Version) {
+				t.Fatal("terminal side left an active original candidate", e)
+			}
+			attempt, _ := wire.NewRequestID()
+			p.context = wire.NodePairTrustContext{AttemptID: attempt}
+			nonce := bytes.Repeat([]byte{0x5a}, 32)
+			code := "456789ABCDEF"
+			b := wire.NodePairTrustStart{Format: wire.NodePairTrustFormat, Hub: f.hub, Origin: f.scope.Origin, DescriptorDigest: strings.Repeat("ab", 32), NodeID: old.NodeID, NodeName: old.NodeName, CredentialDigest: digest, RequestNonce: nonce, HubNodeControlPublic: f.nodeControl.Public(), HubNodeControlKeyVersion: 1, IssuedAt: appNodeStamp(at), ExpiresAt: appNodeStamp(at.Add(10 * time.Minute))}
+			transcript, e := nodewire.PairingProofTranscript(nodewire.PairingProofContext{HubID: f.hub.HubID, NodeID: b.NodeID, RequestNonce: nonce, CredentialDigest: digest, NodePublicIdentity: f.node.Public(), HubPublicIdentity: f.nodeControl.Public(), HubKeyVersion: 1})
+			if e != nil {
+				t.Fatal(e)
+			}
+			b.PairingProof, e = e2ee.Seal(f.node, f.nodeControl.Public(), transcript, nodewire.PairingProofAAD(), 1)
+			if e != nil {
+				t.Fatal(e)
+			}
+			in := p.input(t, wire.OperationNodePairTrustStart, b, f.node, at)
+			in.Start = &NodeControlKeyRequestInput{Mode: "INITIAL", NodeID: b.NodeID, NodeName: b.NodeName, CredentialDigest: digest, CodeDigest: mustNPTCodeDigest(t, f.hub.HubID, code), NodePublicIdentity: f.node.Public(), NodeFingerprint: old.NodeKeyFingerprint, ProofPacket: b.PairingProof, HubPublicIdentity: f.nodeControl.Public(), HubKeyVersion: 1, HubFingerprint: old.HubNodeControlFingerprint, ExpiresAt: at.Add(10 * time.Minute)}
+			in.Selector = code
+			r, _ := p.call(t, in, f.node)
+			if r.Context == nil || r.Context.Candidate.RequestID == old.RequestID || r.Context.Candidate.NodeKeyEpoch != old.NodeKeyEpoch || !reflect.DeepEqual(r.Context.Candidate.NodePublic, old.NodePublic) {
+				t.Fatal("explicit new attempt rotated identity/epoch")
+			}
+		})
+	}
+}
+
+func TestNodePairStoreUncommittedTerminalObservationIsNodeOnly(t *testing.T) {
+	for _, kind := range []string{"cancel", "expiry"} {
+		t.Run(kind, func(t *testing.T) {
+			p := newNPTStoreFixtureMode(t, false)
+			f := p.f
+			q := wire.NodePairTrustPoll{Format: wire.NodePairTrustFormat, Context: p.context, OOBCommitment: p.o, IssuedAt: appNodeStamp(f.now.Add(time.Second))}
+			if _, e := f.db.ProcessHubNodePairTrust(p.input(t, wire.OperationNodePairTrustPoll, q, f.node, f.now.Add(time.Second))); e == nil {
+				t.Fatal("active uncommitted O became observable")
+			}
+			at := f.now.Add(2 * time.Second)
+			op := wire.OperationNodePairTrustCancel
+			expected := wire.NodePairTrustCancelled
+			if kind == "expiry" {
+				at = f.now.Add(11 * time.Minute)
+				op = wire.OperationNodePairTrustPoll
+				expected = wire.NodePairTrustExpired
+			}
+			q.IssuedAt = appNodeStamp(at)
+			r, _ := p.call(t, p.input(t, op, q, f.node, at), f.node)
+			if r.State != expected || r.ErrorCode != expected || r.Context != nil || r.OOBCommitment != "" || r.Binding != nil || len(r.ConfirmationResponse) != 0 {
+				t.Fatal("terminal uncommitted observer echoed a false commitment")
+			}
+			var actualO string
+			if e := f.db.db.QueryRow(`SELECT oob_commitment FROM hub_node_pair_trust_v1 WHERE attempt_id=?`, p.context.AttemptID).Scan(&actualO); e != nil || actualO != "" {
+				t.Fatal("terminal read committed caller O", e)
+			}
+			owner := wire.NodePairTrustOwnerStatus{Format: wire.NodePairTrustFormat, SessionToken: f.session.Token, Scope: f.scope, Context: p.context, OOBCommitment: p.o, IssuedAt: appNodeStamp(at)}
+			if _, e := f.db.ProcessHubNodePairTrust(p.input(t, wire.OperationOwnerNodePairTrustStatus, owner, f.device, at)); e == nil {
+				t.Fatal("Owner observer gained uncommitted Node terminal bypass")
+			}
+		})
 	}
 }

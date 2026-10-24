@@ -138,8 +138,8 @@ func TestNodePairTrustRealTLSOwnerApprovalACKAndOriginalReceipt(t *testing.T) {
 	f, candidate := newNodePairTLSFixture(t)
 	status, metadata := n3HTTP(t, f, http.MethodGet, wire.NodePairTrustCapabilitiesPath, "", nil)
 	var caps wire.NodePairTrustCapabilities
-	if status != 200 || json.Unmarshal(metadata, &caps) != nil || caps.Available {
-		t.Fatal("unfinished carrier advertised availability")
+	if status != 200 || json.Unmarshal(metadata, &caps) != nil || caps.Available != wire.NodePairTrustPublicAvailable {
+		t.Fatal("pairing carrier availability drift")
 	}
 	device, err := e2ee.NewIdentity()
 	if err != nil {

@@ -31,9 +31,18 @@ func nodePairWindow(issued, end string, maximum time.Duration, now time.Time) er
 	return nil
 }
 func ValidateNodePairTrustContext(c NodePairTrustContext, now time.Time) error {
+	if validateNodePairContextEnvelope(c, now) != nil {
+		return ErrInvalid
+	}
+	return validateNodePairContextBinding(c)
+}
+func validateNodePairContextEnvelope(c NodePairTrustContext, now time.Time) error {
 	if c.Format != NodePairTrustFormat || !isHex(c.AttemptID, 16) || validateHubIdentity(c.Hub) != nil || len(c.Hub.HubID) > 96 || !nodePairOrigin(c.Origin) || !isHex(c.DescriptorDigest, 32) || !isHex(c.NodeNonce, 32) || nodePairWindow(c.IssuedAt, c.ExpiresAt, 10*time.Minute, now) != nil {
 		return ErrInvalid
 	}
+	return nil
+}
+func validateNodePairContextBinding(c NodePairTrustContext) error {
 	var nc e2ee.PublicIdentity
 	switch c.Mode {
 	case NodePairTrustInitial:
@@ -224,7 +233,14 @@ func validateNodePairBody(h NodePairTrustPacket, body any, hub HubIdentity, now 
 		}
 		return nil
 	case NodePairTrustExistingStart:
-		if h.Operation != OperationNodePairTrustExisting || b.Format != NodePairTrustFormat || b.Context.Mode != NodePairTrustExisting || b.Context.AttemptID != h.AttemptID || !reflect.DeepEqual(b.Context.Hub, hub) || ValidateNodePairTrustContext(b.Context, now) != nil || !reflect.DeepEqual(nodePairPublic(b.Context), h.SenderPublic) || validateRecent(b.IssuedAt, now, time.Minute) != nil {
+		if h.Operation != OperationNodePairTrustExisting || b.Format != NodePairTrustFormat || b.Context.Mode != NodePairTrustExisting || b.Context.Candidate != nil || b.Context.AttemptID != h.AttemptID || !reflect.DeepEqual(b.Context.Hub, hub) || validateNodePairContextEnvelope(b.Context, now) != nil || validateRecent(b.IssuedAt, now, time.Minute) != nil {
+			return ErrInvalid
+		}
+		if b.RetainedBinding != nil {
+			if b.Context.Binding != nil || ValidateNodePairTrustRetainedBinding(*b.RetainedBinding, h.SenderPublic, hub) != nil {
+				return ErrInvalid
+			}
+		} else if ValidateNodePairTrustContext(b.Context, now) != nil || !reflect.DeepEqual(nodePairPublic(b.Context), h.SenderPublic) {
 			return ErrInvalid
 		}
 		return nil

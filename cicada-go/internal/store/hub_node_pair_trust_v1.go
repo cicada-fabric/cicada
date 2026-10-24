@@ -121,6 +121,11 @@ func nodePairReceipt(tx *sql.Tx, in HubNodePairTrustInput, result wire.NodePairT
 
 func nodePairResult(in HubNodePairTrustInput, r *nodePairTrustRecord) wire.NodePairTrustResult {
 	out := wire.NodePairTrustResult{Format: wire.NodePairTrustFormat, Operation: in.Header.Operation, RequestID: in.Header.RequestID, AttemptID: in.Header.AttemptID, RequestPacketDigest: wire.NodePairTrustPacketDigest(in.Packet), State: r.State, Context: &r.Context, OOBCommitment: r.OOB, ObservedAt: appNodeStamp(in.At)}
+	if r.OOB == "" && (in.Header.Operation == wire.OperationNodePairTrustPoll || in.Header.Operation == wire.OperationNodePairTrustCancel) && (r.State == wire.NodePairTrustExpired || r.State == wire.NodePairTrustCancelled || r.State == wire.NodePairTrustRevoked) {
+		out.Context = nil
+		out.ErrorCode = r.State
+		return out // Exact original Node only; never invent an uncommitted O.
+	}
 	if r.State == wire.NodePairTrustACKed {
 		out.Binding = r.Binding
 	}
@@ -247,6 +252,18 @@ func nodePairExpire(tx *sql.Tx, r *nodePairTrustRecord, state string, at time.Ti
 		return nil
 	}
 	r.State = state
+	if r.Context.Candidate != nil {
+		candidateState := "CANCELLED"
+		if state == wire.NodePairTrustExpired {
+			candidateState = "EXPIRED"
+		}
+		// Retire the actual original candidate as well as the side attempt.
+		// Its independent RequireACK marker remains 1 permanently. A fresh
+		// explicit attempt must not wait on this already terminal candidate.
+		if _, err := tx.Exec(`UPDATE node_control_key_requests_v1 SET state=?,version=version+1 WHERE id=? AND require_pair_trust_ack=1 AND state='PENDING'`, candidateState, r.Context.Candidate.RequestID); err != nil {
+			return err
+		}
+	}
 	if _, err := tx.Exec(`UPDATE hub_node_pair_trust_slots_v1 SET state='DONE' WHERE attempt_id=? AND state='RESERVED'`, r.Context.AttemptID); err != nil {
 		return err
 	}
@@ -367,6 +384,21 @@ func nodePairStart(tx *sql.Tx, in HubNodePairTrustInput) (*nodePairTrustRecord, 
 		candidateID = n.RequestID
 	case wire.NodePairTrustExistingStart:
 		c = b.Context
+		if b.RetainedBinding != nil {
+			r := *b.RetainedBinding
+			binding, err := nodeControlCurrentBindingTx(tx, r.CredentialDigest, r.NodeID)
+			if err != nil {
+				return nil, ErrNodePairTrustRejected
+			}
+			public := appNodeBindingPublic(*binding)
+			if wire.MatchNodePairTrustRetainedBinding(r, public, in.Header.SenderPublic) != nil {
+				return nil, ErrNodePairTrustRejected
+			}
+			c.Binding = &public
+		}
+		if c.Binding == nil || !reflect.DeepEqual(c.Binding.HubNodeControlPublic, in.NodeControlPublic) || wire.ValidateNodePairTrustContext(c, in.At) != nil {
+			return nil, ErrNodePairTrustRejected
+		}
 		if err := nodePairExisting(tx, c); err != nil {
 			return nil, err
 		}

@@ -28,11 +28,15 @@ func TestNodePairTrustClosedContractInventory(t *testing.T) {
 		CancelTerminals      []string            `json:"cancel_terminal_states"`
 		CancelReceipt        bool                `json:"owner_cancel_acked_initial_requires_original_confirmation_response"`
 		FenceOriginalOnly    bool                `json:"reconcile_fences_original_packet_only"`
+		RetainedExisting     bool                `json:"retained_binding_existing_request_only"`
+		RetainedTrusted      bool                `json:"retained_binding_requires_existing_trusted_transport"`
+		ExplicitRetry        bool                `json:"explicit_retry_preserves_original_identity"`
+		UncommittedNodeOnly  bool                `json:"uncommitted_terminal_observation_original_node_only"`
 	}
-	if json.Unmarshal(raw, &m) != nil || m.Revision != NodePairTrustContractRevision || m.Format != NodePairTrustFormat || m.Packet != NodePairTrustPacketFormat || m.Code != NodePairTrustCodePrefix || m.Available || NodePairTrustContractCapabilities().Available || m.CodeMax != MaxNodePairTrustCodeBytes || m.ReceiptMax != MaxNodePairTrustOriginalReceiptBytes || m.ReconcileResponseMax != MaxNodePairTrustReconcileResponsePacketBytes {
+	if json.Unmarshal(raw, &m) != nil || m.Revision != NodePairTrustContractRevision || m.Format != NodePairTrustFormat || m.Packet != NodePairTrustPacketFormat || m.Code != NodePairTrustCodePrefix || m.Available != NodePairTrustPublicAvailable || NodePairTrustContractCapabilities().Available != NodePairTrustPublicAvailable || m.CodeMax != MaxNodePairTrustCodeBytes || m.ReceiptMax != MaxNodePairTrustOriginalReceiptBytes || m.ReconcileResponseMax != MaxNodePairTrustReconcileResponsePacketBytes {
 		t.Fatal("contract inventory drift")
 	}
-	if !m.CancelReceipt || !m.FenceOriginalOnly || !reflect.DeepEqual(m.Observations, []string{OperationNodePairTrustPoll, OperationNodePairTrustCancel, OperationOwnerNodePairTrustStatus, OperationOwnerNodePairTrustCancel}) || !reflect.DeepEqual(m.CancelTerminals, []string{NodePairTrustCancelled, NodePairTrustExpired, NodePairTrustRevoked, NodePairTrustFenced, NodePairTrustACKed}) {
+	if !m.CancelReceipt || !m.FenceOriginalOnly || !m.RetainedExisting || !m.RetainedTrusted || !m.ExplicitRetry || !m.UncommittedNodeOnly || !reflect.DeepEqual(m.Observations, []string{OperationNodePairTrustPoll, OperationNodePairTrustCancel, OperationOwnerNodePairTrustStatus, OperationOwnerNodePairTrustCancel}) || !reflect.DeepEqual(m.CancelTerminals, []string{NodePairTrustCancelled, NodePairTrustExpired, NodePairTrustRevoked, NodePairTrustFenced, NodePairTrustACKed}) {
 		t.Fatal("observation, terminal receipt or original-only fence contract drift")
 	}
 	caps := NodePairTrustContractCapabilities()
@@ -51,7 +55,7 @@ func TestNodePairTrustClosedContractInventory(t *testing.T) {
 			t.Fatal("capability not in contract", op)
 		}
 	}
-	types := []any{NodePairTrustCapabilities{}, NodePairTrustContext{}, NodePairTrustApproval{}, NodePairTrustOwnerClaims{}, NodePairTrustOwnerProof{}, NodePairTrustCapsule{}, NodePairTrustPacket{}, NodePairTrustStart{}, NodePairTrustExistingStart{}, NodePairTrustCommit{}, NodePairTrustACK{}, NodePairTrustReconcile{}, NodePairTrustOwnerLookup{}, NodePairTrustOwnerPrepare{}, NodePairTrustOwnerComplete{}, NodePairTrustOwnerStatus{}, NodePairTrustResult{}}
+	types := []any{NodePairTrustCapabilities{}, NodePairTrustContext{}, NodePairTrustApproval{}, NodePairTrustOwnerClaims{}, NodePairTrustOwnerProof{}, NodePairTrustCapsule{}, NodePairTrustPacket{}, NodePairTrustStart{}, NodePairTrustExistingStart{}, NodePairTrustRetainedBinding{}, NodePairTrustCommit{}, NodePairTrustACK{}, NodePairTrustReconcile{}, NodePairTrustOwnerLookup{}, NodePairTrustOwnerPrepare{}, NodePairTrustOwnerComplete{}, NodePairTrustOwnerStatus{}, NodePairTrustResult{}}
 	for _, v := range types {
 		typ := reflect.TypeOf(v)
 		var fields []string

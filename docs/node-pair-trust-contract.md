@@ -1,10 +1,12 @@
 # Node device pairing and independent Owner trust
 
 Contract revision **node-pair-trust-v1**, format `cicada.node-pair-trust.v1`,
-packet format `cicada.node-pair-trust-packet.v1`. Public availability remains
-**false**. Shared codecs/proofs and candidate TLS discovery are followed by the
-Hub service/Store checkpoint below. Node consumers, integrated App acceptance
-and the complete process gate remain required before availability is enabled. Frozen Client wire 1,
+packet format `cicada.node-pair-trust-packet.v1`. The Node qualification
+checkpoint enables this additive family (`available=true`) for the complete
+App/Node qualification gate. Availability describes the implemented carrier,
+not caller authorization or a claim that final physical acceptance has passed.
+Shared and Hub checkpoint records below retain their historical availability
+and tested-source attribution. C0 installation registration stays disabled. Frozen Client wire 1,
 client-hub-v1.6.5/catalog 55, N2, app-node-authority-v1, native-pair-v1 and
 installation-registration-v1.1 retain their existing identifiers and purposes.
 In particular, this change enables no C0 registration carrier, admission key,
@@ -61,8 +63,8 @@ The daemon must not print this secret into systemd/service logs. Intended
 foreground display requires a real TTY. The companion local command is
 `cicada machine pairing-code --id NODE_ID --state-dir DIR`, reading the same
 protected state and requiring an interactive TTY rather than redirected output.
-Background logs record attempt and state only. This checkpoint defines these
-CLI names; it does not implement them yet. The existing explicit
+Background logs contain only sanitized state. The Node qualification checkpoint
+implements these CLI names; earlier shared validation did not test a consumer. The existing explicit
 `--hub-connection-file` / `--hub-dial-address` path remains an advanced trusted
 installation path and cannot silently override an existing pin.
 
@@ -516,3 +518,155 @@ union account for all **21** final NPT top-level tests. The original normal
 failure/skips and race timeout remain visible in their own receipts. Only this
 addendum follows the final frozen run; final Go blobs remain exact. No Docker
 or physical result is promoted to PASS.
+
+## Retained original binding subset
+
+The next Node consumer uses the existing `node.pair-trust.existing` route when
+its trusted native transport and original key/credential are already readable,
+but its historical local state lacks the full public binding. ExistingStart
+adds optional `retained_binding` with exactly the fourteen fields in the machine
+manifest. Full Context.Binding and RetainedBinding are strictly exclusive;
+Candidate is always absent. Only this request envelope may omit Binding.
+
+The subset carries every original locally saved Node/binding/NC key and epoch,
+original approved-request coordinates and the original credential **digest**.
+It carries no bearer and invents no Owner/device/credential version. Hub verifies
+the original Node signature/full key, loads the actual ACTIVE binding by exact
+digest/Node ID, compares every retained coordinate and fills only Binding in the
+returned Context. All other Context fields must match exactly. The completed
+Context remains subject to the same S/O/E/ACK ceremony and unchanged binding.
+Full-binding ExistingStart remains supported. This path cannot discover a new
+transport for a partially populated legacy state or repair a missing key,
+credential, native descriptor or revoked/conflicting Owner pin.
+
+A reconcile query is a bounded observation about its immutable target original.
+If that outer read ages beyond the request freshness window after response loss,
+a consumer may persist a new fresh reconcile request ID/issued time, retaining
+exactly the same OriginalPacket/OriginalPacketDigest/attempt/sender. It never
+replaces the original mutation, nests reconcile or renews S, T, E, proof, confirm,
+ACK intent or acceptance deadline. A returned FENCED result still fences only
+the targeted original, so the consumer reads current attempt state afterward.
+
+
+## Node consumer qualification
+
+`machine agent --hub-address IP:port` performs the ceremony while holding the
+existing Agent and WriterRoot locks, before ordinary transport activation,
+local business discovery, bearer probes or heartbeat. Only a pristine Node may
+perform candidate discovery. A retained pending attempt reuses its exact
+original descriptor, address, Node key, credential, S, nonce, proofs and packets.
+Existing bound Nodes require their original readable trusted native transport
+and use RetainedBinding; a legacy/incomplete state cannot fall back to INITIAL.
+The original advanced descriptor/dial flags remain separate and cannot bypass
+a pending Node pairing marker.
+
+`node-pair-trust.sealed.json` lives in the existing Node state subtree. Its outer
+public coordinates are AAD; the entire secret journal is sealed Node-to-itself
+using the original Node-Control key and existing e2ee primitives. State/file
+paths reject symlinks, require same-user ownership and 0700/0600 permissions.
+S and derived full code never enter public describe/ordinary Node state. The
+ordinary state adds only the attempt ID as a fail-closed admission marker.
+Missing original key, credential, routing or sealed state never generates a
+replacement. Existing restore quarantine and process locks remain authoritative.
+The new secret-storage ownership guard is verified on Linux; Windows/other
+unavailable ownership mechanisms fail closed pending their own validation.
+
+Original requests are durably sealed before network I/O. Exact retries retain
+operation/request/attempt IDs and all bytes. An aged request uses fresh reconcile
+observations of its unchanged original. An original FENCE is retained with its
+authenticated receipt in bounded sealed history and does not close an attempt.
+START/commit may create a new request only after known no effect, retaining the
+same S, nonce/proof, Context and original deadline (START may refresh only its
+request issued time before that deadline). ACK may create a new intent only
+when its prior intent is explicitly fenced and a fresh poll still reports
+OWNER_APPROVED, the real deadline is live and the current Owner pin recheck
+succeeds. S/O/T/E/proof/X/original confirm stay unchanged; the new ACK binds the
+new actual poll/receipt. Old ACK bytes stay archived. ACKED poll projection
+requires recovery of an already saved, unfenced original ACK receipt; it cannot
+install a binding by itself.
+
+First trust calls OpenNodePairTrustCapsule on the live clock and verifies S
+before opening the local Owner trust writer. The conditional Owner-wide SQLite
+write rejects any existing other key ID, ACTIVE or REVOKED, and any same-key
+tombstone/public-key conflict. Independent handles cannot race in two first
+keys. Once a verified local trust fact has been saved, historical capsule
+reopening requires that same current ACTIVE local pin and the protected accepted
+time; it cannot install a missing pin late. Pin saved/ACK uncertain remains
+pending admission. The sanitized local error
+`NODE_PAIR_INDEPENDENT_TRUST_REJECTED` means the actual capsule trust check was
+reached and rejected, without printing S or a payload.
+
+A real original ACKED receipt is retained and checked before populating the
+original Node-Control binding/routing fields. Existing binding, sequence,
+credential, Node key and epochs are preserved. Repeated ordinary startup checks
+this exact saved receipt and current local Owner trust under the original locks.
+A second Agent cannot overwrite live state before acquiring its singleton lock.
+Account login, public capability metadata and Control inference do not supply
+this authority. Later Network/Group/Worker rights still need their own Guards.
+
+`--retry-pairing` is an explicit modifier to `machine agent --hub-address`.
+Without it, termination never automatically replaces S. It first obtains a
+fresh authenticated current EXPIRED/CANCELLED/REVOKED observation, preserves the
+old sealed journal and receipts in an attempt-named archive, and creates a new
+attempt/code using the original descriptor/key/credential and the original
+INITIAL-versus-EXISTING mode. Unknown or ACKED outcomes prohibit a new S. Existing
+local trust facts must still pass the current Owner-wide check. A logout-induced
+old REVOKED attempt can be followed by a fresh explicit consent after login;
+a revoked local pin or inactive original binding/credential cannot be bypassed.
+The old attempt/deadlines remain immutable. PreviousAttemptID plus the exact
+archive digest recovers a crash between new sealed-state and public-marker
+writes, without generating yet another secret.
+
+If no Context ever arrived, explicit retry first reconciles the retained START.
+RECOVERED restores its actual Context, then observes actual terminal state. If
+all actually sent START originals have authenticated no-effect fences, the
+original deadline has truly passed and no Context/O-commit/code/ACK fact exists,
+the local intent may be archived as RETIRED_NO_EFFECT. This does not label the
+whole remote attempt terminal. An uncommitted O may be observed only by its
+original signed Node after the actual side attempt is terminal: State and
+ErrorCode match, the payload is empty and O is never echoed or committed. Live
+uncommitted observations remain refused; there is no Owner/business bypass.
+
+Terminal side transitions retire the actual marked original candidate in the
+same writer transaction. Its RequireACK marker remains permanently 1 and its
+version advances. Explicit new attempts retain existing rate limits, including
+the five-second reissue cooldown. An expired approval with a still-live original
+candidate therefore cannot leave a false pending blocker. Old original Client
+counters still settle only by the existing negative reconcile, once.
+
+The qualification source enables only Node pairing availability. It does not
+claim Docker full-carrier, actual App/Node 12-case, physical, public HTTPS/IP,
+Windows, Android or real native Runtime acceptance. Those results belong to
+QA's independently recorded gates after this checkpoint.
+
+## Node producer record — 2026-10-24
+
+Frozen dirty parent is `26cdacc996faf0ed3dc1b8cebb5b0ab770b17cc9`.
+Evidence root: `/home/zyf/Cicada/.local/evidence/hub-native-tls/`.
+`node-pair-node-20261024T095229Z`: normal exit **1**, 161 PASS / 1 FAIL / 0 SKIP;
+receipt SHA `c057dbd2d8154791b7696cae4b2623f8f0d3640a103a2fe3efb86e4fccdbead7`.
+The failure was the old shared test's false-availability assertion. Only that
+assertion changed before `node-pair-node-resume-20261024T095531Z`: normal delta
+1/0/0, four race lanes 7/0/0, 46/0/0, 4/0/0, 9/0/0, nine-package vet exit 0;
+receipt SHA `152be2265179f8e53f26c01a19f3eca1dd21baa76e97fb0866b39dde577182b1`.
+The 161 prior successes retain their original attribution; their production
+blobs did not change. The original FAIL is preserved.
+
+A final routing-only delta preserves a later verified current locator under the
+same descriptor rather than restoring an ACK's historical locator. Only a first
+binding with all three routing/binding fields empty installs the sealed address;
+partial/missing bound routing fails closed. `node-pair-node-routing-delta-20261024T101427Z`
+passed normal 1/0/0, race 1/0/0 and cmd vet exit 0; receipt SHA
+`0b636d0801429c5cf1ecb5077c9d41dfa152cc935e8ad1dab2d19581ef5d7f27`.
+Exactly the receiver and its focused test changed from the preceding frozen Go
+source. Final Go input manifest is
+`ba29da7c93d68c7c68b3be47e5f7b94d296bf99f4ee941703e419cf903310fb7`;
+full tested manifest is
+`21835a09df08228a74202a12406a7f06a337a2e5deea782d0eaccc587bb8271c`.
+All run inventories match before/after; only this prose follows the last freeze.
+Go 1.27.3, offline/read-only modules, GOMAXPROCS=2 and umask 0077 were used.
+Actual Node START/commit/cancel/retry TLS, PTY code output, protected storage,
+retained tuple and Owner conditional write are producer scope. Full actual
+Owner/App/Node acceptance, ACK-loss/malicious-Hub process cases and physical
+acceptance remain QA scope; they are NOT_RUN here. Root's old-wire Docker gate
+passed on `1bba176` separately and is not attributed to this later Node source.
