@@ -13,6 +13,114 @@ import (
 	wire "github.com/cicada-ai/cicada/internal/hubaccountwire"
 )
 
+func TestNodePairingSavedReviewRestoresWithoutRenewingConsent(t *testing.T) {
+	for _, mode := range []string{wire.NodePairTrustInitial, wire.NodePairTrustExisting} {
+		t.Run(mode, func(t *testing.T) {
+			f := newNodePairingFixture(t)
+			ctx := context.Background()
+			if mode == wire.NodePairTrustExisting {
+				if err := f.n.c.Dispatch(ctx, Action{Kind: ActionPreviewNode, NodeCode: f.n.code}); err != nil {
+					t.Fatal(err)
+				}
+				f.n.approve(t)
+				binding := f.n.bindingDTO()
+				f.context.Mode, f.context.Candidate, f.context.Binding = mode, nil, &binding
+				var err error
+				f.code, err = wire.EncodeNodePairTrustCode(f.context, "", f.secret)
+				if err != nil {
+					t.Fatal(err)
+				}
+				digest, _ := wire.NodePairTrustContextDigest(f.context)
+				f.o, _ = wire.NodePairTrustOOBCommitment(digest, f.secret)
+			}
+			f.review()
+			c := f.n.c
+			review, deadline := c.Snapshot().Node.Pairing.ReviewID, c.Snapshot().Node.Pairing.ExpiresAt
+			original, _ := json.Marshal(c.node.PairTrust)
+			proposal, _ := json.Marshal(c.node.Proposal)
+			counters := c.node.Client
+			owner, device := c.owner.Public().ID, c.device.Public().ID
+			oldCompletes := len(f.n.posts[wire.OperationAppNodeComplete])
+
+			// Restore the real encrypted profile/session without the fixture's
+			// explicit context refresh: production initialization must perform it.
+			f.reopenSession()
+			c = f.n.c
+			if c.nodeContextChecked {
+				t.Fatal("historical profile restored fresh Node authority")
+			}
+			c.initializeNode(ctx)
+			if !c.nodeContextChecked || !containsAction(c.Snapshot().AvailableActions, ActionApproveNodePairing) {
+				t.Fatal("saved review did not restore approval through initialization")
+			}
+			restored, _ := json.Marshal(c.node.PairTrust)
+			if !bytes.Equal(original, restored) {
+				t.Fatal("initialization changed original review or pairing packet")
+			}
+			if err := c.Dispatch(ctx, Action{Kind: ActionRefreshNodePairing}); err != nil {
+				t.Fatal(err)
+			}
+			checked := c.Snapshot()
+			restoredProposal, _ := json.Marshal(c.node.Proposal)
+			if checked.Node.Pairing.State != "REVIEW" || checked.Node.Pairing.ReviewID != review || checked.Node.Pairing.ExpiresAt != deadline ||
+				!containsAction(checked.AvailableActions, ActionApproveNodePairing) || !bytes.Equal(proposal, restoredProposal) ||
+				!bytes.Equal(c.node.PairTrust.Code.OOBSecret, f.secret) || c.node.Client != counters || c.owner.Public().ID != owner || c.device.Public().ID != device ||
+				c.node.PairTrust.ConsentReviewID != "" || len(f.requests[wire.OperationOwnerNodePairTrustPrepare]) != 0 || len(f.n.posts[wire.OperationAppNodeComplete]) != oldCompletes {
+				t.Fatal("public status lost the original review, renewed consent or mutated admission")
+			}
+			// Model a crash after this exact authenticated status response was
+			// persisted but before apply. Unlock must retain a historical review
+			// while freshness remains unavailable until initialization reads it.
+			statusRequest, statusResponse := bytes.Clone(c.node.PairTrust.Pending.Request), bytes.Clone(c.node.PairTrust.Pending.Response)
+			c.node.PairTrust.Pending.Applied = false
+			if err := c.persistNode(); err != nil {
+				t.Fatal(err)
+			}
+			f.reopenSession()
+			c = f.n.c
+			if c.node.PairTrust.Stage != "REVIEW" || c.nodeContextChecked || !c.node.PairTrust.Pending.Applied ||
+				!bytes.Equal(statusRequest, c.node.PairTrust.Pending.Request) || !bytes.Equal(statusResponse, c.node.PairTrust.Pending.Response) ||
+				containsAction(c.Snapshot().AvailableActions, ActionApproveNodePairing) {
+				t.Fatal("historical status lost the review or granted fresh approval")
+			}
+			c.initializeNode(ctx)
+
+			// A current authenticated observation from another account session
+			// cannot authorize this original review, even before its deadline.
+			sessionID := f.n.scope.AccountSessionID
+			f.n.scope.AccountSessionID = "synthetic-other-review-session"
+			if err := c.refreshNodePairingContext(ctx); err != nil {
+				t.Fatal(err)
+			}
+			if containsAction(c.Snapshot().AvailableActions, ActionApproveNodePairing) || f.approve() == nil || c.node.PairTrust.ConsentReviewID != "" {
+				t.Fatal("different current session approved or renewed saved review")
+			}
+			f.n.scope.AccountSessionID = sessionID
+			if err := c.refreshNodePairingContext(ctx); err != nil {
+				t.Fatal(err)
+			}
+			if c.nodePairingReviewID() != review || c.Snapshot().Node.Pairing.ExpiresAt != deadline {
+				t.Fatal("read-only context refresh replaced the original review")
+			}
+			if err := f.approve(); err != nil {
+				t.Fatal(err)
+			}
+			if c.node.PairTrust.Stage != wire.NodePairTrustOwnerApproved || c.node.PairTrust.ConsentReviewID != review || c.node.Client != counters {
+				t.Fatal("explicit original approval failed or advanced original counters")
+			}
+			if mode == wire.NodePairTrustExisting {
+				f.state = wire.NodePairTrustRevoked
+				if err := c.Dispatch(ctx, Action{Kind: ActionRefreshNodePairing}); err != nil {
+					t.Fatal(err)
+				}
+				if c.node.PairTrust.Stage != wire.NodePairTrustRevoked || containsAction(c.Snapshot().AvailableActions, ActionApproveNodePairing) {
+					t.Fatal("real terminal observation restored an approval")
+				}
+			}
+		})
+	}
+}
+
 func TestNodePairingPacketFenceObservesAttemptInsteadOfInventingTerminal(t *testing.T) {
 	for _, op := range []string{wire.OperationOwnerNodePairTrustLookup, wire.OperationOwnerNodePairTrustPrepare, wire.OperationOwnerNodePairTrustComplete, wire.OperationOwnerNodePairTrustStatus, wire.OperationOwnerNodePairTrustCancel} {
 		t.Run(op, func(t *testing.T) {

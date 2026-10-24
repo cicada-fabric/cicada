@@ -91,6 +91,11 @@ func (c *nativeController) applyNodePairTrustResponse(fresh bool) error {
 				}
 			}
 			t.Stage = wire.NodePairTrustACKed
+		} else if p.Operation == wire.OperationOwnerNodePairTrustStatus && r.State == wire.NodePairTrustPending && t.Stage == "REVIEW" {
+			// Keep the original historical review, including when applying a
+			// durable response after restart. Only fresh scope/deadline checks
+			// can make this review available for a later explicit approval.
+			t.Stage = "REVIEW"
 		} else {
 			t.Stage = r.State
 		}

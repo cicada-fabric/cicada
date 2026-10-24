@@ -13,7 +13,12 @@ import (
 
 func (c *nativeController) initializeNode(ctx context.Context) {
 	if c.nodePairTrustBusy() && !c.pairTrustWorking {
-		return
+		t := c.node.PairTrust
+		// A saved review needs a fresh read after unlock. It must not advance
+		// an uncertain request, reserved confirmation or existing consent.
+		if t.Stage != "REVIEW" || c.nodePairTrustPending() || t.FencedOperation != "" || (t.Confirmation != nil && !t.Confirmation.Applied) {
+			return
+		}
 	}
 	if !c.nodeAccountReady() || !c.canBeginOperation() || c.hasNodePending() {
 		return

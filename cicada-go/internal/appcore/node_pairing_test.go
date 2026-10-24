@@ -329,6 +329,16 @@ func (f *nodePairingFixture) approve() error {
 	return f.n.c.Dispatch(context.Background(), Action{Kind: ActionApproveNodePairing, NodePairingReviewID: f.n.c.Snapshot().Node.Pairing.ReviewID, ConfirmNodePairing: true})
 }
 func (f *nodePairingFixture) reopen() {
+	f.reopenSession()
+	c := f.n.c
+	if c.hasNodePending() {
+		return
+	}
+	if err := c.refreshNodePairingContext(context.Background()); err != nil {
+		f.t.Fatalf("reopen context: %v (ready=%t pending=%t begin=%t history=%t owner=%t root=%s)", err, c.nodeAccountReady(), c.hasNodePending(), c.canBeginOperation(), c.nodeHasN2History(), c.localOwnerMatchesHub(), c.state.RootState)
+	}
+}
+func (f *nodePairingFixture) reopenSession() {
 	f.t.Helper()
 	old := f.n.c
 	session := f.savedSession
@@ -355,12 +365,6 @@ func (f *nodePairingFixture) reopen() {
 	c.session = &session
 	c.sessionInspected, c.sessionNeedsCheck = true, false
 	c.state.AccountState = AccountStateSessionActive
-	if c.hasNodePending() {
-		return
-	}
-	if err := c.refreshNodePairingContext(ctx); err != nil {
-		f.t.Fatalf("reopen context: %v (ready=%t pending=%t begin=%t history=%t owner=%t root=%s)", err, c.nodeAccountReady(), c.hasNodePending(), c.canBeginOperation(), c.nodeHasN2History(), c.localOwnerMatchesHub(), c.state.RootState)
-	}
 }
 func TestNodePairingOneConsentWaitsForAuthenticatedOriginalACK(t *testing.T) {
 	f := newNodePairingFixture(t)

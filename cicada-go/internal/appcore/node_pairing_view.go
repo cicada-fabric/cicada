@@ -87,7 +87,7 @@ func (c *nativeController) nodePairingActions() []ActionKind {
 	if t.Context != nil {
 		actions = append(actions, ActionCancelNodePairing)
 	}
-	if t.Stage == "REVIEW" && c.cfg.Now().UTC().Before(parseExpiry(t.Code.ExpiresAt)) && (t.Context.Mode == wire.NodePairTrustExisting || c.nodeProposalReviewable()) {
+	if c.nodePairingReviewable() {
 		actions = append(actions, ActionApproveNodePairing)
 	}
 	return actions

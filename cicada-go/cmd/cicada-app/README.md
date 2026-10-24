@@ -124,6 +124,27 @@ remain refused. The pre-fix reproduction remains failed. Evidence is under
 `1bbeceb9` complete candidate remains QA_PENDING, with actual QA rerun and a
 new complete build required before delivery.
 
+The real NPT08 restart gate then exposed a saved-review dead end: initialization
+skipped its fresh N3 context read, and public Check replaced local `REVIEW` with
+Hub `PENDING`. Initialization now permits the existing read when that review
+has no uncertain request. Authenticated status preserves the historical review,
+including a durable response applied after restart; only fresh complete original
+scope, candidate and deadline checks enable explicit approval. Both INITIAL
+and EXISTING retain original consent boundaries; another session cannot approve,
+and real terminal observations still replace the review. No secret, request,
+scope or deadline is renewed by observation.
+
+One regression covers both modes, encrypted vault reopen, public Check and the
+persisted-response restart boundary. Final normal/race each pass three test
+events with zero failures/skips; `appcore` vet exits zero. Dirty `aa2cf326` plus
+this App delta has stable input manifest SHA-256
+`73300e6de52b0f2622d8c3c6ffcf392bff813eab95b02040bb9a301095e367f2`.
+Evidence: `~/Cicada/.local/evidence/n2-app/node-pair-review-resume-20261024/`.
+The original red and intermediate green logs are retained. These are App
+crypto-actor checks; real NPT08 rerun, physical Windows and Runtime/public HTTPS
+remain separate. The existing `aa2cf326` candidate is unchanged and QA_PENDING;
+this fix requires integration and a newly authorized complete build.
+
 The 2026-10-15 local-profile checkpoint passed focused Linux tests (49 passed,
 one optional OpenSSL-fixture skip), race tests (40 passed, the same skip), Linux
 vet, Windows vet and Windows amd64 cross-build using the pinned Go 1.27.1

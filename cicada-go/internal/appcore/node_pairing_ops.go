@@ -69,10 +69,7 @@ func (c *nativeController) nodePairingReviewID() string {
 }
 func (c *nativeController) approveNodePairing(ctx context.Context, review string, confirm bool) error {
 	t := c.node.PairTrust
-	if !confirm || !c.nodeAccountReady() || !c.canBeginOperation() || t == nil || t.Stage != "REVIEW" || review == "" || review != c.nodePairingReviewID() || c.matchNodePairTrust(c.cfg.Now().UTC()) != nil || c.nodePairTrustPending() || c.hasNodePending() {
-		return ErrInvalidAction
-	}
-	if t.Context.Mode == wire.NodePairTrustInitial && !c.nodeProposalReviewable() {
+	if !confirm || !c.canBeginOperation() || !c.nodePairingReviewable() || review == "" || review != c.nodePairingReviewID() || c.nodePairTrustPending() || c.hasNodePending() {
 		return ErrInvalidAction
 	}
 	t.ConsentReviewID, t.Stage = review, "APPROVING"
@@ -81,6 +78,28 @@ func (c *nativeController) approveNodePairing(ctx context.Context, review string
 	}
 	return c.continueNodePairing(ctx)
 }
+
+func (c *nativeController) nodePairingReviewable() bool {
+	t := c.node.PairTrust
+	if t == nil || t.Stage != "REVIEW" || t.Context == nil || !c.nodeAccountReady() || !c.nodeContextChecked || c.node.Context == nil || c.matchNodePairTrust(c.cfg.Now().UTC()) != nil {
+		return false
+	}
+	scope := t.Scope
+	switch t.Context.Mode {
+	case wire.NodePairTrustInitial:
+		if !c.nodeProposalReviewable() {
+			return false
+		}
+		// The original proposal reserves the next head. The current read
+		// must still describe its expected head and every original scope field.
+		scope.HeadVersion = c.node.Proposal.Challenge.Claims.ExpectedHeadVersion
+	case wire.NodePairTrustExisting:
+	default:
+		return false
+	}
+	return reflect.DeepEqual(scope, c.node.Context.Authority.Scope)
+}
+
 func (c *nativeController) continueNodePairing(ctx context.Context) error {
 	t := c.node.PairTrust
 	if t == nil || t.Context == nil || !c.nodeAccountReady() || !c.canBeginOperation() || c.nodePairTrustPending() || c.hasNodePending() {
