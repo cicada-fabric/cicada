@@ -38,6 +38,9 @@ func nodePairBody(op string) any {
 	}
 	return nil
 }
+
+// NewNodePairTrustRequestBody returns only a closed typed decode target.
+func NewNodePairTrustRequestBody(operation string) any { return nodePairBody(operation) }
 func nodePairLimits(op string) (int, int) {
 	if op == OperationNodePairTrustReconcile {
 		return MaxNodePairTrustReconcileBodyBytes, MaxNodePairTrustReconcilePacketBytes
@@ -207,7 +210,7 @@ func validateNodePairResult(h NodePairTrustPacket, r NodePairTrustResult, hub Hu
 			return ErrInvalid
 		}
 	case OperationNodePairTrustCancel, OperationOwnerNodePairTrustCancel:
-		if r.State != NodePairTrustCancelled {
+		if r.State != NodePairTrustCancelled && r.State != NodePairTrustExpired && r.State != NodePairTrustRevoked && r.State != NodePairTrustFenced && r.State != NodePairTrustACKed {
 			return ErrInvalid
 		}
 	}
@@ -252,7 +255,7 @@ func validateNodePairResult(h NodePairTrustPacket, r NodePairTrustResult, hub Hu
 		if r.Binding == nil {
 			return ErrInvalid
 		}
-		if h.Operation == OperationOwnerNodePairTrustStatus && r.Context.Mode == NodePairTrustInitial {
+		if (h.Operation == OperationOwnerNodePairTrustStatus || h.Operation == OperationOwnerNodePairTrustCancel) && r.Context.Mode == NodePairTrustInitial {
 			if len(r.ConfirmationResponse) == 0 || len(r.ConfirmationResponse) > MaxAppNodeReceiptBytes {
 				return ErrInvalid
 			}

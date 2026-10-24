@@ -152,6 +152,9 @@ func setSyntheticNetworkSchemaVersion(t *testing.T, db *sql.DB, targetVersion in
 			dropSyntheticMigrationObject(t, db, object)
 		}
 	}
+	if targetVersion < 68 {
+		dropSyntheticNodePairTrustColumn(t, db)
+	}
 	if targetVersion < 35 {
 		if _, err := db.Exec(`DROP INDEX IF EXISTS groups_network_idx`); err != nil {
 			t.Fatalf("remove synthetic v35 Group index: %v", err)
@@ -188,6 +191,21 @@ func setSyntheticNetworkSchemaVersion(t *testing.T, db *sql.DB, targetVersion in
 	}
 	if _, err := db.Exec(`DELETE FROM schema_migrations_v2 WHERE version > ?`, targetVersion); err != nil {
 		t.Fatalf("remove synthetic migration ledger after v%d: %v", targetVersion, err)
+	}
+}
+
+// Schema 68 also alters an older table. Synthetic historical fixtures remove
+// that column after dropping all 68 triggers/indexes; production never does.
+func dropSyntheticNodePairTrustColumn(t *testing.T, db *sql.DB) {
+	t.Helper()
+	var n int
+	if err := db.QueryRow(`SELECT count(*) FROM pragma_table_info('node_control_key_requests_v1') WHERE name='require_pair_trust_ack'`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		if _, err := db.Exec(`ALTER TABLE node_control_key_requests_v1 DROP COLUMN require_pair_trust_ack`); err != nil {
+			t.Fatal("remove synthetic post-boundary column", err)
+		}
 	}
 }
 

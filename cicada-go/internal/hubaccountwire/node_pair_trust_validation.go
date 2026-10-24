@@ -190,7 +190,11 @@ func validateNodePairBody(h NodePairTrustPacket, body any, hub HubIdentity, now 
 		return ErrInvalid
 	}
 	context := func(c NodePairTrustContext, o, issued string, scope *e2ee.OwnerAppNodeScope, token []byte) error {
-		if ValidateNodePairTrustContext(c, now) != nil || c.AttemptID != h.AttemptID || !reflect.DeepEqual(c.Hub, hub) || !isHex(o, 32) || validateRecent(issued, now, time.Minute) != nil {
+		at := now
+		if h.Operation == OperationNodePairTrustPoll || h.Operation == OperationOwnerNodePairTrustStatus || h.Operation == OperationNodePairTrustCancel || h.Operation == OperationOwnerNodePairTrustCancel {
+			at = time.Time{}
+		}
+		if ValidateNodePairTrustContext(c, at) != nil || c.AttemptID != h.AttemptID || !reflect.DeepEqual(c.Hub, hub) || !isHex(o, 32) || validateRecent(issued, now, time.Minute) != nil {
 			return ErrInvalid
 		}
 		if nodePairOperationOwner(h.Operation) {
@@ -277,4 +281,10 @@ func validateNodePairBody(h NodePairTrustPacket, body any, hub HubIdentity, now 
 		return nil
 	}
 	return ErrInvalid
+}
+
+// Services repeat freshness/shape checks inside their single writer after
+// authenticating exact old packets without granting historical admission.
+func ValidateNodePairTrustRequestBody(h NodePairTrustPacket, body any, hub HubIdentity, now time.Time) error {
+	return validateNodePairBody(h, body, hub, now)
 }

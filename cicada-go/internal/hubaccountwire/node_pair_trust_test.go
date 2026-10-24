@@ -622,3 +622,52 @@ func TestNodePairTrustExistingTrustOnlyCannotCreateInitialAuthority(t *testing.T
 		t.Fatal(e)
 	}
 }
+
+func TestNodePairTrustFreshObservationsAllowExpiredContextOnly(t *testing.T) {
+	f := nodePairCrypto(t)
+	end, _ := time.Parse(time.RFC3339Nano, f.c.ExpiresAt)
+	now := end.Add(time.Minute)
+	for _, op := range []string{OperationNodePairTrustPoll, OperationNodePairTrustCancel, OperationOwnerNodePairTrustStatus, OperationOwnerNodePairTrustCancel} {
+		t.Run(op, func(t *testing.T) {
+			key := f.node
+			var body any = NodePairTrustPoll{NodePairTrustFormat, f.c, f.o, formatUTC(now)}
+			if nodePairOperationOwner(op) {
+				key = f.f.device
+				body = NodePairTrustOwnerStatus{NodePairTrustFormat, f.f.session.Token, f.a.Scope, f.c, f.o, formatUTC(now)}
+			}
+			h := nodePairHeaderFor(f, op, key)
+			if _, e := SealNodePairTrustRequest(key, f.f.hub, h, body, now); e != nil {
+				t.Fatal("fresh observation blocked by old context", e)
+			}
+			if _, e := SealNodePairTrustRequest(key, f.f.hub, h, body, now.Add(2*time.Minute)); e == nil {
+				t.Fatal("old observation request became timeless")
+			}
+		})
+	}
+	ack := nodePairACK(f)
+	ack.IssuedAt = formatUTC(now)
+	if _, e := SealNodePairTrustRequest(f.node, f.f.hub, nodePairHeaderFor(f, OperationNodePairTrustACK, f.node), ack, now); e == nil {
+		t.Fatal("late ACK accepted expired context")
+	}
+}
+
+func TestNodePairTrustCancelReturnsExistingTerminalWithoutRenewal(t *testing.T) {
+	f := nodePairCrypto(t)
+	q := NodePairTrustCancel{NodePairTrustFormat, f.c, f.o, formatUTC(f.f.now)}
+	h := nodePairHeaderFor(f, OperationNodePairTrustCancel, f.node)
+	raw, e := SealNodePairTrustRequest(f.node, f.f.hub, h, q, f.f.now)
+	if e != nil {
+		t.Fatal(e)
+	}
+	for _, state := range []string{NodePairTrustCancelled, NodePairTrustExpired, NodePairTrustRevoked, NodePairTrustFenced} {
+		r := NodePairTrustResult{Format: NodePairTrustFormat, Operation: h.Operation, RequestID: h.RequestID, AttemptID: h.AttemptID, RequestPacketDigest: NodePairTrustPacketDigest(raw), State: state, Context: &f.c, OOBCommitment: f.o, ObservedAt: formatUTC(f.f.now)}
+		sealed, e := SealNodePairTrustResponse(f.f.hubPrivate, f.f.hub, raw, q, r)
+		if e != nil {
+			t.Fatal("terminal cancel result", state, e)
+		}
+		opened, e := OpenNodePairTrustResponse(f.node, f.f.hub, raw, sealed, q)
+		if e != nil || opened.State != state || len(opened.ConfirmationResponse) != 0 {
+			t.Fatal("cancel changed terminal or settled old Client", e)
+		}
+	}
+}

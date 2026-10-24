@@ -80,7 +80,11 @@ func n3HTTP(t *testing.T, f *hubAccountTCPFixture, method, path, token string, r
 		if token != "" {
 			r.Header.Set("Authorization", "CicadaNode "+token)
 		}
-		response, err := http.DefaultClient.Do(r)
+		client := f.client
+		if client == nil {
+			client = http.DefaultClient
+		}
+		response, err := client.Do(r)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -89,7 +93,7 @@ func n3HTTP(t *testing.T, f *hubAccountTCPFixture, method, path, token string, r
 		if err != nil {
 			t.Fatal(err)
 		}
-		if response.StatusCode == http.StatusTooManyRequests {
+		if response.StatusCode == http.StatusTooManyRequests || (response.StatusCode == http.StatusServiceUnavailable && wire.NodePairTrustHTTPPath(hubauth.NodePairTrustOperationForPath(path)) == path) {
 			time.Sleep(25 * time.Millisecond)
 			continue
 		}

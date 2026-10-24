@@ -137,6 +137,6 @@ func TestHubNativeTLSBackupPreservesPinAndBundleButRestoreStaysHeld(t *testing.T
 		t.Fatal("unproved native restore gained startup authority")
 	}
 	if _, err = InspectHubRestoreCheckpointReadOnly(source); err != nil {
-		t.Fatal("schema67 public pin not recognized by read-only inventory")
+		t.Fatal("public pin with no Node pairing state failed legacy restore coverage", err)
 	}
 }

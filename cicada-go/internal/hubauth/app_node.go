@@ -18,6 +18,8 @@ import (
 
 var ErrAppNodeCounterConflict = errors.New("COUNTER_CONFLICT")
 
+var ErrNodePairTrustACKRequired = errors.New("ACK_REQUIRED")
+
 // This constructor is used only by explicit --hub-nodes-only composition.
 // Ordinary Hub/account and Control modes never enable new N3 admissions.
 func NewServiceWithNodeAuthority(db *store.Store, ids hubidentity.Set) (*Service, error) {
@@ -98,6 +100,9 @@ func clearAppNodeBody(body any) {
 func appNodeServiceError(err error) error {
 	if err == nil {
 		return nil
+	}
+	if errors.Is(err, store.ErrNodePairTrustACKRequired) {
+		return ErrNodePairTrustACKRequired
 	}
 	if errors.Is(err, store.ErrHubOwnerDiagnosticsFull) {
 		return ErrBusy

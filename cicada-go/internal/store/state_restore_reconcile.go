@@ -71,9 +71,10 @@ func InspectHubRestoreCheckpointReadOnly(stateDir string) (*HubRestoreCheckpoint
 	defer tx.Rollback()
 	cp := &HubRestoreCheckpoint{IdentityFingerprints: fps, SchemaVersion: hubRestoreReviewedSchemaVersion, rows: map[string]map[string]map[string]any{}}
 	var n, max, bad int
-	if e = tx.QueryRow(`SELECT count(*),coalesce(max(version),0),sum(CASE WHEN state!='applied' THEN 1 ELSE 0 END) FROM schema_migrations_v2`).Scan(&n, &max, &bad); e != nil || n != hubRestoreReviewedSchemaVersion || max != hubRestoreReviewedSchemaVersion || bad != 0 {
+	if e = tx.QueryRow(`SELECT count(*),coalesce(max(version),0),sum(CASE WHEN state!='applied' THEN 1 ELSE 0 END) FROM schema_migrations_v2`).Scan(&n, &max, &bad); e != nil || n != max || (max != hubRestoreReviewedSchemaVersion && max != 68) || bad != 0 {
 		return nil, ErrHubRestoreCoverage
 	}
+	cp.SchemaVersion = max
 	if e = tx.QueryRow(`SELECT hub_id FROM client_device_hub_config_v2 WHERE id=1`).Scan(&cp.HubID); e != nil || cp.HubID == "" {
 		return nil, fmt.Errorf("%w: stable SOURCE Hub ID cannot be read (%v)", ErrHubRestoreAuthorityUnproven, e)
 	}
@@ -87,7 +88,7 @@ func InspectHubRestoreCheckpointReadOnly(stateDir string) (*HubRestoreCheckpoint
 			rs.Close()
 			return nil, e
 		}
-		if !hubRestoreSupportedTable(name) {
+		if !hubRestoreSupportedTable(name) && !(max == 68 && hubRestoreNPTTable(name)) {
 			rs.Close()
 			return nil, fmt.Errorf("%w: unsupported table %s", ErrHubRestoreCoverage, name)
 		}
@@ -204,6 +205,9 @@ func InspectHubRestoreCheckpointReadOnly(stateDir string) (*HubRestoreCheckpoint
 			return nil, fmt.Errorf("%w: missing scope %s", ErrHubRestoreCoverage, name)
 		}
 	}
+	if !hubRestoreSchemaAllowed(cp) {
+		return nil, ErrHubRestoreCoverage
+	}
 	sort.Strings(unknown)
 	cp.UnknownSHA256 = hubRestoreDigest(unknown)
 	cp.CoverageSHA256 = hubRestoreDigest(cp.rows)
@@ -230,7 +234,7 @@ func hubRestoreFloor(name string) bool {
 	return false
 }
 func CompareHubRestoreCoverage(base, current *HubRestoreCheckpoint) error {
-	if base == nil || current == nil || base.SchemaVersion != hubRestoreReviewedSchemaVersion || current.SchemaVersion != hubRestoreReviewedSchemaVersion || base.SchemaVersion != current.SchemaVersion || base.HubID != current.HubID || base.SchemaFingerprint != current.SchemaFingerprint || hubRestoreDigest(base.IdentityFingerprints) != hubRestoreDigest(current.IdentityFingerprints) || hubRestoreDigest(base.Tables) != hubRestoreDigest(current.Tables) {
+	if !hubRestoreSchemaAllowed(base) || !hubRestoreSchemaAllowed(current) || base.SchemaVersion != current.SchemaVersion || base.HubID != current.HubID || base.SchemaFingerprint != current.SchemaFingerprint || hubRestoreDigest(base.IdentityFingerprints) != hubRestoreDigest(current.IdentityFingerprints) || hubRestoreDigest(base.Tables) != hubRestoreDigest(current.Tables) {
 		return ErrHubRestoreCoverage
 	}
 	for table, rows := range base.rows {

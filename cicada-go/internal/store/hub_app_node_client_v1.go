@@ -76,6 +76,12 @@ func appNodeClient(tx *sql.Tx, a *hubAppNodeActor, in HubAppNodeClientInput, fen
 	if packet, state, err := appNodeCached(tx, r.OwnerID, r.DeviceID, r.OperationID, r.Operation, digest, in.At); err != nil || len(packet) > 0 {
 		return packet, state, err
 	}
+	if err := nodePairOriginalClientGuardTx(tx, in, fence); err != nil {
+		return nil, "", err
+	}
+	if err := nodePairClientSlotGuardTx(tx, r.OwnerID, r.DeviceID, r.SessionEpoch); err != nil {
+		return nil, "", err
+	}
 	g, err := appNodeGrant(tx, r.OwnerID, r.DeviceID, grantID)
 	if err != nil {
 		return nil, "", err

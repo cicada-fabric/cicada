@@ -40,6 +40,9 @@ func (h *hubNodesHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	path := r.URL.Path
+	if h.nodePairTrust(w, r) {
+		return
+	}
 	if path == wire.LocalDomainCapabilitiesPath {
 		if r.Method != http.MethodGet {
 			writeError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
@@ -235,6 +238,10 @@ func (h *hubNodesHandler) client(w http.ResponseWriter, r *http.Request) {
 	}
 	packet, err := h.account.HandleAppNodeClient(r.Context(), raw)
 	if err != nil {
+		if errors.Is(err, hubauth.ErrNodePairTrustACKRequired) {
+			writeError(w, http.StatusConflict, hubauth.ErrNodePairTrustACKRequired)
+			return
+		}
 		hubNodesAuthError(w, err)
 		return
 	}

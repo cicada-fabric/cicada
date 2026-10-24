@@ -2,9 +2,10 @@
 
 The [Node pairing trust contract](node-pair-trust-contract.md) defines one local
 secret device code, independent Owner-to-Node trust and a private ACK while
-retaining the existing Node-Control binding. Its shared-code checkpoint keeps
-availability false; service/Node/App integration and physical acceptance remain
-separate from the codecs and candidate-only TLS discovery.
+retaining the existing Node-Control binding. The Hub service/Store carrier adds
+atomic ACK gates, original receipt recovery and bounded anonymous state; public
+availability stays false pending Node consumers, integrated App/process gates
+and physical acceptance. Shared and later carrier evidence remain separate.
 
 The additive [Hub native TLS contract](hub-native-tls-contract.md) defines a
 stable logical origin, numeric dial locator and trusted public TLS descriptor

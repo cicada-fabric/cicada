@@ -203,6 +203,26 @@ func nodeControlActionOperation(operation string) bool {
 }
 
 func (s *Store) StartNodeControlKeyRequest(input NodeControlKeyRequestInput) (*NodeControlKeyCandidate, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	candidate, err := startNodeControlKeyRequestTx(tx, input, time.Now().UTC())
+	if err != nil {
+		return nil, err
+	}
+	if err = tx.Commit(); err != nil {
+		return nil, err
+	}
+	return candidate, nil
+}
+
+// Both old pairing and the ACK-gated native ceremony reserve the same original
+// candidate in their own single writer transaction. No second candidate exists.
+func startNodeControlKeyRequestTx(tx *sql.Tx, input NodeControlKeyRequestInput, now time.Time) (*NodeControlKeyCandidate, error) {
 	input.NodeID = strings.TrimSpace(input.NodeID)
 	input.NodeName = strings.TrimSpace(input.NodeName)
 	// Fabric.HashSessionCredential uses case-sensitive base64url. Never fold
@@ -228,7 +248,6 @@ func (s *Store) StartNodeControlKeyRequest(input NodeControlKeyRequestInput) (*N
 	if input.ExpiresAt.IsZero() {
 		return nil, errors.New("Node-Control pairing expiry is required")
 	}
-	now := time.Now().UTC()
 	if input.ExpiresAt.Before(now.Add(time.Minute)) || input.ExpiresAt.After(now.Add(15*time.Minute)) {
 		return nil, errors.New("Node-Control pairing expiry must be between one and fifteen minutes")
 	}
@@ -242,13 +261,6 @@ func (s *Store) StartNodeControlKeyRequest(input NodeControlKeyRequestInput) (*N
 	if err != nil {
 		return nil, err
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	tx, err := s.db.Begin()
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
 	var hubID string
 	if err := tx.QueryRow(`SELECT hub_id FROM client_device_hub_config_v2 WHERE id=1`).Scan(&hubID); err != nil {
 		return nil, fmt.Errorf("read stable Hub identity: %w", err)
@@ -382,9 +394,6 @@ VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'PENDING',1,?,?)`,
 		if strings.Contains(strings.ToLower(err.Error()), "unique") {
 			return nil, ErrNodeControlPairingConflict
 		}
-		return nil, err
-	}
-	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 	return &NodeControlKeyCandidate{RequestID: requestID, Version: 1, Mode: input.Mode,
@@ -531,6 +540,9 @@ FROM node_control_key_requests_v1 WHERE code_digest=?`, codeDigest).Scan(
 		candidate.HubID != hubID || candidate.HubNodeControlKeyID != currentHubKeyID ||
 		candidate.HubNodeControlFingerprint != currentHubFingerprint {
 		return nil, ErrNodeControlPairingChanged
+	}
+	if err := nodePairConfirmGuardTx(tx, candidate.RequestID); err != nil {
+		return nil, err
 	}
 	if candidate.State != NodeControlPairingPending || !networkFutureExpiry(candidate.ExpiresAt, at) {
 		return nil, ErrNodeControlPairingNotFound

@@ -18,9 +18,35 @@ func syntheticHubCheckpoint() *HubRestoreCheckpoint {
 	}}
 }
 
-func TestHubRestoreReviewedSchemaVersionRequiresExplicitBump(t *testing.T) {
-	if CurrentV2SchemaVersion != hubRestoreReviewedSchemaVersion {
-		t.Fatalf("current schema %d has not been reviewed for Hub restore; reviewed schema is %d", CurrentV2SchemaVersion, hubRestoreReviewedSchemaVersion)
+func TestHubRestoreSchema68OnlyAllowsEmptyNodePairState(t *testing.T) {
+	if CurrentV2SchemaVersion != 68 || hubRestoreReviewedSchemaVersion != 67 {
+		t.Fatal("change this explicit unsupported boundary only after a separate restore review")
+	}
+	db, root, _, _ := nativeTLSStoreFixture(t)
+	cp, err := InspectHubRestoreCheckpointReadOnly(root)
+	if err != nil || cp.SchemaVersion != 68 || CompareHubRestoreCoverage(cp, cp) != nil {
+		t.Fatal("schema 68 without NPT state lost old restore behavior", err)
+	}
+	for _, table := range hubRestoreNPTTables {
+		t.Run(table, func(t *testing.T) {
+			rows := cp.rows[table]
+			cp.rows[table] = map[string]map[string]any{"synthetic-unreviewed-state": {"id": int64(1)}}
+			if !errors.Is(CompareHubRestoreCoverage(cp, cp), ErrHubRestoreCoverage) {
+				t.Fatal("unreviewed NPT state gained restore coverage")
+			}
+			cp.rows[table] = rows
+		})
+	}
+	cp.rows["node_control_key_requests_v1"]["synthetic-marker"] = map[string]any{"require_pair_trust_ack": int64(1)}
+	if !errors.Is(CompareHubRestoreCoverage(cp, cp), ErrHubRestoreCoverage) {
+		t.Fatal("independent RequireACK marker was ignored")
+	}
+	delete(cp.rows["node_control_key_requests_v1"], "synthetic-marker")
+	if _, err := db.db.Exec(`INSERT INTO hub_node_pair_trust_rates_v1 VALUES('SYNTHETIC-attempt','SYNTHETIC-key','2026-10-24T00:00:00Z',1,'2026-10-24T00:02:00Z')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := InspectHubRestoreCheckpointReadOnly(root); !errors.Is(err, ErrHubRestoreCoverage) {
+		t.Fatal("real nonempty NPT database passed read-only restore admission", err)
 	}
 }
 

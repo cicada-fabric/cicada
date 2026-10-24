@@ -201,5 +201,20 @@
   "ack_required_all_confirmation_writers": true,
   "same_owner_different_key_id_rejected": true,
   "old_wire_identifiers_changed": false,
-  "installation_registration_enabled": false
+  "installation_registration_enabled": false,
+  "observation_operations": [
+    "node.pair-trust.poll",
+    "node.pair-trust.cancel",
+    "owner.node-pair-trust.status",
+    "owner.node-pair-trust.cancel"
+  ],
+  "cancel_terminal_states": [
+    "CANCELLED",
+    "EXPIRED",
+    "REVOKED",
+    "FENCED",
+    "ACKED"
+  ],
+  "owner_cancel_acked_initial_requires_original_confirmation_response": true,
+  "reconcile_fences_original_packet_only": true
 }

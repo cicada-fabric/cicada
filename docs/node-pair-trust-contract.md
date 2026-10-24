@@ -1,10 +1,10 @@
 # Node device pairing and independent Owner trust
 
 Contract revision **node-pair-trust-v1**, format `cicada.node-pair-trust.v1`,
-packet format `cicada.node-pair-trust-packet.v1`. This shared-code checkpoint
-keeps public availability **false**. It defines codecs, proof primitives and
-public TLS discovery; production HTTP handlers, transactional ACK gates, Node
-consumers and App integration are the next checkpoint. Frozen Client wire 1,
+packet format `cicada.node-pair-trust-packet.v1`. Public availability remains
+**false**. Shared codecs/proofs and candidate TLS discovery are followed by the
+Hub service/Store checkpoint below. Node consumers, integrated App acceptance
+and the complete process gate remain required before availability is enabled. Frozen Client wire 1,
 client-hub-v1.6.5/catalog 55, N2, app-node-authority-v1, native-pair-v1 and
 installation-registration-v1.1 retain their existing identifiers and purposes.
 In particular, this change enables no C0 registration carrier, admission key,
@@ -334,3 +334,185 @@ Actual Store transitions, reserved original counters/slots, all RequireACK
 writers, same-Owner cross-key rejection, App-close ACK and original-process
 recovery remain required carrier gates. Windows security, physical/public IP,
 Android and native Runtime are also **NOT_RUN** for this shared checkpoint.
+
+
+## Hub service and transactional carrier
+
+The `--hub-nodes-only` composition serves the fixed public GET and twelve typed
+POST routes through HubAuth's existing bounded workers/rate admission. It requires
+the retained native TLS descriptor and exact original CC/NC identities. It creates
+no Control inference service. Cookie/Authorization headers are rejected before
+reading pairing POST bodies; public GET also rejects query, body and chunked
+encoding. Ordinary and reconcile packet ceilings remain distinct. Failures are
+sanitized; waiting old `nodes.confirm`/reconcile returns HTTP 409 ACK_REQUIRED
+without sealing a new Client response or advancing its counters. Capacity is 503.
+Public availability stays false until the missing consumers and full gate land.
+
+Schema 68 adds the side attempt and an independent, monotone
+`require_pair_trust_ack` marker to the actual original candidate in the same
+transaction. Every original confirmation writer checks that marker centrally.
+A marked candidate with missing side state fails closed. No boolean supplied by
+a caller can bypass the gate. Existing confirmed Nodes use the authenticated
+trust-only path, preserving their complete binding, credential and all epochs.
+
+Owner prepare fixes the original encrypted Client confirm packet, reqSeq,
+respSeq, operation ID/digest, Owner/device/session epoch in a RESERVED side slot.
+It does not insert an original PROCESSING row or advance either counter. A SQL
+trigger blocks all competing counter updates within that session epoch. Security
+revocation and epoch advancement remain possible. Complete stores the exact
+Owner signature and encrypted E without confirming the Node. Node ACK proves X
+and the exact authenticated OWNER_APPROVED poll packet/receipt. Only its single
+transaction enters internal ACKING, checks current retained Owner/App authority,
+executes the original `appNodeClient` once, writes the original Client receipt,
+marks the slot DONE and saves the ACKED Node response. ACKING is never committed
+as intermediate state. A failure to seal either response rolls everything back.
+Closing the App connection requires no online callback and is not logout.
+
+Fresh Node poll, Owner status and either cancel may carry a structurally valid
+expired Context so they can observe the real terminal result. Each newly issued
+request still has the original one-minute freshness bound and all current caller
+Guards; this never renews proof/acceptance deadlines. Cancel returns the actual
+immutable terminal state if one already exists: CANCELLED, EXPIRED, REVOKED,
+FENCED or ACKED. INITIAL OwnerCancel ACKED, like OwnerStatus ACKED, **must** carry
+the exact original ConfirmationResponse. App must authenticate it using its
+retained original Client packet/response slot and settle once before displaying
+admission. Trust-only OwnerCancel and NodeCancel never carry that App receipt.
+
+Expiration/cancellation/revocation releases only the side reservation. The
+candidate marker stays permanent and raw old confirm cannot activate it. Only
+the authenticated old app-node reconcile of the exact original Client packet
+can create/return an original negative response and settle that counter once.
+An old epoch never settles into a replacement epoch. NPT reconcile fences only
+one exact original packet; FENCED does **not** imply that the whole attempt is
+terminal. Consumers query current status or explicitly cancel the attempt before
+settling it. A missing original is shape checked at its original issued time,
+which cannot be later than the current writer time plus 30 seconds, so a short
+recovery fence cannot expire before a far-future request becomes admissible.
+
+Anonymous attempt metadata is capped at 512 rows/16 MiB. Ephemeral encrypted
+read cache is separately capped at 4096 rows/16 MiB, 64 per attempt, and 60 new
+reads per sender/attempt/minute. Ordinary reads live two minutes; start/commit
+originals retain the immutable attempt expiry plus ten minutes. Indexed GC
+reclaims at most 256 expired reads/rates and unapproved attempts per transaction,
+including their unapproved original candidates. It preserves Owner-prepared
+history, all authorized receipts and marked missing-side candidates. Singleton
+statistics and SQL triggers enforce byte/row budgets without global receipt
+scans. Owner prepare reserves 12 MiB in a separate 256-MiB authorized budget;
+OWNER_APPROVED polls are at most 64/10 MiB per attempt, leaving ACK capacity
+independent of anonymous read exhaustion. Consumers must back off polling to
+respect these bounded observation windows; five-second polling is suitable for
+one Node plus one App. Limits reject rather than silently evict approved history.
+
+Hub restore retains its fully reviewed schema pin at **67**. Schema 68 permits
+only the previous capabilities when all six NPT tables exist, all five state/
+receipt/cache/slot tables are empty, the budget singleton is exactly zero and
+every original candidate RequireACK marker is zero. Both read-only inspection
+and coverage comparison enforce this. Any missing table, NPT state, nonzero
+budget or marker is UNSUPPORTED (`ErrHubRestoreCoverage`). Recovery of NPT
+reservations, capsules and receipts requires a separate forward/UNKNOWN review.
+Normal non-restore startup/reopen remains supported and retains those records.
+
+## Hub carrier producer validation — 2026-10-24
+
+This checkpoint tests dirty parent
+`a9b1f43a38bbea896ba9eda1ff4667d2b97e3902`; it does not attribute a dirty build
+solely to that Git revision. Fixed-source evidence is under
+`/home/zyf/Cicada/.local/evidence/hub-native-tls/`:
+
+| Run | Exact result |
+| --- | --- |
+| `node-pair-server-20261024T080505Z` | Normal exit **1**: 362 PASS, 1 FAIL, 2 SKIP, 164 completed top-level outcomes. Original failed receipt remains unchanged. |
+| `node-pair-server-resume-20261024T080915Z` | Fixture-only normal delta exit 0: 19 PASS, 0 FAIL/SKIP, 9 top-level. Race exit **1**: 55 completed outcomes PASS, then Store's 240-second package timeout. |
+| `node-pair-server-race-tail-20261024T081528Z` | Only the two unfinished race top-level tests resumed separately: each exit 0, 1 PASS, no FAIL/SKIP. Vet seven packages exit 0. |
+
+The normal failure was an obsolete pre-v61 synthetic migration fixture: it
+removed every later ledger row but left schema 67's native TLS table, causing a
+real re-open failure before schema 68 could apply. The fix removes only synthetic
+67/68 objects and the 68 column and also updates the existing historical Network
+fixture helper. The resumed run covers that failed case plus affected historical
+Network/V2 migration fixtures. A manifest comparison proves these **two test
+files** are the only changes between the normal and resumed sources; production
+blobs are identical. The original successful normal cases are carried forward,
+not rerun or relabelled as a clean original package pass.
+
+Race slowdown exceeded the original package budget; no data-race diagnostic or
+individual failing test preceded timeout. The original package failure is not
+changed to PASS. The exact unfinished trust-only and expired-observation tests
+were resumed once each. Together with the prior 55 completed outcomes, all
+**20** declared NPT top-level tests are accounted for. Original normal skips are
+`TestHubBoundedCapacityDocker` (isolated Docker fixture absent) and
+`TestHubForwardPrepareRejectsPhysicalBindCapsuleBeforeFence` (two disposable bind
+mounts absent), each retained as NOT_RUN rather than PASS.
+
+Every run has matching before/after full source inventories. The final tested Go
+input manifest is
+`4505fedfda4d49c4214b0c5a728f519d3939c1698e54becfdf2902038ccaeeab`;
+its full tested source manifest is
+`950bc5b274d8099a0f3cbe267515fae2fc86613385c23e535f6a35a48040d6bb`.
+Only this validation prose was appended afterward. Aggregate evidence file
+`node-pair-server-checkpoint-evidence.json` has SHA-256
+`3b6ee3e896a45236b917945a1e2c712f17a8c9d5afd9612d4939e8a169742394`.
+It preserves original receipt hashes, exact argv and source comparisons. Go is
+1.27.3; modules are offline/read-only, GOMAXPROCS=2 and synthetic private
+fixtures use umask 0077. Vet covers e2ee, nodewire, hubaccountwire, hubtransport,
+hubauth, server and Store.
+
+Actual production HubAuth/Server on a private synthetic TLS socket covers public
+discovery, original N2 activation/login, actual NPT candidate/lookup, wrong App
+and wrong Hub rejection, old finite grant plus original Client confirm, HTTP
+409 before ACK, App connection closure without logout, S/E verification, private
+Node ACK, original Client response/counter opening, exact START/ACK retry and
+late OwnerCancel ACKED returning the same original receipt. It found and fixed
+the old Client route's missing ACK_REQUIRED HTTP mapping. Test HTTP retries only
+the existing bounded service's explicit transient busy response.
+
+Store tests cover reopen and rollback before ACK response sealing; central old
+direct/N3 confirm/reconcile gates; concurrent prepare's single winner and eight
+concurrent ACKs recovering one receipt/counter; timeout/cancel/logout/Owner
+revocation/App epoch change rejecting an otherwise valid retained ACK; missing
+side state under a marked candidate; bounded anonymous GC and a completely full
+read cache leaving reserved ACK capacity; original-only no-effect reconciliation;
+trust-only preserving the existing binding/candidate/counter; and fresh expired
+observations without original Client settlement. Existing restore positive tests
+remain executable; an empty NPT schema 68 retains legacy restore, while any NPT
+state/marker is explicitly unsupported.
+
+This is a Hub carrier checkpoint, not full user acceptance. Availability remains
+false. Node default-address/TTY/sealed-secret consumers, same-Owner cross-key
+receiver enforcement, integrated App consumer and actual Node/App process gates
+remain subsequent work. Docker full-carrier, physical bind mounts, Windows,
+physical devices, public HTTPS/IP/IPv6, Android and real native Runtime are
+**NOT_RUN** here. No shared Hub, real credential, model change, system CA,
+public listener or resident deployment was used.
+
+A final bounded resource delta was reviewed before the same carrier commit:
+no-effect FENCED originals and existing-terminal cancel observations must use
+the TTL cache rather than the permanent authorized budget. Only the first real
+CANCELLED transition retains one critical cancellation receipt, using an indexed
+existence check in the same transaction. Successful prepare/complete/ACK receipts
+remain immutable. This prevents one formerly approved Node from repeatedly
+burning global permanent capacity with newly signed historical no-effect packets.
+
+`node-pair-server-budget-delta-20261024T082246Z` freezes that final source:
+normal **9/0/0**, four top-level tests, exit 0; race **2/0/0**, two top-level,
+exit 0; Store vet exit 0. It covers permanent receipt accounting for a real first
+cancel, bounded repeat cancel/ACKED observation, post-ACK garbage original fences,
+and a formerly valid original poll being rejected after its short fence expires.
+The terminal suite and real TLS late OwnerCancel receipt also pass on the delta.
+Compared with the prior frozen source, exactly the budget implementation, its
+Store test file and the preceding validation prose changed; no other production
+blob changed. The source inventories match before/after.
+
+Final tested Go input SHA-256:
+`651cf3c9fb0dd2dde8dfae3d2e74892b9ffb56ec93126f39782c6bef0751a803`;
+full tested source manifest:
+`f64531a82059335981820c91c4459fef5d118345fadfe8a60a94e9d0a27d18d9`;
+final delta receipt:
+`2aab382919ace5371ebd666021fce1a4c85da17beb1404c8bce0a6a969c3be04`.
+The prior combined evidence remains immutable. Final combined evidence is
+`node-pair-server-final-evidence.json` (same external evidence root); its hash is
+recorded in the checkpoint delivery. The source inventory and completed-test
+union account for all **21** final NPT top-level tests. The original normal
+failure/skips and race timeout remain visible in their own receipts. Only this
+addendum follows the final frozen run; final Go blobs remain exact. No Docker
+or physical result is promoted to PASS.

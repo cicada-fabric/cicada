@@ -31,6 +31,7 @@ type hubAccountTCPFixture struct {
 	auth     *hubauth.Service
 	hub      wire.HubIdentity
 	http     *httptest.Server
+	client   *http.Client
 }
 
 func newHubAccountTCPFixture(t *testing.T) *hubAccountTCPFixture {
@@ -140,7 +141,11 @@ func postHubAccount(t *testing.T, f *hubAccountTCPFixture, operation string, bod
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Origin", f.setup.Origin)
-	resp, err := http.DefaultClient.Do(req)
+	client := f.client
+	if client == nil {
+		client = http.DefaultClient
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}

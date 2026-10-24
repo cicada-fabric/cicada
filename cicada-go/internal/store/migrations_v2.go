@@ -21,7 +21,7 @@ const (
 	// CurrentV2SchemaVersion is the highest versioned migration installed by
 	// Store initialization.  It is intentionally independent of the product
 	// version so a binary can refuse a ledger with a changed definition.
-	CurrentV2SchemaVersion = 67
+	CurrentV2SchemaVersion = 68
 
 	v2MigrationRunning = "running"
 	v2MigrationApplied = "applied"
@@ -570,6 +570,7 @@ var v2Migrations = []v2Migration{
 	{Version: 65, ID: "v1.hub.native_pair_node", Description: "retain exact Node pair outcomes and bounded detached Node diagnostic caches without changing original epochs", Objects: []string{"hub_native_pairs_v1_account_hub", "hub_native_pairs_v1_node_history", "hub_native_pair_node_operations_v1", "hub_native_pair_node_reads_v1", "hub_native_pair_node_rates_v1"}, Apply: func(s *Store) error { return s.initializeHubNativePairNodeSchema() }},
 	{Version: 66, ID: "v1.hub.local_domain", Description: "add explicit Owner Node/user/Network delegation, persistent scoped members and exact immutable operation history", Objects: localDomainSchemaObjects, Apply: func(s *Store) error { return s.initializeHubLocalDomainSchema() }},
 	{Version: 67, ID: "v1.hub.native_tls", Description: "retain immutable public native TLS binding without changing account or Owner authority", Objects: []string{"hub_native_tls_v1", "hub_native_tls_v1_no_delete", "hub_native_tls_v1_no_update"}, Apply: func(s *Store) error { return s.initializeHubNativeTLSSchema() }},
+	{Version: 68, ID: "v1.hub.node_pair_trust", Description: "retain independently proved Node Owner trust, ACK-gated original bindings and reserved exact Client counters", Objects: nodePairTrustSchemaObjects, Apply: func(s *Store) error { return s.initializeHubNodePairTrustSchema() }},
 }
 
 // legacyInventoryColumns selects stable columns from the pre-v2 authority
