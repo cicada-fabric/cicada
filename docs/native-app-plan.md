@@ -400,35 +400,53 @@ recorded in the [lifecycle preparation](native-app-validation.md#2026-10-25-node
 | FB-15 | Keep Go core and existing crypto/TCP/persistence, with no new coordination service or model polling. Record idle/request/resource costs and exact source/toolchain/product versions; verify upstream stable versions when choosing updates. | Root checked upstream stable versions on 2026-10-20: Go 1.27.3, Gio 0.10.3, x/sys 0.49.0 and latest official Codex CLI changelog entry 0.163.0 (2026-10-15). Exact JSON/hash evidence is linked in validation; no dependency/global runtime/deployment update was performed. |
 | FB-16 | 2026-10-23 user now selects deletion of old installation identities followed by complete fresh setup, rather than a repair package. Preserve only reviewed non-sensitive evidence outside the removed root, Git worktrees/.local evidence and Codex history. | 2026-10-25 Hub reinstall/App first setup/Enter login, corrected Node pairing/local policy and native A/B are USER_REPORTED_PASS. The initial plugin digest preflight FAIL remains; corrected ZIP file installation has independent scoped PASS. Root log review confirms A→B sealed request/reply and correlated native injection; reverse is user report only. New App-close/restart/revoke and dedicated Windows DPAPI/ACL security remain pending. See [continuation and lifecycle preparation](native-app-validation.md#2026-10-25-node-lifecycle-preparation-and-user-native-continuation). No additional resident cleanup, binary replacement or deployment is performed by QA. |
 
-The 2026-10-25 Host object-picker feedback is tracked only in FB-04/05/06.
-App owns the capability research and any one synthetic elicitation-form probe;
-QA does not repeat them. Separate evidence layers are required:
+The 2026-10-25 Host object-picker research is tracked in FB-04/05/06. App
+collected official documentation, exact **Codex 0.164.0** experimental schema
+and one synthetic native-TUI form probe; QA read/hash-checked the original
+receipts without repeating the research or probe. See the
+[research checkpoint](native-app-validation.md#2026-10-25-codex-0164-host-selection-research-checkpoint)
+for sources, hashes, retained warnings and the proposed route.
 
-| Layer | What it can establish | What it cannot establish |
-| --- | --- | --- |
-| Public Docs/rules | Documented extension contracts and restrictions, with App's source references | Installed 0.164 support or an actually rendered/usable control |
-| Exact Codex 0.164 schema | Advertised methods/closed fields and eligible MCP form surface | Actual UI behavior, arbitrary colored typed mentions, or Cicada authorization |
-| Actual native UI | The bounded synthetic control actually observed; source/CLI/capability/receipt attribution remains explicit | A deployed Cicada directory picker, current-actor integration or end-to-end authorized cross-Node communication |
+| Capability | Docs / rules review | Exact 0.164 schema | Actual native-UI evidence / boundary |
+| --- | --- | --- | --- |
+| Deterministic `/cicada` | Built-in controls do not establish a plugin-defined local handler | No such registration established | Rejected before Hook: 0 Hook / 0 provider POST; not a supported entry |
+| Skills / custom prompts | Prompt/skill carriers, not per-Endpoint command registries | Skill uses name/path | Ordinary skill invocation remains separate; not a deterministic picker |
+| Hook display | A blocked prompt is consumed; warning presentation belongs to Host | Output fields do not register composer UI | One reason body works, but Blocked-by-hook / Hook-stopped Host headings remain |
+| Resources / templates | Resource status/read carriers exist | URI/name/title/templates, contextual read | This limited `@` query received no resource calls; remote composer picking unverified, not generic protocol absence |
+| Completion / `@` picking | No guaranteed remote Endpoint registration found | No app-server completion method establishes a custom picker | No completion call in this interaction; do not generalize to all MCP completion |
+| Fixed enum form | Server-requested form, accept/decline/cancel | Form modes, const/title options, threadId and action/content | Two labelled choices displayed; Arrow/Enter accepted the exact opaque choice. Synthetic form sub-facts verified |
+| Dynamic search / paging | No live search/on-change/paging guarantee established | Static enum/text schema is insufficient | Only fixed choices exercised; dynamic search and paging NOT_RUN |
+| Model requirement / entry | Elicitation is not intrinsically a model operation | Explicit MCP tool call exists; no standalone CLI form entry proven | 0 real model calls, **3 local static Responses POSTs vs expected 2**; warning retained, no model-free CLI-entry claim |
+| Colored composer reference | Desktop composer extension is not a CLI guarantee | Generic mention name/path/type lacks endpoint/binding/version or custom renderer registration | Choice is in tool result, with no automatic colored/composer insertion observed |
+| Approval / native actor | Host trust/tool approval is separate from Cicada authority | Thread/mention fields are not credentials | No broad Host-policy change, Cicada grant or actor/Guard integration; selection is not authorization |
+| Existing directory reuse | Repository contract governs caller scope/privacy | Explicit joined Network discovery or current Group target filters | Code reuse identified, not a newly integrated Host picker |
 
-Current public-extension assessment does not support custom deterministic slash
-commands or arbitrary colored typed references; `/cicada` is rejected before the
-Hook in App's actual 0.164 probe. A limited MCP elicitation form remains a possible
-surface, subject to schema/capability and actual UI evidence, not a promised
-popup/reference implementation. Any future integration must bind the current
-actor, query only its Hub-authorized directory with privacy filtering, select
-exact ID/binding/version and apply a fresh Guard before send. Existing reuse points are `cmd/cicada/mcp.go`'s `cicada_network_directory` /
-`cicada_network_resolve` registry and `mcp_network.go` dispatch, plus the five
-current-Group query tools in the [Endpoint directory contract](native-endpoint-directory-contract.md).
-Network discovery grants and the authenticated caller's actual Group/Network
-scope remain authoritative. Owner inventory permission cannot be borrowed by
-a Native Thread. Same-Owner rich metadata is visible only within its scope;
-foreign Network cards remain opt-in aliases/minimal cards and foreign Group
-cards remain authorized opaque IDs, without SID/workspace/binding exposure.
-Exact target/version validation must not add hidden foreign fields to a Host
-reference. There is no global unfiltered directory, even when the user describes
-“the whole Network”. Research changes neither public protocols nor grants.
-The current on/off and output scope stays unchanged; picker/reference
-integration remains DESIGN_PENDING / NOT_RUN.
+A feasible **future bounded route**, not an implementation claim, is to start
+within an authenticated native MCP tool call, obtain a finite current authorized
+result set, display privacy-safe name/Node/workspace/snapshot labels where
+permitted, and accept one opaque choice. Resolve its exact Endpoint/current
+binding/version within that same actor scope and run a fresh Guard immediately
+before the existing send. Decline/cancel, stale/ambiguous selection or loss of
+scope must not send, reselect silently, create a grant or renew authority.
+Entry/trigger, cancellation and actor binding still need a reviewed integration;
+the synthetic form does not establish a no-model slash/CLI launcher.
+
+Reuse `cmd/cicada/mcp.go`'s `cicada_network_directory` /
+`cicada_network_resolve`, `mcp_network.go` dispatch and the five current-Group
+tools in the [Endpoint directory contract](native-endpoint-directory-contract.md).
+Each Network call needs an explicit joined `network_id` and its current native
+discovery grant. Broader aggregation needs an authorized eligible-Network and
+pagination surface; never borrow Owner inventory for a Native Thread or infer
+a global directory from “the whole Network”. Same-Owner rich metadata remains
+scoped; foreign Network cards use opt-in aliases/minimal cards and foreign Group
+cards authorized opaque IDs, without SID/workspace/binding exposure. Exact
+internal target/version validation cannot leak hidden fields into Host labels.
+
+Full dynamic cross-Network search and persistent colored references need an
+explicitly supported Host surface or separately reviewed UI integration.
+Picker/reference integration remains **DESIGN_PENDING / NOT_RUN**; research
+changes no public protocol, skill/resource registry, grant or current on/off /
+output implementation scope.
 
 The approved minimal independent driver reuses actual App Core Node approval,
 real PQ/TCP, persistent owned SQLite and disposable Docker. It tests only the
