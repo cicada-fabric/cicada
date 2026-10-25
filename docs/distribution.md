@@ -257,6 +257,139 @@ Node identity and inbox state. A real native Thread still needs the local Codex
 runtime; queue acceptance is not a general model-consumption or cold-wake
 receipt.
 
+## Explicit background Node control on Linux
+
+`cicada on`, `cicada off` and `cicada status` control one already paired,
+single-Hub, relay-only Node through the existing `machine agent` and a transient
+systemd **user** service. They require systemd 254 or newer and an available
+user manager. File installation does not start a Node. These commands do not
+enroll a Node, grant membership, revoke authorization, or change Owner keys.
+
+The successful Linux Node component installation JSON includes `path_export`.
+Copy that exact, shell-quoted export to the current shell. For an ordinary
+selected root it has this shape:
+
+```sh
+export PATH='/home/USER/.cicada/components/node/bin':"$PATH"
+```
+
+This retains the previous PATH. Custom paths with spaces or shell punctuation
+must use the installer's quoted output. A shell startup file may contain the
+PATH export only; installation and shell startup never run `on`, enable a
+service, or start an agent.
+
+Complete the normal foreground pairing first. After it reports successful
+pairing, use Ctrl-C to stop that foreground agent before handing the **same**
+Node to `on`. The first `on` requires the original absolute state directory,
+stable ID, display name, original MCP session/outbox paths, exact Codex binary
+and original Hub address. It never guesses another existing installation:
+
+```sh
+cicada on --user-root /home/USER/.cicada --codex-bin /absolute/original/codex -- \
+  --hub-address 192.0.2.10:8787 --relay-only \
+  --id ORIGINAL_NODE_ID --name 'Original Node name' \
+  --state-dir /absolute/original/state \
+  --mcp-session-state-file /absolute/original/sessions.json \
+  --mcp-outbox-state-file /absolute/original/outbox.json --interval 30s
+
+cicada status
+cicada off
+cicada on
+```
+
+The last three commands use the default `~/.cicada` root (or
+`CICADA_USER_ROOT`). Repeat `--user-root /absolute/selected/root` on each command
+for a custom installation. Ordinary `cicada on` reuses the saved selection.
+Do not copy a device code, token, ticket, nonce, private key or bearer into any
+argument or configuration file.
+
+The local `cicada.node-service.v1` contract is one strictly decoded, same-user
+`0600` file at `<root>/node-service.json`. Only `on` produces it, by atomic
+no-replace publication. Its closed fields are `format`, `user_root`, `binary`,
+`codex_bin`, `home`, `path`, optional `codex_home`, and canonical `agent_args`.
+It records the exact executable paths and original runtime environment's
+HOME/PATH/optional CODEX_HOME, without importing arbitrary environment variables
+or secrets. Root and configuration symlinks, unknown/duplicate JSON fields,
+duplicate flags and changed saved selections reject; no automatic repair,
+identity generation, state migration or fallback installation is performed.
+An explicit repeat of first-on inputs must match the saved canonical selection.
+The binary at its saved path may be replaced by an explicitly installed update;
+this process configuration is not an artifact digest or software version.
+
+Accepted agent input is limited to `--id`, `--name`, `--user-root`,
+`--state-dir`, `--control-url`, `--hub-address`, `--interval`, `--relay-only`,
+`--mcp-session-state-file`, and `--mcp-outbox-state-file`. Name, ID, state and
+both MCP paths must be explicit; interval defaults to 30s and is bounded to
+1s–1h. The original authenticated logical origin comes from existing Node
+state if `--control-url` was omitted. An explicit origin must match that state.
+Once, retry-pairing, LAN discovery, managed Worker, multi-Hub and alternate
+PQ/descriptor enrollment modes are outside this first service-control scope.
+An unfinished pairing cannot become a background enrollment.
+
+The unit is `cicada-node-<first-16-bytes-of-SHA256>.service`, with SHA-256 input
+`decimal-effective-UID + NUL + canonical-root + NUL + Node-ID`. The service
+description is `Cicada managed Node <SHA256-of-exact-config-bytes>`;
+`Transient=yes` and that exact description must match before control operations.
+The controller does not adopt an older `cicada-node.service` or stop a foreground
+agent. Same-state foreground singleton conflicts refuse `on`. Repeated `on`
+and `off` are idempotent. A stopped/failed owned transient unit may be reset by
+its exact name; no wildcard unit mutation is used.
+
+Startup uses `Type=exec`, `Restart=no`, `UMask=0077`, null stdin and disabled
+environment expansion. Arguments go directly to systemd, without a shell.
+Running requires the existing local Node discovery result to match the original
+root/ID/state/MCP coordinates and its Unix peer PID to equal the service
+MainPID. Merely `active` is insufficient. The commands return one JSON result
+with `scope:"managed_node_process"`, `state:"running"|"stopped"|"failed"`,
+`unit`, optional `main_pid`, and always `hub_online:"unknown"`. A foreground
+agent still holding the selected state after the owned service is stopped is
+reported as `unmanaged_agent_running:true`; it is never killed. Successful
+managed process operations exit 0. If `off` still finds an unmanaged agent,
+it retains that JSON marker and returns nonzero `NODE_SERVICE_CONFLICT`;
+`stopped` describes only the managed unit. Invalid configuration, unavailable user manager,
+conflicting owner/controller, failed start or failed readiness return nonzero
+with bounded `NODE_SERVICE_*` errors. `status` also returns nonzero for a failed
+managed process. No raw manager payload, pairing code or secret is printed.
+
+`off` stops only the exact owned unit and its agent-owned subprocesses, then
+checks the singleton state. Original credentials, keys, trusted Owner, binding,
+epochs, policy, pending operations and queues remain on disk. Hub heartbeat
+status can remain fresh until its existing TTL expires; `off` is process stop,
+not immediate Hub offline confirmation or membership removal. The commands do
+not enable boot/login autostart, use sudo, change linger, edit shell startup
+files or change any resident service. After closing SSH, service survival
+depends on the user's existing logind/user-manager lifetime and linger policy.
+
+2026-10-25 producer validation used dirty parent
+`d9853afd75ebe3215c6e8a8d26328daa3dc477df`, with 1,569 Go/module inputs hashed
+as `1a06afaabf8cd4d2d5c4e4d1d572f295d96910bb04ed514b685f88b43ef277de`.
+Final lifecycle normal tests recorded 9 pass/0 fail/1 explicit opt-in service
+skip; eight independent lifecycle race cases passed in separate processes.
+The separate opt-in real systemd-user lane passed on manager 255: repeated
+on/off, original-key/credential restart, genuine process failure, failed status,
+and exact owned-unit cleanup (`MainPID=0`, inactive). It used a new synthetic
+established native-TLS binding, a separate process running the production
+machine agent, and a TLS business fixture returning 503; it does not prove Hub
+online, business authorization, or the new NPT ACK-to-service recovery chain.
+Address-only origin recovery and missing-NPT-ACK refusal preserve original
+state and flags. Three-package vet and the Linux CGO0 CLI build exited 0.
+Source manifests were unchanged during these final checks; this validation
+paragraph was the subsequent documentation-only addition.
+
+Protected receipts are under
+`~/Cicada/.local/evidence/node-lifecycle-20261025/`: `receipt-final.json`,
+`source-final-before.json`, `source-final-after.json`, individual JSON test
+logs, and read-only `availability.json`. Earlier `receipt.json` remains FAIL:
+broader normal tests had 31 pass/1 pre-existing recovery-fixture failure/1 skip;
+restoring the baseline agent/main blobs reproduced that failure in
+`baseline-probe.json`. The broader crypto race run timed out at 180s after eight
+completed tests; it is not a race pass. The first exploratory real-service
+403/cleanup failure is retained separately in that receipt. Full NPT ACK-to-
+background recovery, Docker interoperability for this producer checkpoint,
+Windows/Android, physical devices, public networks and real models are
+**NOT_RUN** here. No existing user Node, resident unit, deployment, key or login
+policy was changed.
+
 The unreleased multi-Hub Node entry accepts `cicada machine agent --hubs-file
 FILE --state-root DIR --relay-only`. The private JSON registry has `version:1`
 and two to eight `{hub_id,control_url,node_id}` entries. The command keeps

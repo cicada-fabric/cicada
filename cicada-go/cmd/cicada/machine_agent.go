@@ -50,6 +50,7 @@ func runMachineAgentWithContext(parent context.Context, args []string, pinned *m
 	relayOnly := flags.Bool("relay-only", false, "deliver Fabric messages after owner-confirmed Node binding; do not call Control management")
 	lanDiscovery := flags.Bool("lan-discovery", false, "answer unauthenticated LAN capability discovery requests")
 	lanPort := flags.Int("lan-port", lanDiscoveryPort, "UDP LAN discovery port")
+	pairingCompleted := false
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -125,7 +126,7 @@ func runMachineAgentWithContext(parent context.Context, args []string, pinned *m
 		if e != nil {
 			return e
 		}
-		if e = prepareMachineNodePairTrust(parent, *stateDir, *id, *name, *hubAddress, expected, explicitOrigin, *once, *retryPairing, os.Stderr); e != nil {
+		if e = prepareMachineNodePairTrust(parent, *stateDir, *id, *name, *hubAddress, expected, explicitOrigin, *once, *retryPairing, os.Stderr, &pairingCompleted); e != nil {
 			return e
 		}
 	}
@@ -488,6 +489,9 @@ func runMachineAgentWithContext(parent context.Context, args []string, pinned *m
 		}
 		localBridge = bridge
 		localWake = bridge.localWake
+	}
+	if pairingCompleted && !*once {
+		fmt.Fprintln(os.Stderr, "配对完成，Node 正在运行。")
 	}
 	// Cancel child contexts and join all Agent-owned workers before closing the
 	// bridge, inbox databases, or releasing the Node singleton lock.

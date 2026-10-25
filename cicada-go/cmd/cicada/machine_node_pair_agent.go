@@ -73,7 +73,7 @@ func machineNodePairingCodeCommand(args []string, output io.Writer) error {
 	return machineNodePairDisplayCode(s, output)
 }
 
-func prepareMachineNodePairTrust(parent context.Context, stateDir, nodeID, name, address, expectedOrigin string, explicitOrigin, once, retry bool, output io.Writer) error {
+func prepareMachineNodePairTrust(parent context.Context, stateDir, nodeID, name, address, expectedOrigin string, explicitOrigin, once, retry bool, output io.Writer, completed *bool) error {
 	if machineNodePairNoSymlinkPath(machineNodeStateDir(stateDir, nodeID)) != nil {
 		return errMachineNodePairState
 	}
@@ -119,12 +119,19 @@ func prepareMachineNodePairTrust(parent context.Context, stateDir, nodeID, name,
 		defer clear(s.Secret)
 	}
 	displayed := false
+	alreadyACKed := s.Stage == wire.NodePairTrustACKed
 	for {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
 		if s.Stage == wire.NodePairTrustACKed {
-			return installMachineNodePairBinding(stateDir, client, s, d)
+			if e := installMachineNodePairBinding(stateDir, client, s, d); e != nil {
+				return e
+			}
+			if completed != nil && !alreadyACKed {
+				*completed = true
+			}
+			return nil
 		}
 		switch s.Stage {
 		case wire.NodePairTrustExpired, wire.NodePairTrustCancelled, wire.NodePairTrustRevoked, wire.NodePairTrustFenced, "UNKNOWN":
