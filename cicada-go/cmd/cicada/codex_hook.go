@@ -16,8 +16,6 @@ import (
 
 const maxCodexHookInput = 2 << 20
 
-const codexHookLocalHandlingReason = "Cicada 已在本地处理此输入；请查看完整结果。 / Cicada handled this input locally; see the full result."
-
 type codexHookInput struct {
 	SessionID      string         `json:"session_id"`
 	CWD            string         `json:"cwd"`
@@ -62,7 +60,9 @@ func codexCicadaToolName(full string) (string, bool) {
 func codexHookOutput(output io.Writer, value any) error { return json.NewEncoder(output).Encode(value) }
 
 func codexHookBlock(output io.Writer, message string) error {
-	return codexHookOutput(output, map[string]any{"decision": "block", "reason": codexHookLocalHandlingReason, "systemMessage": message})
+	// Consume the literal command without sending it to the model. Codex owns
+	// the "Blocked by hook" title; one reason avoids a second warning/footer.
+	return codexHookOutput(output, map[string]any{"decision": "block", "reason": message})
 }
 
 func codexHookDeny(output io.Writer) error {
@@ -269,7 +269,7 @@ func parseCodexOperatorPrompt(prompt string) (codexOperatorCommand, bool, error)
 	return command, true, nil
 }
 
-const codexOperatorHelp = "Cicada：在 App 为该 Node 启用本地协作后，cicada join 名称显式接入当前 Thread；cicada peers 查看目录；cicada leave 退出。高级 Pair：cicada connect · cicada connect 配对名称 A|B。\nCicada: enable local collaboration for this Node in the App, then join NAME explicitly registers this Thread; peers shows the directory; leave exits. Advanced Pair: connect · connect PAIR_LABEL A|B."
+const codexOperatorHelp = "Enable local collaboration in the App, then:\n  cicada join NAME\n  cicada peers\n  cicada leave\nAdvanced Pair: cicada connect [PAIR A|B]"
 
 func codexUserPrompt(event codexHookInput, output io.Writer) error {
 	return codexUserPromptWithSelection(event, output, nil)
@@ -448,30 +448,34 @@ func formatCodexOperatorResult(command codexOperatorCommand, result *localEndpoi
 	var b strings.Builder
 	switch {
 	case result.LocalDomain != nil && result.Join != nil:
-		b.WriteString("当前 Thread 的本地协作接入结果已保存；后续通信由当前 Hub Guard 验证。 / This Thread's local collaboration admission is saved; current Hub Guard verifies subsequent communication.\n")
+		b.WriteString("Local collaboration joined\n")
 		b.WriteString(result.Join.Endpoint.Name + "\n" + result.Join.Endpoint.Workspace)
 	case result.Registration != nil:
 		if command.operation == "endpoint_leave" {
-			b.WriteString("当前 Thread 已离开 Cicada，原生记录和工作区保留。 / This Thread left Cicada; its native record and workspace are retained.\n")
+			b.WriteString("This Thread left Cicada\n")
 		} else if result.Registration.Presence == "left" {
-			b.WriteString("此 Thread 仍为已退出；重复登记未恢复或延长权限。 / This Thread remains left; repeat registration did not restore or renew permission.\n")
+			b.WriteString("This Thread remains left\n")
 		} else {
-			b.WriteString("当前 Thread 登记已确认；登记本身不新增或延长通信权限。 / This Thread is registered; registration does not add or renew communication permission.\n")
+			b.WriteString("This Thread is registered\n")
 		}
 		b.WriteString(result.Registration.Name + "\n" + result.Registration.Workspace)
 	case result.Directory != nil:
-		b.WriteString("此 Node 的 Thread 目录快照（不代表当前通信授权） / Node Thread directory snapshot (not communication authorization)\n")
+		b.WriteString("Threads (snapshot")
+		if result.Directory.CapturedAt != "" {
+			b.WriteString(" " + result.Directory.CapturedAt)
+		}
+		b.WriteString(")\n")
 		for _, card := range result.Directory.Endpoints {
 			b.WriteString(card.Name + " · " + codexPresenceLabel(card.Presence) + "\n  " + card.Workspace + "\n")
 		}
 		if len(result.Directory.Endpoints) == 0 {
-			b.WriteString("暂无条目。 / No entries.\n")
+			b.WriteString("No Threads in this snapshot.\n")
 		}
 		if result.Directory.NextCursor != "" {
-			b.WriteString("还有后续页，可在 Cicada App 继续读取。 / More pages are available in the Cicada App.")
+			b.WriteString("More results are available in the App.")
 		}
 	case result.Pairs != nil:
-		b.WriteString("请选择配对名称及 A/B 槽位 / Choose a Pair label and A/B slot:\n")
+		b.WriteString("Choose a Pair and A/B slot:\n")
 		for _, pair := range result.Pairs.Pairs {
 			b.WriteString(pair.Label + " · ")
 			for i, slot := range pair.Slots {
@@ -483,16 +487,16 @@ func formatCodexOperatorResult(command codexOperatorCommand, result *localEndpoi
 			b.WriteByte('\n')
 		}
 		if len(result.Pairs.Pairs) == 0 {
-			b.WriteString("暂无可用配对，请在 Cicada App 核对。 / No available Pair; review in the Cicada App.\n")
+			b.WriteString("No available Pair.\n")
 		}
 		if result.Pairs.Truncated {
-			b.WriteString("列表未完整展示；不得按首项或最新项猜选。 / The list is incomplete; do not guess the first or newest entry.")
+			b.WriteString("More Pairs are available in the App.")
 		}
 	case result.Join != nil:
-		b.WriteString("所选配对的接入结果已保存；通信仍以 App 中两侧 Owner 确认及当前 Hub Guard 为准。 / The selected Pair connection is saved; communication still requires both Owner confirmations and current Hub Guard.\n")
+		b.WriteString("Pair connection saved; requires both Owner confirmations.\n")
 		b.WriteString(result.Join.Endpoint.Name + "\n" + result.Join.Endpoint.Workspace)
 	default:
-		b.WriteString("Cicada 未确认此结果。 / Cicada has not confirmed this result.")
+		b.WriteString("Cicada result is unconfirmed.")
 	}
 	return b.String()
 }
@@ -500,12 +504,12 @@ func formatCodexOperatorResult(command codexOperatorCommand, result *localEndpoi
 func codexPresenceLabel(presence string) string {
 	switch presence {
 	case "left":
-		return "已退出 / Left"
+		return "left"
 	case "offline":
-		return "快照时离线 / Offline at snapshot"
+		return "offline at snapshot"
 	case "LEASE_RECENT":
-		return "快照时租约近期有效 / Lease recent at snapshot"
+		return "lease recent at snapshot"
 	default:
-		return "在线状态未知 / Presence unknown"
+		return "presence unknown"
 	}
 }

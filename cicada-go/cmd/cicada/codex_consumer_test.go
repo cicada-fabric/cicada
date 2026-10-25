@@ -436,14 +436,14 @@ func TestCodexHookFramingAndVisibleBlock(t *testing.T) {
 		t.Fatal(err)
 	}
 	var response map[string]any
-	if json.Unmarshal(output.Bytes(), &response) != nil || response["decision"] != "block" || response["systemMessage"] != codexOperatorHelp || response["reason"] != codexHookLocalHandlingReason {
+	if json.Unmarshal(output.Bytes(), &response) != nil || response["decision"] != "block" || response["reason"] != codexOperatorHelp || response["systemMessage"] != nil || len(response) != 2 {
 		t.Fatal("literal help did not produce human feedback and block")
 	}
 	output.Reset()
 	if err := runCodexHook(nil, strings.NewReader(`{"hook_event_name":"UserPromptSubmit","prompt":"cicada join Synthetic Thread"}`), &output); err != nil {
 		t.Fatal(err)
 	}
-	if json.Unmarshal(output.Bytes(), &response) != nil || response["decision"] != "block" || response["reason"] != codexHookLocalHandlingReason || !strings.Contains(response["systemMessage"].(string), "could not verify") {
+	if json.Unmarshal(output.Bytes(), &response) != nil || response["decision"] != "block" || response["systemMessage"] != nil || !strings.Contains(response["reason"].(string), "could not verify") {
 		t.Fatal("unverified command lost its full refusal or changed into success")
 	}
 	output.Reset()
@@ -462,6 +462,20 @@ func TestCodexOperatorDisplayDoesNotOverclaim(t *testing.T) {
 	got = formatCodexOperatorResult(codexOperatorCommand{operation: "native_pair_join_named"}, r)
 	if strings.Contains(got, "synthetic-private") || !strings.Contains(got, "both Owner confirmations") {
 		t.Fatal("Join feedback leaked private receipt or claimed authority")
+	}
+	for _, presence := range []string{"left", "offline", "LEASE_RECENT", "unrecognized"} {
+		t.Run(presence, func(t *testing.T) {
+			const name, workspace = "中文 / Synthetic Thread", "/synthetic/work space"
+			r := &localEndpointResult{Directory: &nodewire.EndpointDirectoryResult{CapturedAt: "2026-10-25T00:00:00Z", Endpoints: []nodewire.EndpointDirectoryCard{{Name: name, Workspace: workspace, Presence: presence, NativeSessionID: "synthetic-private-session"}}}}
+			got := formatCodexOperatorResult(codexOperatorCommand{operation: "endpoint_directory"}, r)
+			if !strings.HasPrefix(got, "Threads (snapshot 2026-10-25T00:00:00Z)\n") || !strings.Contains(got, name) || !strings.Contains(got, workspace) ||
+				strings.Contains(got, "synthetic-private") || strings.Contains(got, "authorized") || strings.Contains(got, "online") || strings.Contains(got, "handled") || strings.Contains(got, "目录快照") {
+				t.Fatal("directory lost exact fields/snapshot semantics or added private/duplicate output")
+			}
+			if presence == "LEASE_RECENT" && !strings.Contains(got, "lease recent at snapshot") || presence == "unrecognized" && !strings.Contains(got, "presence unknown") {
+				t.Fatal("snapshot presence was promoted to current liveness")
+			}
+		})
 	}
 }
 

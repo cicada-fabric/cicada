@@ -116,7 +116,7 @@ func TestCodexHookRecordDiagnosticBlocksWithoutChangingOriginal(t *testing.T) {
 		t.Fatal(err)
 	}
 	var response map[string]any
-	if json.Unmarshal(output.Bytes(), &response) != nil || response["decision"] != "block" || response["reason"] != codexHookLocalHandlingReason || !strings.HasPrefix(response["systemMessage"].(string), "CODEX_NODE_TICKET_UNAVAILABLE:") {
+	if json.Unmarshal(output.Bytes(), &response) != nil || response["decision"] != "block" || response["systemMessage"] != nil || !strings.HasPrefix(response["reason"].(string), "CODEX_NODE_TICKET_UNAVAILABLE:") {
 		t.Fatal("record failure passed to model or lost its phase", output.String())
 	}
 	after, err := os.ReadFile(path)

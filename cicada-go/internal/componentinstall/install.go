@@ -32,6 +32,7 @@ type result struct {
 	Components      []manifest `json:"components"`
 	StatePreserved  bool       `json:"state_preserved"`
 	ServicesChanged bool       `json:"services_changed"`
+	PathExport      string     `json:"path_export,omitempty"`
 }
 
 func Command(args []string, output io.Writer) error {
@@ -222,6 +223,9 @@ func command(args []string, output io.Writer, target platform) error {
 		}
 	}
 	r := result{Action: action, Prefix: *prefix, StatePreserved: true}
+	if action == "install" && target.os == "linux" && containsComponent(components, "node") {
+		r.PathExport = "export PATH=" + codexShellQuote(filepath.Join(*prefix, "components", "node", "bin")) + `:"$PATH"`
+	}
 	for _, p := range plans {
 		r.Components = append(r.Components, p.manifest)
 	}

@@ -74,8 +74,18 @@ func TestCodexPluginInstallMaterializesOnlyFiles(t *testing.T) {
 	f.prefix = filepath.Join(filepath.Dir(f.prefix), "selected root's $(must-not-run)")
 	assets, expected := codexFixture(t)
 	args := append(f.installArgs("hub,node"), "--codex-plugin-assets", assets, "--codex-plugin-sha256", expected)
-	if err := command(args, io.Discard, f.target); err != nil {
+	var output bytes.Buffer
+	if err := command(args, &output, f.target); err != nil {
 		t.Fatal(err)
+	}
+	var installed result
+	if json.Unmarshal(output.Bytes(), &installed) != nil || installed.PathExport == "" || installed.ServicesChanged || !installed.StatePreserved {
+		t.Fatal("file-only install omitted its explicit PATH instruction")
+	}
+	path := exec.Command("/bin/sh", "-c", installed.PathExport+"\nprintf '%s' \"$PATH\"")
+	path.Env = []string{"PATH=/synthetic/original/bin"}
+	if data, err := path.Output(); err != nil || string(data) != filepath.Join(f.prefix, "components", "node", "bin")+":/synthetic/original/bin" {
+		t.Fatal("PATH instruction changed literal root bytes or lost the original PATH", err)
 	}
 	base := filepath.Join(f.prefix, "components")
 	m, err := readInstalled(base, "node", f.target)
