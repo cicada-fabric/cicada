@@ -6863,3 +6863,201 @@ That review verifies the full inventory and confirms only BUILD-METADATA,
 VALIDATION and SHA256SUMS changed. It explicitly supersedes the old archive
 review's missed plugin-digest contract check; old bytes/receipts and separate
 historical runtime scopes are not rewritten.
+
+
+## 2026-10-25 Node lifecycle preparation and user native continuation
+
+After the corrected-digest retry, Root relayed **USER_REPORTED_PASS** for actual
+Node pairing, explicit local collaboration authorization and native A/B work.
+The foreground `machine agent` remaining alive after pairing is the resident
+Node's heartbeat/delivery role, not an unclosed one-shot authorization process.
+The request for an explicit paired/running indication remains pending CLI UX
+feedback. The earlier plugin-digest failure, correction and file-only acceptance
+remain unchanged; this continuation does not erase them.
+
+Root's review of the actual native log corroborates the A→B sealed ask, its
+REPLIED outcome, receipt of the reply and correlated native injection.
+**Reverse direction remains user report**, without an equivalent new independent
+trace. The initial `cicada_resolve` was denied by Codex Host with
+“requires approval / policy never”, before any Cicada tool request or send.
+This is **Host approval denial**, not Cicada Hub Guard negative evidence.
+Switching to “Approve for me” changes Host policy only; it grants no new Cicada
+authority. Record only outcome/association facts: no tickets, nonces, full log
+packets or message/reply payloads are copied here. QA invokes
+no real model/provider to reproduce them. New user App-close, Node/Hub restart,
+revocation and dedicated DPAPI/ACL security checks remain **pending/NOT_RUN**,
+separate from older dated scopes.
+
+Root froze native Node lifecycle v1 and assigned implementation to Hub: Linux
+`cicada on/off/status` with `--user-root ROOT`, only for already-paired single-Hub
+relay-only state. First on supplies `--codex-bin ABS -- <original agent args>`;
+Hub alone writes 0600 `ROOT/node-service.json`, later on reuses it and rejects
+drift. UID/root/ID-scoped systemd user transient units do not enable startup,
+lingering, sudo or new approvals. Off preserves custody and grants; local
+running/stopped/failed is not Hub online. Hub owns the contract in existing
+`docs/distribution.md`: systemd >=254, Type=exec, Restart=no, UMask=0077, no argv
+environment expansion, closed relay-only paired arguments (no once/retry/multi-Hub),
+and exact transient-unit/config-SHA checks. Paired/running acknowledgement is
+printed only after actual ACK. App owns installer/PATH and Codex slash/Hook-output
+UX; its frontend slash/Hook probes are not duplicated by QA. The existing
+[plan safety matrix](native-app-plan.md#native-node-onoffstatus-safety-preparation-2026-10-25)
+covers idempotent on, foreground conflict, custody-preserving off, same-key
+restart, custom-root isolation, no autostart, service failure and own-unit-only
+stop. Formal source `9319e1d` and the independent scoped gate below now supply
+layer-specific results; the matrix does not call every row a real-systemd pass.
+Full default NPT ACK→service and physical scopes remain NOT_RUN. If actual systemd
+user execution is unavailable it must be reported as NOT_RUN; a stub runner is
+not real service evidence.
+Root permits the existing user manager to host new, unique transient test
+units pointing only at isolated synthetic fixture roots. After formal source
+delivery, create/start/stop/reclaim only those exact task-owned units. Do not
+alter the user's Node/unit/config, another PID, startup/linger settings, current
+binary or system-global state. No new manager, privileged Docker or infrastructure
+is required; reuse the paired fixture or minimal producer service check if
+available. App's slash probe is not duplicated and models are not called. No
+duplicate taskbook or gate is introduced. Interface syntax, exit semantics and isolated execution follow
+the frozen v1 and delivered source; failures and cleanup retain their own source
+and scope. The user's ongoing old-version tests and processes stay untouched.
+
+
+Future feedback from 2026-10-25 is tracked in existing FB-04/05/06 only: a Host
+searchable object selector using the Hub's current authorized directory, filtered
+by Network/Node/name/workspace, may select any cross-Node Endpoint the caller may
+discover and insert an associated metadata reference. No memorized nickname or
+copied ID should be required. A reference is not a grant; selection binds exact
+Endpoint ID/binding/version and a fresh Guard still precedes send. Cross-Owner
+redaction remains. App's capability work separates public Docs/rules, exact
+0.164 schema and actual native UI evidence. Custom deterministic slash commands
+and arbitrary colored typed mentions are not supported by the current public
+extension surface; limited MCP elicitation forms may offer a bounded alternative,
+subject to exact capability/schema and actual UI qualification. App may perform
+one synthetic form probe without real models; QA does not duplicate research or
+the probe. A Docs/schema conclusion is not an actual rendered-control result,
+and a synthetic form is not an integrated authorized Cicada directory picker.
+Any future integration must bind the current actor, filter its current Hub
+directory/foreign privacy, retain exact ID/binding/version and run a fresh Guard
+before send. **Cicada picker/reference integration remains future DESIGN_PENDING /
+NOT_RUN**, outside current on/off and output work; research does not authorize
+public protocol/grant changes or introduce another taskbook/gate.
+
+
+App producer checkpoint `d9853afd75ebe3215c6e8a8d26328daa3dc477df` contains
+five Hook/PATH implementation/test paths, with no lifecycle service change.
+Producer receipt:
+`/home/zyf/Cicada/.local/evidence/n2-app/hook-path-consumer-20261025/result.json`,
+SHA-256 `014cf5939a45d50552e48fe0925270a76e3e80eabd1460f89484351dc8784ad1`.
+Normal/race each report 16 pass, zero fail/skip; vet and Linux CGO-disabled build
+exit 0. Tested inputs are dirty `618a843` plus those five paths, 1,523 stable
+Go/module inputs with SHA-256
+`c5412af47db20d148318f4792850bbec1eb8d95e70c8aded9bda25f0bd28109c`,
+not a clean-HEAD-only attribution. Actual file installation returns safely
+quoted PATH setup without editing shell configuration or starting services.
+The producer's real 0.164 native help check observes one result body and zero
+provider POSTs, while the Host's Blocked-by-hook heading remains. Literal local
+commands still use decision:block; Guard, typed errors and authorization are
+unchanged. The native frontend rejects `/cicada` before UserPromptSubmit; this
+is no supported custom deterministic slash/popup. These are **producer scoped
+results**, not a repeated independent QA probe, real-model A/B, physical Windows
+or systemd lifecycle acceptance. Current user binaries/processes remain intact.
+
+
+Hub formally delivered `9319e1d1f94ace45cd8ec6525d361d4deb0f0ce9` (parent App
+`d9853afd`) with Go input fingerprint
+`1a06afaabf8cd4d2d5c4e4d1d572f295d96910bb04ed514b685f88b43ef277de`.
+Producer `receipt-final.json` is under
+`/home/zyf/Cicada/.local/evidence/node-lifecycle-20261025/`, SHA-256
+`e5c56cf8af2c17c9d039a119d4bd9d4b8d03cda9a26c4e1bb63e869ecc0d6656`.
+Its normal 9-pass/0-fail/1-skip aggregate includes an empty child-entry helper,
+which is not coverage; the skip is the default NOT_RUN actual-service lane.
+Eight separately selected race tops and one opt-in actual-service top pass;
+vet and CGO-disabled build exit 0. Root independently reviewed the formal source,
+raw logs and exact unit cleanup:
+`/home/zyf/Cicada/.local/evidence/local-domain-root/node-lifecycle-root-review-20261025.json`,
+SHA-256 `3788bdc741663c722be616ce353503e7ce5665105c88c85844050b339ffa0137`,
+status `ACCEPTED_SCOPED_LIFECYCLE_PRODUCER_PENDING_QA`.
+
+The original 403 business-fixture failure, failed-unit cleanup issue, broader
+normal baseline recovery assertion (also failing on the old baseline) and
+180-second broad crypto-race timeout remain in producer `receipt.json`; they
+are not rewritten as passes or repaired through unrelated fixture changes.
+The corrected actual-service fixture uses business 503, with Hub online unknown,
+and separately tests exit-7 service failure and precise cleanup. It uses real
+systemd and the production agent with an established synthetic native-TLS
+binding. **It is not complete NPT ACK→service startup/recovery.** The separate
+address-only test retains the original origin/flags and refuses absent NPT ACK
+without changing state. Production `--hub-address` semantics were not replaced
+with a `--hub-dial-address` shortcut and no fake ACK was manufactured.
+
+
+Root's readonly reuse review identifies existing Network MCP directory/resolve
+registry entries (`cicada-go/cmd/cicada/mcp.go`, at the reviewed source lines
+337–338) and `mcp_network.go` dispatch, plus the five current-Group directory
+tools/query filters in `docs/native-endpoint-directory-contract.md` lines 169–207.
+These are reuse candidates, not a newly implemented Host picker. Search follows
+the verified caller's actual Network discovery grant and current Group scope;
+Owner inventory permission does not authorize a Native Thread. Qualified
+same-Owner rich metadata stays scoped. Foreign Network discovery remains
+opt-in alias/minimal-card; foreign Group cards use authorized opaque IDs without
+SID/workspace/binding data. Selection/fresh Guard requirements do not permit
+leaking hidden foreign metadata or replacing scoped discovery with a global
+unfiltered “whole Network” inventory. Host presentation limits remain a separate
+capability question, and the on/off implementation scope is unchanged.
+
+
+### 2026-10-25 Independent lifecycle, Hook/PATH and file-install gate
+
+One related scoped run on **`9319e1d` plus the two recorded QA documentation WIP
+files** passed, exit **0 / SCOPED_PASS**. Existing pinned disposable Docker
+compiles the CLI and tests, then runs exactly eight lifecycle contract tops,
+six related Hook tops and the existing component/plugin install top; there is
+no repeated NPT12/public-wire campaign or Host-capability probe. Main events:
+14 tops / 23 pass, component 1/0/0, all zero skips/failures. The empty AgentProcess
+helper is excluded as a top-level coverage case.
+
+The contract lane uses genuine crypto, files, locks and bridge with a **synthetic
+manager runner**. The separate opt-in actual-service lane executes the same
+Docker-compiled CGO-disabled test binary on the host's real systemd 255.4 user
+manager, creating only a new unique unit with synthetic fixture keys and a
+separate production machine-agent process. Actual repeat-on reuses the PID;
+on/off/off/on preserves original key and credential bytes; a deliberate exit-7
+service fails truthfully and is reclaimed. Hub business returns 503 and
+`hub_online` stays unknown. This is the established native-TLS fixture, not
+full default NPT ACK→service acceptance. The eight plan rows retain that scope
+and explicitly identify real foreground/multi-root/foreign-canary and authority
+parts not executed. Stub tests are not relabeled as actual service runs.
+
+The newly compiled **actual CLI** also installs only Node/plugin files into a
+fresh literal root containing spaces, an apostrophe and shell metacharacters,
+using complete matching notices and the unchanged five original assets. Install
+and all manifest/file-hash checks pass; the returned safely quoted PATH export
+retains the literal root and existing PATH. No identity/state, service or Codex
+is started by installation. Scoped vet exits 0. This verifies the source CLI,
+not execution of the separately built candidate ZIP or current user binary.
+
+Receipt:
+`/home/zyf/Cicada/.local/evidence/native-pair-acceptance/lifecycle-hook-install-20261025-d0xu38j7/result.json`,
+SHA-256 `19a830e86af2a0a226d276811c4f82bf20b5086a0fb0768dc8f3ef7253285166`.
+Source-before/after JSON SHA-256 is identical:
+`61790dc50f8d2a43c8551e1ea11dbd4df3999d5638dda931c65852c4aafbe59f`.
+Exact command JSON and `run.py` (SHA-256
+`cff5ba916ae922156bdf34a48ab2ceb1b4f4da821fbf36ebca893e5e97f21b4f`)
+are retained. Copy `run.py` into a new private evidence run directory and execute
+`python3 NEW_RUN/run.py` to repeat its same bounded lanes. Image:
+`golang:1.27.3-bookworm@sha256:5c3e9b43cfd3bb95c7937462e29d87ada57b481a96fa23ad0eb61778d7a00110`;
+source/modules/notices read-only, exclusive locked QA GOCACHE, no dependency-cache
+writes, no model calls, no privileged Docker or new service infrastructure.
+
+| Executed artifact | SHA-256 |
+| --- | --- |
+| Source-built actual CLI | `3a54b259ba69e7ac11842aa886b98b3a7cdf2194c35feaba31cd3219be24c833` |
+| Main test / actual agent-entry binary | `df7b238a468cf07bb26c4ca8260f0e911a665a9ae928a4ba6deb51017cc8b33d` |
+| Component install test binary | `8b11da3d4d58da2111e047288db469dfe6425ee4c1a9d91fb9ae7cb9c06f3010` |
+
+All executable hashes match before/after. The exact created unit
+`cicada-node-01a850ba065f7ef0439c1dda21de5d25.service` independently returns
+`MainPID=0`, `ActiveState=inactive`, `LoadState=not-found` after execution.
+The owned container and fixture root are removed; user Node/unit/config,
+other PIDs, current binaries, startup/linger and global state are untouched.
+Full new-NPT ACK→service, new physical App-close/restart/revoke, Windows DPAPI/ACL/
+GUI, real model/provider and future picker/reference integration remain
+**NOT_RUN**, separate from user reports and older qualified scopes.
