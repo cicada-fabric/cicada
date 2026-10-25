@@ -379,6 +379,9 @@ func (b *machineAgentJoinBridge) crossNodeGroupSendAsk(request crossNodeGroupReq
 	if !crossNodeGroupEndpointMatchesCard(peerKey.Sender, card) || peerKey.Sender.OwnerID != request.OwnerID {
 		return nil, errors.New("Hub key evidence does not match the current native same-Group sender")
 	}
+	if request.ExpectedTargetBindingID != "" && (peerKey.Receiver.BindingID != request.ExpectedTargetBindingID || peerKey.Receiver.BindingEpoch != request.ExpectedTargetBindingEpoch) {
+		return nil, errors.New("PEER_SELECTION_STALE: selected recipient binding changed before sealing")
+	}
 	if err := fence.validateRemote(peerKey); err != nil {
 		return nil, err
 	}

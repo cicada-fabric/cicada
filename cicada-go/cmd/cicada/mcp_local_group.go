@@ -29,8 +29,14 @@ func (m *mcpServer) resolveMCPOutboxTarget(op mcpOutboxOperation, target string)
 		return fabric.NetworkCard{}, err
 	}
 	card, err := networkCardFromResult(result)
-	if err != nil || card.EndpointID == "" || card.GroupID != op.GroupID || card.NodeID == "" {
+	if err != nil || card.EndpointID == "" || card.GroupID != op.GroupID {
 		return fabric.NetworkCard{}, errors.New("Directory returned an invalid same-Group target")
+	}
+	if card.NodeID == "" {
+		var input mcpOutboxInput
+		if json.Unmarshal([]byte(op.InputJSON), &input) != nil || !selectedMinimalPeer(input, card) || target != card.EndpointID {
+			return fabric.NetworkCard{}, errors.New("Directory did not disclose target routing; select the exact authorized peer first")
+		}
 	}
 	return card, nil
 }
@@ -66,7 +72,7 @@ func (m *mcpServer) dispatchLocalGroupMCPOutbox(outbox *mcpOutboxStore,
 		return m.recordSealedRPCError(outbox, scope, operation, err)
 	}
 	targetCapability, targetHasCapability := localPeerDeliveryCapability(card.Capabilities)
-	if !targetHasCapability || targetCapability != "sealed_v1" {
+	if (!targetHasCapability || targetCapability != "sealed_v1") && !selectedMinimalPeer(input, card) {
 		return m.recordSealedRPCError(outbox, scope, operation,
 			errors.New("target is missing the required sealed_v1 peer-delivery capability"))
 	}
@@ -74,6 +80,13 @@ func (m *mcpServer) dispatchLocalGroupMCPOutbox(outbox *mcpOutboxStore,
 	// eligibility evidence. Equal Node labels are only route metadata.
 	// The Node retains exact legacy local-operation recovery independently.
 	return m.dispatchCrossNodeGroupMCPOutbox(outbox, scope, operation, input)
+}
+
+func selectedMinimalPeer(input mcpOutboxInput, card fabric.NetworkCard) bool {
+	// A foreign Owner's public card intentionally omits Node/binding/runtime
+	// metadata. An accepted exact selection can pass only its Endpoint ID to
+	// the existing private Node peer-key path, which repeats all real Guards.
+	return input.PeerSelectionID != "" && input.Target == card.EndpointID && card.EndpointID != "" && card.NodeID == "" && card.BindingID == "" && card.BindingEpoch == 0 && len(card.Capabilities) == 0
 }
 
 func (m *mcpServer) localGroupRequestControl(operation, requestID, reason string) (any, bool, error) {

@@ -1298,6 +1298,12 @@ func (s *Store) RenewNetworkAccess(input RenewNetworkAccessInput) (*AcceptedNetw
 		return nil, ErrNetworkPermission
 	}
 	result.AccessSessionEpoch++
+	// Local-domain access shares its credential and epoch with the original
+	// Group lease. Independent Network renewal must never rotate that shared
+	// authority, including historical/withdrawn domain records.
+	if err := rejectLocalDomainNetworkRenewalTx(tx, result.AccessSessionID); err != nil {
+		return nil, err
+	}
 	if _, err := tx.Exec(`UPDATE network_access_sessions_v2 SET epoch=epoch+1,lease_owner=?,lease_expires_at=?,credential_hash=?,updated_at=? WHERE id=?`, input.LeaseOwner, input.LeaseExpiresAt, input.CredentialHash, now(), result.AccessSessionID); err != nil {
 		return nil, err
 	}

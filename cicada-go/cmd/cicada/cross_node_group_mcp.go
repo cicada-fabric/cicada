@@ -22,34 +22,36 @@ const crossNodeGroupProtocolVersion = 1
 // repeated only so the Node can compare it with the live Session binding; the
 // Hub derives the actual route from its Node credential and current records.
 type crossNodeGroupRequest struct {
-	Version              int                                  `json:"version"`
-	Operation            string                               `json:"operation"`
-	Harness              string                               `json:"harness"`
-	NativeSessionID      string                               `json:"native_session_id"`
-	NodeID               string                               `json:"node_id"`
-	Workspace            string                               `json:"workspace"`
-	SessionToken         string                               `json:"session_token"`
-	EndpointID           string                               `json:"endpoint_id"`
-	PrincipalID          string                               `json:"principal_id"`
-	OwnerID              string                               `json:"owner_id"`
-	GroupID              string                               `json:"group_id"`
-	BindingID            string                               `json:"binding_id"`
-	BindingEpoch         uint64                               `json:"binding_epoch"`
-	TargetEndpointID     string                               `json:"target_endpoint_id,omitempty"`
-	OperationID          string                               `json:"operation_id,omitempty"`
-	OperationCreatedAt   string                               `json:"operation_created_at,omitempty"`
-	IdempotencyKey       string                               `json:"idempotency_key,omitempty"`
-	RequestID            string                               `json:"request_id,omitempty"`
-	ParentRequestID      string                               `json:"parent_request_id,omitempty"`
-	Reason               string                               `json:"reason,omitempty"`
-	Body                 string                               `json:"body,omitempty"`
-	TaskHandoffID        string                               `json:"task_handoff_id,omitempty"`
-	TaskID               string                               `json:"task_id,omitempty"`
-	ExpectedRevision     int64                                `json:"expected_revision,omitempty"`
-	OwnerEpoch           int64                                `json:"owner_epoch,omitempty"`
-	HandoffMessageID     string                               `json:"handoff_message_id,omitempty"`
-	ExpiresAt            string                               `json:"expires_at,omitempty"`
-	RequiredArtifactRefs []store.SealedTaskHandoffArtifactRef `json:"required_artifact_refs,omitempty"`
+	Version                    int                                  `json:"version"`
+	Operation                  string                               `json:"operation"`
+	Harness                    string                               `json:"harness"`
+	NativeSessionID            string                               `json:"native_session_id"`
+	NodeID                     string                               `json:"node_id"`
+	Workspace                  string                               `json:"workspace"`
+	SessionToken               string                               `json:"session_token"`
+	EndpointID                 string                               `json:"endpoint_id"`
+	PrincipalID                string                               `json:"principal_id"`
+	OwnerID                    string                               `json:"owner_id"`
+	GroupID                    string                               `json:"group_id"`
+	BindingID                  string                               `json:"binding_id"`
+	BindingEpoch               uint64                               `json:"binding_epoch"`
+	TargetEndpointID           string                               `json:"target_endpoint_id,omitempty"`
+	ExpectedTargetBindingID    string                               `json:"expected_target_binding_id,omitempty"`
+	ExpectedTargetBindingEpoch uint64                               `json:"expected_target_binding_epoch,omitempty"`
+	OperationID                string                               `json:"operation_id,omitempty"`
+	OperationCreatedAt         string                               `json:"operation_created_at,omitempty"`
+	IdempotencyKey             string                               `json:"idempotency_key,omitempty"`
+	RequestID                  string                               `json:"request_id,omitempty"`
+	ParentRequestID            string                               `json:"parent_request_id,omitempty"`
+	Reason                     string                               `json:"reason,omitempty"`
+	Body                       string                               `json:"body,omitempty"`
+	TaskHandoffID              string                               `json:"task_handoff_id,omitempty"`
+	TaskID                     string                               `json:"task_id,omitempty"`
+	ExpectedRevision           int64                                `json:"expected_revision,omitempty"`
+	OwnerEpoch                 int64                                `json:"owner_epoch,omitempty"`
+	HandoffMessageID           string                               `json:"handoff_message_id,omitempty"`
+	ExpiresAt                  string                               `json:"expires_at,omitempty"`
+	RequiredArtifactRefs       []store.SealedTaskHandoffArtifactRef `json:"required_artifact_refs,omitempty"`
 }
 
 type crossNodeGroupResult struct {
@@ -215,7 +217,8 @@ func (m *mcpServer) dispatchCrossNodeGroupMCPOutbox(outbox *mcpOutboxStore,
 		GroupID: trusted.GroupID, BindingID: trusted.BindingID, BindingEpoch: trusted.BindingEpoch,
 		OperationID: operation.OperationID, OperationCreatedAt: operation.CreatedAt,
 		IdempotencyKey: operation.IdempotencyKey, RequestID: input.RequestID, Body: contextInput.Body,
-		ParentRequestID: input.ParentRequestID,
+		ParentRequestID:         input.ParentRequestID,
+		ExpectedTargetBindingID: input.PeerBindingID, ExpectedTargetBindingEpoch: input.PeerBindingEpoch,
 	}
 	switch operation.Kind {
 	case "send", "ask":

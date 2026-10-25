@@ -80,6 +80,41 @@ type NativeContextRegistry struct {
 	closed           bool
 }
 
+// ExistingNetworkEnrollmentEndpoint reads only this exact original native
+// context's independent Network enrollment coordinates. History locates an
+// Endpoint; it grants no authority and the Hub must reauthorize renewal.
+func (r *NativeContextRegistry) ExistingNetworkEnrollmentEndpoint(ctx context.Context, account, runtime, native, hub, network string) (string, error) {
+	input, identity, accountDigest, err := normalizeNativeContextScopeInput(NativeContextScopeInput{AccountID: account, Harness: runtime, NativeSessionID: native, HubID: hub, NetworkID: network, EndpointID: "lookup", BindingID: "lookup", BindingEpoch: 1})
+	if err != nil || network == "" {
+		return "", ErrNativeContextScopeInvalid
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.closed || r.db == nil {
+		return "", ErrNativeContextRegistryClosed
+	}
+	rows, err := r.db.QueryContext(ctx, `SELECT DISTINCT endpoint_id FROM node_native_context_history_v1 WHERE identity_digest=? AND account_digest=? AND harness=? AND hub_id=? AND network_id=? AND group_id='' ORDER BY endpoint_id LIMIT 2`, identity, accountDigest, input.Harness, input.HubID, input.NetworkID)
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
+	var endpoint string
+	count := 0
+	for rows.Next() {
+		if err := rows.Scan(&endpoint); err != nil {
+			return "", err
+		}
+		count++
+	}
+	if err := rows.Err(); err != nil {
+		return "", err
+	}
+	if count != 1 || endpoint == "" {
+		return "", ErrNativeContextScopeInvalid
+	}
+	return endpoint, nil
+}
+
 func OpenNativeContextRegistry(path string) (*NativeContextRegistry, error) {
 	return openNativeContextRegistry(path, nativeContextHistoryPerIdentityCap, nativeContextHistoryGlobalCap)
 }

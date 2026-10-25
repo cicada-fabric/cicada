@@ -134,7 +134,7 @@ func (b *machineAgentJoinBridge) completeNetworkNativeJoin(joined *fabricpkg.Net
 
 func (b *machineAgentJoinBridge) renewNetwork(request localNetworkRenewRequest) (*fabricpkg.NetworkJoinResult, error) {
 	if request.Version != localJoinProtocolVersion || request.Operation != "network_renew" ||
-		request.NetworkID == "" || request.EndpointID == "" ||
+		!validNetworkRouteID(request.NetworkID) ||
 		strings.TrimSpace(request.Harness) != "codex" || harness.Canonical(request.Harness) != "codex" ||
 		request.NativeSessionID == "" || len(request.NativeSessionID) > 512 ||
 		len(request.Workspace) > 4096 || !filepath.IsAbs(request.Workspace) {
@@ -142,6 +142,17 @@ func (b *machineAgentJoinBridge) renewNetwork(request localNetworkRenewRequest) 
 	}
 	if err := verifyCodexSessionRecord(request.NativeSessionID, request.Workspace); err != nil {
 		return nil, err
+	}
+	if request.EndpointID == "" {
+		hub, ok := machineHubFrom(b.ctx)
+		if !ok || hub.NativeContexts == nil || hub.HubID == "" || hub.WriterScope == "" {
+			return nil, errMCPNetworkSelection
+		}
+		endpoint, err := hub.NativeContexts.ExistingNetworkEnrollmentEndpoint(b.ctx, hub.WriterScope, request.Harness, request.NativeSessionID, hub.HubID, request.NetworkID)
+		if err != nil {
+			return nil, errMCPNetworkSelection
+		}
+		request.EndpointID = endpoint
 	}
 	input := fabricpkg.NetworkRenewInput{NetworkID: request.NetworkID, EndpointID: request.EndpointID,
 		Harness: "codex", NativeSessionID: request.NativeSessionID}
@@ -212,8 +223,11 @@ func requestMachineAgentNetworkRenew(socketPath string, request localNetworkRene
 		return nil, errors.New(response.Error)
 	}
 	if response.NetworkJoin == nil || response.NetworkJoin.SessionToken == "" ||
-		response.NetworkJoin.NetworkID != request.NetworkID || response.NetworkJoin.Endpoint.ID != request.EndpointID {
+		response.NetworkJoin.NetworkID != request.NetworkID || request.EndpointID != "" && response.NetworkJoin.Endpoint.ID != request.EndpointID {
 		return nil, errors.New("local Node returned an incomplete Network Renew result")
+	}
+	if request.EndpointID == "" && (response.NetworkJoin.Endpoint.ID == "" || response.NetworkJoin.Endpoint.MachineID == "" || response.NetworkJoin.Endpoint.NativeSessionID != request.NativeSessionID || response.NetworkJoin.Endpoint.Harness != request.Harness || response.NetworkJoin.NativeContextScope.HubID == "") {
+		return nil, errors.New("local Node returned a different original Network enrollment")
 	}
 	if response.Error != "" {
 		return response.NetworkJoin, errors.New(response.Error)

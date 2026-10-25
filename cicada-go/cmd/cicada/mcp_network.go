@@ -119,7 +119,7 @@ func lockNetworkMCPState(path string) (*flock.Flock, error) {
 
 func (m *mcpServer) networkTool(name string, arguments map[string]any) (any, error) {
 	if m.localNode != nil {
-		return nil, codexLocalNodeError(ErrLocalNodeConfigRequired)
+		return m.trustedNodeNetworkTool(name, arguments)
 	}
 	networkID := stringArgument(arguments, "network_id")
 	context, err := m.detectCurrentCodexSession()

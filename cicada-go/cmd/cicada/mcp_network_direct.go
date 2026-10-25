@@ -249,6 +249,9 @@ func (m *mcpServer) dispatchMCPNetworkOutbox(outbox *mcpOutboxStore, scope mcpOu
 }
 
 func (m *mcpServer) networkDirectHTTP(state networkCLIState, method, path string, payload any) (any, error) {
+	if m.localNode != nil {
+		return m.requestWithGroup(method, path, payload, "Cicada-Network-Session "+state.SessionToken, "")
+	}
 	var body io.Reader
 	if payload != nil {
 		encoded, err := json.Marshal(payload)

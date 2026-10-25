@@ -7,6 +7,188 @@ contract reuses Endpoint/Principal, Node PQ binding, N2 provenance, N3 read cach
 and the original Pair/Fabric authorization paths. It does not activate the
 separate installation-registration H1 proposal or create installation identities.
 
+## MCP contact selection
+
+The additive local MCP tool `cicada_select_peer` accepts the closed object
+`{scope:"group"|"network",network_id?,query?}`. Group means the current selected
+joined Group; it cannot select another Group by model-supplied ID. Network
+requires one explicit, already joined Network. Unknown scopes, caller identity,
+credential paths and foreign fields reject. The optional UTF-8 query is at most
+128 bytes and matches only permitted directory fields: visible name, Endpoint
+ID and, for Group cards, already-visible Node/workspace. It never queries an
+Owner inventory or implicitly joins, grants access, registers a Thread or
+starts a Node.
+
+The tool reads the existing Hub-authorized Group or Network directory without
+a default filter to the caller's Node. It uses the real `{endpoints:[...]}`
+directory response, bounded to the first 64 rows; filtering this page does not
+prove that an absent match is absent from the whole directory. Results explicitly
+report `directory_bounded:true` and `directory_may_have_more:true`. A form is
+offered only when the Host explicitly negotiated `elicitation.form` during MCP
+initialization. Unsupported Hosts refuse before directory reads or Network
+recovery. The transport owns form I/O, cancellation, decline and timeouts; it
+does not supply a Cicada actor or authorize sending.
+
+The form says “Choose a contact”. Labels lead with the permitted name and
+visible Node/workspace, a short disambiguating suffix and optional snapshot
+status. Display text is UTF-8 safely bounded; it does not change original names
+or paths. Foreign Group cards retain their existing redaction, with no hidden
+Node, workspace, capability or binding fields restored. Foreign cards without
+a public alias show a neutral contact label. Network cards retain only the
+existing nickname/Endpoint/availability projection. The full Endpoint ID stays
+in the internal mapping and result, not a user copy/paste workflow. Host-owned
+presentation and color are outside this interface.
+
+The returned form values are random opaque option IDs mapped privately to exact
+directory entries. Accepting a label, a guessed value or an unoffered option is
+invalid. After acceptance, the business layer rechecks the original native
+Thread, selected Hub/Node, authenticated source, scope and directory lookup by
+the original exact Endpoint ID. Changed source or visible target binding
+ID/epoch, expiry, revocation and lost visibility reject; it never resolves a
+similar label as a replacement. A Network directory provides no target binding
+revision: none is invented. The current Node peer-key and Hub send Guards
+remain authoritative at transmission time.
+
+Success returns `peer_selection_id,scope,scope_id,endpoint_id,binding_id,
+binding_epoch,expires_at,freshness` plus the bounded-directory indicators.
+`freshness` is `SNAPSHOT_ONLY`; empty binding/zero epoch mean the public card
+did not provide those coordinates. References live only in the original MCP
+process, expire 120 seconds after the snapshot, and are capped at 64 live
+selections. Decline, unsupported form, invalid response, expired/stale selection
+and cancellation observed before the local reference commit create no reference
+or peer message. The final insertion is serialized with cancellation and checks
+the snapshot deadline again after any Hub wait. A later cancellation does not
+undo an already committed read-only reference; it never sends a message. A selection is
+neither a capability nor proof of human approval for any later action.
+
+`cicada_send` and `cicada_ask` accept `peer_selection_id` instead of `target`,
+`link_id`, `network_id` or `data_scope`; mixing even empty competing selectors
+rejects. The original tool name/arguments, including this reference, are
+verified by the normal fresh Hook ticket before business code derives the
+exact internal destination. The ticket is not reused after changing model
+arguments. Each later send/ask requires its own current native proof and
+current authorization. For visible Group binding coordinates, the immutable
+outbox and private Node request also carry the expected target binding/epoch;
+the Node checks them against current peer-key evidence before sealing. An old
+strict Node that does not understand those additive private fields refuses.
+Frozen Hub/Client wire identifiers and versions are unchanged.
+
+An authorized minimal foreign Group card may pass only its accepted exact
+Endpoint ID to the existing private Node peer-key path, without borrowing a
+capability or disclosing private fields to the MCP caller. Plain model target
+or alias calls do not receive this exception. Source authorization and current
+bilateral Node/Hub Guards still apply. A visible contact does not imply
+permission to send, ask, execute, delegate or create membership.
+
+The existing durable MCP outbox records the reference and digest of the
+original business intent together with its exact resolved destination. An
+explicit identical idempotency-key retry may recover only that original outcome,
+including after selection expiry or MCP process restart; it does not need a new
+form and does not create or resend an operation. Changed intent or native scope
+rejects. Actual pending/uncertain transmission uses the existing explicit
+operation-retry path and retains the original IDs, ciphertext and current Guard
+requirements. An expired or missing reference cannot create new work.
+
+### Existing Network sessions on a selected Node
+
+The formal installed-Node path keeps its guard against arbitrary environment
+configuration. The narrow trusted adapter obtains its private directory from
+the original discovery pin:
+`dirname(mcp_session_state_file)/network-session/scopes/<original-scope-hash>/`.
+The existing `<network_id>.session.json` must be same-user `0600` in private
+`0700` directories, without symlinks. Strict fields must match the original
+origin, selected Node, runtime, native Thread, workspace and explicit Network.
+No model argument or `CICADA_NETWORK_SESSION_DIR` selects this installed path.
+Legacy explicit configurations retain their original separate configuration
+rules. The actual Network `whoami` response has only
+`network_id,endpoint_id,principal_id`; its private source snapshot additionally
+binds the original token digest and trusted local coordinates, without returning
+the token or inventing a wire binding/version field.
+
+The current Group token is first tried as a read-only exact Network credential.
+Pair and local-domain access can share that original token/epoch with a Group
+lease. Their existing empty Network discovery grants refuse discovery; contact
+selection does not increase them. Such shared access is never independently
+renewed. Store rejects independent renewal in the same transaction before any
+rotation if a Group binding shares its credential/lease, or a current/historical
+Pair slot or local-domain member owns that access ID. The original heartbeat,
+credential, key, epoch and Group policy remain intact.
+
+Only explicitly selecting a Network may recover a missing local token through
+the existing Node `network_renew` operation. The source Endpoint comes from the
+current authenticated self, or, for Network-only Threads with no Group, the
+Node's existing independent enrollment history. That exact read uses the
+current WriterScope/account digest, runtime/native identity digest, Hub,
+Network, `group_id=''` and `DISTINCT endpoint_id LIMIT 2`; absent or ambiguous
+history refuses. It does not enumerate other Threads, touch history timestamps
+or promote historical observations to authority. The Node verifies the real
+native record/cwd and the Hub repeats its current Node/Owner/key, membership,
+Endpoint-edge and access-session Guards. No registration, invitation or grant
+is created by recovery.
+
+Recovery serializes the selected scope and Network and syncs a credential-free
+`<network_id>.renew-pending.json` intent before its one renewal request. At most
+64 Network namespaces may acquire session/lock/pending files per native scope;
+a saturated scope refuses new names while preserving existing sessions and
+uncertain records. There is no deletion of unknown outcomes to make room.
+The returned nonempty token and exact original Endpoint/Node/native/Hub/Network
+are checked before private persistence. A known renewed token returned with a
+post-renew native-binding failure is retained, with
+`NETWORK_NATIVE_BINDING_PENDING`; no form or send proceeds. A truly missing or
+unknown response leaves `NETWORK_RENEW_UNCERTAIN`. Later calls never silently
+rotate another epoch. The pre-existing renewal route has no exact-operation
+receipt: automatic settlement of that unknown renewal is unavailable, and this
+adapter deliberately retains evidence for explicit recovery instead of making
+up a token or claiming success.
+
+Hub Nodes composes only the existing exact Network paths and methods needed
+for this flow: GET `whoami,directory`, POST `resolve`, POST
+`direct/native-binding,peer-key,key-candidate,request-cancel`, GET
+`direct/request-status` under `/v2/fabric/networks/<id>/`; POST
+`/v2/fabric/node/networks/renew`; and POST
+`send,ask,reply,claim,authorize,receipt,reply-route` under
+`/v2/fabric/node/networks/direct/`. Each reaches the original Fabric handler and
+its current authentication/authorization; route availability grants no caller
+rights. There is no generic prefix forwarding. Wrong methods, extra segments,
+Join, invitations/admin, Task/Broadcast and collaboration-key routes remain
+closed in this bounded mode. Authentication remains independent of Control.
+
+2026-10-25 producer validation used dirty parent
+`ebc71dbfe72d0a9fe7aa657a0c69cfafea9f10f2`; the 1,580 Go/module inputs hashed
+to `86c49901ee88123590a7f33e7b1e2602d921535361a3cc56f3aaa0310c500825`.
+Isolated related CLI tests recorded 26 pass/0 fail/0 skip; four core-package
+lanes recorded 11 pass/0 fail/0 skip. Ten bounded race processes recorded 18
+passing test events, including parent/subtest events, with no failure or skip.
+Five-package vet and Linux/Windows CGO0 CLI builds exited 0. Source manifests
+were unchanged during these checks; this paragraph was added afterward without
+changing tested Go inputs.
+
+The real default Hub Nodes fixture uses independent Owner-signed Network
+registrations on two distinct logical Nodes, original Hook proofs, a real MCP
+form, production source-Node sealing, Hub admission and receiver-side
+authorization/decryption. Network-only missing-token recovery, committed-renewal
+response loss, retained known token after native-binding failure, current target
+revocation, cancelled final Hub check, exact original outcome recovery and
+shared Pair/domain heartbeat preservation have separate targeted tests. Native
+records and the recipient fixture are synthetic; real Codex/physical Runtime,
+actual App, physical second Node, public HTTPS and Docker integration remain
+separate QA scopes. Minimal foreign-card routing has a synthetic private-Node
+boundary test plus the existing backend redaction regression; a full selected
+send across different Owners is **NOT_RUN** here.
+
+Receipts and exact logs are protected under
+`~/Cicada/.local/evidence/peer-selection-hub-20261025/`.
+`receipt.json` deliberately retains the initial related-CLI FAIL: an existing
+local-domain test assumes empty process Thread environment variables. Restoring
+all changed Go files to the parent blobs reproduced that same failure in
+`baseline-context-environment-2.log`. `isolated-normal-receipt.json` records the
+same CLI suite with only the test subprocess's `CODEX_THREAD_ID` and
+`CODEX_SESSION_ID` explicitly empty; the user's environment was not changed.
+Earlier diagnostic/fixture failures are also retained and are not passes.
+Automatic exact settlement of an unknown legacy Network renewal remains
+unavailable as described above. No existing user identity, credential, Node,
+resident service, deployment or login policy was changed by this validation.
+
 ## Current Thread and zero-rights registration
 
 The user explicitly joins the **current native Thread**. The trusted Node

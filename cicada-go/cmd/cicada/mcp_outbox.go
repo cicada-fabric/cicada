@@ -42,6 +42,10 @@ var (
 // The idempotency key is stored in its own column so it cannot accidentally
 // become part of a user payload or be changed during a retry.
 type mcpOutboxInput struct {
+	PeerSelectionID          string `json:"peer_selection_id,omitempty"`
+	PeerIntentDigest         string `json:"peer_intent_digest,omitempty"`
+	PeerBindingID            string `json:"peer_binding_id,omitempty"`
+	PeerBindingEpoch         uint64 `json:"peer_binding_epoch,omitempty"`
 	ApprovalID               string `json:"approval_id,omitempty"`
 	NetworkID                string `json:"network_id,omitempty"`
 	TaskID                   string `json:"task_id,omitempty"`

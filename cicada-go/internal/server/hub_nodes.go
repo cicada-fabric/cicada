@@ -176,14 +176,55 @@ func (h *hubNodesHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if h.localDomainRelaySend(w, r) {
 		return
 	}
-	// The existing relay-only Agent polls this exact Node-scoped queue even
-	// when it is empty. Keep its credential/nodeID transaction guard; no
-	// Network send/ask/join or general Fabric prefix is exposed by this mode.
-	if path == "/v2/fabric/node/networks/direct/claim" {
+	// Route availability is not a grant. Only these existing Network methods
+	// are composed here; their original Node/Network/current-Owner Guards run
+	// in the base handler. Join, invitations and management remain absent.
+	if hubNodesExistingNetworkRoute(path, r.Method) {
 		h.base.ServeHTTP(w, r)
 		return
 	}
 	writeError(w, http.StatusNotFound, errors.New("route unavailable in Hub Nodes mode"))
+}
+
+func hubNodesExistingNetworkRoute(path, method string) bool {
+	if len(path) > 512 {
+		return false
+	}
+	if method == http.MethodPost {
+		switch path {
+		case "/v2/fabric/node/networks/renew", "/v2/fabric/node/networks/direct/send", "/v2/fabric/node/networks/direct/ask", "/v2/fabric/node/networks/direct/reply", "/v2/fabric/node/networks/direct/claim", "/v2/fabric/node/networks/direct/authorize", "/v2/fabric/node/networks/direct/receipt", "/v2/fabric/node/networks/direct/reply-route":
+			return true
+		}
+	}
+	if !strings.HasPrefix(path, "/v2/fabric/networks/") {
+		return false
+	}
+	parts := strings.Split(strings.TrimPrefix(path, "/v2/fabric/networks/"), "/")
+	if len(parts) < 2 || len(parts[0]) < 1 || len(parts[0]) > 256 || parts[0] == "." || parts[0] == ".." {
+		return false
+	}
+	for _, r := range parts[0] {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '_' || r == '-' || r == '.') {
+			return false
+		}
+	}
+	if len(parts) == 2 {
+		return method == http.MethodGet && (parts[1] == "whoami" || parts[1] == "directory") || method == http.MethodPost && parts[1] == "resolve"
+	}
+	if len(parts) != 3 || parts[1] != "direct" {
+		return false
+	}
+	if method == http.MethodGet {
+		return parts[2] == "request-status"
+	}
+	if method != http.MethodPost {
+		return false
+	}
+	switch parts[2] {
+	case "native-binding", "peer-key", "key-candidate", "request-cancel":
+		return true
+	}
+	return false
 }
 
 func hubNodesRelayPath(path string) bool {

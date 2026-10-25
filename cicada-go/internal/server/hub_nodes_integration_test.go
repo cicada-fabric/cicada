@@ -345,7 +345,7 @@ func TestN3HubNodesRealTCPActivationProofConfirmHeartbeatAndReadExisting(t *test
 		t.Fatal("late read escaped exact READ_EXPIRED settlement")
 	}
 	// Unsupported management surfaces are absent from this composition.
-	for _, path := range []string{"/v1/status", "/v1/workers", "/v2/client/devices/enroll", "/v2/client/rpc/recover", "/v2/node/control/key-upgrade", "/v2/fabric/node/networks/direct/send", "/v2/fabric/node/networks/direct/ask", "/v2/fabric/node/networks/join"} {
+	for _, path := range []string{"/v1/status", "/v1/workers", "/v2/client/devices/enroll", "/v2/client/rpc/recover", "/v2/node/control/key-upgrade", "/v2/fabric/node/networks/join"} {
 		status, _ := n3HTTP(t, f, http.MethodPost, path, "", []byte(`{}`))
 		if status != http.StatusNotFound {
 			t.Fatalf("unexpected old business path %s HTTP %d", path, status)

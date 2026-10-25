@@ -7,6 +7,43 @@ import (
 	wire "github.com/cicada-ai/cicada/internal/hubaccountwire"
 )
 
+func rejectLocalDomainNetworkRenewalTx(tx *sql.Tx, access string) error {
+	var shared int
+	if err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM network_access_sessions_v2 a JOIN session_bindings b ON b.endpoint_id=a.endpoint_id AND b.principal_id=a.principal_id AND b.node_id=a.node_id AND b.native_session_id=a.native_session_id AND (b.credential_hash=a.credential_hash OR b.lease_owner=a.lease_owner) WHERE a.id=?)`, access).Scan(&shared); err != nil {
+		return err
+	}
+	if shared != 0 {
+		return ErrNetworkPermission
+	}
+	if _, err := localDomainScopeExists(tx, "", ""); err != nil {
+		return err
+	}
+	var exists int
+	if err := tx.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type='table' AND name='hub_local_domain_members_v1'`).Scan(&exists); err != nil {
+		return err
+	}
+	if exists != 0 {
+		if err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM hub_local_domain_members_v1 WHERE access_id=?)`, access).Scan(&exists); err != nil {
+			return err
+		}
+		if exists != 0 {
+			return ErrNetworkPermission
+		}
+	}
+	if err := tx.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type='table' AND name='hub_native_pair_slots_v1'`).Scan(&exists); err != nil {
+		return err
+	}
+	if exists != 0 {
+		if err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM hub_native_pair_slots_v1 WHERE network_access_binding_id=?)`, access).Scan(&exists); err != nil {
+			return err
+		}
+		if exists != 0 {
+			return ErrNetworkPermission
+		}
+	}
+	return nil
+}
+
 func localDomainScopeExists(q nativePairReader, group, binding string) (bool, error) {
 	var exists int
 	if err := q.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type='table' AND name='hub_local_domains_v1'`).Scan(&exists); err != nil {
