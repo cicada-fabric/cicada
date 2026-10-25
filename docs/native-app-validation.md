@@ -7144,3 +7144,409 @@ publishing hidden fields. Full dynamic search and colored persistent references
 remain **DESIGN_PENDING / NOT_RUN**, requiring a supported Host UI or separately
 reviewed integration. No product API, skill/resource registry, protocol, grant,
 source binary or current lifecycle/output scope changes in this research.
+
+
+### 2026-10-25 Peer form integration acceptance preparation resumed
+
+The user approved development after the earlier explicit pause. Shared baseline
+is `c5d2bcf2de3d5a6b1df4681dd8be7ea69977de35`; previous research, lifecycle
+source/package and all historical receipts remain attributed to their tested
+inputs. Root approved the **bounded standard MCP form** route using the current
+Group or an explicit already-joined Network's current discovery authorization,
+including eligible cross-Node Endpoints. It does not approve a native custom
+slash, colored composer, global directory, Owner-inventory borrowing, new grants
+or C0 change. Hub/App business/transport seam details still await Root freeze;
+no proposal is treated as a frozen API.
+
+QA has prepared the ten-row safety matrix within existing FB-04/05/06:
+[peer form and authorized directory](native-app-plan.md#peer-form-and-authorized-cross-node-directory-acceptance-preparation).
+It covers actual authorized cross-Node choice, decline/cancel zero-send,
+unsupported Host/form capability refusal, A/B correlation, exact-target tampering,
+post-display expiry/revocation, privacy, bounded query/page behavior, uncertain
+original/retry and reference-versus-authority separation. All are **NOT_RUN**.
+Cancellation before dispatch must prove no send; after dispatch, missing output
+is uncertainty and must recover the exact original rather than claim rollback.
+
+Open design risks reported to Root are not findings against delivered code:
+form/Host IDs confused with authority; stale directory/selection TOCTOU; rewriting
+arguments bound by the Hook ticket; pending response cross-talk/backpressure;
+selection TTL overriding original outbox retry; foreign metadata in labels/errors/
+pages; and weakening existing Network credentials for the new entry. The matrix
+requires actual current actor/session and fresh Guard, without renewing grants
+or silently changing targets. Exact caller/target binding, capability negotiation,
+correlation/queue bounds, response/cancel/EOF/timeout behavior, handle custody/
+lifetime and original retry precedence must be resolved by the frozen seam.
+
+Independent integration will extend existing Host/native/N3 fixture helpers and
+method-specific/opaque fault barriers in the same pinned disposable Docker
+envelope, with real crypto/TCP/persistent state and isolated roots/ports/resources.
+Synthetic transport-negative evidence, actual native form evidence and real Hub
+business effects are separately attributed. No old background campaign or NPT12
+large gate is repeated; no test, probe, packaging, production edit or Git commit
+is performed by this preparation. The previous research's extra static-provider
+POST warning remains unchanged. Tickets, nonces and full message payloads stay
+out of repository/public evidence; no real model or resident user resource is
+used. Driver implementation follows formal delivery rather than invented APIs.
+
+
+Root subsequently froze implementation seams (acceptance still **NOT_RUN**):
+App owns negotiated standard form transport with one required closed `peer`
+choice, 64 options, 120-second wait, separate reader/locked writer/single worker,
+and bounded queue 16 whose overflow closes/cancels instead of deadlocking.
+Only explicit initialize `capabilities.elicitation.form` object qualifies; no
+clientInfo-name whitelist grants or denies Cicada authority. Hub owns selection
+only `select_peer` and 120-second/64-bounded private references; later send/ask
+uses a new original-argument Hook proof, mutually exclusive target fields,
+fresh Guard and original outbox retry precedence. Responses are correlated to
+the original active tool call, never to an untrusted Host Thread ID alone.
+
+Root also froze exact protected original-Network session recovery for the
+selected root/Node/current native SID/Hub/cwd, without environment or Owner
+inventory borrowing. Renew may recover only an existing still-active self
+registration, never Join or revive revoked/expired membership. QA must exercise
+missing registration/token, wrong scope, membership/Owner-key revoke, and lost
+rotation response without repeated fresh renewals.
+
+An additional critical negative is the LocalDomainVersion=1 shared Network /
+Group credential: empty Network grants and discoverable=false cannot be turned
+into discovery by blindly renewing. Network selection must preserve the original
+local-domain access epoch/token, Group binding and capabilities, deny absent
+Network discovery permission, and never expose an unfiltered Network. This is
+separate from independent explicitly joined-Network recovery.
+
+QA is preparing a bounded actual-CLI stdio Host-adversary helper in existing
+acceptance paths; it supplies no Node/Owner/Hub authority and does not qualify
+native UI by itself. The original method-specific/opaque barriers and readonly
+state observations are reused. No test/probe has yet run and no Git checkpoint
+has been made for this new acceptance work. Producer delivery precedes actual
+integration; no old gate is rerun.
+
+
+Root's readonly review additionally reports a **P1 design issue assigned to Hub**:
+Pair/shared Group bindings also share the Network access credential/lease owner,
+while Pair heartbeat depends on the original epoch (including Pair paths with
+LocalDomainVersion=0). Guarding only local-domain version one is insufficient;
+a missing derived session must not trigger renew that breaks the original Pair.
+QA adds an existing-Pair regression observation, not a new Pair feature: compare
+original token/lease-owner hash and access epoch before/after Network selection,
+and require the original Pair heartbeat to remain valid. Business and Store
+shared-binding refusal, together with the local-domain case and independent
+joined-Network renewal case, remain **NOT_RUN** until formal producer delivery.
+No production change or shared credential operation is performed by QA.
+
+
+A second readonly incompatibility was reported by Root to Hub: the real Network
+whoami response (`server/network_v2.go`) supplies network_id/endpoint_id/
+principal_id only. A new consumer requiring absent BindingID/Epoch would deny
+all legitimate Network selection. Formal acceptance must include a real-Hub
+**Network-scope positive**, not a stub that adds those missing fields. Network
+target selection binds stable exact Endpoint and the existing send peer-key /
+fresh Guard; Group binding/version checks apply where real Group APIs supply
+them. QA must not fabricate foreign binding/revision metadata or enrich the
+wire response. This finding is pending producer correction and independent
+execution, not a passed case.
+
+The frozen-seam preparation now includes two narrow existing driver modes;
+neither has been compiled or executed yet:
+
+- `CICADA_NATIVE_PAIR_LICENSES_DIR=<matching notices> bash scripts/test-native-pair.sh --codex-product-peer-form`:
+  actual 0.164.0 original daemon (umask 0002), real TUI-created A/B, installed
+  plugin/Hook and actual app-server form relay; normal App closure, decline/
+  cancel, shared local-domain Network refusal, readonly shared-credential
+  hashes, accept without send, fresh-Hook ASK/REPLY, real 120-second handle
+  lifetime before exact retry, one durable request, and current actual App
+  revoke. Automated app-server answers do not qualify physical TUI form display;
+  that and Windows DPAPI/ACL/GUI remain NOT_RUN.
+- `bash scripts/test-native-pair.sh --peer-form-network`: a private test overlay
+  reuses the producer's real Hub/public-API/Owner-signature fixture with two
+  authorized Node registrations and actual CLI MCP subprocesses. Native records
+  are visibly synthetic protocol inputs; two actual Node processes and actual
+  Codex Runtime are separate NOT_RUN. Prepared checks include original real
+  Network whoami/directory shapes, five unsupported form-capability shapes,
+  unfamiliar valid-capability clientInfo, decline/cancel/unoffered opaque choice,
+  no selection send, minimal Network labels, post-commit TCP response loss,
+  retained UNKNOWN, actual MCP process/nonce restart, exact original args without
+  resend, explicit original-packet retry, one effect and decryption at the exact
+  selected second Node Endpoint.
+
+Both modes retain source/driver/runtime and binary hashes, exact expected test
+events (a skip or duplicate terminal cannot pass), exit codes and owned-container
+cleanup through the original evidence tool. Source, modules and Codex package
+mount readonly; the QA build cache stays exclusively locked. These are written
+acceptance drivers, not completed acceptance. Formal Hub/App integration still
+precedes compilation/execution. Binding replacement, cross-actor response
+adversaries, shared legacy Pair heartbeat, broader cross-Owner privacy and any
+unexecuted fault/recovery case remain pending. Historical RED and the separate
+9319 package receipts are unchanged.
+
+Hub's initial real default-handler Network producer test subsequently reported
+HTTP 404: `NewHubNodesHandler` exposes direct/claim but not existing Network
+whoami/directory/resolve/renew routes. This is a reported production wiring gap
+assigned to Hub/Root, not QA execution or an accepted feature. Keep the default
+handler and existing FabricService/Guard in the fixture; replacing it with full
+Hub would hide the missing production route. No new wire, Join/invitation,
+Owner-inventory permission or C0 expansion is authorized by this observation.
+
+QA's readonly follow-up identified that missing-token recovery used Group
+whoami to locate self, leaving an independent Network-only actor without a
+Group session unqualified. Root approved the minimal existing-local-renew seam
+recorded in the plan: verified original Node/native scope plus unique readonly
+current-account/runtime/SID/Hub/Network history (empty Group), then original Hub
+Guard. Missing/ambiguous history refuses and cannot borrow a Pair/domain Group
+record. Hub owns the production implementation and real no-Group positive /
+history negatives. This is a pending design correction and test requirement,
+not executed QA evidence or a claim that pre-existing-token selection proves
+missing-token recovery.
+
+
+## 2026-10-25 Independent peer-form and authorized-directory acceptance
+
+**SCOPED_PASS for the explicitly measured lanes, assembled from preserved raw
+runs.** Production is Root-reviewed `250ff6da6105d994c84efebe095f2d3c35bc7180`
+(including App transport `ebc71db`); each acceptance build also includes the
+recorded QA WIP. Dirty input is attributed by complete before/after source and
+harness manifests, not solely to HEAD. QA changes only acceptance/scripts and
+these two existing records. No production code, shared development Hub, resident
+user daemon/unit, public deployment, real grant/key or shared module cache was
+modified. Source, modules and reviewed Codex package mount readonly in the pinned
+offline disposable Docker envelope; the QA build cache is exclusively locked.
+
+The complete **Network protocol lane** passes 9 normal / 9 race terminal events
+(two tops each), plus three shared-access Store tests and one exact/readonly
+Network-history test in both normal and race. All compilation/vet stages exit 0;
+source and executed-binary hashes stay stable and the exact owned container is
+absent. This is real default `NewHubNodesHandler`, TCP, persistent SQLite, real
+Owner signatures/key grants and crypto, two authorized Node registrations and
+actual CLI MCP subprocesses. Native records in this protocol fixture are
+visibly synthetic; **two actual Node processes / cross-Node actual native Runtime
+are NOT_RUN**. No SQL creates positive authority and no whoami/card DTO is enriched.
+
+Measured boundaries include exact default-route/method allowlisting (401/403
+without credentials, 404 for closed neighbors), five unsupported form-capability
+shapes, unfamiliar valid-capability clientInfo, unknown/late/duplicate form IDs,
+decline/cancel/unoffered opaque choice, readonly selection with zero messages,
+minimal Network labels, exact target, real post-commit TCP response loss,
+UNKNOWN retained across an actual MCP process/nonce restart, original-argument
+recovery without resend, conflicting original intent refused, explicit retry of
+identical sealed HTTP bytes, one durable effect and decryption at the exact
+second Node Endpoint. Independent Network-only missing-token recovery rotates
+only its original access once, leaves grants and zero Group bindings unchanged,
+and needs no implicit Group. Lost renewal ACK plus MCP restart/repeated selection
+retains one uncertainty fence and does not rotate again. Existing renewal lacks
+an exact-operation receipt; this case proves safe retained uncertainty, not
+successful recovery of an unavailable token. Shared Pair/domain Store regression
+heartbeat checks use an explicitly synthetic +one-minute clock, not wall-clock
+expiry; actual Pair-MCP-selection-to-heartbeat remains separate NOT_RUN.
+
+The **actual native main line** passes one complete top separately. The original
+0.164.0 umask-0002 daemon creates real TUI A/B, keeps original SID/cwd/Node/Group,
+and uses the installed product plugin, actual Hook per call, actual App/Node/Hub
+and real crypto/TCP/SQLite. Normal App closure precedes business. Four actual
+app-server form requests are correlated by original thread/server/turn/request
+ID: decline 1, cancel 1, accept 2. Selection creates no request; a later new Hook
+proof sends ASK to exact B, B replies under its own new proof, and A receives the
+original answer. Real 121-second waiting passes the frozen selection lifetime;
+exact original args recover one existing request. Shared credential hash,
+lease owner, epoch, binding, capabilities, membership/endpoint revisions remain
+unchanged. Reopening the same protected App profile and explicitly revoking the
+same policy denies new business without a second request. Control inference is
+off, literal identity commands make zero provider POSTs, and no real model runs.
+This scene uses the existing explicit public Owner-pin fixture prerequisite;
+it does not repeat or replace NPT12 automatic-pin acceptance.
+
+The actual Host performed **13 tool calls / 26 static-provider POSTs**, plus
+**2 observed native-queue POSTs**, total 28, real model turns 0. Two queue posts
+are observed owned synthetic traffic, not real-model or physical wake evidence.
+Source/binaries remain stable; original owned daemon cleanup and exact container
+absence are confirmed. The five missing/forged-context negatives and their parent
+pass in the original combined run; they were not repeated with the successful
+native-only scene. The original combined result remains **FAIL**, so no fresh
+all-green combined seven-event native gate is claimed.
+
+Reproducible commands (from this worktree; notices are the unchanged complete
+9319 package notices, with no new dependency):
+
+```sh
+bash scripts/test-native-pair.sh --peer-form-network
+CICADA_NATIVE_PAIR_LICENSES_DIR=/home/zyf/Cicada/.local/artifacts/native-ip-complete/run-native-node-lifecycle-9319e1d-20261025/final-payload/licenses \
+  bash scripts/test-native-pair.sh --codex-product-peer-form-native
+```
+
+`--codex-product-peer-form` selects context negatives plus the native scene for
+an optional fresh combined rerun; it is not the attribution of the successful
+native-only receipt. `--peer-form-network-focus` is the preserved normal-only
+8-event adapter correction, explicitly excluding race/Shared/History and the
+already passed renewal-loss subcase. No historical NPT12 or old large gate was
+repeated. Raw receipts below are relative to
+`/home/zyf/Cicada/.local/evidence/native-pair-acceptance/`.
+
+| Raw receipt | Exit / overall | Measured attribution | result.json SHA-256 |
+| --- | --- | --- | --- |
+| `run-20261025T101243Z-aG3AmA` | 1 / FAIL | Network initial: strict native-record fixture permissions wrong; main/proof not reached | `3d297de4c1d553b7f1038de3fb7039590de02d2f971183cbfca773356c917a41` |
+| `run-20261025T101856Z-A5iYUH` | 1 / FAIL | Network second: literal label expected instead of normalized returned name; renewal-loss case passed | `7bc4dde35d296da18d7e96324e1103bc3d9bcace997d7ccc6dd65e0712f5dff8` |
+| `run-20261025T102720Z-DTvba4` | 0 / SCOPED_PASS | Focused normal: corrected adapter, 8 expected events; no race/Shared/History | `48b44055ec6c51116ddea9360478ec176a190b89a7a43d724525c109f853e505` |
+| `run-20261025T102826Z-XCCg5H` | 0 / SCOPED_PASS | Complete new Network lane: 9 normal + 9 race events, Shared 3+3 and History 1+1 | `f053aaaf1ae9c80de5405d1e43c204286c37e25ad90a573d30ffbeb479d2661c` |
+| `run-20261025T103243Z-s0k2BD` | 1 / FAIL | Native combined: context parent + five negatives passed; main line unobserved form | `d5407753dbfa73cc2ce67fecae540ad772a9f3e961ffded6e6f7b2bec5a875ae` |
+| `run-20261025T104445Z-JQTcng` | 1 / FAIL | Native only: Host never policy auto-declined; actual names matched | `24ebaf3e88a61dad4af9765a2cbfabe960dcfa53d57635a86d83ac43f421c8d7` |
+| `run-20261025T105614Z-CHuqW5` | 1 / FAIL | Native only: granular policy delivered real form; typed-schema projection mismatch | `16743d22282b9a7f66c96307f2ffb02cfb09815e529937c5efe2bc7156fa990d` |
+| `run-20261025T110338Z-OknxIG` | 1 / FAIL | Native only: decline/cancel/403 passed; authority audit wrongly included heartbeat row version | `140823c8fb22288a8b810323dc8a394fb0ea81cb3cb16c66c1ca77cc1c0658e7` |
+| `run-20261025T111142Z-oGZLNA` | 0 / SCOPED_PASS | Native only complete scene passed; original daemon/AB, forms, ASK/REPLY, expiry/exact retry, revoke | `af4e2ad48d2f83f1a6a5cdf03a33db0e95b61b74d80a222df4e18dde8b8524da` |
+
+Fixture corrections preserve the original FAILs. Independent Network retains
+strict native-record permissions (0600/0700); the shared desktop-domain helper's
+0664/0775 was inappropriate there. Network labels use actual returned normalized
+name/nickname plus Endpoint suffix, followed by exact full Endpoint verification.
+Actual native LocalDomain names matched their literal names; the initial generic
+name-normalization hypothesis for that path was disproved by measurement.
+
+Host `approval_policy="never"` really auto-declined form prompts. Per-tool execution
+approval does not enable elicitation. The owned fixture now permits only
+`granular.mcp_elicitations=true`, with `rules`, `sandbox_approval`, `skill_approval`
+and `request_permissions` false, reviewer `user`, readonly sandbox and the same
+specific tools. Every resume reads back the effective policy/reviewer. No real
+user config or Codex code was changed. This distinction agrees with the
+[official configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference)
+and the preserved exact-0.164 generated `AskForApproval` schema. A declined Host
+prompt is not a failed Hub Guard or a completed human choice.
+
+The app-server typed `McpElicitationSchema` exposes type/properties/required but
+omits the raw MCP root `additionalProperties` member. Native validation therefore
+permits omission only in that typed projection (if present it must be false),
+while keeping one required `peer`, finite unique offered const/title choices,
+exact actor/correlation and target checks. The separate actual-CLI stdio lane
+strictly verifies the original wire flag is false; Host projection and raw wire
+are not conflated. Native form delivery is indirect evidence of the production
+MCP form-capability gate, not a captured Host MCP initialize packet. Actual Host
+content arrays may omit outer `isError`; refusals require the exact fixed Cicada
+code or explicit 401/403, surviving flags must be true, no success coordinates
+may appear, and independent effect/authority observations must hold. Arbitrary
+errors cannot pass. Normal heartbeat changes lease time, updated time and database
+row `version`; that operational version is excluded from authority equality.
+Binding ID/epoch, credential/lease owner, capabilities and permission revisions
+remain exact; no general hash weakening was made.
+
+Producer wiring gaps found before formal delivery (default Hub-Nodes Network
+404 routes and Network-only missing-token recovery incorrectly requiring Group
+whoami) were assigned to Hub/Root and corrected in 250ff6d. Independent final
+Network execution verifies the corrected default entry and no-Group path.
+
+The executed QA CLI is `135dc22e72a7af4508f92cde3ac033ab50c6f17046a4ca0d7e900a4c7c1c45c2`; native test binary is `952a177e2b70c203ea906c6276348976ad3764f50f91040287a27ff79a5941e7`. The packaged candidate CLI is a different byte artifact, so these executions
+are not relabeled as execution of the packaged binary. Root/App separately own
+its metadata-driven file-only install and finalization. Software, MCP wire,
+contract revision, Git revision, binary digest and ZIP digest stay distinct.
+
+The final pure receipt-oracle mutation check passes **65 cases**, exit 0: `peer-form-oracle-20261025-tjCG2C/checks/result.json` / SHA-256 `d5d9cd630df5acecd66483db23b5967eb97fa60453893327bce82cc19b93ddaf`. Its visibly synthetic controls/receipts are **not product execution**. They
+reject missing/skipped/duplicated events, missing evidence, changed source or
+binaries, failed stages and leftover containers. Reproduce with
+`python3 scripts/fixtures/native-pair/peer_form_evidence_checks.py NEW_PRIVATE_DIR`.
+
+Remaining independent scope: concurrent A/B pending-form interleave (the design
+serializes calls), real changed-binding/epoch replacement after display, full
+64-row/paging/truncation behavior, real cross-Owner end-to-end selection/send,
+actual Pair-MCP-selection heartbeat, two actual Node processes with cross-native
+Runtime, real model/provider and physical form UI. Windows DPAPI/ACL/GUI/IME,
+Android and public deployment remain **NOT_RUN**. Custom native slash and colored
+composer references are unsupported. First-page selection is bounded at 64,
+not a global directory or a claim of absence beyond that page. Account login is
+not Root; the existing N2 proof/grant matrix retains its original source-bound
+coverage. No Control inference or new grant is needed for the measured identity
+flow.
+
+
+### 连续真机验收步骤：保留当前安装与身份（尚未执行）
+
+这一批步骤用于用户后续一次连续回归；目前全部 **NOT_RUN**，尤其 Windows
+DPAPI、ACL、GUI、键盘/IME 和物理 TUI 表单。保留 Windows 根
+`F:\DOWNLOAD\Cicada-N2`、Linux Node 根 `~/.cicada`，Hub 保持当前 state、TLS
+材料、Owner/设备/Node 密钥与原启动配置。先记下原 Hub/Owner/Node 公共指纹、
+原 A/B SID、工作目录和 Node/Group；证据只存公开元数据、退出码与哈希，
+不粘贴私钥、凭据、完整授权或敏感消息。Linux 输出单独放入本次私有验收目录，
+Windows 输出放入独立的本次验收目录；不要用清空重装替代更新验证。
+
+1. **拿完整包并核对。** 使用总控最终交付的完整 ZIP、ZIP SHA-256 和包内
+   `SHA256SUMS`/`BUILD-METADATA.json`/`VALIDATION.json`，先核 ZIP，再解压到本次
+   staging 目录并核成员哈希。Linux 可用 `sha256sum`、`sha256sum -c SHA256SUMS`；
+   Windows 用 `Get-FileHash -Algorithm SHA256` 核对应文件。以最终清单的真实成员
+   路径和摘要为准；Git、软件版本、执行文件摘要及 ZIP 摘要分别记录。
+2. **先只读确认现有组件和启动方式。** Linux 用原已安装 CLI 执行
+   `components list --prefix "$HOME/.cicada"`，再执行
+   `node status --user-root "$HOME/.cicada"`，记录其状态/退出码、原组件位置与
+   是否存在受保护的 `node-service.json`。首次 on 没有保存配置时，status 可能
+   返回配置错误：保留这个结果，结合原启动命令、已知服务配置和 App 的 Node
+   状态只读确认原 ID、名称、state、MCP session/outbox、Hub 地址、interval 与
+   原 Codex 可执行文件。未知值先确认，不能猜测 Hub ExecStart、换 Node、重配
+   Owner 或新建 state。只查看已知属于本安装的进程/服务，不全局 kill/pkill。
+3. **按原文件归属更新组件，保留数据。** `components install` 对不同内容的
+   已安装组件会拒绝，不能当成覆盖更新。先用原启动方式停止对应进程：前台
+   Node 在其原终端正常退出；已由 lifecycle 管理的 Node 才用同根 `node off`。
+   已由组件 manifest 管理的 Linux 安装，按 manifest 的保护先
+   `components remove --prefix 原根 --components 原组件`，再用完整新包 CLI 的
+   `components install` 安装回同根、同组件，传入最终清单的 binary/sha256、
+   完整 matching licenses，Node 同时传入包根 `--codex-plugin-assets` 及清单
+   `--codex-plugin-sha256`。remove/install 只处理受归属检查的程序文件；保留
+   原 state/keys，错误就记录并停止该步，不手改 manifest。Hub 若也更新程序，
+   仍按它原有运行方式与原参数启动，不修改其 state 或由验收者编造服务配置。
+   安装本身不得启动 Node、轮换密钥或授予通信权限。
+4. **Windows 程序更新分清实际布局。** 此完整包有 Windows GUI
+   `cicada-app.exe`，没有 Windows `cicada` CLI；GUI 也不接受 `components` 命令。
+   若原来是独立解压程序目录，且不受 `components/app/INSTALL-MANIFEST.json`
+   管理，先正常关窗、备份旧程序文件，再按最终 ZIP 成员更新原程序目录，
+   保留非包文件和全部 protected state；以同一 Windows 用户、原环境和原参数
+   （包括原 `--user-root 'F:\DOWNLOAD\Cicada-N2'`）打开。若实际 EXE 受 App
+   组件 manifest 管理，此包缺少可用 Windows 更新入口，记录这个限制并交总控；
+   不能发明 Windows CLI 命令、直接改归属 manifest 或重置 vault/Owner。
+5. **先前台，再验证 Node on/off/status。** 用更新后的已核 CLI 和只读确认的
+   原参数启动一次前台 Node，核原 Hub/Owner/Node 指纹和状态不变；不重复配对。
+   再从其原终端正常退出，确认原 writer 已停止。Linux lifecycle 需要 systemd
+   user manager ≥254。已有 `node-service.json` 时可依次执行：
+
+   ```sh
+   "$NODE_CLI" node on --user-root "$HOME/.cicada"
+   "$NODE_CLI" node status --user-root "$HOME/.cicada"
+   "$NODE_CLI" node off --user-root "$HOME/.cicada"
+   "$NODE_CLI" node status --user-root "$HOME/.cicada"
+   "$NODE_CLI" node on --user-root "$HOME/.cicada"
+   ```
+
+   `NODE_CLI` 必须指向本次已核、同根安装后的实际 Node CLI。第一次 on 若无
+   保存配置，需要 `--codex-bin 原绝对路径 -- 原relay-agent参数`；这些值必须
+   来自上一步已确认的原配置，不在此预填未知部署参数。foreground 冲突必须
+   明确拒绝，不能暗中接管或杀进程。status 的 running 是本地进程状态，
+   `hub_online=unknown` 不能当成 Hub 在线或获得业务授权。Windows lifecycle
+   不是该 Linux 功能的实机通过证据。
+6. **恢复原 A/B，并单独确认 Host 交互策略。** 在原 Codex 安装、原工作目录
+   恢复原 A/B SID，不新建替代 Thread，不重新 Join 或审批新 Owner。确认使用
+   同根安装的当前 Cicada plugin/skill，原 Hub/Node/Group/Endpoint 不变。
+   Host 工具执行审批、MCP 表单展示与 Cicada 授权是三回事；按 Host 正常流程
+   审阅本次 Cicada 调用。`approval_policy="never"` 会自动拒绝表单，不能误报
+   为 Hub 拒绝。需要时由用户在对应测试 Thread/私有配置仅允许
+   `granular.mcp_elicitations=true`，保留其他权限策略，reviewer 为 user；不要
+   使用自动审批来替代人类选择，不改无关 Thread 或放宽 Cicada Guard。
+7. **用现有 Cicada skill 做联系人与收发。** 在 A 先要求“只打开当前 Group
+   的联系人选择，不发送”。核 B 的实际名称、允许显示的 Node/完整 workspace、
+   快照状态与短标识，先取消一次，核无新请求/消息；再打开并选择 B，仍核无
+   新请求/消息。随后明确要求向刚选的 B 发本次无敏感内容的测试 ASK，由 B
+   在原 SID 回复，A 核原请求的答复与关联。选择只生成短期引用，发送须独立
+   证明和当前 Guard。Network 仅可用已加入且有 discovery/communication 权限
+   的范围，不能借 Owner inventory 或自动申请新 grant。列表只有首个 64 条
+   bounded page，不是全局搜索，也不能把未出现解释为全目录不存在。
+   自定义 native slash、彩色 composer 引用没有实现；使用 skill/正常表单。
+8. **关 App 后继续，再停启 Node 验证原身份与原结果。** 正常关闭 App 窗口，
+   原 A/B 再完成一轮已授权 ASK/REPLY，确认无需 Control 推理或 App 常驻。用
+   同根 Node off/on 后，在原 A/B 按 Host 已有重连入口恢复连接，SID、目录、
+   Node 身份和授权不变。对已有结果只做原请求/原幂等意图的状态核对与精确
+   重试，核一条原结果，不改正文或另发新请求来“修复”。若原结果不确定，
+   保留 UNKNOWN/PENDING 和原操作；未知续租没有 exact receipt 时，不能删
+   pending 文件或反复新 renew 来制造成功。
+9. **显式撤销，核新业务拒绝与历史保留。** 重新打开同一 App protected profile，
+   必要时正常登录同一账户，核原 Owner/设备不变；显式撤销原本地协作策略。
+   原 A 用先前选择再发新测试请求应拒绝，并且没有新增业务请求。核原有
+   本地历史/已有操作结果仍保留；只用现有历史或 operation status 入口读取。
+   若当前入口拒绝读取，记录原错误并交总控，不重新发送来重建历史。App 关窗
+   或退出登录不是撤销；账户登录也不是 Root，更不自动补 grant。最后记录
+   所有退出码、公开指纹/SID 后缀、请求关联与工件哈希，将实测 FAIL/NOT_RUN
+   分开交付；不要导出凭据或完整敏感消息。
+
+以上是未执行的用户真机程序；当前独立容器/Host-relay结果不覆盖它。跨 Owner
+完整收发、两个真实 Node/native Runtime 跨节点、物理 TUI 选择和 Windows
+DPAPI/ACL/GUI/IME 仍需各自实际执行后记录。

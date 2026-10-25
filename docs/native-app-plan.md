@@ -386,9 +386,9 @@ recorded in the [lifecycle preparation](native-app-validation.md#2026-10-25-node
 | FB-01 | Optional Hub/Node/App on one host; ordinary registration allows only necessary self-auth/status, with zero business rights. Account login cannot create Root, Join, communication or execution authority. | Bounded actual installed-plugin registration/peers and Host context pass with an actual App-approved Node and signed offline card; Host whoami refuses the unjoined Thread. A separate actual cold gate matches original SID/Endpoint/binding/epoch through authenticated current App status and first joined Host identity, then verifies revocation; no direct database mapping or broader C0 acceptance is claimed. Broader C0.1/H1/H2 stay frozen/NOT_RUN. |
 | FB-02 | Owner chooses explicit software/business permissions or presets; Hub durably verifies the original Owner signing-key chain, exact actor/target/current versions and expiry. Unsigned/self-issued presets or revoked/stale authority deny. | Broader policy behavior DESIGN_PENDING. Existing finite Pair/status grants retain their contracts; UI presets cannot become a new authority. |
 | FB-03 | Node takes only the Hub address, requests and displays a device code; the already trusted App accepts that code, reviews the exact candidate and approves once. Hub maintains the binding and Node establishes independent Owner trust without manual Owner-key/fingerprint or descriptor transfer. Business permissions are configured afterward. | SCOPED_PASS coverage of NPT01–12 through source-bound original runs and focused continuations, including actual address-only Node/TTY/App/automatic pin and existing 0.164 daemon/plugin literal Join/MCP with zero provider POSTs. Original full-run FAIL remains unchanged; this is not a fresh all-green full gate or a Windows/package/physical pass. See [closure, defects and receipts](native-app-validation.md#2026-10-24-node-pair-trust-scoped-acceptance-closure). The initial 2026-10-25 Node attempt failed plugin digest preflight; after correction the user reports Node pairing and local collaboration authorization passed. This remains distinct from independent NPT evidence and pending lifecycle work. |
-| FB-04 | Own lists lead with name + workspace + Node + status and retain original SID/Endpoint ID/workspace/name. Renaming changes neither stable identity, keys nor permissions; removing an association preserves the original Thread/workspace.  Future Host object search selects discoverable cross-Node Endpoints by Network/Node/name/workspace and inserts a reference with associated metadata, without memorizing names or copying IDs. | The d3acd4b contract preserves original metadata; repeat registration cannot rename/revive. Actual App Core 07bd265 reads original names/workspaces and distinct same-name IDs through signed snapshots. Local bridge 97d8a1d is integrated; human plugin selection, rename and physical GUI remain separate.  The Host selector/reference UX is future DESIGN_PENDING work, outside this on/off/output change. |
-| FB-05 | Duplicate names return AMBIGUOUS/require explicit choice. Matching name/workspace can use human labels; selection binds exact internal ID/current version. Revocation rejects an old choice rather than retargeting another same-name Endpoint.  A reference grants no authority: selection binds exact Endpoint ID/binding/version and a fresh Guard must run before send. | `e902a836` corrects schema/validator disagreement for the five directory tools. Independent actual Host resolves the real B by name/workspace, rejects wrong filters/unknown or forged fields, preserves A identity and denies after revoke. Actual-model retest, ambiguity/stale-selection extension remain pending; no rename operation is added.  Future Host reference insertion is not an accepted capability. |
-| FB-06 | Current-machine and remote lists filter by this Owner or exact authorized scope. Cross-Owner discovery hides absolute paths by default; qualified Owner inventory may show registered but unpermitted objects with that distinction visible. Hub persists inventory/permissions.  A future Host picker searches the Hub current authorized directory, including only Endpoints this caller may discover across Nodes; cross-Owner privacy remains redacted. | Backend and local bridge are integrated. Actual App Core signed own-Node zero-right cards, old-Hub refusal and original-read recovery pass source-bound independent scopes. Cross-Owner privacy, paging/cache expiry and old-N2-TTL independence retain producer evidence; broader independent cases remain NOT_RUN.  That Host directory expansion remains future scope. |
+| FB-04 | Own lists lead with name + workspace + Node + status and retain original SID/Endpoint ID/workspace/name. Renaming changes neither stable identity, keys nor permissions; removing an association preserves the original Thread/workspace.  Future Host object search selects discoverable cross-Node Endpoints by Network/Node/name/workspace and inserts a reference with associated metadata, without memorizing names or copying IDs. | The d3acd4b contract preserves original metadata; repeat registration cannot rename/revive. Actual App Core 07bd265 reads original names/workspaces and distinct same-name IDs through signed snapshots. Local bridge 97d8a1d is integrated; human plugin selection, rename and physical GUI remain separate.  Bounded standard MCP-form selection is now approved for development; actual new integration remains NOT_RUN. Custom slash/colored composer remains outside scope. |
+| FB-05 | Duplicate names return AMBIGUOUS/require explicit choice. Matching name/workspace can use human labels; selection binds exact internal ID/current version. Revocation rejects an old choice rather than retargeting another same-name Endpoint.  A reference grants no authority: selection binds exact Endpoint ID/binding/version and a fresh Guard must run before send. | `e902a836` corrects schema/validator disagreement for the five directory tools. Independent actual Host resolves the real B by name/workspace, rejects wrong filters/unknown or forged fields, preserves A identity and denies after revoke. Actual-model retest, ambiguity/stale-selection extension remain pending; no rename operation is added.  Exact non-authorizing selection references are approved for development; their new acceptance remains NOT_RUN. |
+| FB-06 | Current-machine and remote lists filter by this Owner or exact authorized scope. Cross-Owner discovery hides absolute paths by default; qualified Owner inventory may show registered but unpermitted objects with that distinction visible. Hub persists inventory/permissions.  A future Host picker searches the Hub current authorized directory, including only Endpoints this caller may discover across Nodes; cross-Owner privacy remains redacted. | Backend and local bridge are integrated. Actual App Core signed own-Node zero-right cards, old-Hub refusal and original-read recovery pass source-bound independent scopes. Cross-Owner privacy, paging/cache expiry and old-N2-TTL independence retain producer evidence; broader independent cases remain NOT_RUN.  Authorized current-Group / explicit joined-Network cross-Node reuse is approved for development; unfiltered/global inventory remains out of scope. |
 | FB-07 | Plugin/MCP binds the actual original native record, SID and canonical cwd, with original Codex account, Node/API and independent Node record validation. Reject missing/mismatched records, A/B swaps and inherited SID/workspace aliases. | Actual installed-plugin PreToolUse→real Node issuer/consumer→real MCP reaches a verified-context unjoined refusal. Five missing/forged-context cases and restart nonce refusal pass separately. Valid-ticket replay/expiry, cross-context/fork, A/B late heartbeat, clear and subagent cases remain NOT_RUN; older mock probes stay separate. |
 | FB-08 | Explicit local/plugin registration or Join commands execute deterministic guarded operations without model decision-making and bind the actual original context. Zero-right registration does not require a Pair/slot; communication still needs separate authority, including exact Pair/slot for the existing reserved-Pair flow. | Actual installed literal register/peers completes through the real Node with zero provider POSTs and visible name/full cwd/offline state. The distinct Host read uses two static-provider POSTs and no real model. Named reserved-Pair connect, App dual consent, default-five-minute cold lease/Node restart and first joined Host identity now pass a separate actual gate with manual Owner pin. Leave and original-intent faults remain NOT_RUN. |
 | FB-09 | New installations default Cicada-owned user files to `~/.cicada`, permit custom root and apply it consistently to configuration/state/managed workspace/cache. Development `~/Cicada` stays separate. | Partial source 73d6f9a covers new App/Node/MCP paths, custom root and installer file prefix with original-state recovery. Hub/workspace/cache defaults, migration and physical Windows remain pending; no real state or Codex account is moved. |
@@ -442,11 +442,161 @@ scoped; foreign Network cards use opt-in aliases/minimal cards and foreign Group
 cards authorized opaque IDs, without SID/workspace/binding exposure. Exact
 internal target/version validation cannot leak hidden fields into Host labels.
 
-Full dynamic cross-Network search and persistent colored references need an
-explicitly supported Host surface or separately reviewed UI integration.
-Picker/reference integration remains **DESIGN_PENDING / NOT_RUN**; research
-changes no public protocol, skill/resource registry, grant or current on/off /
-output implementation scope.
+The research checkpoint itself changed no implementation. The user subsequently
+approved a bounded development scope: standard MCP form selection from the
+caller's current Group or **explicitly joined, authorized Network** directory,
+including eligible cross-Node peers. Selection yields an exact reference, not
+a grant; send remains a separate newly authenticated operation with fresh Guard.
+Full dynamic cross-Network aggregation, custom native slash and persistent
+colored composer references remain outside this scope. Root has frozen the seams described below for implementation; all new
+acceptance cases are NOT_RUN pending formal delivery and actual execution.
+
+### Peer form and authorized cross-Node directory acceptance preparation
+
+This is the next approved scope on shared baseline `c5d2bcf`; the existing 9319
+background/lifecycle package and its evidence stay separate. QA owns this matrix
+and isolated acceptance, Hub owns the directory/selection/business seam, and App
+owns standard elicitation transport/UI/skill behavior. Production ownership
+stays with Hub/App; QA writes only acceptance paths and these existing records. Do not change original tool arguments or
+reuse a consumed Hook proof after resolving a choice. Existing current-actor,
+Group/Network session, communication grants and outbox recovery remain binding.
+
+| Case | Required independent observation | Reuse / evidence boundary | Status |
+| --- | --- | --- | --- |
+| Authorized cross-Node choice | Actual two Node processes and distinct native Endpoints; current Group or explicit joined-Network discovery returns only permitted bounded cards. Both Group and explicit Network positives must use real Hub response shapes, not a mock-enriched DTO. The standard Host form returns the exact chosen opaque target; selection alone creates zero messages/grants. A separate authenticated send reaches that exact peer only under existing permission. | Existing N3/Host actor fixture and real TCP/PQ/SQLite; no Owner inventory or manufactured native records. Host UI and business receive remain separate checkpoints. | NOT_RUN |
+| Decline / cancel | Before accept or send, decline/cancel returns no usable selection and no business dispatch/outbox/delivery; existing bindings/grants remain unchanged. | Event barrier before business dispatch plus readonly state counters. Cancellation after send is uncertainty/recovery, not a zero-effect guarantee. | NOT_RUN |
+| Form capability negotiation | Only explicit `capabilities.elicitation.form` object qualifies; missing/null/bool/URL-only capability refuses before form/selection/send. No clientInfo-name allowlist, model-text fallback or guessed peer; valid capability does not supply actor authority. | Actual stdio initialize; capability and actor checks are separate, including an unfamiliar clientInfo name. | NOT_RUN |
+| A/B correlation | Interleave callers, swapped/unknown response IDs, duplicate/late replies and queued requests. A's actor/argument proof and form can never settle B's call. Serialize if designed; do not claim simultaneous forms if the worker is serial. | Existing MCP actor contexts; response-ID/actor associations recorded as hashes/booleans only. Backpressure cannot prevent response/cancel consumption. | NOT_RUN |
+| Exact target / tampering | References expire after 120 seconds and the private selection set is bounded at 64; same-name choices remain distinct. Unknown, edited, unoffered or unauthorized opaque values and conflicting target fields reject; no by-name fallback or use across another Thread/Group/Network. | Existing directory ambiguity and context-refusal fixtures, bounded synthetic adversarial values; no new caller identity fields. | NOT_RUN |
+| Expiry / revocation after display | Pause after snapshot or accept, then expire/revoke membership, policy/grant or binding/version. Reference use freshly rejects before send; reissued Hook proof cannot revive old selection or renew consent/deadline. | Existing deterministic fault barrier plus actual current Hub Guard; expiry uses the delivered contract's real deadline. | NOT_RUN |
+| Privacy projection | Same-Owner labels only within caller scope; foreign opt-in alias/minimal/opaque cards expose no raw name, SID, workspace, locator or binding. Denied/ambiguous/error/page paths must not leak hidden values. | Current Group/Network privacy projection; Owner inventory permission is never borrowed by a native actor. | NOT_RUN |
+| Bounded search / pages | Valid filters/page cursor retain exact actor/scope; reject malformed/foreign/stale cursor, oversized query/result or unoffered target. Truncation is explicit and cannot authorize picking the first/hidden row. | Existing bounded directory tools; search/paging forms and exact limits await seam freeze, without inventing a new UI or DTO. | NOT_RUN |
+| Loss / late / exact retry | Drop the selected response or original send response at an observed before-forward/after-commit barrier. A cancelled selection cannot revive; an uncertain send retains exact original ciphertext/idempotency and recovers one effect. Reference TTL cannot cause a replacement send or retarget. | Reuse method-specific and opaque fault drivers plus readonly receipt/counter observers. Never infer a commit from timing or fabricate recovery state. | NOT_RUN |
+| Reference is not authority | Discovery/selection does not create communication/execute grants, alter epochs or activate Root. Missing/forged/wrong actor proof rejects; separate send consumes its own exact original-argument proof and current authorization. | Existing Node/Hook/MCP chain and authority baselines; no C0 change, new grant or Host-approval bypass. | NOT_RUN |
+
+The table above is the original preparation matrix. After formal `250ff6d`,
+independent execution has the following scoped results; full receipts, original
+FAILs and the continuous manual procedure are in the
+[final acceptance record](native-app-validation.md#2026-10-25-independent-peer-form-and-authorized-directory-acceptance).
+
+| Matrix boundary | Executed result and remaining scope |
+| --- | --- |
+| Authorized choice | SCOPED_PASS: real default Hub/two authorized Node registrations with actual MCP subprocesses for Network, and original 0.164 native A/B on one actual Node for Group. Two actual Node processes/cross-native Runtime remain NOT_RUN. |
+| Decline/cancel; reference alone | SCOPED_PASS: actual Host decline/cancel and accepted choice have zero requests; independent Network fixture rejects unoffered choices and has zero messages before send. No grant/epoch/credential expansion. |
+| Host capability | SCOPED_PASS: five explicit missing/invalid form shapes refuse; unfamiliar clientInfo with valid form object works. Native actual form arrival is indirect capability evidence, not a raw initialize capture. |
+| Correlation | SCOPED_PASS for unknown, settled/late and duplicate response IDs in actual stdio, plus original native thread/server/turn/request association. Concurrent A/B pending-form interleave remains NOT_RUN; worker serialization is not parallel UI. |
+| Exact target/tampering | SCOPED_PASS: original offered opaque choice, exact Endpoint, edited original intent conflict, lost-memory handle cannot authorize a new key/send. Independent real binding-replacement/cross-actor-handle scenarios remain NOT_RUN. |
+| Expiry/revoke | SCOPED_PASS: real selection lifetime elapses before exact original-outcome recovery; actual App current-policy revoke denies new business. Other independent changed-epoch/key-grant timing cases remain NOT_RUN. |
+| Privacy | SCOPED_PASS: permitted Network labels omit Node/workspace/SID and selected exact target alone decrypts. Full cross-Owner end-to-end privacy remains NOT_RUN; producer redaction layers are separately attributed. |
+| Bounded search | First 64-row bounded page remains explicit. Full independent limit/paging/truncation matrix remains NOT_RUN; no global-directory or beyond-page absence claim. |
+| Loss/restart/retry | SCOPED_PASS: actual post-commit TCP loss → UNKNOWN → MCP OS-process restart → original-args read without resend → explicit identical sealed-packet retry → one effect. Lost renewal preserves one pending fence; it has no exact receipt and does not magically recover an unavailable token. |
+| Shared access and inference | SCOPED_PASS: native shared access/Group authority unchanged; separate Pair/domain Store heartbeat and readonly scoped-history regressions pass normal/race. Database heartbeat row version is operational metadata, not binding epoch. Actual Pair-MCP-to-heartbeat remains NOT_RUN. Identity runs with Control inference off; existing N2 account-login-is-not-Root evidence keeps its original attribution. |
+
+The successful native scene is a focused one-top run; the five context negatives
+and their parent pass in the original combined run, whose overall FAIL remains
+preserved. This is assembled coverage, not a fresh combined all-green gate.
+Host form interaction requires the Host's own policy to permit elicitation.
+The owned fixture allows only granular MCP elicitation, with the other four
+approval categories false and reviewer user, verified from resume responses;
+this adds no Cicada authority. Codex's typed app-server projection omits root
+additionalProperties; the independent raw stdio lane checks the original closed
+MCP schema. Physical TUI form display, Windows DPAPI/ACL/GUI/IME, Android, real
+provider and public deployment remain NOT_RUN.
+
+The current proposals have unresolved safety risks, not yet confirmed product
+defects: treating a form ID/Host thread ID as authority; stale-snapshot TOCTOU;
+rewriting ticket-bound tool arguments; cross-actor pending-response confusion;
+handle-expiry versus exact-outbox-retry ordering; queued requests blocking
+responses; privacy leakage through labels/errors/pages; and bypassing existing
+Network credentials to make the new entry work. Root has frozen the seam
+requirements below; QA connects product adapters only after producer delivery
+and checks the risks rather than assuming them fixed. A pre-send decline can
+prove zero send;
+an interruption after dispatch must instead preserve the uncertain original.
+
+Frozen transport is App's `newMCPStdioTransport(in,out).serve(handler)`,
+`negotiate(raw)` and `elicitPeer(message, options{ID,Label})`; Hub wires it to
+business behavior. `elicitation/create` carries mode `form` and a closed object
+schema with one required string `peer`, at most 64 `oneOf` const/title choices
+and no additional properties. Accept must return exactly that opaque choice;
+decline/cancel/120-second timeout/EOF close pending state, late/duplicate responses
+cannot revive it. A separate reader and locked writer coexist with one business
+worker; queue limit 16 overflow closes the connection and cancels all pending
+work rather than blocking response dispatch. A/B evidence must describe actual
+serialization, not claim parallel display from queued calls.
+
+Hub freezes `select_peer{scope:group|network, network_id?, query?}` as selection
+only; subsequent send/ask `peer_selection_id` is mutually exclusive with old
+target/link/network fields. The current Hook digest is consumed before internal
+mapping; a later send has its own new proof, fresh Guard and existing exact-outbox
+retry semantics. A form correlation ID or selection reference is never a grant. Group target
+binding/version is checked where the real API supplies it; Network directory
+targets use stable exact Endpoint plus existing peer-key/current Guard, without
+inventing a foreign binding/revision. Real Network whoami returns only
+network_id/endpoint_id/principal_id, so acceptance must not add BindingID/Epoch
+fields in a mock to make a stricter incompatible consumer pass.
+
+The formal Node Network adapter must use the selected pin's protected
+`MCPSessionStateFile` sibling `network-session/scopes/<origin+Node+nativeThreadscope>`
+and verify selected root/current native SID/Hub/Node/cwd plus the exact existing
+token. No environment or Owner-inventory authority is borrowed. When an explicit
+Network choice lacks a token, only the current verified self Endpoint's **existing
+active** membership/Endpoint edge/access/Owner key may use existing network renew;
+there is no new Join or resurrection of revoked/expired membership. Missing
+registration, wrong root/Thread and revoked membership/Owner key must refuse.
+Lost rotation response must preserve uncertainty/original request and cannot
+cause unbounded fresh renewals.
+
+**Shared local-domain credential exception:** LocalDomainVersion=1 Network access
+and Group binding share credential/lease owner while Network grants may be empty
+and discoverable=false. A Network selection must not blindly renew that access,
+change its access epoch/token or damage Group capability. Only readonly use of
+an already verified token is eligible; absent Network discovery grant must deny,
+without exposing the whole Network. This lane and an independently joined
+Network session need separate actual observations. The same protection applies
+to **Pair/shared Group bindings even when LocalDomainVersion=0**: their Network
+access token/lease owner is shared and the original Pair heartbeat requires its
+original access epoch. A missing derived Network-session file cannot justify
+renewing a shared credential. Producer business and Store guards must protect
+all such bindings, not just the local-domain version marker.
+
+| Added adapter case | Required observation | Status |
+| --- | --- | --- |
+| Original joined-Network restoration | Exact protected scope/token matches; missing token renews only the original still-active registration. Missing registration/wrong root/Thread/cwd/Hub/Node and revoked/expired membership/Owner key refuse; lost renewal result recovers one original, without endless fresh mutation. | NOT_RUN |
+| Local-domain Network choice | Original access/token/epoch, Group binding and capabilities compare unchanged before/after; empty grants or non-discoverable state refuses. No implicit renew, Join, new grant or whole-Network disclosure. | NOT_RUN |
+| Pair/shared-binding Network choice | Reuse the existing Pair fixture, including domain-version zero; token/lease owner/access epoch remain unchanged when selecting Network without a derived file. Original Pair heartbeat remains accepted under its original epoch. No blind renew or grant expansion. | NOT_RUN |
+
+The missing-token independent Network lane must not require a Group session.
+Root froze a minimal use of the existing local `network_renew` operation:
+Endpoint may be absent from this local recovery request, and the Node first
+verifies the original native record/cwd. Only a readonly DISTINCT Endpoint
+lookup (limit two) in its current writer/account scope, exact runtime/SID
+identity digest, Hub and Network, with empty Group, may choose the unique
+original Endpoint. Zero or ambiguous history refuses; Pair/domain Group
+records cannot supply a candidate. History is a locator, never authorization:
+the existing active-registration Hub renewal Guard still decides. MCP/model
+arguments cannot choose the sender. Keep the scoped pending fence and one
+uncertain original renewal; do not add a new Join, HTTP route, operation or
+automatic replacement retry. Actual no-Group missing-token positive and
+missing/ambiguous-history negatives remain NOT_RUN pending formal delivery.
+
+Preparation reuses `codex_domain_host.py` / `codex_three_stage.py` for actual
+native actor and installed-plugin plumbing, the N3 local-domain/directory and
+context-refusal fixtures, and `endpoint_security_harness_test.go`'s method-specific
+barrier or the existing opaque TLS faults where appropriate. Reuse their helpers,
+not historical whole campaigns, fixed old runtime hashes or broad selectors.
+After formal source delivery use the existing pinned disposable Docker envelope,
+read-only source/modules/runtime and exclusive QA build cache; allocate new
+private roots/ports/containers and synthetic identities. Evidence must name
+actual Host/Node/Hub versus synthetic transport boundaries, exact source/tool
+and artifacts, per-case events, send/effect counts and cleanup. No tickets,
+nonces, payloads, user Node/manager changes or real model calls. Preparation creates
+no new taskbook or infrastructure. The subsequently frozen seam now has two
+narrow modes in the existing disposable driver, both **PREPARED / NOT_RUN**:
+`--codex-product-peer-form` and `--peer-form-network`. A bounded actual-CLI
+Host-adversary helper stays under acceptance paths; it supplies no authority
+and cannot substitute for actual native Runtime or physical form UI evidence.
+
 
 The approved minimal independent driver reuses actual App Core Node approval,
 real PQ/TCP, persistent owned SQLite and disposable Docker. It tests only the

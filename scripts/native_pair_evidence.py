@@ -47,6 +47,18 @@ CODEX_PRODUCT_THREE_STAGE_EXPECTED = {'TestN3CodexProductThreeStagePersistentDae
 CODEX_PRODUCT_OTHER_UID_EXPECTED = {'TestN3CodexProductOtherUIDPrivateBoundary'}
 LOCAL_DOMAIN_APP_EXPECTED = {'TestN3LocalDomainActualAppOwnerPolicy'}
 LOCAL_DOMAIN_NATIVE_EXPECTED = {'TestN3LocalDomainNativeOriginalDaemonAB'}
+PEER_FORM_EXPECTED = {'TestN3PeerFormNativeOriginalDaemonAB', 'TestN3PeerFormUnverifiedContext'} | {
+    'TestN3PeerFormUnverifiedContext/' + case for case in
+    ('missing', 'nonce-only', 'wrong-nonce', 'forged-ticket', 'extra-SID')}
+PEER_NETWORK_PARENT = 'TestQAPeerFormRealNetworkProcessRestartAndLostResponse'
+PEER_NETWORK_EXPECTED = {PEER_NETWORK_PARENT} | {PEER_NETWORK_PARENT + '/unsupported-' + case for case in
+    ('missing', 'elicitation-null', 'form-null', 'form-bool', 'url-only')}
+PEER_NETWORK_EXPECTED |= {'TestQAPeerFormNetworkOnlyOriginalRecovery'} | {
+    'TestQAPeerFormNetworkOnlyOriginalRecovery/' + case for case in ('known-renewal', 'post-commit-renewal-loss')}
+PEER_NETWORK_FOCUS_EXPECTED = PEER_NETWORK_EXPECTED - {'TestQAPeerFormNetworkOnlyOriginalRecovery/post-commit-renewal-loss'}
+PEER_SHARED_ACCESS_EXPECTED = {'TestNetwork' + name for name in (
+    'PairSharedRenewalCannotRotateOriginalHeartbeat', 'LocalDomainSharedRenewalCannotRotateOriginalHeartbeat',
+    'IndependentRenewalDoesNotAcquireNewGrants')}
 DIRECT_IP_CASES = ('DIP01_FreshSingleHub', 'DIP02_IPv4IPv6NoDNS', 'DIP03_IndependentBootstrapPin',
                    'DIP04_CanonicalLocator', 'DIP05_TLSTrustIdentityAndTime', 'DIP06_FakeHubMITMNoSecrets',
                    'DIP07_RedirectNoSecrets', 'DIP08_ProxyHostAndOriginSpoof', 'DIP09_NoImplicitOwnerAuthority',
@@ -235,6 +247,50 @@ def valid_direct_ip_native_family(value, runtime_tools):
             and all(len({a[n] for a in actors}) == 1 for n in ('node_id', 'group_id')))
 
 
+def valid_peer_form_native(value, runtime_tools):
+    expected = {'scope', 'status', 'daemon', 'actors', 'form_actions', 'host_calls',
+        'host_provider_posts', 'native_queue_provider_posts', 'static_provider_posts',
+        'real_model_turns', 'literal_provider_posts', 'cleanup_confirmed',
+        'App_closed_during_business', 'selection_no_send', 'cancel_decline_no_effect',
+        'shared_credentials_unchanged', 'shared_domain_network_denied',
+        'actual_selection_lifetime_elapsed', 'exact_retry_one_request',
+        'current_revoke_denied', 'physical_form_UI', 'Windows_DPAPI_ACL', 'host_approval_policy', 'host_approvals_reviewer'}
+    if not isinstance(value, dict) or set(value) != expected:
+        return False
+    if not all(type(value.get(field)) is int and value[field] >= 0 for field in
+               ('host_calls', 'host_provider_posts', 'native_queue_provider_posts',
+                'static_provider_posts', 'real_model_turns', 'literal_provider_posts')):
+        return False
+    if not isinstance(value.get('form_actions'), dict) or not all(type(v) is int for v in value['form_actions'].values()):
+        return False
+    daemon, actors = value.get('daemon', {}), value.get('actors', [])
+    return (value.get('scope') == 'ACTUAL_HOST_FORM_NATIVE_AB_NOT_PHYSICAL_UI'
+            and value.get('status') == 'SCOPED_PASS'
+            and value.get('host_approval_policy') == 'GRANULAR_MCP_ELICITATIONS_ONLY'
+            and value.get('host_approvals_reviewer') == 'user'
+            and value.get('form_actions') == {'accept': 2, 'decline': 1, 'cancel': 1}
+            and type(value.get('host_calls')) is int and value['host_calls'] >= 12
+            and value.get('host_provider_posts') == 2 * value['host_calls']
+            and type(value.get('native_queue_provider_posts')) is int and value['native_queue_provider_posts'] >= 0
+            and value.get('static_provider_posts') == value['host_provider_posts'] + value['native_queue_provider_posts']
+            and value.get('real_model_turns') == 0 and value.get('literal_provider_posts') == 0
+            and all(value.get(field) is True for field in ('cleanup_confirmed', 'App_closed_during_business',
+                'selection_no_send', 'cancel_decline_no_effect', 'shared_credentials_unchanged',
+                'shared_domain_network_denied', 'actual_selection_lifetime_elapsed',
+                'exact_retry_one_request', 'current_revoke_denied'))
+            and value.get('physical_form_UI') == 'NOT_RUN' and value.get('Windows_DPAPI_ACL') == 'NOT_RUN'
+            and isinstance(daemon, dict) and type(daemon.get('pid')) is int and daemon['pid'] > 0
+            and bool(daemon.get('start_ticks')) and daemon.get('umask') == '0002'
+            and daemon.get('five_deployment_variables_absent') is True
+            and daemon.get('executable_sha256') == runtime_tools.get('codex', {}).get('sha256') == DIRECT_IP_CODEX_SHA256
+            and isinstance(actors, list) and len(actors) == 2
+            and all(isinstance(a, dict) and all(isinstance(a.get(n), str) and a[n] for n in
+                ('native_session_id', 'workspace', 'node_id', 'endpoint_id', 'group_id'))
+                and type(a.get('binding_epoch')) is int and a['binding_epoch'] > 0 for a in actors)
+            and all(len({a[n] for a in actors}) == 2 for n in ('native_session_id', 'workspace', 'endpoint_id'))
+            and all(len({a[n] for a in actors}) == 1 for n in ('node_id', 'group_id')))
+
+
 def binaries(artifacts, dest):
     save(dest, {p.name: {'sha256': sha(p), 'bytes': p.stat().st_size}
                 for p in sorted(artifacts.iterdir()) if p.is_file()})
@@ -343,7 +399,7 @@ def terminal_event_counts(path):
 
 
 def finish(run, artifacts, image, owned, mode='protocol'):
-    if mode not in ('protocol', 'store', 'a3', 'a3-http', 'a3-size-store', 'app-owner', 'endpoint-security', 'endpoint-security-boundaries', 'endpoint-security-app-fixture', 'endpoint-security-owner-directory', 'endpoint-security-owner-directory-recovery', 'codex-product-guards', 'codex-product-cli', 'codex-product-cold', 'codex-product-three-stage', 'codex-product-other-uid', 'codex-product-domain-app', 'codex-product-domain-native', 'direct-ip-tls', 'node-pair-trust'):
+    if mode not in ('protocol', 'store', 'a3', 'a3-http', 'a3-size-store', 'app-owner', 'endpoint-security', 'endpoint-security-boundaries', 'endpoint-security-app-fixture', 'endpoint-security-owner-directory', 'endpoint-security-owner-directory-recovery', 'codex-product-guards', 'codex-product-cli', 'codex-product-cold', 'codex-product-three-stage', 'codex-product-other-uid', 'codex-product-domain-app', 'codex-product-domain-native', 'codex-product-peer-form', 'codex-product-peer-form-native', 'peer-form-network', 'peer-form-network-focus', 'direct-ip-tls', 'node-pair-trust'):
         raise ValueError('Only protocol and isolated core regression modes are active.')
     before, after = [json.loads((run / f'source-{side}.json').read_text()) for side in ('before', 'after')]
     results, diagnostics, metrics, direct_ip_facts = {}, [], [], []
@@ -390,12 +446,20 @@ def finish(run, artifacts, image, owned, mode='protocol'):
                 'codex-product-other-uid': CODEX_PRODUCT_OTHER_UID_EXPECTED,
                 'codex-product-domain-app': LOCAL_DOMAIN_APP_EXPECTED,
                 'codex-product-domain-native': LOCAL_DOMAIN_NATIVE_EXPECTED,
+                'codex-product-peer-form': PEER_FORM_EXPECTED,
+                'codex-product-peer-form-native': {'TestN3PeerFormNativeOriginalDaemonAB'},
+                'peer-form-network': PEER_NETWORK_EXPECTED,
+                'peer-form-network-focus': PEER_NETWORK_FOCUS_EXPECTED,
                 'direct-ip-tls': DIRECT_IP_EXPECTED,
                 'node-pair-trust': NODE_PAIR_TRUST_EXPECTED,
                 'protocol': EXPECTED}[mode]
-    core = mode not in ('protocol', 'app-owner', 'endpoint-security', 'endpoint-security-boundaries', 'endpoint-security-app-fixture', 'endpoint-security-owner-directory', 'endpoint-security-owner-directory-recovery', 'codex-product-guards', 'codex-product-cli', 'codex-product-cold', 'codex-product-three-stage', 'codex-product-other-uid', 'codex-product-domain-app', 'codex-product-domain-native', 'direct-ip-tls', 'node-pair-trust')
+    core = mode not in ('protocol', 'app-owner', 'endpoint-security', 'endpoint-security-boundaries', 'endpoint-security-app-fixture', 'endpoint-security-owner-directory', 'endpoint-security-owner-directory-recovery', 'codex-product-guards', 'codex-product-cli', 'codex-product-cold', 'codex-product-three-stage', 'codex-product-other-uid', 'codex-product-domain-app', 'codex-product-domain-native', 'codex-product-peer-form', 'codex-product-peer-form-native', 'direct-ip-tls', 'node-pair-trust')
     owner_directory = mode.startswith('endpoint-security-owner-directory')
     stages = ('version', 'compile-tests', 'compile-race', 'harness', 'race', 'vet') if core else ('version', 'compile-cli', 'compile-tests', 'harness', 'vet')
+    if mode == 'peer-form-network-focus':
+        stages = ('version', 'compile-cli', 'compile-tests', 'harness', 'vet')
+    if mode == 'peer-form-network':
+        stages += ('compile-cli', 'shared-access', 'shared-access-race', 'network-history', 'network-history-race')
     if mode == 'codex-product-other-uid':
         stages += ('other-uid-host',)
     direct_ip_fixture = terminal_events(run / 'direct-ip-fixture.log') if mode == 'direct-ip-tls' else None
@@ -424,8 +488,8 @@ def finish(run, artifacts, image, owned, mode='protocol'):
                                     and all(value is True for value in item['measurement']['observed'].values())
                                     for item in direct_ip_facts))
     node_pair_facts_valid = mode != 'node-pair-trust' or valid_node_pair_trust_facts(node_pair_facts, results, node_pair_terminals)
-    race = terminal_events(run / 'race.log') if core else None
-    race_passed = not core or (set(race) == expected and all(v == 'pass' for v in race.values()))
+    race = terminal_events(run / 'race.log') if core and mode != 'peer-form-network-focus' else None
+    race_passed = not core or mode == 'peer-form-network-focus' or (set(race) == expected and all(v == 'pass' for v in race.values()))
     binary_records = [json.loads((run / f'binaries-{side}.json').read_text())
                       if (run / f'binaries-{side}.json').exists() else {} for side in ('before', 'after')]
     expected_binaries = {'store': {'nativepair-cache.test', 'nativepair-cache-race.test'},
@@ -445,6 +509,10 @@ def finish(run, artifacts, image, owned, mode='protocol'):
                          'codex-product-other-uid': {'cicada', 'n3.test'},
                          'codex-product-domain-app': {'cicada', 'n3.test'},
                          'codex-product-domain-native': {'cicada', 'n3.test'},
+                         'codex-product-peer-form': {'cicada', 'n3.test'},
+                         'codex-product-peer-form-native': {'cicada', 'n3.test'},
+                         'peer-form-network': {'cicada', 'peer-network.test', 'peer-network-race.test'},
+                         'peer-form-network-focus': {'cicada', 'peer-network.test'},
                          'direct-ip-tls': {'cicada', 'n3.test'},
                          'node-pair-trust': {'cicada', 'n3.test'},
                          'protocol': {'cicada', 'n3.test'}}[mode]
@@ -453,7 +521,7 @@ def finish(run, artifacts, image, owned, mode='protocol'):
     runtime_tools_valid = (mode not in ('codex-product-cli', 'codex-product-cold', 'codex-product-three-stage', 'codex-product-domain-native') or
                            (set(runtime_tools) == {'codex'} and runtime_tools['codex']['sha256'] ==
                             '399ff69c431c066e40de318fba45c2b07f45a76b19939d247ee4828fc70c4215'))
-    if mode in ('direct-ip-tls', 'node-pair-trust'):
+    if mode in ('direct-ip-tls', 'node-pair-trust', 'codex-product-peer-form', 'codex-product-peer-form-native'):
         runtime_tools_valid = (set(runtime_tools) == {'codex'} and runtime_tools['codex'].get('sha256') == DIRECT_IP_CODEX_SHA256
                                and runtime_tools['codex'].get('version') == DIRECT_IP_CODEX_VERSION)
     node_pair_native = None
@@ -503,9 +571,29 @@ def finish(run, artifacts, image, owned, mode='protocol'):
                                 and type(a.get('binding_epoch')) is int and a['binding_epoch'] > 0 for a in actors)
                         and all(len({a[n] for a in actors}) == len(actors) for n in ('native_session_id', 'workspace', 'endpoint_id'))
                         and all(len({a[n] for a in actors}) == 1 for n in ('node_id', 'group_id')))
+    peer_form_native = None
+    if mode in ('codex-product-peer-form', 'codex-product-peer-form-native'):
+        try:
+            peer_form_native = decode_node_pair_measurement((run / 'peer-form-native-public-summary.json').read_text())
+        except (OSError, ValueError):
+            pass
+    peer_form_valid = mode not in ('codex-product-peer-form', 'codex-product-peer-form-native') or valid_peer_form_native(peer_form_native, runtime_tools)
+    peer_terminal_valid = mode not in ('codex-product-peer-form', 'codex-product-peer-form-native', 'peer-form-network', 'peer-form-network-focus') or (
+        terminal_event_counts(run / 'harness.log') == {name: 1 for name in expected}
+        and (mode != 'peer-form-network' or terminal_event_counts(run / 'race.log') == {name: 1 for name in expected}))
+    peer_shared = {name: terminal_events(run / (name + '.log')) for name in ('shared-access', 'shared-access-race')} if mode == 'peer-form-network' else None
+    peer_shared_valid = mode != 'peer-form-network' or all(
+        set(events) == PEER_SHARED_ACCESS_EXPECTED and all(v == 'pass' for v in events.values())
+        and terminal_event_counts(run / (name + '.log')) == {case: 1 for case in PEER_SHARED_ACCESS_EXPECTED}
+        for name, events in peer_shared.items())
+    peer_history = {name: terminal_events(run / (name + '.log')) for name in ('network-history', 'network-history-race')} if mode == 'peer-form-network' else None
+    peer_history_valid = mode != 'peer-form-network' or all(
+        events == {'TestNativeContextExistingNetworkEndpointLookupIsExactAndReadOnly': 'pass'}
+        and terminal_event_counts(run / (name + '.log')) == {'TestNativeContextExistingNetworkEndpointLookupIsExactAndReadOnly': 1}
+        for name, events in peer_history.items())
     passed = (all(exits.get(n) == 0 for n in stages)
               and set(results) == expected and all(v == 'pass' for v in results.values())
-              and race_passed and binaries_stable and runtime_tools_valid and native_valid and matched and owned == 'false'
+              and race_passed and binaries_stable and runtime_tools_valid and native_valid and peer_form_valid and peer_terminal_valid and peer_shared_valid and peer_history_valid and matched and owned == 'false'
               and node_pair_facts_valid and node_pair_fixture_valid and node_pair_native_valid and (mode != 'node-pair-trust' or not diagnostics)
               and (mode != 'direct-ip-tls' or (direct_ip_fixture_valid and direct_ip_facts_valid and direct_ip_native_valid)))
     # WIRE_ONLY + actual 404 is retained as expected RED, with nonzero exit. It
@@ -547,6 +635,10 @@ def finish(run, artifacts, image, owned, mode='protocol'):
              'codex-product-other-uid': 'ACTUAL_APP_APPROVED_NODE_OTHER_UID1001_GID1000_PRIVATE_FILES_AND_UNIX_IPC_ONLY_NOT_DOMAIN_CONTEXT_OR_SIGNING',
              'codex-product-domain-app': 'ACTUAL_APP_OWNER_LOCAL_POLICY_PREVIEW_ACTIVATE_OFFLINE_NODE_READ_AND_REVOKE_NOT_NATIVE_THREADS',
              'codex-product-domain-native': 'ACTUAL_ORIGINAL_0002_NATIVE_DAEMON_LITERAL_AB_NAMED_HOST_ASK_REPLY_APP_CLOSED_AND_CURRENT_REVOKE_MANUAL_OWNER_PIN',
+             'codex-product-peer-form': 'ACTUAL_0164_ORIGINAL_DAEMON_NATIVE_AB_HOST_FORM_FRESH_HOOK_ASK_REPLY_SHARED_CREDENTIALS_EXACT_RETRY_REVOKE_NOT_PHYSICAL_UI',
+             'codex-product-peer-form-native': 'ACTUAL_0164_NATIVE_AB_MAINLINE_ONLY_CONTEXT_NEGATIVES_FROM_SEPARATE_PRIOR_RECEIPT',
+             'peer-form-network': 'REAL_HUB_TWO_NODE_REGISTRATIONS_FORM_SELECTED_CRYPTO_TCP_LOSS_ACTUAL_MCP_PROCESS_RESTART_NOT_NATIVE_RUNTIME',
+             'peer-form-network-focus': 'FOCUSED_NORMAL_NETWORK_QA_ADAPTER_CORRECTION_NOT_FULL_GATE_NO_RACE_SHARED_OR_HISTORY',
              'direct-ip-tls': 'DIRECT_NUMERIC_IP_NATIVE_TLS_REAL_HUB_APP_CORE_WITH_EXPLICIT_REMAINING_GATES',
              'node-pair-trust': 'NODE_ADDRESS_DEVICE_CODE_AUTOMATIC_OWNER_PIN_AND_EXPLICIT_NATIVE_POLICY_ZERO_MODEL_NOT_PHYSICAL_OR_A_B_BUSINESS',
              'protocol': 'REAL_TCP_PQ_BOOTSTRAP_AND_RECOVERY_ONLY'}[mode]
@@ -590,7 +682,33 @@ def finish(run, artifacts, image, owned, mode='protocol'):
                            ['Node_reserved_slot_Join', 'dual_Owner_consent']),
                'private_payloads_exported': False, 'model_turns_started': 0,
                'native_daemon_touched': False, 'public_deployment_touched': False}
-    if mode == 'node-pair-trust':
+    if mode == 'peer-form-network-focus':
+        summary['terminal_counts_valid'] = peer_terminal_valid
+        summary['not_run'] = ['race', 'post_commit_renewal_loss', 'shared_access_regressions', 'network_history_regressions',
+            'actual_Codex_native_Runtime', 'two_actual_Node_processes', 'physical_Host_form_UI',
+            'Windows_DPAPI', 'Windows_ACL', 'Windows_GUI', 'public_deployment']
+    elif mode == 'peer-form-network':
+        summary['terminal_counts_valid'] = peer_terminal_valid
+        summary['shared_access_tests'] = peer_shared
+        summary['shared_access_valid'] = peer_shared_valid
+        summary['network_history_tests'] = peer_history
+        summary['network_history_valid'] = peer_history_valid
+        summary['shared_access_heartbeat_clock'] = 'EXPLICIT_SYNTHETIC_PLUS_ONE_MINUTE_NOT_ELAPSED_WALL_CLOCK'
+        summary['not_run'] = ['actual_Codex_native_Runtime', 'two_actual_Node_processes',
+            'physical_Host_form_UI', 'cross_Owner_privacy', 'Group_binding_replacement',
+            'legacy_Pair_actual_MCP_selection_to_original_heartbeat', 'Windows_DPAPI', 'Windows_ACL', 'Windows_GUI', 'public_deployment']
+    elif mode in ('codex-product-peer-form', 'codex-product-peer-form-native'):
+        summary['peer_form_native'] = peer_form_native
+        summary['peer_form_native_valid'] = peer_form_valid
+        summary['native_daemon_touched'] = True if peer_form_valid else 'UNKNOWN'
+        summary['resident_native_daemon_touched'] = False
+        summary['not_run'] = ['cross_Node_independent_joined_Network_positive',
+            'selection_changed_binding', 'lost_response_and_process_restart_recovery',
+            'legacy_Pair_shared_credential_original_heartbeat', 'physical_TUI_form_display',
+            'Windows_DPAPI', 'Windows_ACL', 'Windows_GUI', 'real_model_provider', 'public_deployment']
+        if mode == 'codex-product-peer-form-native':
+            summary['not_run'].append('missing_and_forged_context_cases_in_this_run')
+    elif mode == 'node-pair-trust':
         summary['fault_fixture_tests'] = node_pair_fixture
         summary['fault_fixture_valid'] = node_pair_fixture_valid
         summary['node_pair_trust_facts'] = node_pair_facts

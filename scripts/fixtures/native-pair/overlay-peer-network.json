@@ -1,0 +1,5 @@
+{
+  "Replace": {
+    "/repo/cicada-go/cmd/cicada/zz_qa_peer_network_test.go": "/qa/scripts/fixtures/native-pair/peer_network_test.go"
+  }
+}
