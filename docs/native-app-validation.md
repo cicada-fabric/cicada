@@ -6769,3 +6769,97 @@ removal/reinstall, public-IP deployment, physical ARM, real provider/model turns
 and native A/B business communication are **NOT_RUN** for this new flow. These
 runs do not execute or qualify the candidate ZIP/Windows executable. Historical
 manual-pin and old direct-IP/full-Codex receipts retain their original scope.
+
+
+## 2026-10-25 User fresh install and Node plugin digest blocker
+
+Root relayed the user's new physical batch: Hub reinstall, App first setup and
+Enter password login behaved as expected (**USER_REPORTED_PASS** for those
+steps only). This is user-reported functional behavior, not an independent
+DPAPI/ACL/GUI security run. The next Node component-install attempt passed the
+package `sha256sum` checks, then failed with
+`Codex plugin assets do not match --codex-plugin-sha256`.
+Root verified the user's extracted five source files matched the delivery and
+`components/node` did not exist. Record **USER_REPORTED_FAIL at Node plugin
+source preflight, before component installation**, not a daemon/enrollment/
+Owner-trust/Join/dual-Thread result. The user's “all OK” does not extend beyond
+the earlier successful Hub/App steps.
+
+The delivered metadata's five-file set digest was
+`ceac83d3017139085b16a45a2cd096e6d7051f33cba5f4fc5e4cacdb5a34bfed`;
+the actual unchanged Go installer's canonical digest for those source bytes is
+`89502bd0ddc39971591940a7273e7ebdca848e4a1a60e4653ac650114d32c7eb`.
+Individual checksum success does not establish agreement with the installer's
+canonical set digest. Do not weaken the installer, change source assets or
+reinterpret the failed delivery as a successful component installation.
+
+Root independently executed the immutable delivered CLI with complete matching
+notices and the original five assets in a new owned prefix, supplying the
+correct digest. Install exited **0**, installed binary identity and materialized
+MCP absolute executable/user-root matched, no Node state was created, and the
+owned fixture was removed. Root receipt:
+`/home/zyf/Cicada/.local/evidence/local-domain-root/node-plugin-digest-20261025-k2ix4tnj/result.json`,
+SHA-256 `e390a9f16a372b6535aa293d60703382743037cd9e75c37076dbfc93446163d7`.
+Actual CLI SHA-256 is
+`946ce81d5207babe559e7274cbd52c899c8a6709ec2b35a7696ae8782406f25a`,
+product revision `47a1a4d1d8c2692ad5684d21157a85f9fa05e51a`.
+This is a Root-owned local file-install PASS; it neither changes user state nor
+proves a user Node daemon, enrollment, Codex execution or physical acceptance.
+
+The immediate user continuation is **only the Node installation with the
+correct digest**. No Hub/App reinstallation is required. App owns the minimal
+packager correction and a complete new ZIP; the failed old ZIP and evidence
+must remain unchanged. The corrected package now has the independent file-install result below.
+No NPT/dual-Thread large gate is rerun for this metadata correction. New user Node admission, plugin runtime, dual-Thread communication,
+real model/provider and dedicated Windows DPAPI/ACL/GUI security remain
+**NOT_RUN/unaccepted for this new batch**, separately from historical receipts.
+
+
+### Corrected complete package and independent file-only installation
+
+App corrected the existing packager to hash the canonical `files`/`format`
+object, not the file-row array alone, and added matching archive/finalization
+checks. No production Go implementation, product binary or original plugin
+source changed. The complete new ZIP is
+`/home/zyf/Cicada/.local/artifacts/native-ip-complete/run-node-pair-47a1a4d-plugin-digest-20261025/Cicada-0.0.5-node-pair-trust-plugin-metadata-corrected-47a1a4d1.zip`,
+SHA-256 `dbc1e9f2c1c9e94f19d605e583d568ce8fcb3e64f1d22127f02e84e6841fcf16`.
+Producer `evidence/final-package.json` SHA-256 is
+`d1438ea640c5bbff0e21b590d21370c261211f0c9e025b689ba4489e3d2f1af8`;
+the producer correction receipt is `evidence/plugin-digest-correction.json`,
+SHA-256 `a9b4365f7cadd70ffced908bd1a2a579095535488d6af9e4c24591fb6f52e9a0`.
+The old ZIP SHA-256 `9453b7c962cc3fcc508425e40eb5166390fe7447e5e7c62f3e9cf7f7befd388a`
+and its original receipts remain unchanged.
+
+QA independently extracted the **new ZIP**, checked its 59 regular members and
+`SHA256SUMS` (exit 0), computed the five-source canonical digest without using
+the packager helper, and compared it with the new metadata. One actual delivered
+CLI invocation used that metadata's binary/plugin digests directly, without a
+manual digest override, to install only `node` in an owned temporary prefix in
+pinned disposable Docker with no network and a read-only package. Install exits
+**0 / SCOPED_PASS**. Original five assets and both product binaries match the old
+archive; installed manifest file hashes, CLI identity, absolute MCP command and
+user root match. No Node identity/state or other component was created; no
+Node/Hub/App/Codex process was started. The exact container and owned extracted/
+installed fixture are removed. No user installation or protected state changed.
+
+Receipt and exact command/orchestration:
+`/home/zyf/Cicada/.local/evidence/native-pair-acceptance/node-plugin-package-20261025-d5pzf058/result.json`,
+SHA-256 `ba3de4f9ee4ba96202941064e502c2749601e7f9d3c7cfc48ac7878ab1f641a4`;
+`run.py` SHA-256 `85866ce09d0808868709e7549245184b98d2e39e197dd2ee98f339b7a711664b`.
+To repeat, copy that `run.py` to a **new private run directory**, then execute
+`python3 NEW_RUN/run.py NEW_ZIP dbc1e9f2c1c9e94f19d605e583d568ce8fcb3e64f1d22127f02e84e6841fcf16`.
+The pinned image is
+`golang:1.27.3-bookworm@sha256:5c3e9b43cfd3bb95c7937462e29d87ada57b481a96fa23ad0eb61778d7a00110`;
+no build or dependency-cache mutation is involved. This closes the **packaged
+Node file-install metadata defect only**. The user's retry, Node daemon/code/
+Owner pin, plugin execution and new dual-Thread batch still require their own
+results; Hub/App successes need no repetition.
+
+
+Root separately accepts the corrected archive at
+`/home/zyf/Cicada/.local/evidence/local-domain-root/node-pair-plugin-metadata-corrected-root-review-20261025.json`,
+SHA-256 `868c854c05419ecb47b5f9439681746005302397a6a0ed55a0f2ce986b4adc3d`.
+That review verifies the full inventory and confirms only BUILD-METADATA,
+VALIDATION and SHA256SUMS changed. It explicitly supersedes the old archive
+review's missed plugin-digest contract check; old bytes/receipts and separate
+historical runtime scopes are not rewritten.
