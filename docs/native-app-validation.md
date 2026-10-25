@@ -7301,6 +7301,47 @@ missing-token recovery.
 
 ## 2026-10-25 Independent peer-form and authorized-directory acceptance
 
+### Latest UX correction and user reports, pending the complete batch
+
+The required UX is **select Thread and insert its reference while editing the
+draft, then continue editing before submit**, with **zero additional provider
+POSTs while editing before submit**. `UserPromptSubmit` → MCP tool and elicitation are post-submit paths;
+their recorded functional PASS is preserved, but it does not complete this UX.
+Prior actual 0.164 frames show native `@` Mentions / Tasks and stable
+`mentions_v2=true`. App's isolated real-TUI attempt-03 is now Root-reviewed
+**UI_ONLY_SCOPED_ACCEPTED**: real Task Tab insertion and continued editing appear in five
+frames, all at setup provider/turn-start counters 4/4 (editing delta zero). The
+single controlled submit adds one POST, total five; real-model calls remain zero.
+The observed `type=text` carries Markdown `thread://B-SID` plus Host-generated
+referenced-chat JSON / `MUST read_thread` semantics, not a separate mention object.
+This selects Codex context, not a Cicada recipient. Codex visibility is not Cicada
+discovery or communication authority; exact reference → authorized Endpoint
+mapping is **NOT_IMPLEMENTED_OR_TESTED** (full Cicada integration **NOT_RUN**), and public peer cards intentionally
+lack SID. A whole-Network custom composer provider is not implemented and its
+public CLI extension support is unverified; desktop mentions cannot establish it.
+Codex messaging or `read_thread` does not substitute for Cicada send/receive.
+
+Receipts under `/home/zyf/Cicada/.local/evidence/`: raw App
+`n2-app/native-task-composer-20261025/attempt-03/result.json` SHA-256
+`40960b2ffe6f40636c92502127803d60ca6cc299767a7f6d12a403ce053ffd3c`.
+Root `local-domain-root/native-pre-submit-composer-root-review-20261025.json`
+SHA-256: `44092dd21596a5d8d4cd4c0c671c8c0851f919a5c53d31ab562a5892460b8118`.
+Producer `n2-app/native-task-composer-20261025/final-review.json` SHA-256
+`ae609db8e34a2120dc0ccaf87711a9a3ad51a4b38fc3dfbc56eb84ecaa464af9`.
+QA read back the receipts and six referenced artifact hashes; the first two
+fixture FAILs remain preserved. No duplicate probe ran. Daemon stop exits 0,
+private root is removed and matching containers are absent; user A/B, Node/Hub
+and product source were untouched.
+
+The subsequent real-machine Hub/Node update and Node on/status → off/stopped →
+on/running feedback remains **USER_REPORTED_PASS**, without independent raw
+execution attribution. User-provided actual 0.164 TUI text establishes only
+**USER_REPORTED_PASS for physical MCP-form display** (`Choose a contact` / Peer,
+snapshot label and submit/cancel hints). Physical cancel, accept and ASK/REPLY,
+Windows login details and two-real-Node coverage are not confirmed for this batch;
+retain NOT_RUN rather than extending that display result. The earlier independent
+Host-relay receipts below keep their own scope; the full user batch remains pending.
+
 **SCOPED_PASS for the explicitly measured lanes, assembled from preserved raw
 runs.** Production is Root-reviewed `250ff6da6105d994c84efebe095f2d3c35bc7180`
 (including App transport `ebc71db`); each acceptance build also includes the
