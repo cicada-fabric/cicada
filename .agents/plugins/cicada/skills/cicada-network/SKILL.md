@@ -56,11 +56,28 @@ variable or use a shared last-context file. Missing or unsupported runtime proof
 must deny before restoring any cached Endpoint or invoking a business operation.
 A lease renewal means lease evidence, not that the native Thread is online.
 
-Use names and full workspaces to choose peers. If several entries match, present
-the candidates and require an exact choice. Never silently retarget an old choice.
-MCP directory tools keep the current Endpoint's authorization; they do not expose
-the Node operator inventory. Queued or relay-persisted messages do not establish
-native consumption or a reply. Report actual delivery/consumption evidence.
+When the user wants to choose a peer, use `cicada_select_peer` to open the Host's
+standard selection form. Set `scope` to `group` for the current joined Group, or
+to `network` with an explicit already joined `network_id`. An optional `query`
+narrows that authorized directory. The form can include peers on other Nodes;
+only show names, workspaces and snapshot status that the caller may read.
+The private `cicada peers` operator snapshot supplies no Thread directory rights.
+
+An accepted form returns an opaque `peer_selection_id`. Preserve it exactly for
+the intended `cicada_send` or `cicada_ask` call, without `target`, `network_id` or
+`link_id`. Selection sends nothing and grants no authority. The later call needs
+its own fresh runtime proof and current Guard approval. If the selection expires,
+the binding changes or access is revoked, open a new form; never resolve a label
+again or substitute another peer. Decline or cancel ends that selection attempt.
+If the Host cannot display forms, report the explicit refusal without claiming
+that a peer was selected. Do not invent a local slash command or a colored
+composer mention. Standard skill/plugin invocation still uses the normal Host.
+
+For directory lookup outside the form, use only permitted fields to distinguish
+ambiguous candidates and require an exact choice. MCP directory tools retain the
+current Endpoint's authorization; they do not expose the Node operator inventory.
+Queued or relay-persisted messages do not establish native consumption or a reply.
+Report actual delivery/consumption evidence.
 
 Advanced Network and Group joins remain separate from the default local policy.
 Use an explicit target and existing private invitation/Owner-proof sources. A
