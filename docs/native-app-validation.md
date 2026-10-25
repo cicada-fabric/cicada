@@ -7470,15 +7470,15 @@ Windows 输出放入独立的本次验收目录；不要用清空重装替代更
    路径和摘要为准；Git、软件版本、执行文件摘要及 ZIP 摘要分别记录。
 2. **先只读确认现有组件和启动方式。** Linux 用原已安装 CLI 执行
    `components list --prefix "$HOME/.cicada"`，再执行
-   `node status --user-root "$HOME/.cicada"`，记录其状态/退出码、原组件位置与
-   是否存在受保护的 `node-service.json`。首次 on 没有保存配置时，status 可能
-   返回配置错误：保留这个结果，结合原启动命令、已知服务配置和 App 的 Node
+   `cicada status --user-root "$HOME/.cicada"`，记录其状态/退出码、原组件位置与
+   是否存在受保护的 `node-service.json`。首次 `cicada on` 没有保存配置时，
+   `cicada status` 可能返回配置错误：保留这个结果，结合原启动命令、已知服务配置和 App 的 Node
    状态只读确认原 ID、名称、state、MCP session/outbox、Hub 地址、interval 与
    原 Codex 可执行文件。未知值先确认，不能猜测 Hub ExecStart、换 Node、重配
    Owner 或新建 state。只查看已知属于本安装的进程/服务，不全局 kill/pkill。
 3. **按原文件归属更新组件，保留数据。** `components install` 对不同内容的
    已安装组件会拒绝，不能当成覆盖更新。先用原启动方式停止对应进程：前台
-   Node 在其原终端正常退出；已由 lifecycle 管理的 Node 才用同根 `node off`。
+   Node 在其原终端正常退出；已由 lifecycle 管理的 Node 才用同根 `cicada off`。
    已由组件 manifest 管理的 Linux 安装，按 manifest 的保护先
    `components remove --prefix 原根 --components 原组件`，再用完整新包 CLI 的
    `components install` 安装回同根、同组件，传入最终清单的 binary/sha256、
@@ -7495,23 +7495,24 @@ Windows 输出放入独立的本次验收目录；不要用清空重装替代更
    （包括原 `--user-root 'F:\DOWNLOAD\Cicada-N2'`）打开。若实际 EXE 受 App
    组件 manifest 管理，此包缺少可用 Windows 更新入口，记录这个限制并交总控；
    不能发明 Windows CLI 命令、直接改归属 manifest 或重置 vault/Owner。
-5. **先前台，再验证 Node on/off/status。** 用更新后的已核 CLI 和只读确认的
-   原参数启动一次前台 Node，核原 Hub/Owner/Node 指纹和状态不变；不重复配对。
+5. **先前台，再验证 `cicada on`、`cicada off`、`cicada status`。**
+   用更新后的已核 CLI 和只读确认的原参数启动一次前台 Node，核原 Hub/Owner/Node
+   指纹和状态不变；不重复配对。
    再从其原终端正常退出，确认原 writer 已停止。Linux lifecycle 需要 systemd
    user manager ≥254。已有 `node-service.json` 时可依次执行：
 
    ```sh
-   "$NODE_CLI" node on --user-root "$HOME/.cicada"
-   "$NODE_CLI" node status --user-root "$HOME/.cicada"
-   "$NODE_CLI" node off --user-root "$HOME/.cicada"
-   "$NODE_CLI" node status --user-root "$HOME/.cicada"
-   "$NODE_CLI" node on --user-root "$HOME/.cicada"
+   "$NODE_CLI" on --user-root "$HOME/.cicada"
+   "$NODE_CLI" status --user-root "$HOME/.cicada"
+   "$NODE_CLI" off --user-root "$HOME/.cicada"
+   "$NODE_CLI" status --user-root "$HOME/.cicada"
+   "$NODE_CLI" on --user-root "$HOME/.cicada"
    ```
 
-   `NODE_CLI` 必须指向本次已核、同根安装后的实际 Node CLI。第一次 on 若无
+   `NODE_CLI` 必须指向本次已核、同根安装后的实际 Node CLI。首次 `cicada on` 若无
    保存配置，需要 `--codex-bin 原绝对路径 -- 原relay-agent参数`；这些值必须
    来自上一步已确认的原配置，不在此预填未知部署参数。foreground 冲突必须
-   明确拒绝，不能暗中接管或杀进程。status 的 running 是本地进程状态，
+   明确拒绝，不能暗中接管或杀进程。`cicada status` 的 running 是本地进程状态，
    `hub_online=unknown` 不能当成 Hub 在线或获得业务授权。Windows lifecycle
    不是该 Linux 功能的实机通过证据。
 6. **恢复原 A/B，并单独确认 Host 交互策略。** 在原 Codex 安装、原工作目录
@@ -7533,8 +7534,8 @@ Windows 输出放入独立的本次验收目录；不要用清空重装替代更
    自定义 native slash、彩色 composer 引用没有实现；使用 skill/正常表单。
 8. **关 App 后继续，再停启 Node 验证原身份与原结果。** 正常关闭 App 窗口，
    原 A/B 再完成一轮已授权 ASK/REPLY，确认无需 Control 推理或 App 常驻。用
-   同根 Node off/on 后，在原 A/B 按 Host 已有重连入口恢复连接，SID、目录、
-   Node 身份和授权不变。对已有结果只做原请求/原幂等意图的状态核对与精确
+   同根 `cicada off`/`cicada on` 后，在原 A/B 按 Host 已有重连入口恢复连接，
+   SID、目录、Node 身份和授权不变。对已有结果只做原请求/原幂等意图的状态核对与精确
    重试，核一条原结果，不改正文或另发新请求来“修复”。若原结果不确定，
    保留 UNKNOWN/PENDING 和原操作；未知续租没有 exact receipt 时，不能删
    pending 文件或反复新 renew 来制造成功。
