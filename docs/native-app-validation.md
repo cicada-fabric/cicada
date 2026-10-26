@@ -7301,6 +7301,30 @@ missing-token recovery.
 
 ## 2026-10-25 Independent peer-form and authorized-directory acceptance
 
+### 2026-10-26 user-reported six-check continuation
+
+Root relayed the user's explicit report that all six checks below were normal.
+This adds **USER_REPORTED_PASS** evidence for the unchanged complete package
+associated with `250ff6da6105d994c84efebe095f2d3c35bc7180`; the documentation
+baseline is `cab258124c4feb3d5d5c7c18ee3a1a463883b71c`. QA performed no runtime
+execution, product change or package replacement for this record.
+
+| Check | User-reported observation | Result |
+| --- | --- | --- |
+| Original A → B | A resolves UX-B by name, asks; original B replies and original A associates the reply. | USER_REPORTED_PASS |
+| Reverse direction | B-originated reverse exchange works. | USER_REPORTED_PASS |
+| Contact form | Cancel sends nothing; selecting sends nothing; a subsequent ASK/reply works. | USER_REPORTED_PASS |
+| Unknown name | A nonexistent name is refused without misdelivery. | USER_REPORTED_PASS |
+| Windows App closure | Original A/B continue communicating after closing the Windows App. | USER_REPORTED_PASS |
+| Node lifecycle | After `cicada off` / `cicada status` / `cicada on` / `cicada status`, original identity, historical results and new communication recover. | USER_REPORTED_PASS |
+
+No independent raw logs or complete idempotency/effect counts were supplied for
+this batch. It does not establish Windows DPAPI/ACL or other dedicated security
+checks, independent fault recovery, or cross-Node actual-runtime acceptance.
+Physical revocation and remaining Windows security checks stay pending/NOT_RUN.
+Earlier FAILs, display-only reports and independent NOT_RUN items remain intact;
+this continuation does not promote them to independent PASS or v0.1-wide readiness.
+
 ### 2026-10-26 contact entry version decision
 
 The user retains **v0.1 AI resolution by registered nickname/name/ID and
@@ -7372,14 +7396,16 @@ raw App `n2-app/native-external-editor-20261026/result.json` SHA-256
 QA read/hash-checked both; owned cleanup is Root-verified. No duplicate probe or
 production Node/Hub/user-session change is claimed.
 
-The subsequent real-machine Hub/Node update and Node on/status → off/stopped →
+At the earlier display-only reporting checkpoint, real-machine Hub/Node update
+and Node on/status → off/stopped →
 on/running feedback remains **USER_REPORTED_PASS**, without independent raw
 execution attribution. User-provided actual 0.164 TUI text establishes only
 **USER_REPORTED_PASS for physical MCP-form display** (`Choose a contact` / Peer,
 snapshot label and submit/cancel hints). Physical cancel, accept and ASK/REPLY,
 Windows login details and two-real-Node coverage are not confirmed for this batch;
 retain NOT_RUN rather than extending that display result. The earlier independent
-Host-relay receipts below keep their own scope; the full user batch remains pending.
+Host-relay receipts below keep their own scope. That checkpoint's pending user
+batch is followed by the separately attributed six-check continuation above.
 
 **SCOPED_PASS for the explicitly measured lanes, assembled from preserved raw
 runs.** Production is Root-reviewed `250ff6da6105d994c84efebe095f2d3c35bc7180`
