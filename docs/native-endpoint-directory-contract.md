@@ -1439,7 +1439,15 @@ device's current authenticated session/Owner scope; later login does not extend
 the old review or reauthorize a mutation. `OpenOwnerEndpointGroupsResponse`
 authenticates the Hub and original route; the App then calls
 `VerifyOwnerEndpointGroupsResult`, and for an apply receipt also
-`VerifyOwnerEndpointGroupsOperation` with its locally approved review. Original
+`VerifyOwnerEndpointGroupsOperation(review, originalApply, operation, expectedHead)`
+with its locally approved review. REMOVE requires a non-nil expectedHead from
+the authenticated relation card for the same target/decision revision, retained
+with pending intent; other actions may pass nil. The REMOVE receipt advances
+relation and decision revision exactly once and retains that head's policy
+ID/epoch. ADD advances the relation once and keeps the old decision/head until
+Node completion. Fresh current cards bind the original operation's Node,
+Network and Group; an unresolved operation cannot establish state using
+untargeted current cards. Original
 receipts and freshly guarded snapshots stay distinct. An absent operation or
 OUTCOME_UNCERTAIN never settles pending intent; only a verified terminal original
 receipt/no-effect fence does.

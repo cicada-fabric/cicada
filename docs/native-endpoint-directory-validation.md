@@ -787,3 +787,20 @@ carrier test is not a maximum legal product DTO measurement. Windows/physical
 device/public HTTPS retain separate acceptance. No real state, credentials or
 resident deployment was used.
 
+The shared commit `c8d29d8358206f5e15874d8a1b6c7f6ba54c9204` was integrated by
+Root as `110db1e506d6fc012f3c42fba4d504e27a561406`. Its tests keep their original
+source attribution. A separate SDK review fix adds exact ADD/REMOVE relation
+revision checks, REMOVE's retained authenticated prior head argument and exact
+policy-reference inheritance, and binds current snapshots to the operation's
+Node/Network/Group. It changes no wire DTO/JSON field or schema. The caller must
+retain REMOVE's prior head from the same target/decision-revision authenticated
+card with its pending operation; a later snapshot cannot substitute for it.
+
+Fix evidence is
+`/home/zyf/Cicada/.local/evidence/owner-groups-sdk-fix-20261026/`.
+Targeted normal and race each pass 12 test events / 9 top-level tests, with zero
+failures/skips; metadata and five oracle tests pass. This includes wrong head,
+policy ID/epoch and revisions, cross-Group/Network/Node current snapshots and an
+unresolved operation with untargeted current cards. Before/after fingerprints
+match and are checked against the fix commit. Actual Store/Node/Guard and all
+M1–M8 remain NOT_RUN.

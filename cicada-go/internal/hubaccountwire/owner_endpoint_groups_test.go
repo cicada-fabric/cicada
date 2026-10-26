@@ -334,7 +334,7 @@ func TestOwnerEndpointGroupsReceiptRemainsOriginalAndUncertainNeverCompletes(t *
 	yes := true
 	o := OwnerEndpointGroupsOperation{OperationID: apply.Context.RequestID, OriginalPacketDigest: OwnerEndpointGroupsPacketDigest(original), Action: g.review.Action, State: "COMPLETED", ReviewID: g.review.ReviewID, Target: g.review.Target, CommittedAt: formatUTC(f.now.Add(3 * time.Second)), Effect: &OwnerEndpointGroupsEffect{GroupID: g.review.Target.GroupID, Created: &yes}}
 	r := OwnerEndpointGroupsResult{Format: OwnerEndpointGroupsResultFormat, ContractRevision: OwnerEndpointGroupsContractRevision, RequestID: apply.Context.RequestID, RequestPacketDigest: OwnerEndpointGroupsPacketDigest(original), HubID: f.hub.HubID, OwnerID: f.scope.OwnerID, DeviceID: f.scope.DeviceID, NodeID: g.prepare.Body.NodeID, State: "COMPLETED", CapturedAt: o.CommittedAt, Freshness: "SNAPSHOT_ONLY", Operation: &o}
-	if VerifyOwnerEndpointGroupsResult(apply, original, r, f.hub) != nil || VerifyOwnerEndpointGroupsOperation(g.review, original, o) != nil {
+	if VerifyOwnerEndpointGroupsResult(apply, original, r, f.hub) != nil || VerifyOwnerEndpointGroupsOperation(g.review, original, o, nil) != nil {
 		t.Fatal("original create receipt rejected")
 	}
 	_, route, _ := NewClientRoute(f.hub, apply, f.device.Public())
@@ -369,7 +369,7 @@ func TestOwnerEndpointGroupsReceiptRemainsOriginalAndUncertainNeverCompletes(t *
 	}
 	wrong := o
 	wrong.OriginalPacketDigest = OwnerEndpointGroupsPacketDigest(g.original)
-	if VerifyOwnerEndpointGroupsOperation(g.review, original, wrong) == nil {
+	if VerifyOwnerEndpointGroupsOperation(g.review, original, wrong, nil) == nil {
 		t.Fatal("prepare digest substituted for original apply digest")
 	}
 	unknown := r
@@ -416,5 +416,103 @@ func TestOwnerEndpointGroupsCardsCannotFallBackAfterOwnerDecision(t *testing.T) 
 	c.Contributions[0].Source = "LEGACY_UNKNOWN"
 	if endpointGroupsRelationCard(c) {
 		t.Fatal("unknown source admitted")
+	}
+}
+
+func TestOwnerEndpointGroupsExactRemoveHeadAndCurrentSnapshotScope(t *testing.T) {
+	g := syntheticEndpointGroupsReview(t, OwnerEndpointGroupsRemoveEndpoint)
+	f := g.f
+	old := e2ee.EndpointGroupOwnerControl{Mode: "OWNER", Revision: 2, DenyReason: "NONE", PolicyID: strings.Repeat("b", 32), PolicyEpoch: 1}
+	g.review.Expected.DecisionRevision = old.Revision
+	g.review.Expected.RelationRevision = 4
+	g.review.Expected.PolicyEpoch = 2 // A pending contribution is not the activated head.
+	g.review.ReviewDigest, _ = OwnerEndpointGroupsReviewDigest(g.review)
+	apply, err := NewOwnerEndpointGroupsApply(f.session, f.scope, g.prepare, g.original, g.review, f.owner, f.now.Add(2*time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	original, err := SealClientRequest(f.device, f.hub, apply)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rel, decision := uint64(5), uint64(3)
+	yes := true
+	withdrawn := []EndpointGroupSourceReference{}
+	head := e2ee.EndpointGroupOwnerControl{Mode: "OWNER", Revision: decision, DenyReason: "REMOVED", PolicyID: old.PolicyID, PolicyEpoch: old.PolicyEpoch}
+	o := OwnerEndpointGroupsOperation{OperationID: apply.Context.RequestID, OriginalPacketDigest: OwnerEndpointGroupsPacketDigest(original), Action: g.review.Action, State: "COMPLETED", ReviewID: g.review.ReviewID, Target: g.review.Target, CommittedAt: formatUTC(f.now.Add(3 * time.Second)), Effect: &OwnerEndpointGroupsEffect{GroupID: g.review.Target.GroupID, EndpointID: g.review.Target.EndpointID, RelationRevision: &rel, DecisionRevision: &decision, WithdrawnContributions: &withdrawn, ManualDeny: &yes, RelationState: "REMOVED", OwnerControl: &head}}
+	if VerifyOwnerEndpointGroupsOperation(g.review, original, o, &old) != nil {
+		t.Fatal("exact reviewed removal rejected")
+	}
+	if VerifyOwnerEndpointGroupsOperation(g.review, original, o, nil) == nil {
+		t.Fatal("remove receipt accepted without retained authenticated prior head")
+	}
+	for i, change := range []func(*OwnerEndpointGroupsOperation){
+		func(o *OwnerEndpointGroupsOperation) { *o.Effect.RelationRevision++ },
+		func(o *OwnerEndpointGroupsOperation) { *o.Effect.DecisionRevision++; o.Effect.OwnerControl.Revision++ },
+		func(o *OwnerEndpointGroupsOperation) { o.Effect.OwnerControl.PolicyID = strings.Repeat("c", 32) },
+		func(o *OwnerEndpointGroupsOperation) { o.Effect.OwnerControl.PolicyEpoch = 2 },
+	} {
+		var bad OwnerEndpointGroupsOperation
+		json.Unmarshal(mustEndpointGroupsJSON(t, o), &bad)
+		change(&bad)
+		if VerifyOwnerEndpointGroupsOperation(g.review, original, bad, &old) == nil {
+			t.Fatalf("wrong removal projection %d accepted", i)
+		}
+	}
+	r := OwnerEndpointGroupsResult{Format: OwnerEndpointGroupsResultFormat, ContractRevision: OwnerEndpointGroupsContractRevision, RequestID: apply.Context.RequestID, RequestPacketDigest: OwnerEndpointGroupsPacketDigest(original), HubID: f.hub.HubID, OwnerID: f.scope.OwnerID, DeviceID: f.scope.DeviceID, NodeID: g.review.Target.NodeID, State: "COMPLETED", CapturedAt: o.CommittedAt, Freshness: "SNAPSHOT_ONLY", Operation: &o, CurrentGroup: &OwnerEndpointGroupsGroupCard{GroupID: g.review.Target.GroupID, Name: "Synthetic G2", NetworkID: g.review.Target.NetworkID, GroupVersion: 1, ContextPolicy: "group_scoped"}, CurrentRelation: &OwnerEndpointGroupsRelationCard{GroupID: g.review.Target.GroupID, GroupName: "Synthetic G2", NetworkID: g.review.Target.NetworkID, State: "REMOVED", RelationRevision: rel, DecisionRevision: decision, ManualDeny: true, OwnerControl: head, KeyState: "REVOKED"}}
+	if VerifyOwnerEndpointGroupsResult(apply, original, r, f.hub) != nil {
+		t.Fatal("exact scoped snapshot rejected")
+	}
+	for i, change := range []func(*OwnerEndpointGroupsResult){
+		func(r *OwnerEndpointGroupsResult) { r.CurrentGroup.GroupID = "synthetic-G1" },
+		func(r *OwnerEndpointGroupsResult) { r.CurrentGroup.NetworkID = "synthetic-other-network" },
+		func(r *OwnerEndpointGroupsResult) { r.CurrentRelation.GroupID = "synthetic-G1" },
+		func(r *OwnerEndpointGroupsResult) { r.CurrentRelation.NetworkID = "synthetic-other-network" },
+		func(r *OwnerEndpointGroupsResult) { r.NodeID = "synthetic-other-node" },
+	} {
+		var bad OwnerEndpointGroupsResult
+		json.Unmarshal(mustEndpointGroupsJSON(t, r), &bad)
+		change(&bad)
+		if VerifyOwnerEndpointGroupsResult(apply, original, bad, f.hub) == nil {
+			t.Fatalf("cross-target current snapshot %d accepted", i)
+		}
+	}
+	status, err := NewOwnerEndpointGroupsStatus(f.session, f.scope, original, f.owner, f.now.Add(4*time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	statusPacket, err := SealClientRequest(f.device, f.hub, status)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.RequestID = status.Context.RequestID
+	r.RequestPacketDigest = OwnerEndpointGroupsPacketDigest(statusPacket)
+	r.Operation = nil
+	r.State = "PREPARED"
+	r.ErrorCode = "OUTCOME_UNCERTAIN"
+	if VerifyOwnerEndpointGroupsResult(status, statusPacket, r, f.hub) == nil {
+		t.Fatal("unresolved operation established state from untargeted current cards")
+	}
+}
+
+func TestOwnerEndpointGroupsAddReceiptAdvancesOnlyExactRelationRevision(t *testing.T) {
+	g := syntheticEndpointGroupsReview(t, OwnerEndpointGroupsAddEndpoint)
+	f := g.f
+	apply, err := NewOwnerEndpointGroupsApply(f.session, f.scope, g.prepare, g.original, g.review, f.owner, f.now.Add(2*time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	original, err := SealClientRequest(f.device, f.hub, apply)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rel, decision := uint64(1), uint64(0)
+	o := OwnerEndpointGroupsOperation{OperationID: apply.Context.RequestID, OriginalPacketDigest: OwnerEndpointGroupsPacketDigest(original), Action: g.review.Action, State: "COMPLETED", ReviewID: g.review.ReviewID, Target: g.review.Target, CommittedAt: formatUTC(f.now.Add(3 * time.Second)), Effect: &OwnerEndpointGroupsEffect{GroupID: g.review.Target.GroupID, EndpointID: g.review.Target.EndpointID, RelationRevision: &rel, DecisionRevision: &decision, PolicyID: g.review.Policy.PolicyID, PolicyEpoch: g.review.Policy.Epoch, ContributionRevision: 1, ContributionState: "PENDING_KEY", EffectiveRelationState: "PENDING_KEY", OwnerControl: g.review.Projection.ExpectedOwnerControl}}
+	if VerifyOwnerEndpointGroupsOperation(g.review, original, o, nil) != nil {
+		t.Fatal("exact pending ADD receipt rejected")
+	}
+	rel++
+	if VerifyOwnerEndpointGroupsOperation(g.review, original, o, nil) == nil {
+		t.Fatal("ADD receipt skipped reviewed relation revision")
 	}
 }

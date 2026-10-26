@@ -165,6 +165,16 @@ func validateOwnerEndpointGroupsResponse(body any, route clientwire.Route) error
 	if r.Operation != nil && (!ownerEndpointGroupsOperationShape(*r.Operation) || r.Operation.Target.OwnerID != r.OwnerID || r.Operation.Target.HubID != r.HubID) {
 		return ErrInvalid
 	}
+	if r.Operation == nil && (r.CurrentRelation != nil || r.CurrentGroup != nil) {
+		return ErrInvalid
+	}
+	if r.Operation != nil {
+		target := r.Operation.Target
+		if r.NodeID != target.NodeID || r.CurrentRelation != nil && (r.CurrentRelation.GroupID != target.GroupID || r.CurrentRelation.NetworkID != target.NetworkID) ||
+			r.CurrentGroup != nil && (r.CurrentGroup.GroupID != target.GroupID || r.CurrentGroup.NetworkID != target.NetworkID) {
+			return ErrInvalid
+		}
+	}
 	for i, t := range r.Threads {
 		if !validID(t.EndpointID) || !validID(t.PrincipalID) || !validID(t.NodeID) || !validID(t.NetworkID) || !ownerEndpointGroupsText(t.Name, 256) || t.Harness != "codex" || !endpointGroupsContains([]string{"offline", "left", "LEASE_RECENT", "UNKNOWN"}, t.Presence) ||
 			t.Workspace == "" || len(t.Workspace) > 1024 || !isHex(t.RegistrationDigest, 32) || !nativePairPositive(t.RegistrationRevision) || t.RelationsRevision >= 1<<63 || len(t.Relations) > 8 ||
@@ -289,17 +299,39 @@ func VerifyOwnerEndpointGroupsResult(request any, original []byte, result OwnerE
 
 // Verify an apply receipt against the locally retained, previously approved
 // review as well as the exact apply ciphertext. Use alongside Result verification.
-func VerifyOwnerEndpointGroupsOperation(review OwnerEndpointGroupsReview, originalApply []byte, o OwnerEndpointGroupsOperation) error {
+// REMOVE requires expectedHead from an authenticated relation card for the same
+// target and decision revision, retained with the pending operation. Other
+// actions may pass nil. It cannot be reconstructed from a new current snapshot.
+func VerifyOwnerEndpointGroupsOperation(review OwnerEndpointGroupsReview, originalApply []byte, o OwnerEndpointGroupsOperation, expectedHead *e2ee.EndpointGroupOwnerControl) error {
 	p, err := DecodeOwnerEndpointGroupsPacket(originalApply)
 	if err != nil || ownerEndpointGroupsReviewShape(review) != nil || p.Packet.Route.Operation != OperationOwnerEndpointGroupsApply || p.Packet.Route.Direction != clientwire.DirectionRequest ||
 		!ownerEndpointGroupsOperationShape(o) || o.OperationID != p.Packet.Route.OperationID || o.OriginalPacketDigest != OwnerEndpointGroupsPacketDigest(originalApply) || o.ReviewID != review.ReviewID ||
-		o.Action != review.Action || !reflect.DeepEqual(o.Target, review.Target) {
+		o.Action != review.Action || !reflect.DeepEqual(o.Target, review.Target) || p.Packet.Route.HubID != review.Target.HubID || p.Packet.Route.OwnerID != review.Target.OwnerID {
 		return ErrInvalid
 	}
 	if o.State == "COMPLETED" && o.Action == OwnerEndpointGroupsAddEndpoint {
 		if review.Policy == nil || o.Effect.PolicyID != review.Policy.PolicyID || o.Effect.PolicyEpoch != review.Policy.Epoch || o.Effect.DecisionRevision == nil || *o.Effect.DecisionRevision != review.Expected.DecisionRevision ||
 			!reflect.DeepEqual(o.Effect.OwnerControl, review.Projection.ExpectedOwnerControl) {
 			return ErrInvalid
+		}
+	}
+	if o.State == "COMPLETED" && (o.Action == OwnerEndpointGroupsAddEndpoint || o.Action == OwnerEndpointGroupsRemoveEndpoint) {
+		if o.Effect.RelationRevision == nil || *o.Effect.RelationRevision != review.Expected.RelationRevision+1 {
+			return ErrInvalid
+		}
+		if o.Action == OwnerEndpointGroupsRemoveEndpoint && (o.Effect.DecisionRevision == nil || *o.Effect.DecisionRevision != review.Expected.DecisionRevision+1) {
+			return ErrInvalid
+		}
+	}
+	if o.Action == OwnerEndpointGroupsRemoveEndpoint {
+		if expectedHead == nil || e2ee.ValidateEndpointGroupOwnerControl(*expectedHead) != nil || expectedHead.Revision != review.Expected.DecisionRevision {
+			return ErrInvalid
+		}
+		if o.State == "COMPLETED" {
+			projected := e2ee.EndpointGroupOwnerControl{Mode: "OWNER", Revision: expectedHead.Revision + 1, DenyReason: "REMOVED", PolicyID: expectedHead.PolicyID, PolicyEpoch: expectedHead.PolicyEpoch}
+			if o.Effect.OwnerControl == nil || *o.Effect.OwnerControl != projected {
+				return ErrInvalid
+			}
 		}
 	}
 	return nil
