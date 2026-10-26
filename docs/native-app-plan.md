@@ -346,7 +346,10 @@ That availability does not authorize a caller or establish acceptance. The lates
 complete native attempt at clean QA `d982a90b50798f0ba0d6aea485233cbb1693fd22`
 (production bytes remain defdd9d) is **FAIL**: M1–M3 passed; M4 passed the Node
 restart/read boundary, then C's reply Hook reported CODEX_NODE_TICKET_UNAVAILABLE.
-Its underlying cause is open. M5–M8 were not reached. The current source-bound status is in the table
+Its underlying cause is open. Subsequent two/four-record real TCP/Unix issuer
+regressions did not reproduce it; they did not run external native Runtime or
+actual MCP reply delivery and do not change this failure. M5–M8 were not reached.
+The current source-bound status is in the table
 below; historical receipts remain in
 [the validation record](native-app-validation.md#2026-10-26-m4-reply-ticket-failure-after-released-completion).
 The existing Session page may show registered

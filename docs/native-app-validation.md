@@ -8004,6 +8004,46 @@ matched before/after; this final paragraph follows those checks. Receipt
 SHA-256 `81ccf1d5af06c99a9f59fd8e821bffee9e48777c73efebb9e7d5b7ddf2c03242`.
 No production file changed and no new product pass is inferred from these checks.
 
+The original Node author then ran two separate logical regressions, both using
+production Owner/Node TCP envelopes and Unix context issue/consume on synthetic
+original-native records. Both returned exit 0 with one top-level test PASS and
+no FAIL/SKIP; neither reproduced the ticket refusal. The two-record case took
+6.596s; C's reply-context issue took 227ms with error class NONE, protected disk
+state 2,179,604 bytes, managed reserve zero and 4,111,853 bytes remaining after
+the existing 2 MiB RPC reserve. It also verified the consumed original
+profile/SID/registration digest and a fresh unaffected G2 ACTIVE description.
+Receipt `~/Cicada/.local/evidence/owner-groups-ticket-after-revoke/receipt.json`
+SHA-256 `e821fadb90dda5309203ea39a7ea6bd85dc21a496147e4967ea98f72f43eb197`.
+
+The finite four-record case retained the same four registrations, keys, binding
+and epochs through its prescribed M1–M4 Owner sequence and actual protected-state
+reopen. After the authenticated old-completion refusal, C's Unix reply-context
+issue and consume passed in 3,737ms, error class NONE. Total package time was
+19.146s. Closed checkpoints measured disk state 4,531,625 bytes after refusal
+and 5,566,198 bytes after issue, with ordinary restart-worker Group key-prepare
+history increasing from six to ten settled steps. Managed reserve remained zero;
+the final serialized-state headroom after the existing 2 MiB RPC reserve was
+725,259 bytes. The source adds no history padding, repeated Owner loop, limit or
+TTL change. It verifies C's original consumed profile/SID/registration digest;
+unlike the two-record case it does not assert a post-issue fresh G2 description.
+Receipt `~/Cicada/.local/evidence/owner-groups-four-thread-ticket/receipt.json`
+SHA-256 `548357b2166ecdbcdae8885d7514ec524c445492f3d977c447746d5a85e80550`;
+`checkpoints.json` SHA-256
+`ee1e1cb08c861fdca32693405ba53c7d4a653a1583b1eca6ded77e337584fed6`.
+
+QA independently read both test sources and verified receipt/test/log hashes,
+terminal counts and the four-record projection. Producer before/after source
+was d982a90; each receipt retains its exact Go/overlay command and source hash.
+QA retained matching test-source copies and the closed review in
+`~/Cicada/.local/evidence/n2-acceptance/owner-groups-issuer-review-b9469f0-01/result.json`,
+SHA-256 `4909484f3bb06b73960d80468564a145824373a1f77663b8ebfed487d61e1ede`.
+This was static review, not a QA re-execution. These producer host-Go cases did
+not launch external Codex Runtime, actual MCP Reply/outbox/native receive or the
+disposable Docker interop gate. Their conclusion is **NO_REPRODUCTION** for these
+logical sequences. They establish neither the earlier Runtime failure's cause
+nor its missing final capacity metrics. The complete M4 remains FAIL, M5–M8 and
+physical-platform items remain NOT_RUN, and production remains unchanged.
+
 ### 2026-10-26 user-reported four-Thread Group continuation
 
 Root relayed the user's report that four real native Threads on the same Node
