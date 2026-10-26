@@ -7301,9 +7301,28 @@ missing-token recovery.
 
 ## 2026-10-25 Independent peer-form and authorized-directory acceptance
 
+### 2026-10-26 contact entry version decision
+
+The user retains **v0.1 AI resolution by registered nickname/name/ID and
+AI-invoked contact forms**. Pre-submit input triggers and native contact
+extensions move to **v0.2 PLANNED/NOT_RUN**, keeping upstream Codex without a
+fork; they are not an additional v0.1 delivery gate. The
+[existing roadmap](v02-openai-integration-roadmap.md) records waiting for official
+interfaces or intercepting example triggers in Cicada App's own Thread input.
+Neither is implemented or accepted as a Network picker. The target remains the
+whole authorized Network across Nodes, exact selected identity and continued
+editing, with existing directory/privacy rules and fresh Guard; selection does
+not grant arbitrary history access or authority. Upstream requests [#37801](https://github.com/openai/codex/issues/37801) and
+[#55532](https://github.com/openai/codex/issues/55532) remain undelivered requests. This is a documentation-only version
+decision: no new product tests/probes ran, no broader v0.1 PASS is claimed, and
+all dated receipts/FAILs/UI_ONLY/scoped passes below retain their attribution.
+FB-04/05/06 in the [feedback ledger](native-app-plan.md#current-feedback-and-acceptance-ledger)
+now reflect this division; the remaining physical/user-batch items stay separate.
+
 ### Latest UX correction and user reports, pending the complete batch
 
-The required UX is **select Thread and insert its reference while editing the
+The following pre-submit research now belongs to v0.2. Its required UX is
+**select Thread and insert its reference while editing the
 draft, then continue editing before submit**, with **zero additional provider
 POSTs while editing before submit**. `UserPromptSubmit` → MCP tool and elicitation are post-submit paths;
 their recorded functional PASS is preserved, but it does not complete this UX.

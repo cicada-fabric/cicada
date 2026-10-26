@@ -2,6 +2,18 @@
 
 本文只记录 **v0.2.x 以后**的可选接入方向。当前预定的 v0.1.x 不因此增加 OpenAI、dot、GPT-Live、ChatGPT plugin 功能或依赖，也不改变 [CICADA.md](../CICADA.md) 的身份、授权、密码与部署不变量。以下是基于公开接口的架构推断，不是 CICADA 互操作验收或产品可用承诺。
 
+## Thread 联系人入口分期（2026-10-26 用户决策）
+
+v0.1 保留 AI 按注册昵称、名称或 ID 解析联系人，以及由 AI 唤出已有联系人表单的入口。ID 指 Cicada Endpoint ID/完整地址，不承诺接受任意原生 Codex SID；Network resolve 是精确昵称/Endpoint，多匹配拒绝，现有 picker 首 64 项有界。两者继续使用现有受权目录与消息流程；其验收只沿用原记录的实测范围，不把提交前输入扩展作为 v0.1 的新增交付条件，也不据此宣称 v0.1 整体通过。
+
+提交前输入触发和原生联系人扩展移至 **v0.2：PLANNED / NOT_RUN**，保持原版 Codex，不 fork。可等待官方提供合适接口；也可研究在 **Cicada App 中打开/继续用户有权访问的原生 Codex Thread 对话**，并在 App 自有输入层拦截 `/cicada peers`、`$cicada:peers` 等示例后打开选择器；这依赖受支持适配器与真实绑定，历史/控制权限须独立核验。这些只是未来入口示例，不是已注册的 Codex 命令，也不是已交付的 App 功能。上游请求 [#37801](https://github.com/openai/codex/issues/37801)、[#55532](https://github.com/openai/codex/issues/55532) 仅记作未交付请求，不能当作接口或能力已经可用。
+
+目标仍是在输入阶段搜索**整个受权 Network、跨 Node** 的可发现联系人，选中后保留准确目标身份并继续编辑，再显式提交；不能缩为当前 Codex server 已知任务。复用[现有目录合同](native-endpoint-directory-contract.md)及 Guard，补齐受权 query+cursor、受信来源 Thread 交接和跨进程准确引用后再验收。现有 list ≤100、picker 前 64 项本地过滤及精确 resolve 不代表完整搜索；先前原生 `@` 与外部编辑器的 UI_ONLY 结果也不代表 Network picker 完成。
+
+联系人引用不产生权限，不隐式发送，不允许任意历史读取；实际动作仍须验证当前调用方、准确 Endpoint/绑定/版本及新鲜 Guard。取消、陈旧引用或撤权应拒绝操作，不借用 Owner 清单。输入期零新增 provider POST、选择后继续编辑及跨 Node 路由均为待验收目标。
+
+分期同步至[原生 App 反馈账本](native-app-plan.md#current-feedback-and-acceptance-ledger)和[验收决策](native-app-validation.md#2026-10-26-contact-entry-version-decision)。既有研究、失败记录、UI_ONLY、SCOPED_PASS 和 USER_REPORTED_PASS 保持原来源归属；本次只调整规划，不改产品或重跑探针。
+
 ## v0.2.x 协作底座入口（2026-10-10 增量规划）
 
 新增 [Agent 协作设计：Network 黄页、本地通讯录与主动组织](v02-agent-collaboration-design.md)：Control 在受权范围维护 Hub 上完整但逐字段可见的 Network 黄页；Node daemon 为每个已 Join Thread 保存相关小通讯录；Agent 主动联系同组 Worker、直属 Monitor、跨组专家及更远的已授权 Thread，Monitor 以 proposal/精确委托 CAS 规划与调整协作，并复用 Task list、Journal、Discussion 持续迭代。简介由人工还是 Control 总结尚未决定。
