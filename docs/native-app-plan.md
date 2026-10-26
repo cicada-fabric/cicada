@@ -341,12 +341,13 @@ legacy Pair and physical platforms retain separate NOT_RUN rows.
 2026-10-26 Root-reviewed scope is
 [Owner-managed Endpoint Groups v1](native-endpoint-directory-contract.md#proposed-owner-managed-endpoint-groups-v1).
 Hub/Node/App implementation is integrated, with production corrections through
-`e5d76c29a84ca7538d20ce37df068e62fb1629b7`; public capability availability is true.
+`defdd9dbb7d44998a573de313cb16a2eefad2523`; public capability availability is true.
 That availability does not authorize a caller or establish acceptance. The latest
-complete native attempt at clean QA commit `8d65fbe98f96f621216e95a297bfbfb2ec37e684`
-is **FAIL**: M1 passed, M2 timed out receiving the first reply, and M3–M8 were
-not reached. The current source-bound status is in the table below; historical
-receipts remain in [the validation record](native-app-validation.md#2026-10-26-actual-m2-reply-delivery-diagnosis).
+complete native attempt at clean `defdd9dbb7d44998a573de313cb16a2eefad2523`
+is **FAIL**: M1 and M2 passed, M3 failed its writer-fault timing precondition,
+and M4–M8 were not reached. The current source-bound status is in the table
+below; historical receipts remain in
+[the validation record](native-app-validation.md#2026-10-26-complete-defdd9d-run-and-writer-fault-timing).
 The existing Session page may show registered
 Thread cards, their Group relations and authorized candidate Groups. It may
 offer one same-Owner/same-Network named Group creation followed by a separate
@@ -405,9 +406,9 @@ conflict/unsupported without changing shared Membership; unknown sources reject.
 
 | Case | Required independent observation | Current status |
 | --- | --- | --- |
-| M1 — G2 exists | Fresh owned Hub with default G1 only; actual App creates named G2 and separately adds exact D after Owner review. An unseen original APPLY is permanently fenced with zero effect; only a new explicit Owner intent may then create G2. Drop committed responses and restart App/Hub; exact original recovery yields one G2/relation, no extra identity/grants. | SCOPED_PASS at clean 8d65fbe, 162.54s; final four-identity witness not reached |
-| M2 — one Thread, two Groups | Original SID/Endpoint/workspace/key remains identical in G1/G2. Explicit use_group changes current scope; real Cicada ASK/REPLY and receive stay within it, without a new Join or grant. | FAIL at clean 8d65fbe: first ASK received, REPLY SENT, original D reply receive timed out |
-| M3 — remove only D-G1 | Actual App removes exact D-G1 with current CAS; A/B/C, shared-principal other Endpoints and D-G2 retain their original authority/key snapshots. Queued D-G1 work fails fresh final Guard. | NOT_RUN |
+| M1 — G2 exists | Fresh owned Hub with default G1 only; actual App creates named G2 and separately adds exact D after Owner review. An unseen original APPLY is permanently fenced with zero effect; only a new explicit Owner intent may then create G2. Drop committed responses and restart App/Hub; exact original recovery yields one G2/relation, no extra identity/grants. | SCOPED_PASS at clean defdd9d, 140.37s; final four-identity witness not reached |
+| M2 — one Thread, two Groups | Original SID/Endpoint/workspace/key remains identical in G1/G2. Explicit use_group changes current scope; real Cicada ASK/REPLY and receive stay within it, without a new Join or grant. | SCOPED_PASS at clean defdd9d, 481.86s; all four G1/G2 original ASK/REPLY/receive roundtrips and six facts passed |
+| M3 — remove only D-G1 | Actual App removes exact D-G1 with current CAS; A/B/C, shared-principal other Endpoints and D-G2 retain their original authority/key snapshots. Queued D-G1 work fails fresh final Guard. | FAIL at clean defdd9d, writer-fault timing precondition; no removal/fresh-denial pass |
 | M4 — no automatic resurrection | Runtime: after removal, literal Join, fresh Attempt, warm/cold recovery, old response replay and Node/MCP restart cannot clear deny; pending re-add preserves old deny. Only exact key completion of a new Owner add at the current head can clear it. Verify finite duration binds the original review and retries do not extend it. Separate production Store/crypto deterministic boundary: finite manual expiry never falls back to default. Actual 24-hour expiry remains a distinct NOT_RUN subitem. | Runtime NOT_RUN; separate deterministic expiry SCOPED_PASS at 755053b with reviewed byte attribution to e5d76c2; 24-hour wall clock NOT_RUN |
 | M5 — independent lifetime | Revoke/expire default policy while D-G2 is manually authorized. Cross the actual lease-renewal boundary, restart Node/MCP and continue exact G2 ASK/REPLY with App closed. Immediate one-send success is insufficient. | NOT_RUN |
 | M6 — last Group | Remove D's final relation; preserve original key, native Thread/history, Endpoint/workspace and running Node, with zero Group rights. New explicit Owner add cannot substitute an identity/key. | NOT_RUN |

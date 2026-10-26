@@ -53,8 +53,16 @@ func holdOwnerGroupsNativeWriter(t *testing.T, v *codexProductFixture, identity 
 	return release
 }
 
-func awaitOwnerGroupsDeliveryBeforeRemove(t *testing.T, v *codexProductFixture, from int, request string, source, target ownerGroupsIdentity, group string) string {
+func awaitOwnerGroupsDeliveryBeforeRemove(t *testing.T, v *codexProductFixture, from int, request string, source, target ownerGroupsIdentity, group string) (string, time.Time) {
 	t.Helper()
+	db := nodePairReadOnlyDB(t, filepath.Join(v.f.dir, "synthetic-hub", "cicada.sqlite3"))
+	defer db.Close()
+	var message, sender, receiver, senderGroup, receiverGroup string
+	if db.QueryRow(`SELECT message_id,sender_endpoint_id,receiver_endpoint_id,sender_group_id,receiver_group_id
+FROM relay_v2_requests WHERE request_id=?`, request).Scan(&message, &sender, &receiver, &senderGroup, &receiverGroup) != nil ||
+		message == "" || sender != source.Endpoint || receiver != target.Endpoint || senderGroup != group || receiverGroup != group {
+		t.Fatal("original durable ASK does not match the held delivery scope")
+	}
 	prefix := "/v2/relay/nodes/" + url.PathEscape(v.actualNode.id) + "/group/sealed/deliveries/"
 	deadline := time.Now().Add(8 * time.Second)
 	for time.Now().Before(deadline) {
@@ -75,23 +83,31 @@ func awaitOwnerGroupsDeliveryBeforeRemove(t *testing.T, v *codexProductFixture, 
 				} `json:"receiver"`
 				Route struct {
 					RequestID string `json:"request_id"`
+					MessageID string `json:"message_id"`
 					Kind      string `json:"kind"`
 				} `json:"route"`
 			}
 			if json.Unmarshal(ex.response, &authorization) != nil || authorization.Route.RequestID != request {
 				continue
 			}
-			if authorization.Route.Kind != "ask" || authorization.EndpointID != target.Endpoint || authorization.NativeSessionID != target.SID ||
+			if authorization.Route.MessageID != message || authorization.Route.Kind != "ask" || authorization.EndpointID != target.Endpoint || authorization.NativeSessionID != target.SID ||
 				authorization.Sender.EndpointID != source.Endpoint || authorization.Receiver.EndpointID != target.Endpoint ||
 				authorization.Sender.GroupID != group || authorization.Receiver.GroupID != group {
 				t.Fatal("actual pre-writer delivery authorization changed original request, Group or native actor")
 			}
-			return ex.Path
+			// This positive Hub response precedes the production writer wait.
+			// Host dispatch and status turns before it consume no writer budget.
+			observed, err := time.Parse(time.RFC3339Nano, ex.RecordedAt)
+			if err != nil || observed.After(time.Now()) {
+				t.Fatal("actual pre-writer authorization has no valid observation time")
+			}
+			t.Logf("OWNER_GROUPS_PRE_WRITER_AUTH request_sha256=%s message_sha256=%s positive_guard_at=%s", hash([]byte(request)), hash([]byte(message)), ex.RecordedAt)
+			return ex.Path, observed
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
 	t.Fatal("actual queued request did not reach positive delivery authorization before the writer wait")
-	return ""
+	return "", time.Time{}
 }
 
 func awaitOwnerGroupsFinalDeliveryDenied(t *testing.T, v *codexProductFixture, from int, path string) {
@@ -140,7 +156,7 @@ func exerciseOwnerGroupsM3(t *testing.T, v *codexProductFixture, actors nativePe
 	release := holdOwnerGroupsNativeWriter(t, v, d)
 	defer release()
 	body := "SYNTHETIC_OWNER_GROUP_QUESTION_" + host.fixtureScope + "_m3-denied-after-writer"
-	from, started := len(v.f.proxy.snapshot()), time.Now()
+	from := len(v.f.proxy.snapshot())
 	ask := host.command(t, ownerGroupsHostCommand{Action: "call", Actor: 0, Label: "m3-held-g1-ask", Tool: "cicada_ask",
 		Arguments:     map[string]any{"target": d.Endpoint, "question": body, "idempotency_key": host.fixtureScope + "-m3-held-g1"},
 		Queue:         []ownerGroupsQueueInput{{Body: body, SID: d.SID, Sender: original[0].Endpoint, Receiver: d.Endpoint, GroupID: actors.active.GroupID, Kind: "ask"}},
@@ -155,13 +171,17 @@ func exerciseOwnerGroupsM3(t *testing.T, v *codexProductFixture, actors nativePe
 	if request == "" || ask.QueuePosts[body] != 0 {
 		t.Fatal("writer-held actual ASK lacks one durable request or was already injected")
 	}
-	path := awaitOwnerGroupsDeliveryBeforeRemove(t, v, from, request, original[0], d, actors.active.GroupID)
-	if time.Since(started) >= 10*time.Second {
-		t.Fatal("writer fault did not leave time for the original 15-second production admission window")
+	path, authorizedAt := awaitOwnerGroupsDeliveryBeforeRemove(t, v, from, request, original[0], d, actors.active.GroupID)
+	if time.Since(authorizedAt) >= 10*time.Second {
+		t.Fatalf("writer fault did not leave time for the original 15-second production admission window: positive_guard_age_ms=%d", time.Since(authorizedAt).Milliseconds())
 	}
 	submitOwnerGroupsReview(t, v, review, "REMOVED")
 	afterRemove := len(v.f.proxy.snapshot())
 	release()
+	if time.Since(authorizedAt) >= 10*time.Second {
+		t.Fatal("actual removal and writer release exceeded the conservative ten-second fault budget")
+	}
+	t.Logf("OWNER_GROUPS_WRITER_WINDOW case=M3 positive_guard_to_release_ms=%d fixture_limit_ms=10000 product_limit_ms=15000", time.Since(authorizedAt).Milliseconds())
 	awaitOwnerGroupsFinalDeliveryDenied(t, v, afterRemove, path)
 	awaitOwnerGroupsRelation(t, v, actors.active.NetworkID, d, actors.active.GroupID, "REMOVED", "OWNER")
 	host.groups(t, 3, "m3-removed-d-self", actors.active.NetworkID, "", map[string]string{g2: "OWNER_EXPLICIT"})

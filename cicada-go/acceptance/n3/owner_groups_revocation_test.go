@@ -165,7 +165,7 @@ func exerciseOwnerGroupsM7(t *testing.T) {
 		material := captureOwnerGroupsRevocationWire(t, v, d)
 		ownerGroupsSelect(t, host, 0, "m7-source-g1", actors.active.GroupID)
 		release := holdOwnerGroupsNativeWriter(t, v, d)
-		from, started := len(v.f.proxy.snapshot()), time.Now()
+		from := len(v.f.proxy.snapshot())
 		body := "SYNTHETIC_OWNER_GROUP_QUESTION_" + host.fixtureScope + "_m7-" + kind
 		ask := host.command(t, ownerGroupsHostCommand{Action: "call", Actor: 0, Label: "m7-held-" + kind, Tool: "cicada_ask",
 			Arguments:     map[string]any{"target": d.Endpoint, "question": body, "idempotency_key": host.fixtureScope + "-m7-" + kind},
@@ -182,10 +182,10 @@ func exerciseOwnerGroupsM7(t *testing.T) {
 			release()
 			t.Fatal("revocation writer fault missed the actual original pending ASK")
 		}
-		path := awaitOwnerGroupsDeliveryBeforeRemove(t, v, from, request, original[0], d, actors.active.GroupID)
-		if time.Since(started) >= 10*time.Second {
+		path, authorizedAt := awaitOwnerGroupsDeliveryBeforeRemove(t, v, from, request, original[0], d, actors.active.GroupID)
+		if time.Since(authorizedAt) >= 10*time.Second {
 			release()
-			t.Fatal("revocation writer fault exceeded the original production admission window")
+			t.Fatalf("revocation writer fault exceeded the original production admission window: positive_guard_age_ms=%d", time.Since(authorizedAt).Milliseconds())
 		}
 		db := must(store.New(filepath.Join(v.f.dir, "synthetic-hub", "cicada.sqlite3")))
 		key := must(db.GetOwnerApprovalKey(v.original.Account.OwnerID, v.original.Account.LocalOwnerKeyID))
@@ -205,6 +205,10 @@ func exerciseOwnerGroupsM7(t *testing.T) {
 		}
 		after := len(v.f.proxy.snapshot())
 		release()
+		if time.Since(authorizedAt) >= 10*time.Second {
+			t.Fatal("actual root revocation and writer release exceeded the conservative ten-second fault budget")
+		}
+		t.Logf("OWNER_GROUPS_WRITER_WINDOW case=M7_%s positive_guard_to_release_ms=%d fixture_limit_ms=10000 product_limit_ms=15000", kind, time.Since(authorizedAt).Milliseconds())
 		awaitOwnerGroupsFinalDeliveryDenied(t, v, after, path)
 		for _, group := range []string{actors.active.GroupID, g2} {
 			status, raw := router.request(t, credential, group, http.MethodGet, "/v2/fabric/whoami", nil)

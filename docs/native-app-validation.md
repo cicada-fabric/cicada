@@ -7660,6 +7660,65 @@ product clock or production permission was changed. Full M2–M8 remain unaccept
 Windows DPAPI/ACL/GUI, Android, physical second Node, public HTTPS and actual
 24-hour expiry remain **NOT_RUN**.
 
+### 2026-10-26 complete defdd9d run and writer-fault timing
+
+Root integrated the producer's six-line reverse-current correction as clean
+`defdd9dbb7d44998a573de313cb16a2eefad2523`. The full existing entry, without
+diagnostic truncation or new scenarios, produced
+`run-20261026T185945Z-X9wRaB`: **FAIL / exit 1**. M1 passed in 140.37s and
+the complete M2 passed in 481.86s. Four real original native identities,
+independent G1/G2 grants, explicit selection and exact original SID/Endpoint/
+key/workspace checks passed. All four roundtrips (G2 D→B/A→C, G1 D→A/B→C)
+received their exact ASK and REPLY at the original native actors, once each.
+The previously failing reply now passes the actual native chain on this
+new source; old failed receipts retain their own status and source attribution.
+
+M3 failed its preparation after 18.26s, before actual removal: its ten-second
+writer-fault bound incorrectly began before the full Host ASK/status turns.
+Production's fifteen-second admission context begins at the native writer
+wait. The final readonly Inbox shows the new REQUEST at NODE_RECEIVED,
+updated 19:15:36.50865703Z, while the precondition failed at
+19:15:42.361142381Z. That timestamp alone does not recover the exact earlier
+positive authorization or establish that its production wait remained valid.
+M3's removal/fresh Guard assertions and all M4–M8 remain unaccepted; the
+final identity and real five-minute lease witnesses were not reached.
+
+The QA-only correction takes the first Forwarded/200 delivery authorization
+matching the original durable ASK message/request, source/target, Group and
+native SID. Its recorded time precedes the production writer wait and is
+retained without a refreshed deadline. Both M3 and M7 require actual revocation
+and writer release within ten seconds of that observation, then retain the
+same-path fresh Guard rejection and zero native injection assertions. Closed
+logs preserve the original request/message hashes, positive time and elapsed
+release budget. No product timeout, clock, Guard or Host identity changes.
+
+Source/harness were clean defdd9d, manifest
+`9f625ebcc3ffd0bed5f9aa60ed84b6c3a8051197ed490de49f62a2b5bb6eae38`;
+source and executable before/after hashes matched and the owned container was
+absent. Version, CLI/test compilation and vet exited 0; harness exited 1.
+Receipt `~/Cicada/.local/evidence/native-pair-acceptance/run-20261026T185945Z-X9wRaB/result.json`
+SHA-256 `2e5b9ebf08d09b61f4713c1a5f33e5d5647ba7c5bbfd534e10746457e47f07ec`.
+Closed artifact `owner-groups-protocol-audit/03e42b487f39cbb4.json` SHA-256
+`71fe53f719510cd42a2f964392f229801ab02276ff3b1c45bed6658cd2cf9fc5`.
+Executed CLI `9848747b821f317d766b20c7a6e8060b3b149b5461962b9bb94ce416503902af`;
+test binary `82d60a705883942737293af16c04c50e41f026079ed183c9050a808d8c42d56c`.
+These are independent QA builds, not execution of the separately packaged ZIP.
+The new defdd9d package's 48 license files equal the reused e5 material byte for
+byte; `license-materials-equivalence.json` in this run has SHA-256
+`7b2fd7acdd80569a08641bb45eaa27688dd7b36f3c174987eb431229bd59473e`.
+Reproduce with the same `--owner-endpoint-groups` command above; Windows,
+Android, physical second Node, public HTTPS and 24-hour expiry remain NOT_RUN.
+
+The timing-only fixture checkpoint compiled and both readonly privacy tests
+passed, exit 0, in pinned disposable Docker with readonly source/modules and a
+locked task cache. Dirty `312b497` manifest
+`c948b83fa93194913a5bc8fc7d6e61ff2a630262df2d3b30fe9d98c00055eb39`
+matched before/after; this final paragraph was added afterward. Receipt
+`~/Cicada/.local/evidence/n2-acceptance/owner-groups-writer-312b497-01/result.json`
+SHA-256 `80c6607c9ea833dc6dbba099230c3a52009e095f04f59ee9363fe26d7ca0258d`.
+No product test pass is inferred from compilation or synthetic privacy checks;
+a fresh clean full gate remains required.
+
 ### 2026-10-26 user-reported four-Thread Group continuation
 
 Root relayed the user's report that four real native Threads on the same Node
