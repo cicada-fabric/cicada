@@ -7928,6 +7928,82 @@ matched before/after; this final paragraph follows the checks. Receipt
 SHA-256 `9a80d5a690357356ddf43a2657656a2712cf0363b4103c417f605325a08776dc`.
 No new M4–M8 product pass is inferred. The original complete entry is retained.
 
+### 2026-10-26 M4 reply ticket failure after released completion
+
+Complete clean QA `d982a90b50798f0ba0d6aea485233cbb1693fd22`, production
+defdd9d, produced `run-20261026T211806Z-86ORrx`: **FAIL / exit 1**.
+M1 passed in 137.54s, M2 in 484.68s and complete M3 in 204.81s, with all
+original four identities and M3's eight facts retained. Actual same-profile
+login preserved Owner/device/binding without new grants; Network self 200,
+business/Leave 403 and exact writer release **7,508ms** passed.
+
+M4 crossed the previous reader boundary: its actual restarted Node state was
+**5,622,010 bytes**, observed at 21:37:53.511917084Z within the product 8 MiB
+limit, with unchanged original binding. This is a new measured observation;
+the older failed run's exact file/size remains NOT_RETAINED. Original external
+leave/join and Node/Host restart retained deny, and the subsequent original
+G2 request/reply roundtrip passed. Pending D-G1 re-add retained the old deny
+and zero new manual rights. Removal preceded release of its held old completion.
+Two independently authenticated results for the same old sequence 434 and
+ciphertext returned TARGET_NOT_AUTHORIZED at 21:40:07.776596193Z and
+21:40:15.408689405Z; the exact permanent-fence check passed. That expected
+negative result is separate from the later ticket failure.
+
+The failed roundtrip was `m4-released-original-g2`, D→C. Its actual ASK was
+SENT. Checkpoint **85**, C's request receive, matched on poll 0 at
+21:41:11.225669Z, with exactly one original native queue post. Request SHA-256:
+`66beaf717e24979e5bd19134f6de5c898bf16b4576a62ecdd7382179acf6dc39`.
+Checkpoint **86** was **C's cicada_reply**, whose latest Host diagnostic was
+CODEX_NODE_TICKET_UNAVAILABLE without successful coordinates. Checkpoint **87**
+then waited for the answer at D, with zero matching native posts for 75 seconds.
+The request ID is shared by ASK/REPLY, but question and answer body hashes
+are distinct; the already delivered REQUEST cannot satisfy the answer oracle.
+There were no unclassified provider posts. The final Inbox contains that
+REQUEST as CONSUMPTION_UNCONFIRMED, with no corresponding REPLY. Outbox totals
+were nine ASK and seven REPLY, consistent with seven completed roundtrips,
+the deliberately unanswered M3 ASK and this new ASK; no new successful reply
+operation was observed. This is a reply-issuance failure, not evidence that
+the ASK failed delivery or that D's ticket was refused.
+
+Final pending Node operation was empty/sequence zero and key-completion steps
+were settled. Authenticated Describe responses remained successful through
+21:42:33.109076071Z. Final process-liveness, exact issue latency, underlying
+ticket error/reserve/ticket count and final protected-state size are
+**NOT_RETAINED**. Hook diagnostics deliberately export a generic stage, so
+neither capacity nor mutex failure is established from these observations.
+Root and the original Hub/Node authors received the exact caller/phase and
+closed artifacts; production remains frozen while they investigate.
+
+The QA roundtrip now observes the original reply operation/status before
+waiting for its native result. Missing receipt, terminal failure or changed
+request fails immediately with the exact label/caller and closed diagnostic;
+PENDING/UNKNOWN remain uncertainty, never delivery success. Successful
+acceptance still requires the exact original request/reply and native once-only
+checks. No automatic redispatch, new grant or timeout extension was added.
+
+Source/harness were clean d982a90, manifest
+`509ccb7ac5b91a1c0a22b44aecdefbffb17b585c6830f6e06d05feb2f7dd746a`;
+source/executable hashes matched before/after and owned container was absent.
+Version, both compilations and vet exited 0; harness exited 1. Receipt
+`~/Cicada/.local/evidence/native-pair-acceptance/run-20261026T211806Z-86ORrx/result.json`
+SHA-256 `76582921f08b99a65bf0b4b1796e1de7f8fdc145383161a27dd3255ecc52d0ae`;
+closed artifact `owner-groups-protocol-audit/4f2a156bace9aa68.json` SHA-256
+`2c89f33ca40c1dbd637fc500bbe016847d0e4449b3837cd6642be2f365a13098`.
+M4 remains FAIL; its later finite-policy scenes, M5–M8, final identity and
+actual five-minute witness were not reached. Windows DPAPI/ACL/GUI, Android,
+physical second Node, public HTTPS and actual 24-hour expiry remain NOT_RUN.
+The original complete entry and defdd9d package are unchanged; no automatic
+full rerun was started after this failure.
+
+The reply-observation fixture checkpoint compiled and passed the two existing
+closed-metadata Inbox/Outbox privacy checks, exit 0, two PASS and no FAIL/SKIP.
+The disposable container was absent afterward. Dirty d982a90 source manifest
+`00ce880671eed826b5e939ae2e7faaefe24dae425a959b339411ff61db7b7e92`
+matched before/after; this final paragraph follows those checks. Receipt
+`~/Cicada/.local/evidence/n2-acceptance/owner-groups-reply-d982a90-01/result.json`
+SHA-256 `81ccf1d5af06c99a9f59fd8e821bffee9e48777c73efebb9e7d5b7ddf2c03242`.
+No production file changed and no new product pass is inferred from these checks.
+
 ### 2026-10-26 user-reported four-Thread Group continuation
 
 Root relayed the user's report that four real native Threads on the same Node

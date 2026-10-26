@@ -339,10 +339,15 @@ func (h *ownerGroupsHost) roundtrip(t *testing.T, label, group string, source, t
 	if received.QueuePosts[question] != 1 {
 		t.Fatal("exact request did not reach its original native Runtime once")
 	}
-	h.command(t, ownerGroupsHostCommand{Action: "call", Actor: target, Label: label + "-reply", Tool: "cicada_reply",
+	reply := h.command(t, ownerGroupsHostCommand{Action: "call", Actor: target, Label: label + "-reply", Tool: "cicada_reply",
 		Arguments: map[string]any{"request_id": request, "body": answer, "idempotency_key": h.fixtureScope + "-reply-" + label},
 		Queue:     []ownerGroupsQueueInput{{Body: answer, SID: h.originalSIDs[source], Sender: identities[target].Endpoint, Receiver: identities[source].Endpoint, GroupID: group, Kind: "reply"}},
-		BindQueue: map[string]string{answer: request}})
+		BindQueue: map[string]string{answer: request}, ObserveFields: []string{"operation_id", "request_id"}})
+	t.Logf("OWNER_GROUPS_REPLY_OBSERVATION label=%s-reply caller_actor=%d request_sha256=%s operation_present=%t status=%s", label, target, hash([]byte(request)), reply.Public["operation_id"] != "", reply.OperationStatus)
+	if reply.Public["operation_id"] == "" || (reply.OperationStatus != "PENDING" && reply.OperationStatus != "UNKNOWN" && reply.OperationStatus != "SENT") ||
+		(reply.Public["request_id"] != "" && reply.Public["request_id"] != request) {
+		t.Fatalf("actual REPLY lacks its original accepted operation: label=%s-reply caller_actor=%d diagnostic=%s", label, target, reply.Diagnostic)
+	}
 	replied := h.command(t, ownerGroupsHostCommand{Action: "receive_match", Actor: source, Label: label + "-reply-receive", Tool: "cicada_receive",
 		Arguments: map[string]any{"limit": 16}, ExpectedRequestID: request, ExpectedBodyMarker: answer})
 	if replied.QueuePosts[answer] != 1 {
