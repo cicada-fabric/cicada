@@ -959,3 +959,70 @@ their frozen source. This checkpoint claims no real Runtime/M1–M8, Android,
 physical device or public HTTPS pass, and changes no protocol identifier,
 identity, key or deployment. Schema-69 portable restore remains unreviewed
 and fail-closed as above.
+
+### Correlated REPLY current evidence correction, 2026-10-26
+
+Independent Runtime QA found an accepted REPLY with no original native queue
+post and no REPLY in the Node Inbox. Its closed live Inbox snapshot is
+`/home/zyf/Cicada/.local/evidence/native-pair-acceptance/run-20261026T182541Z-vhrU68/live-inbox-reply-barrier.json`,
+SHA-256 `e78c5cf34a74c1b1568b6166eeff2ce64a6d46998477fddd6108da3ce6f56003`.
+ASK and REPLY were each SENT once without an outbox error. That evidence alone
+did not identify the missing stage and is retained as a failed Runtime result.
+
+The real HTTP regression
+`TestEndpointGroupsHTTPReplyPreservesReverseCurrentAndOriginalBinding`
+reproduces the precise Hub defect using two original native registrations,
+their G1 bindings/keys, an independently Owner-approved G2, real PQ ASK/REPLY,
+claim and final authorization. ASK retains its original thirty-minute deadline;
+REPLY returns REPLIED and is claimed, but its final authorization omits
+EndpointGroupCurrent. The original reverse-pair helper copied the older Pair
+and LocalDomain current evidence and omitted the new Endpoint Group current.
+The Node therefore had no current source proof to verify before Inbox.Save.
+
+The six-line production correction copies the original current value, swaps
+its two Endpoint sources and assigns the reverse peer attempt. It leaves the
+original pair/current unchanged. Final carrier construction still binds it to
+the actual native-delivery attempt, with the original Owner heads, signed
+policies, registration, keys and binding coordinates. No deadline or Guard is
+relaxed. The real HTTP test independently verifies both resulting Owner proof
+chains, exact reverse sources and original SID/binding; removing the receiver
+then denies the same authorization.
+
+Hub gate evidence is retained at
+`/home/zyf/Cicada/.local/evidence/owner-groups-reply-current-20261026/`.
+The test first fails on the missing current and passes after the correction.
+Final relevant normal regression passes 16 events / 9 top-level, the new HTTP
+case passes race (1 / 1) and disposable Docker (1 / 1), all with zero
+failures/skips. All 1,168 internal Go/module source hashes remain identical
+before and after those gates. Docker uses the pinned Go 1.27.3 image above,
+UID 1000, no network, read-only source/modules and disposable executable tmpfs.
+These synthetic protocol tests do not relabel the failed real Runtime run or
+establish a new complete M1–M8 acceptance result.
+
+The original Node writer supplied
+`TestEndpointGroupsRealHTTPReplyReachesOriginalNodeInbox` in the same
+checkpoint. It reuses the actual TCP enrollment fixture, Owner SDK and original
+Node keys. The real claimed REPLY passes the production Node carrier parser,
+independent peer proof and pin checks, decrypts with the original key and is
+accepted into the original Node Inbox as NODE_RECEIVED with its G2 and causal
+request/reply metadata. Four negative cases reject missing current, a changed
+original binding, changed source and changed Owner head. The old Store produces
+the expected RED at the real Node parser; the six-line Store correction passes
+normal (7.001 seconds) and focused race (one main plus four subtests, zero
+failures/skips). No native Runtime or OS queue subprocess executes in this gate.
+
+Consumer evidence is
+`/home/zyf/Cicada/.local/evidence/owner-groups-node-reply-regression/receipt.json`,
+SHA-256 `32e9a93600c1611a17e2368960bc5a2cf274e038ab89e34069904000a073334a`.
+Its selected source is clean canonical `4ae7fea` plus exactly the new cmd test
+and corrected Store file via Go overlay. Production cmd/internal and module
+files are identical between `8d65fbe` and `4ae7fea`; the intervening changes are
+QA/driver/docs only. Selected Store SHA-256
+`ecaf6320bb20d85e32484b2760b5647a691dc26c3c31b9393e8d80786984ec02`
+and consumer test SHA-256
+`777c054e15f8bd8c609face11d44035dd3ff5bed722b801bd730f190782778a9`
+match the files included in this checkpoint. Its source remains stable before
+and after the gates. This consumer combination is separate from the parent
+Hub gate tree; neither is attributed solely to a dirty HEAD. The combined
+receipt is `owner-groups-reply-current-20261026/receipt.json` in the evidence
+directory above. Fresh complete original-Runtime M1–M8 remains pending.

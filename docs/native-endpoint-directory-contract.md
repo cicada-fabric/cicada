@@ -1230,6 +1230,10 @@ a stale verifier reject. Existing Pair evidence is not admitted by this profile.
 Both source and target Nodes independently check
 Owner trust and the exact same Group/current key evidence before sealing or
 opening. No Hub-supplied public key replaces the independent Owner pin.
+REPLY reverses both Endpoint sources in the current evidence while retaining
+their original registration, keys, bindings and Owner heads. Its final delivery
+carrier must include that reversed current for the exact native-delivery
+attempt; acceptance or claim does not substitute for the Node's verification.
 
 ### Removal, independent renewal and original-packet recovery
 
