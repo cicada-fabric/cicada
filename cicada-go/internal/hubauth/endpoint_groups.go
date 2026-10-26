@@ -21,7 +21,13 @@ func (s *Service) OwnerEndpointGroupsCapabilities() (wire.OwnerEndpointGroupsCap
 	if err != nil {
 		return wire.OwnerEndpointGroupsCapabilities{}, err
 	}
-	return wire.NewOwnerEndpointGroupsCapabilities(hub)
+	caps, err := wire.NewOwnerEndpointGroupsCapabilities(hub)
+	if err != nil {
+		return wire.OwnerEndpointGroupsCapabilities{}, err
+	}
+	caps.Available = true
+	caps.NativeSelfGroups = true
+	return caps, nil
 }
 
 func (s *Service) openEndpointGroups(raw []byte, operation string, hub wire.HubIdentity, trusted e2ee.PublicIdentity) (store.HubEndpointGroupsInput, store.HubEndpointGroupsSeal, error) {

@@ -873,3 +873,46 @@ Portable Hub checkpoint/export/restore for schema 69 remains unreviewed and
 fails closed; ordinary Store reopen and exact durable-receipt recovery are
 separate tested behavior. No shared development Hub or real credentials were
 used, and no merge/push/deployment is included.
+
+### Integrated availability and registration heartbeat candidate, 2026-10-26
+
+The configured complete HubNodes service now advertises Available and
+NativeSelfGroups. Inventory defaults and implementation phase are updated to
+INTEGRATED_CANDIDATE; the bare DTO factory still advertises neither capability.
+Availability supplies no Root, caller or Group authorization. This is a local
+integration candidate for QA, with no Runtime/M1–M8, release or deployment pass.
+
+The existing empty-Group heartbeat now has a narrow original-registration
+path shared by full Fabric and bounded HubNodes routers. It checks the exact
+original token/anchor, current Owner/Node and live native/access leases after
+taking the writer. It renews liveness for five minutes, returns no Group or
+membership authority, preserves key/token/IDs/epochs and creates no permanent
+Node operation receipt. It works with G1 denied while G2 is active and after
+last-Group removal. A cold token is rejected; resumption still needs the exact
+signed Node renewal. The zero-Group actor rejection also exposed and fixed a
+nil lookup for an absent Group; absence now denies rather than panicking.
+
+Evidence is
+`/home/zyf/Cicada/.local/evidence/owner-groups-live-cap-20261026T152436Z/`.
+The combination uses canonical `5d0699d` (Core, Node CLI and App recovery) plus
+hashed parent Hub changes. A reverse overlay supplies the 67 exact committed
+Node CLI/nodekeys differences over the parent tree so runtime inventory reads
+use the actual candidate JSON. Production HTTP, legacy LocalDomain TCP and
+inventory checks pass 12 events / 5 top-level, with zero failures/skips; the
+new production heartbeat case passes under race (1 event, zero failures/skips).
+Metadata and five oracle tests pass. The receipt records the exact snapshots;
+a dirty combination is not identified solely by its HEAD.
+
+The first combination retains a consumer FAIL in
+`TestEndpointGroupsExplicitJoinKeepsG1DenyAndG2WithoutAutoSelection`: enabling the
+real service lets the ordinary managed wake batch observe relation revision 3
+before the scripted fixture sends revision 2. Diagnostic comparison confirms
+the original anchor is identical; the production rollback guard correctly
+rejects the stale scripted snapshot. The Node writer is fixing only the fixture
+under its existing mutex and retaining its actual anchor/receipts/high-water.
+This failure remains unresolved at this candidate checkpoint and is not a pass.
+Earlier inventory phase/default expectation failures and the Go-only-overlay
+runtime-resource mismatch are also retained; final inventory/metadata checks
+use the new availability values and pass. Final integrated consumer and real
+Runtime gates remain pending. The previous Docker receipt belongs to Core
+`755053b`; no new heartbeat Docker result is claimed here.

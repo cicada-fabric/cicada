@@ -45,7 +45,7 @@ func TestOwnerEndpointGroupsMachineContractMatchesSharedDTO(t *testing.T) {
 			t.Fatalf("%s field order disagrees: got %v want %v", key, got, expected)
 		}
 	}
-	expected := map[string]any{"contract_revision": OwnerEndpointGroupsContractRevision, "implementation_phase": OwnerEndpointGroupsImplementationPhase, "default_available": false, "native_self_groups_default_available": false, "rights": e2ee.EndpointGroupRights(), "max_body_bytes": MaxOwnerEndpointGroupsBodyBytes, "max_page_canonical_bytes": MaxOwnerEndpointGroupsPageBytes, "max_original_bytes": MaxOwnerEndpointGroupsOriginalBytes, "max_packet_bytes": MaxOwnerEndpointGroupsPacketBytes, "max_reconcile_body_bytes": MaxOwnerEndpointGroupsReconcileBodyBytes, "max_reconcile_packet_bytes": MaxOwnerEndpointGroupsReconcilePacketBytes, "max_peer_carrier_bytes": MaxEndpointGroupCarrierBytes}
+	expected := map[string]any{"contract_revision": OwnerEndpointGroupsContractRevision, "implementation_phase": OwnerEndpointGroupsImplementationPhase, "default_available": true, "native_self_groups_default_available": true, "factory_default_available": false, "factory_native_self_groups_default_available": false, "rights": e2ee.EndpointGroupRights(), "max_body_bytes": MaxOwnerEndpointGroupsBodyBytes, "max_page_canonical_bytes": MaxOwnerEndpointGroupsPageBytes, "max_original_bytes": MaxOwnerEndpointGroupsOriginalBytes, "max_packet_bytes": MaxOwnerEndpointGroupsPacketBytes, "max_reconcile_body_bytes": MaxOwnerEndpointGroupsReconcileBodyBytes, "max_reconcile_packet_bytes": MaxOwnerEndpointGroupsReconcilePacketBytes, "max_peer_carrier_bytes": MaxEndpointGroupCarrierBytes}
 	for key, want := range expected {
 		var got, normalized any
 		encoded, _ := json.Marshal(want)

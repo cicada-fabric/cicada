@@ -787,12 +787,14 @@ explicitly new managed scopes; this is not evidence of migration of older scopes
 
 ## Proposed Owner-managed Endpoint Groups v1
 
-**SOURCE PHASE: HUB STORE/RPC/GUARDS CANDIDATE, 2026-10-26.** Root approved the
+**SOURCE PHASE: INTEGRATED CANDIDATE, 2026-10-26.** Root approved the
 contract at `e3544d9`. The Hub candidate adds schema 69, durable Owner and Node
 transactions, bounded production HTTP/RPC handlers, exact receipts, original
 registration renewal and per-Endpoint source Guards to the shared Go codecs.
-The profile is `owner-endpoint-groups-v1`; public availability remains **false**
-pending the integrated Core/CLI gate. Node/MCP and App implementations retain
+The profile is `owner-endpoint-groups-v1`. The configured complete HubNodes
+service now advertises Available and NativeSelfGroups; a bare DTO factory and
+uninstalled service default to false. Availability describes implementation,
+not caller authorization. Node/MCP and App implementations retain
 separate commit and validation attribution; this Hub checkpoint claims no real
 native Runtime or M1–M8 pass. The machine inventory remains the separate
 `proposed_owner_endpoint_groups` object in `owner-endpoint-contract.json`.
@@ -1292,6 +1294,14 @@ local access, and never auto-selects a Group. With no usable Groups it reports
 registration ready and asks the Owner to add one. Legacy global/Group Leave
 cannot borrow these five rights.
 
+A managed empty-Group POST to the existing `/v2/fabric/heartbeat` renews only
+the still-live original registration token/anchor under current Owner and Node
+checks. It returns no Group or membership authority, creates no permanent Node
+mutation receipt, and works after G1 denial or removal of the last Group. It
+cannot resume an expired lease: cold renewal still requires the original
+currently approved signed Node request. Both bounded HubNodes and full Fabric
+routers enforce this same narrow path; general AuthenticateForGroup is unchanged.
+
 Linux terminal `join --thread ID --name NAME` / `leave --thread ID` are thin
 local operator entries. The ID only selects a real owned Codex record; existing
 private Node discovery, original anchor and one-use invocation proof remain
@@ -1324,8 +1334,9 @@ An explicit cicada_use_group after this list still performs its fresh context
 and exact current Group Guard, and must be callable from registered-but-unselected
 state without requiring re-Join. Neither tool creates relation/key authority.
 Old/unknown profiles return UNSUPPORTED_PROFILE for this new list, preserving
-their old behavior. The tool is reserved by this contract only: current binaries
-do not advertise it and no new production MCP tool is added by this checkpoint.
+their old behavior. The integrated Node candidate advertises it only for the
+verified new profile; the Hub capability describes this availability and supplies
+no per-caller authorization.
 
 The encrypted operation ledger states are PREPARED, COMPLETED,
 REJECTED_FENCED and READ_EXPIRED. A completed apply may have a PENDING_KEY
@@ -1457,8 +1468,8 @@ implementation and same-source security gates.
 Group/scope-action cards. `e2ee.EndpointGroupPolicy` and its `Core()` projection
 keep request proofs, persistent Owner policy and delegated Node-key proof in
 separate purposes and domains. No legacy verifier accepts their new optional
-expiry. New capabilities constructed by this source have both availability
-flags false.
+expiry. Bare capabilities constructed by the DTO factory have both availability
+flags false; only the complete configured service advertises true.
 
 The App uses `NewOwnerEndpointGroupsRead/Prepare` with its existing
 `AppNodeSession`, `OwnerAppNodeScope`, independent Owner key and trusted time.
@@ -1495,8 +1506,9 @@ The Hub candidate implements schema migration 69, original-registration referenc
 Owner review/nonce and operation ledgers, exact sealed-response transactions,
 Node describe/key/renew/reconcile handlers and per-Endpoint source Guards. It
 reuses the retained Owner, Node, Principal, Endpoint, candidate and binding;
-registration renewal creates no business authority. Public capability defaults
-remain false until the integrated source passes its required gates. Node/MCP
+registration renewal creates no business authority. The configured service advertises implementation availability after the
+integrated Core/CLI deterministic gate; current encrypted Owner, Node and
+per-Endpoint Guards still decide every operation. Node/MCP
 and App consumers have separate source attribution and validation; these Hub
 results do not establish M1–M8 or native Runtime behavior.
 

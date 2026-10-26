@@ -103,8 +103,8 @@ func endpointGroupsRealHTTP(t *testing.T) *endpointGroupsHTTPFixture {
 	}
 	status, raw := n3HTTP(t, a.f, http.MethodGet, wire.OwnerEndpointGroupsCapabilitiesPath, "", nil)
 	caps, err := wire.DecodeOwnerEndpointGroupsCapabilities(raw, a.f.hub)
-	if status != http.StatusOK || err != nil || caps.Available || caps.NativeSelfGroups {
-		t.Fatal("pre-availability checkpoint changed its public capabilities", status, err)
+	if status != http.StatusOK || err != nil || !caps.Available || !caps.NativeSelfGroups {
+		t.Fatal("complete HubNodes service did not advertise its real Group capabilities", status, err)
 	}
 	now := time.Now().UTC()
 	nonce, err := wire.NewNonce()

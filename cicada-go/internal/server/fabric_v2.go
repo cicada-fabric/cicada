@@ -62,6 +62,9 @@ func (h *Handler) fabricV2(response http.ResponseWriter, request *http.Request) 
 		writeJSON(response, http.StatusCreated, result)
 		return
 	}
+	if h.registrationHeartbeat(response, request) {
+		return
+	}
 	token, err := fabricpkg.SessionCredentialFromAuthorization(request.Header.Get("Authorization"))
 	if err != nil {
 		writeError(response, http.StatusUnauthorized, fabricpkg.ErrUnauthenticated)
@@ -398,4 +401,25 @@ func fabricV2Error(response http.ResponseWriter, err error) {
 		status = http.StatusConflict
 	}
 	writeError(response, status, err)
+}
+
+// Shared by the full Fabric router and the bounded HubNodes self composition.
+func (h *Handler) registrationHeartbeat(w http.ResponseWriter, r *http.Request) bool {
+	if h.fabricService == nil || r.URL.Path != "/v2/fabric/heartbeat" || r.Method != http.MethodPost || strings.TrimSpace(r.Header.Get("Cicada-Group-Scope")) != "" {
+		return false
+	}
+	token, err := fabricpkg.SessionCredentialFromAuthorization(r.Header.Get("Authorization"))
+	if err != nil {
+		return false
+	}
+	renewed, managed, err := h.fabricService.RegistrationHeartbeat(token)
+	if err != nil {
+		fabricV2Error(w, err)
+		return true
+	}
+	if !managed {
+		return false
+	}
+	writeJSON(w, http.StatusOK, renewed)
+	return true
 }

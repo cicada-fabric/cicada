@@ -16,6 +16,9 @@ func (h *hubNodesHandler) nativePairSelf(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
 		return
 	}
+	if h.base.registrationHeartbeat(w, r) {
+		return
+	}
 	token, err := fabric.SessionCredentialFromAuthorization(r.Header.Get("Authorization"))
 	if err != nil {
 		writeError(w, http.StatusUnauthorized, fabric.ErrUnauthenticated)

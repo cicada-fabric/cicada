@@ -297,8 +297,9 @@ func DecodeOwnerEndpointGroupsCapabilities(raw []byte, hub HubIdentity) (OwnerEn
 	return c, nil
 }
 
-// Availability remains false until the complete Store/Node/Guard integration
-// has passed its source-specific gates. This factory does not install a route.
+// A bare DTO factory installs no service and defaults to unavailable. The
+// configured complete HubNodes service explicitly publishes its availability;
+// current encrypted Owner/Endpoint authority remains a separate check.
 func NewOwnerEndpointGroupsCapabilities(hub HubIdentity) (OwnerEndpointGroupsCapabilities, error) {
 	fp, err := HubFingerprint(hub)
 	if err != nil {

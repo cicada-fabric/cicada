@@ -96,9 +96,9 @@
   },
   "proposed_owner_endpoint_groups": {
     "contract_revision": "owner-endpoint-groups-v1",
-    "status": "CONTRACT_DRAFT",
-    "implementation_phase": "HUB_STORE_RPC_GUARDS_CANDIDATE",
-    "default_available": false,
+    "status": "INTEGRATED_CANDIDATE",
+    "implementation_phase": "INTEGRATED_CANDIDATE",
+    "default_available": true,
     "wire_version": 1,
     "legacy_contract_unchanged": true,
     "schema_migration": 69,
@@ -813,7 +813,7 @@
     "key_challenge_digest_domain": "cicada/owner/endpoint-groups/key-challenge/v1\u0000",
     "node_signs_projected_active_state": true,
     "pending_manual_resets_existing_active_source": false,
-    "native_self_groups_default_available": false,
+    "native_self_groups_default_available": true,
     "self_groups": {
       "tool": "cicada_groups",
       "required": [],
@@ -951,6 +951,8 @@
     "current_operations": [
       "peer_key",
       "native_delivery"
-    ]
+    ],
+    "factory_default_available": false,
+    "factory_native_self_groups_default_available": false
   }
 }

@@ -23,7 +23,7 @@ class EndpointGroupContractTests(unittest.TestCase):
 
     def test_reject_unsafe_mutations(self):
         replacements = {
-            "default_available": True,
+            "default_available": False,
             "status": "IMPLEMENTED",
             "implementation_phase": "HUB_NODE_APP",
             "legacy_finite_key_grant_allows_empty_expiry": True,
@@ -95,7 +95,7 @@ class EndpointGroupContractTests(unittest.TestCase):
 
     def test_implemented_claim_in_prose_is_not_a_pass(self):
         with self.assertRaises(AssertionError):
-            CONTRACT.check_owner_endpoint_groups(self.group, PROSE.replace("HUB STORE/RPC/GUARDS CANDIDATE", "IMPLEMENTED"))
+            CONTRACT.check_owner_endpoint_groups(self.group, PROSE.replace("INTEGRATED CANDIDATE", "IMPLEMENTED"))
 
     def test_reject_missing_actual_guard_boundary(self):
         for marker in ("Every actual Actor Guard must enforce",

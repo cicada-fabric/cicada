@@ -16,19 +16,19 @@ def fields(source, name):
 def check_owner_endpoint_groups(g, prose):
     """Shared-profile oracle: reject widening or an implied service/runtime pass."""
     assert g["contract_revision"] == "owner-endpoint-groups-v1"
-    assert g["status"] == "CONTRACT_DRAFT"
-    assert g["implementation_phase"] == "HUB_STORE_RPC_GUARDS_CANDIDATE"
-    for key in ("default_available", "new_identity_tables",
+    assert g["status"] == "INTEGRATED_CANDIDATE"
+    assert g["implementation_phase"] == "INTEGRATED_CANDIDATE"
+    for key in ("factory_default_available", "factory_native_self_groups_default_available", "new_identity_tables",
                 "legacy_finite_key_grant_allows_empty_expiry",
                 "app_session_required_for_active_data_plane",
                 "automatic_owner_key_signing", "mcp_join_changed",
                 "control_inference_required", "group_creation_auto_enrolls_endpoint",
                 "uncertain_clears_pending", "native_context_requires_default_policy",
                 "native_context_fallback_to_legacy", "pending_manual_resets_existing_active_source",
-                "native_self_groups_default_available", "manual_expiry_default_fallback",
+                "manual_expiry_default_fallback",
                 "pending_manual_clears_deny", "owner_control_mode_reverts_to_default"):
         assert g[key] is False, key
-    for key in ("legacy_contract_unchanged",
+    for key in ("default_available", "native_self_groups_default_available", "legacy_contract_unchanged",
                 "registration_identity_preserved_on_last_group_remove",
                 "policy_revoke_withdraws_only_its_source",
                 "normal_cold_renewal_preserves_binding_epoch",
@@ -179,7 +179,7 @@ def check_owner_endpoint_groups(g, prose):
     for value in [g["contract_revision"], g["capabilities_path"], g["policy_purpose"],
                   g["node_key_purpose"], *g["http_operations"], *g["owner_request_purposes"].values()]:
         assert value in prose, value
-    for marker in ("HUB STORE/RPC/GUARDS CANDIDATE", "permanent manual deny",
+    for marker in ("INTEGRATED CANDIDATE", "permanent manual deny",
                    "until_revoked", "Node/MCP restart", "NOT_RUN",
                    "App closure", "legacy", "past the actual lease-renewal"):
         assert marker in prose, marker
@@ -240,7 +240,7 @@ def check():
     assert not set(manifest["proposed_owner_endpoint_groups"]["http_operations"]) & {
         row["id"] for row in catalog["operations"]}
     assert "parseCanonicalUTC(grant.ExpiresAt)" in (ROOT / "cicada-go/internal/e2ee/owner_link_key_grant.go").read_text()
-    print("owner-endpoint-groups-v1: HUB_STORE_RPC_GUARDS_CANDIDATE metadata PASS (availability false; Runtime gates NOT_RUN)")
+    print("owner-endpoint-groups-v1: INTEGRATED_CANDIDATE metadata PASS (configured service available; Runtime gates NOT_RUN)")
     print("native-endpoint-directory-v1: PASS (wire 1, catalog 55, old activation scope unchanged)")
 
 

@@ -4,7 +4,7 @@ import "github.com/cicada-ai/cicada/internal/e2ee"
 
 const (
 	OwnerEndpointGroupsContractRevision        = "owner-endpoint-groups-v1"
-	OwnerEndpointGroupsImplementationPhase     = "HUB_STORE_RPC_GUARDS_CANDIDATE"
+	OwnerEndpointGroupsImplementationPhase     = "INTEGRATED_CANDIDATE"
 	OwnerEndpointGroupsFormat                  = "cicada.owner-endpoint-groups.v1"
 	OwnerEndpointGroupsResultFormat            = "cicada.owner-endpoint-groups-result.v1"
 	OwnerEndpointGroupsCapabilitiesFormat      = "cicada.owner-endpoint-groups-capabilities.v1"

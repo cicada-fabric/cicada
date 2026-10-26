@@ -13,7 +13,7 @@ import (
 
 func endpointGroupsGroupTx(tx *sql.Tx, owner, network, group string) (*Group, error) {
 	g, err := scanGroup(tx.QueryRow(`SELECT `+groupColumns+` FROM groups WHERE id=?`, group))
-	if err != nil || g.OwnerPrincipalID != owner || g.NetworkID != network || g.State != GroupStateActive || g.ContextPolicy != "group_scoped" || g.Version <= 0 || g.Revision <= 0 {
+	if err != nil || g == nil || g.OwnerPrincipalID != owner || g.NetworkID != network || g.State != GroupStateActive || g.ContextPolicy != "group_scoped" || g.Version <= 0 || g.Revision <= 0 {
 		return nil, ErrNetworkPermission
 	}
 	var count int
