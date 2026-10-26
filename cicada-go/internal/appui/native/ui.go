@@ -137,6 +137,12 @@ type view struct {
 	localDomainNodeID        string
 	localDomainReviewID      string
 	localDomainStateReviewID string
+	threadGroupsScope        string
+	threadGroupReviewID      string
+	threadGroupName          widget.Editor
+	threadGroupSearch        widget.Editor
+	threadGroupDuration      widget.Enum
+	threadGroupConsent       widget.Bool
 }
 
 func newView(controller appcore.Controller, ctx context.Context, cancel context.CancelFunc, window *app.Window) *view {
@@ -586,6 +592,11 @@ func (v *view) resetPresentationInputs() {
 	v.localDomainNodeID, v.localDomainReviewID, v.localDomainStateReviewID = "", "", ""
 	v.localDomainConsent.Value, v.localDomainRevokeConsent.Value = false, false
 	v.localDomainExpiry.Value = "until"
+	v.threadGroupsScope, v.threadGroupReviewID = "", ""
+	v.threadGroupName.SetText("")
+	v.threadGroupSearch.SetText("")
+	v.threadGroupDuration.Value = "until_revoked"
+	v.threadGroupConsent.Value = false
 	v.nodePinDetails = false
 	v.details, v.preview, v.replacementInput = false, false, false
 	v.canvas = canvasWidget{}

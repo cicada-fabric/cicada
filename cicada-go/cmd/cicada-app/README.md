@@ -3,8 +3,8 @@
 `cicada-app` is the native Go/Gio desktop entry point. It opens the local
 `appcore` controller and renders only its sanitized snapshot. Hub health, an
 account session, Owner proof, Root activation, and Manager authorization remain
-separate states. The App has no authorized topology read path; the canvas
-therefore stays empty unless a future authorized provider supplies objects.
+separate states. The canvas has no general authorized topology provider and
+stays empty unless a future authorized provider supplies objects.
 “Local preview” is a separate, explicitly labeled fixture view and never creates
 Hub status or sends a request.
 
@@ -37,6 +37,69 @@ The native UI presents connection, local keys, account and recovery steps in
 English and Chinese with a shared card and button style. Actual Windows visuals,
 DPAPI and ACL execution require a Windows acceptance run.
 
+The current vault permits 21 state records, reserving five independent
+namespaces for Owner-managed Thread Group requests, responses, recovery and
+review state. This changes only the record count: the 1 MiB per-record,
+4 MiB complete plaintext, 8 MiB file and two-private-key limits remain intact.
+Request preflight must fit the full future response/recovery budget before
+network I/O; an unknown original is never evicted to make space. Older readers
+retain opaque namespaces when the total is at most sixteen and refuse larger
+vaults without rewriting or creating another profile. Platform execution and
+the actual old-reader compatibility gate are reported separately.
+
+Owner-managed Thread Groups use the shared `owner-endpoint-groups-v1` SDK and
+the original profile's locally protected Owner signer. After account login,
+the Sessions page shows registered Threads by name, Node and workspace, their
+Group relations in the selected Network, and authorized Group choices. It can
+create one named empty Group, then separately review adding one Thread, or
+remove one exact Thread/Group relation. Public identifiers are copyable in
+folded details; users enter no IDs, JSON or signatures. This does not add a
+general Group editor or change the AI's currently selected Group. The skill
+uses a current-Thread self-listing tool only when advertised, then selects an
+authorized Group by its returned ID without asking the user to transfer it.
+
+Authorization defaults to until revoked, with explicit 1/7/30-day choices.
+The review deadline, account login and persistent policy have distinct
+lifetimes. Apply records only a pending manual contribution until the original
+Node completes its key checks. Cards distinguish that contribution from any
+existing effective default source and show Owner control and expiry in details.
+The confirmation explains that Owner takeover does not fall back to default
+authority after removal or expiry, and that one Thread retains its conversation
+context across Groups without automatic old-record sharing.
+
+All requests and exact recovery wrappers are committed before POST, with a
+no-write budget for the original response, recovery response and retained
+review. Bare HTTP failures retain the uncertain original. Recovery verifies
+the nested original receipt before caching it; a truly unseen apply settles
+only through the shared SDK's exact permanent no-effect fence and requires a
+new explicit review for another intent. Historical receipts never update a
+current membership card. Restart uses the same profile/keys and requires the
+original account's current login before Group recovery. Missing or false
+capability displays the feature as unavailable without a legacy fallback.
+Core synthetic response-actor checks and Windows cross-compilation do not
+establish real Hub/Node, native Runtime or physical Windows acceptance.
+
+The 2026-10-26 Group producer checks used pinned Go 1.27.3 on dirty baseline
+`27dd52c98bee1d201fe814dacceed59ad917852b`. The complete appcore, appvault,
+appui and native suites passed 574 test events with no failures or skips.
+The aggregate command exited one because two componentinstall test events
+rejected a group-writable temporary directory under the host's `umask 0002`;
+that unchanged package passed all 54 events when rerun under `umask 0077`.
+The targeted Group/vault/catalog race run passed 20 events. A subsequent
+four-file Group scope/login isolation delta passed 18 normal and 18 race
+events. Both stages passed vet and the Windows GUI cross-build. Neither
+stage had a race report or skip. The source manifests were respectively
+`2aafad1397354b4b6478e216307151d1d3526c318318d58f57d5357e51604255`
+and `6a05768ea2b5ce03e1a7908008907f5e367376cea0dcb62d4940861409c7eadf`.
+Logs, commands and dirty-source manifests remain under
+`~/Cicada/.local/evidence/n2-app/owner-groups-final-20261026T133950491504Z/`
+and `owner-groups-scope-delta-20261026T135028715061Z/`. The actual retained
+sixteen-record reader compatibility gate is recorded separately in
+`vault21-legacy16-20261026T113621371229Z/`. This validation prose was added
+after the checks; tested implementation and test bytes did not change.
+Disposable Docker/Hub/Node and actual native Runtime acceptance remain the
+QA gate; physical Windows DPAPI, ACL and GUI execution remain unrun here.
+
 The direct trusted-Hub profile also offers one device-pairing-code field. Paste
 the Node's `cicada-npt1.` code, review the authenticated computer name and approve
 once. The original Owner signs locally. The whole code and its local secret are
@@ -49,13 +112,13 @@ pairing is available through an explicit advanced compatibility choice.
 
 The original pairing request, secret, finite consent, proof/capsule and reserved
 confirmation stay in the existing encrypted Node record. NPT recovery and N3
-recovery reuse the existing recovery namespace mutually exclusively, keeping
-the vault's sixteen-record limit. Recovery's local DTO references the durable
+recovery reuse the existing recovery namespace mutually exclusively. That
+checkpoint kept the then-current sixteen-record limit. Recovery's local DTO references the durable
 original by digest instead of duplicating its base64 bytes; canonical body-digest
 verification reconstructs only the typed DTO, never reseals the saved packet.
 Authenticated responses are durable before application, and storage-budget
 checks include future response, recovery and immutable confirmation records.
-No vault bounds are increased. Per-operation local response ceilings are below
+No vault bounds were increased by that pairing checkpoint. Per-operation local response ceilings are below
 the shared transport limits; an oversized or unauthenticated response preserves
 the uncertain original. A request-specific no-effect fence is followed by a
 fresh attempt observation and does not invent an attempt terminal state.

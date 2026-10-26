@@ -151,6 +151,7 @@ type Snapshot struct {
 	Pair             PairSetupSnapshot     `json:"pair"`
 	Storage          StorageSnapshot       `json:"storage"`
 	OwnerEndpoints   OwnerEndpointSnapshot `json:"owner_endpoints"`
+	ThreadGroups     ThreadGroupsSnapshot  `json:"thread_groups"`
 
 	LocalCollaboration LocalCollaborationSnapshot `json:"local_collaboration"`
 }
@@ -228,6 +229,7 @@ type Action struct {
 	Kind           ActionKind
 	Pair           PairAction
 	OwnerEndpoints OwnerEndpointReadAction
+	ThreadGroups   ThreadGroupAction
 
 	LocalCollaboration LocalCollaborationAction
 

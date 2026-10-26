@@ -33,7 +33,7 @@ const (
 	maxVaultPlainBytes = 4 << 20
 	maxIdentityBytes   = 64 << 10
 	maxStateBytes      = 1 << 20
-	maxStateRecords    = 16
+	maxStateRecords    = 21
 	maxVaultEntries    = 2
 	maxScopeText       = 256
 	maxWrappedKeyBytes = 4096

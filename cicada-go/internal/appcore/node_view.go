@@ -255,6 +255,9 @@ func (c *nativeController) nodeCanStartInitial() bool {
 }
 
 func (c *nativeController) nodeActions() []ActionKind {
+	if c.hasThreadGroupPending() {
+		return nil
+	}
 	if c.nodePairTrustBusy() && !c.pairTrustWorking {
 		return nil
 	}

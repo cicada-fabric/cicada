@@ -104,7 +104,8 @@ type nativeController struct {
 	ownerEndpointError        string
 	ownerEndpointResult       *wire.OwnerEndpointReadResult
 
-	localDomain localDomainRuntime
+	localDomain  localDomainRuntime
+	threadGroups threadGroupsRuntime
 }
 
 func NewController(config Config) (Controller, error) {
@@ -169,6 +170,7 @@ func (c *nativeController) Snapshot() Snapshot {
 	expirePairView(&view, c.cfg.Now().UTC())
 	expireLocalCollaborationView(&view, c.cfg.Now().UTC())
 	expireOwnerEndpointView(&view, c.cfg.Now().UTC())
+	expireThreadGroupsView(&view, c.cfg.Now().UTC())
 	return view
 }
 
@@ -196,6 +198,9 @@ func (c *nativeController) Dispatch(ctx context.Context, action Action) (dispatc
 	if c.nodePairTrustBusy() && (nodeActionKind(action.Kind) || pairActionKind(action.Kind) || localCollaborationActionKind(action.Kind) || ownerEndpointActionKind(action.Kind) || action.AutoNodeStatus != nil) {
 		return ErrInvalidAction
 	}
+	if c.hasThreadGroupPending() && (nodeActionKind(action.Kind) || pairActionKind(action.Kind) || localCollaborationActionKind(action.Kind) || ownerEndpointActionKind(action.Kind) || action.AutoNodeStatus != nil) {
+		return ErrInvalidAction
+	}
 	if action.AutoNodeStatus != nil && action.Kind != ActionRefreshNode {
 		return ErrInvalidAction
 	}
@@ -220,15 +225,21 @@ func (c *nativeController) Dispatch(ctx context.Context, action Action) (dispatc
 	stop := context.AfterFunc(c.lifetime, cancel)
 	defer func() { stop(); cancel() }()
 	defer func() {
-		if dispatchErr == nil && !nodeActionKind(action.Kind) && !pairActionKind(action.Kind) && !ownerEndpointActionKind(action.Kind) && action.Kind != ActionExportOwnerPublic {
+		if dispatchErr == nil && !threadGroupActionKind(action.Kind) && !nodeActionKind(action.Kind) && !pairActionKind(action.Kind) && !ownerEndpointActionKind(action.Kind) && action.Kind != ActionExportOwnerPublic {
 			c.initializeNode(operationCtx)
 		}
-		if dispatchErr == nil && !localCollaborationActionKind(action.Kind) {
+		if dispatchErr == nil && !threadGroupActionKind(action.Kind) && !localCollaborationActionKind(action.Kind) {
 			c.initializeLocalCollaboration(operationCtx)
+		}
+		if dispatchErr == nil && !threadGroupActionKind(action.Kind) {
+			c.initializeThreadGroups(operationCtx)
 		}
 	}()
 	if action.Kind == ActionRefresh {
 		c.nodeDiscoveryTried = false
+		if !c.hasThreadGroupPending() {
+			c.threadGroups.discoveryTried = false
+		}
 	}
 	if action.Kind != ActionConnect && action.Kind != ActionDiscoverProfiles && action.Kind != ActionResumeProfile {
 		if err := c.expireKnownSession(); err != nil {
@@ -237,6 +248,16 @@ func (c *nativeController) Dispatch(ctx context.Context, action Action) (dispatc
 	}
 
 	switch action.Kind {
+	case ActionReadThreadGroups, ActionReadThreadRelations, ActionReadGroupCandidates:
+		return c.readThreadGroups(operationCtx, action.Kind, action.ThreadGroups)
+	case ActionPrepareThreadGroup:
+		return c.prepareThreadGroup(operationCtx, action.ThreadGroups)
+	case ActionApplyThreadGroup:
+		return c.applyThreadGroup(operationCtx, action.ThreadGroups)
+	case ActionDismissThreadGroup:
+		return c.dismissThreadGroup(action.ThreadGroups)
+	case ActionRecoverThreadGroup:
+		return c.recoverThreadGroup(operationCtx)
 	case ActionReviewNodePairing:
 		return c.reviewNodePairing(operationCtx, action.DevicePairingCode)
 	case ActionApproveNodePairing:
@@ -566,6 +587,9 @@ func (c *nativeController) connect(ctx context.Context, action Action) error {
 	}
 	if err := c.loadNodeState(); err != nil {
 		return c.failStorage("APP_NODE_STATE_INVALID", err)
+	}
+	if err := c.ensureThreadGroupsLoaded(); err != nil {
+		return c.failStorage("APP_THREAD_GROUP_STORAGE_FAILED", err)
 	}
 	if material != nil {
 		if err := c.installActivationMaterial(*material); err != nil {

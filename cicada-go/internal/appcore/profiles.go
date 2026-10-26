@@ -165,6 +165,9 @@ func (c *nativeController) resumeProfileAt(ctx context.Context, id, address stri
 	if err := c.loadNodeState(); err != nil {
 		return c.failStorage("APP_NODE_STATE_INVALID", err)
 	}
+	if err := c.ensureThreadGroupsLoaded(); err != nil {
+		return c.failStorage("APP_THREAD_GROUP_STORAGE_FAILED", err)
+	}
 	if err := c.restoreSession(); err != nil {
 		return c.failStorage("APP_SESSION_STATE_INVALID", err)
 	}

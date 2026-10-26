@@ -75,7 +75,7 @@ func (c *nativeController) hasOwnerEndpointPending() bool {
 }
 
 func (c *nativeController) canReadOwnerEndpoints() bool {
-	return c.pairAccountReady() && c.canBeginOperation() && !c.hasNodePending() && len(c.node.OwnerDirectoryUnknown) < ownerEndpointUnknownMax && c.ownerEndpointError != "APP_OWNER_DIRECTORY_HISTORY_FULL"
+	return c.pairAccountReady() && c.canBeginOperation() && !c.hasNodePending() && !c.hasThreadGroupPending() && len(c.node.OwnerDirectoryUnknown) < ownerEndpointUnknownMax && c.ownerEndpointError != "APP_OWNER_DIRECTORY_HISTORY_FULL"
 }
 
 func (c *nativeController) ownerEndpointActions() []ActionKind {

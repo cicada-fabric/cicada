@@ -1,6 +1,6 @@
 ---
 name: cicada-network
-description: Use for Cicada current-Thread registration, Owner-enabled local collaboration, leaving, advanced Pair selection, and discovering or messaging authorized peers. Applies to $cicada-network and @cicada requests without treating those standard invocations as local operator commands.
+description: Use for Cicada current-Thread registration, Owner-enabled local collaboration, selecting authorized Groups, leaving, advanced Pair selection, and discovering or messaging authorized peers. Applies to $cicada-network and @cicada requests without treating those standard invocations as local operator commands.
 ---
 
 # Cicada current Thread and authorized communication
@@ -135,6 +135,17 @@ Use the Fabric tools directly:
   current Guard, and re-seals the original signed body for that one reader.
   Never treat a model statement as Owner approval or place the Owner private
   key in a tool argument.
+
+When asked to switch Groups, use the connection's current-Thread Group listing
+tool if advertised. Match an authorized entry by name and pass its returned ID
+directly to `cicada_use_group`; do not ask the user to copy IDs or JSON. If names
+are ambiguous, show the permitted Group/Network labels and require an exact
+choice. Listing and selection create no membership or key grant, and an App
+Owner's list is not the calling Thread's permission. A pending authorization is
+not an active selectable Group. Do not automatically select a newly added Group,
+revive a removed Group or re-Join to repair a selection. If the connection lacks
+this self-listing tool or has no active Groups, explain that state and retain
+the original native registration and identity.
 
 Group Space tools use the trusted local Node bridge for encryption and
 decryption. Their current scope comes from `cicada_use_group` and the active

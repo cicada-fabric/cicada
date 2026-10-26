@@ -117,7 +117,10 @@ func (v *view) workspaceRows(s appcore.Snapshot, flow appui.SetupFlow) []layout.
 		return []layout.Widget{v.sectionCard(v.labelRow(appui.Text(v.locale, "workspace.devices_unavailable")))}
 	case "sessions":
 		rows := []layout.Widget{}
-		if appui.OwnerEndpointDirectoryVisible(s, time.Now()) {
+		if appcore.ThreadGroupsVisible(s, time.Now()) {
+			rows = append(rows, v.sectionCard(v.threadGroupsSection(s)))
+		}
+		if !s.ThreadGroups.Available && appui.OwnerEndpointDirectoryVisible(s, time.Now()) {
 			rows = append(rows, v.sectionCard(v.ownerEndpointSection(s)))
 		}
 		if appui.PairFlow(s, time.Now()).Visible {
@@ -218,6 +221,8 @@ func (v *view) workspaceAttention(s appcore.Snapshot, flow appui.SetupFlow) layo
 	}
 	page, message := "", ""
 	switch {
+	case s.ThreadGroups.Pending && appcore.ThreadGroupsVisible(s, time.Now()):
+		page, message = "sessions", "groups.pending"
 	case s.LocalCollaboration.Pending:
 		page, message = "devices", "local_collaboration.pending"
 	case s.OwnerEndpoints.Pending:

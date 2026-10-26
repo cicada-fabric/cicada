@@ -46,7 +46,7 @@ func (c *nativeController) localCollaborationReady(ctx context.Context) error {
 	if err := c.ensureLocalDomainLoaded(); err != nil {
 		return err
 	}
-	if c.hasLocalDomainPending() || c.hasPairPending() || c.hasNodePending() || !canBeginOperation(c.state.Pending) || c.state.Recovery != nil || !c.nodeAccountReady() || c.localCollaborationNodeID() == "" {
+	if c.hasLocalDomainPending() || c.hasThreadGroupPending() || c.hasPairPending() || c.hasNodePending() || !canBeginOperation(c.state.Pending) || c.state.Recovery != nil || !c.nodeAccountReady() || c.localCollaborationNodeID() == "" {
 		return ErrInvalidAction
 	}
 	if !c.localDomain.discoveryTried {
@@ -63,6 +63,9 @@ func (c *nativeController) localCollaborationReady(ctx context.Context) error {
 }
 
 func (c *nativeController) initializeLocalCollaboration(ctx context.Context) {
+	if c.hasThreadGroupPending() {
+		return
+	}
 	if c.nodePairTrustBusy() {
 		return
 	}
@@ -342,7 +345,7 @@ func (c *nativeController) populateLocalCollaboration(view *Snapshot) {
 		view.AvailableActions = append(view.AvailableActions, ActionRecoverLocalCollaboration)
 		return
 	}
-	if !c.nodeAccountReady() || c.localCollaborationNodeID() == "" || c.hasNodePending() || c.hasPairPending() || !canBeginOperation(c.state.Pending) || c.state.Recovery != nil {
+	if !c.nodeAccountReady() || c.localCollaborationNodeID() == "" || c.hasThreadGroupPending() || c.hasNodePending() || c.hasPairPending() || !canBeginOperation(c.state.Pending) || c.state.Recovery != nil {
 		return
 	}
 	view.AvailableActions = append(view.AvailableActions, ActionRefreshLocalCollaboration)

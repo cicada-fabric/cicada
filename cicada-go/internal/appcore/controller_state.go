@@ -348,6 +348,9 @@ func (c *nativeController) applyResponse(operation string, value any, request, r
 }
 
 func (c *nativeController) clearSession() {
+	c.threadGroups.view.Current = false
+	c.threadGroups.view.GestureID = ""
+	c.threadGroups.view.Review = nil
 	c.localDomain.state.View.Current = false
 	c.localDomain.state.View.StateReviewID = ""
 	c.localDomain.checkedTarget = ""
@@ -364,6 +367,7 @@ func (c *nativeController) clearSession() {
 }
 
 func (c *nativeController) clearRuntimeSecrets() {
+	c.clearThreadGroupsRuntime()
 	c.clearLocalDomainRuntime()
 	c.clearPairRuntime()
 	c.clearNodeRuntime()
@@ -516,6 +520,7 @@ func (c *nativeController) publish() {
 	c.populatePair(&view)
 	c.populateLocalCollaboration(&view)
 	c.populateOwnerEndpoints(&view)
+	c.populateThreadGroups(&view)
 	if !c.profileRecoveryRequired {
 		view.AvailableActions = append(view.AvailableActions, c.nodeActions()...)
 		view.AvailableActions = append(view.AvailableActions, c.pairActions()...)
@@ -645,6 +650,7 @@ func cloneSnapshot(source Snapshot) Snapshot {
 	copy.Canvas.Objects = append([]CanvasObject(nil), source.Canvas.Objects...)
 	copy.Node = cloneNodeSnapshot(source.Node)
 	copy.OwnerEndpoints.Endpoints = append([]OwnerEndpointView(nil), source.OwnerEndpoints.Endpoints...)
+	copy.ThreadGroups = cloneThreadGroups(source.ThreadGroups)
 	return copy
 }
 

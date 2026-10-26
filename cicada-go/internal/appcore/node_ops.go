@@ -12,6 +12,9 @@ import (
 )
 
 func (c *nativeController) initializeNode(ctx context.Context) {
+	if c.hasThreadGroupPending() {
+		return
+	}
 	if c.nodePairTrustBusy() && !c.pairTrustWorking {
 		t := c.node.PairTrust
 		// A saved review needs a fresh read after unlock. It must not advance
