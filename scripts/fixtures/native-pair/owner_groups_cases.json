@@ -129,7 +129,7 @@
         "pending_preserves_undenied_default",
         "Complete_commits_exact_ACTIVE_projection",
         "OWNER_mode_permanent",
-        "finite_manual_expiry_no_default_fallback",
+        "finite_manual_duration_bound_to_original_review",
         "old_completion_after_remove_denied"
       ],
       "faults": [
@@ -141,6 +141,12 @@
         "tampered-manifest-revision",
         "old-default-proof",
         "new-Attempt-after-deny"
+      ],
+      "deterministic_observations": [
+        "finite_manual_expiry_no_default_fallback"
+      ],
+      "not_run": [
+        "M4_24h_wall_clock_expiry"
       ]
     },
     {

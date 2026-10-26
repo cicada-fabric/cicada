@@ -426,7 +426,10 @@ def owner_groups_inputs():
             raise ValueError('Group fault may not target a foreign path')
         faults.add(fault['id'])
     for number, case in enumerate(value['cases'], 1):
-        if (not isinstance(case, dict) or set(case) != {'id', 'observations', 'faults', 'negative_inputs'}
+        fields = {'id', 'observations', 'faults', 'negative_inputs'}
+        if number == 4:
+            fields |= {'deterministic_observations', 'not_run'}
+        if (not isinstance(case, dict) or set(case) != fields
                 or not isinstance(case['id'], str) or not case['id'].startswith('M' + str(number) + '_') or case['id'] in ids
                 or not isinstance(case['observations'], list) or not case['observations']
                 or any(not isinstance(v, str) or not v for v in case['observations'])
@@ -434,6 +437,11 @@ def owner_groups_inputs():
                 or not isinstance(case['faults'], list) or not set(case['faults']) <= faults
                 or not isinstance(case['negative_inputs'], list) or not case['negative_inputs']):
             raise ValueError('Invalid Owner Group case')
+        if number == 4 and (case['deterministic_observations'] != ['finite_manual_expiry_no_default_fallback']
+                            or case['not_run'] != ['M4_24h_wall_clock_expiry']
+                            or 'finite_manual_duration_bound_to_original_review' not in case['observations']
+                            or 'finite_manual_expiry_no_default_fallback' in case['observations']):
+            raise ValueError('Finite expiry must retain its distinct deterministic and real-clock scopes')
         ids.add(case['id'])
     return value
 
@@ -554,7 +562,7 @@ def finish_owner_groups(run, artifacts, image, owned):
                and counts == {OWNER_GROUPS_PARENT: 1} and len(diagnostics) == 1
                and diagnostics[0]['test'] == OWNER_GROUPS_PARENT and not facts and not lease and not identities)
     code = 0 if passed else 125 if not_run else 1
-    summary = {'scope': 'OWNER_GROUPS_M1_M8_ACTUAL_APP_NODE_HUB_FOUR_NATIVE_THREADS_NOT_PHYSICAL_WINDOWS',
+    summary = {'scope': 'OWNER_GROUPS_M1_M8_RUNTIME_EXCEPT_FINITE_EXPIRY_NOT_PHYSICAL_WINDOWS',
                'status': 'SCOPED_PASS' if passed else 'NOT_RUN' if not_run else 'FAIL', 'exit_code': code,
                'exit_codes': exits, 'head': before['head'], 'dirty': before['dirty'],
                'harness_head': before['harness_head'], 'harness_dirty': before['harness_dirty'],
@@ -573,7 +581,8 @@ def finish_owner_groups(run, artifacts, image, owned):
                'artifacts': {p.name: {'sha256': sha(p), 'bytes': p.stat().st_size} for p in artifacts.iterdir() if p.is_file()},
                'evidence_sha256': {p.name: sha(p) for p in run.iterdir() if p.is_file() and p.name != 'result.json'},
                'not_run': sorted(name for name in expected if results.get(name) in (None, 'skip')) +
-                          ['Windows_DPAPI', 'Windows_ACL', 'Windows_GUI', 'Android', 'physical_second_Node', 'public_HTTPS'],
+                          ['M4_24h_wall_clock_expiry', 'Windows_DPAPI', 'Windows_ACL', 'Windows_GUI', 'Android', 'physical_second_Node', 'public_HTTPS'],
+               'separate_required_evidence': ['M4_production_Store_crypto_finite_expiry_no_default_fallback'],
                'private_payloads_exported': False, 'public_deployment_touched': False}
     save(run / 'result.json', summary)
     print(f'Native pair {summary["status"]} exit={code} evidence={run / "result.json"}')

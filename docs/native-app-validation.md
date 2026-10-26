@@ -7346,6 +7346,49 @@ SHA-256 `3b1dc21f54390bdfb96dbdd87a122f71a833a0328afb8e2b76e5bad1a967caa0`.
 Real App Group actions and delivered Hub/Node handlers still need connection;
 the complete runtime adapter remains unavailable and all new product gates NOT_RUN.
 
+Root approved an explicit scope split on 2026-10-26: M4's permanent Owner control,
+Join/restart refusal and original finite duration/retry behavior need actual
+Runtime evidence. The one-day minimum policy-expiry boundary and no-default-
+fallback need separate deterministic production Store/crypto evidence, with
+their own tested source, case names, command and receipt hashes. Neither scope
+has passed yet. `M4_24h_wall_clock_expiry` remains **NOT_RUN**; the runtime driver
+must not shorten the product's minimum duration or inject a product clock. M5
+continues to require actual wall and monotonic passage beyond the original
+five-minute lease. A later bounded top result may only be SCOPED_PASS and must
+link both evidence scopes while retaining the real-clock and Windows omissions.
+
+The `27dd52c`-based executable increment now selects the actual product parent
+and M1/M2 scenes: real Controller cards/gestures and separate CREATE/ADD reviews;
+unseen-original permanent fence followed by a new explicit intent; App and Hub
+restart with exact ciphertext and protected nested-receipt audit; pending key
+completion; unsigned/corrupt/lost-response recovery; and four original native
+Threads communicating in both Groups. Native records are checked per workspace
+on restart and every checkpoint verifies append-only history prefixes. Read-only
+Hub/key audits retain original identity and both Group/Network credentials.
+These are **implemented but not executed**. M3–M8 adapters remain unfinished, so
+partial execution cannot satisfy the full evidence gate. The integration command
+is `bash scripts/test-native-pair.sh --owner-endpoint-groups`: an absent real
+capability yields typed NOT_RUN; any partially executed matrix fails closed.
+That runtime command has not been run for this increment.
+
+Final compile-only check: `go test -mod=readonly -c -o /out/n3.test ./acceptance/n3`
+in the existing pinned offline Go Docker image, exit **0**, source/modules read
+only, exclusive build-cache lock, owned container absence confirmed. Dirty
+`27dd52c` source manifest
+`0e331c2fd75264d45dd05494713f3ca314897e764abc8b58c0699a7e7ced81d0`
+matched before/after; this receipt paragraph was added afterward. Test binary
+SHA-256 `d3646515a21b00afd0b2420c55f98bf3e8e21eab92cad8252947521640bd68e2`.
+Receipt:
+`/home/zyf/Cicada/.local/evidence/n2-acceptance/owner-groups-actions-27dd52c-03/result.json`
+SHA-256 `10b917ebc8946ef8f90801c8f215c01f7f964ccca8a3f4ebfd1c1034ec9f287f`.
+Python/JSON syntax and diff checks passed. The existing 111-case pure evidence
+oracle also exits 0 after the M4 scope split, product NOT_RUN:
+`/home/zyf/Cicada/.local/evidence/n2-acceptance/owner-groups-oracle-27dd52c-split-01/result.json`
+SHA-256 `43cc9d9ae41351ddc6572659a1d0e35268ad00dc085ed695c849c1023752a716`.
+All new M1–M8 product results, M4's 24-hour wall-clock boundary and Windows
+DPAPI/ACL/GUI remain **NOT_RUN**. No user Host, shared Hub or public deployment
+was used or modified.
+
 ### 2026-10-26 user-reported four-Thread Group continuation
 
 Root relayed the user's report that four real native Threads on the same Node

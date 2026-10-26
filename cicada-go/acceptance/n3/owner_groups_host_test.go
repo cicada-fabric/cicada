@@ -26,6 +26,7 @@ type ownerGroupsHostCommand struct {
 	ObserveFields      []string                `json:"observe_fields,omitempty"`
 	ExpectedRequestID  string                  `json:"expected_request_id,omitempty"`
 	ExpectedBodyMarker string                  `json:"expected_body_marker,omitempty"`
+	ObserveSelfGroups  bool                    `json:"observe_self_groups,omitempty"`
 }
 
 type ownerGroupsQueueInput struct {
@@ -38,16 +39,39 @@ type ownerGroupsQueueInput struct {
 }
 
 type ownerGroupsHostReply struct {
-	Status       string             `json:"status"`
-	Daemon       nativeDomainDaemon `json:"daemon"`
-	SIDs         []string           `json:"native_session_ids"`
-	FixtureScope string             `json:"fixture_scope"`
-	Output       json.RawMessage    `json:"output"`
-	Summary      json.RawMessage    `json:"summary"`
-	Restarts     int                `json:"daemon_restarts"`
-	LiteralPosts int                `json:"literal_provider_posts"`
-	Public       map[string]string  `json:"public"`
-	QueuePosts   map[string]int     `json:"queue_posts"`
+	Status       string               `json:"status"`
+	Daemon       nativeDomainDaemon   `json:"daemon"`
+	SIDs         []string             `json:"native_session_ids"`
+	FixtureScope string               `json:"fixture_scope"`
+	Output       json.RawMessage      `json:"output"`
+	Summary      json.RawMessage      `json:"summary"`
+	Restarts     int                  `json:"daemon_restarts"`
+	LiteralPosts int                  `json:"literal_provider_posts"`
+	Public       map[string]string    `json:"public"`
+	QueuePosts   map[string]int       `json:"queue_posts"`
+	RecordCount  int                  `json:"native_record_count"`
+	HistoryKept  bool                 `json:"native_history_prefix_conserved"`
+	SelfGroups   *ownerGroupsSelfList `json:"self_groups,omitempty"`
+}
+
+type ownerGroupsSelfList struct {
+	Groups            []ownerGroupsSelfCard `json:"groups"`
+	CurrentGroupID    string                `json:"current_group_id"`
+	SelectionRequired bool                  `json:"selection_required"`
+	Complete          bool                  `json:"complete"`
+	NextCursor        string                `json:"next_cursor"`
+	Freshness         string                `json:"freshness"`
+}
+
+type ownerGroupsSelfCard struct {
+	GroupID          string `json:"group_id"`
+	Name             string `json:"name"`
+	NetworkID        string `json:"network_id"`
+	Current          bool   `json:"current"`
+	RelationRevision uint64 `json:"relation_revision"`
+	Source           string `json:"source"`
+	ExpiresAt        string `json:"expires_at"`
+	Freshness        string `json:"freshness"`
 }
 
 type ownerGroupsHost struct {
@@ -101,7 +125,7 @@ func (h *ownerGroupsHost) await(t *testing.T, sequence int) ownerGroupsHostReply
 		if _, err := os.Stat(path); err == nil {
 			var result ownerGroupsHostReply
 			readJSON(t, path, &result)
-			if result.Status != "OBSERVED" || result.LiteralPosts != 0 || result.Daemon.PID <= 0 || result.Daemon.Start == "" ||
+			if result.Status != "OBSERVED" || result.LiteralPosts != 0 || result.RecordCount != 4 || !result.HistoryKept || result.Daemon.PID <= 0 || result.Daemon.Start == "" ||
 				result.Daemon.Umask != "0002" || !result.Daemon.EnvEmpty || result.Daemon.Binary != directIPCodexSHA256 {
 				t.Fatal("actual Owner Group Host checkpoint lacks its original private daemon proof")
 			}
@@ -179,6 +203,35 @@ func (h *ownerGroupsHost) finish(t *testing.T) {
 		result.Host != 2*len(result.Calls) || result.Total != result.Host+result.Queue || h.process.cmd.ProcessState.ExitCode() != 0 {
 		t.Fatal("actual Owner Group Host cleanup/provider accounting did not match its measured calls")
 	}
+}
+
+func (h *ownerGroupsHost) groups(t *testing.T, actor int, label, network, selected string, sources map[string]string) ownerGroupsSelfList {
+	t.Helper()
+	reply := h.command(t, ownerGroupsHostCommand{Action: "call", Actor: actor, Label: label, Tool: "cicada_groups",
+		Arguments: map[string]any{"limit": 64}, ObserveSelfGroups: true})
+	list := reply.SelfGroups
+	if list == nil || !list.Complete || list.NextCursor != "" || list.Freshness != "SNAPSHOT_ONLY" ||
+		list.CurrentGroupID != selected || list.SelectionRequired != (selected == "") || len(list.Groups) != len(sources) {
+		t.Fatal("actual self-Group list selected an implicit scope, omitted a Group or returned incomplete authority")
+	}
+	seen := make(map[string]bool)
+	for _, group := range list.Groups {
+		if group.GroupID == "" || seen[group.GroupID] || group.NetworkID != network || group.Name == "" || group.RelationRevision == 0 ||
+			group.Freshness != "SNAPSHOT_ONLY" || group.Current != (group.GroupID == selected) || sources[group.GroupID] != group.Source {
+			t.Fatal("actual self-Group card changed its exact source, Network or current selection")
+		}
+		if group.Source != "DEFAULT_POLICY" && group.Source != "OWNER_EXPLICIT" {
+			t.Fatal("actual self-Group card has an unknown or mixed authority source")
+		}
+		if group.ExpiresAt != "" {
+			deadline, err := time.Parse(time.RFC3339Nano, group.ExpiresAt)
+			if err != nil || !time.Now().Before(deadline) {
+				t.Fatal("actual self-Group card exposed an expired policy")
+			}
+		}
+		seen[group.GroupID] = true
+	}
+	return *list
 }
 
 // Real original-Thread calls through the installed Host/Hook. Sequential

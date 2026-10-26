@@ -150,7 +150,7 @@ func restartNativePeerNode(t *testing.T, v *codexProductFixture, actors nativePe
 		"--mcp-session-state-file", v.mcpState, "--mcp-outbox-state-file", actors.outbox)
 	command.Env = append(append([]string(nil), v.environment...), "CICADA_CODEX_BIN=/tools/codex-package/bin/codex")
 	command.Stdout, command.Stderr = actors.log, actors.log
-	v.actualNode = &nodeProcess{process: startProcess(t, command), id: v.actualNode.id, state: v.actualNode.state}
+	v.actualNode = &nodeProcess{process: startProcess(v.f.parent, command), id: v.actualNode.id, state: v.actualNode.state}
 	bound := v.actualNode.awaitState(t, v.f, true)
 	if bound.BindingID != v.bound.BindingID || bound.NodeKeyID != v.bound.NodeKeyID || bound.NodeKeyEpoch != v.bound.NodeKeyEpoch || bound.NodeFingerprint != v.bound.NodeFingerprint {
 		t.Fatal("Node restart replaced the original Owner-approved Node identity")

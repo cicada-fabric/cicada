@@ -31,6 +31,8 @@ type ownerGroupsCase struct {
 	Observations   []string `json:"observations"`
 	Faults         []string `json:"faults"`
 	NegativeInputs []string `json:"negative_inputs"`
+	Deterministic  []string `json:"deterministic_observations,omitempty"`
+	NotRun         []string `json:"not_run,omitempty"`
 }
 
 type ownerGroupsInputs struct {

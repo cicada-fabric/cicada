@@ -234,6 +234,41 @@ def run_owner_groups(config):
               'real_model_turns': 0, 'Windows_DPAPI_ACL_GUI': 'NOT_RUN'}
     phase, started, restarts = 'SETUP', False, 0
     ids, summaries, nonces, retired_nonces = [], [], {}, {}
+    histories = {}
+
+    def conserve_native_history():
+        previous_workspace = cli.workspace
+        try:
+            for index, sid in enumerate(ids):
+                cli.workspace = workspaces[index]
+                records = cli.native_records()
+                assert sid in records, 'OWNER_GROUP_ORIGINAL_RECORD_LOST'
+                path = Path(records[sid]['path'])
+                assert path.is_relative_to(cli.codex_home / 'sessions') and not path.is_symlink(), 'OWNER_GROUP_RECORD_PATH_CHANGED'
+                size = path.stat().st_size
+                assert 0 < size <= 64 * 1024 * 1024, 'OWNER_GROUP_RECORD_SIZE'
+                prior = histories.get(sid)
+                if prior is not None:
+                    assert path == prior['path'] and size >= prior['size'], 'OWNER_GROUP_NATIVE_HISTORY_REPLACED'
+                current_hash = hashlib.sha256()
+                with path.open('rb') as stream:
+                    if prior is not None:
+                        remaining = prior['size']
+                        while remaining:
+                            block = stream.read(min(65536, remaining))
+                            assert block, 'OWNER_GROUP_NATIVE_HISTORY_TRUNCATED'
+                            current_hash.update(block)
+                            remaining -= len(block)
+                        assert current_hash.hexdigest() == prior['digest'], 'OWNER_GROUP_NATIVE_HISTORY_REWRITTEN'
+                    remaining = size - (prior['size'] if prior is not None else 0)
+                    while remaining:
+                        block = stream.read(min(65536, remaining))
+                        assert block, 'OWNER_GROUP_NATIVE_HISTORY_TRUNCATED'
+                        current_hash.update(block)
+                        remaining -= len(block)
+                histories[sid] = {'path': path, 'size': size, 'digest': current_hash.hexdigest()}
+        finally:
+            cli.workspace = previous_workspace
 
     def close_proxy():
         if not hasattr(cli, 'proxy'):
@@ -279,11 +314,14 @@ def run_owner_groups(config):
     def reply(sequence, **values):
         assert cli.daemon_identity() == cli.original_daemon, 'OWNER_GROUP_HOST_DAEMON_CHANGED'
         assert provider.request_counts()['literal'] == 0, 'LITERAL_REACHED_PROVIDER'
+        assert len(ids) == 4, 'OWNER_GROUP_ORIGINAL_RECORD_COUNT'
+        conserve_native_history()
         with provider.lock:
             queue_posts = {body: row['posts'] for body, row in provider.queue_inputs.items()}
         private_json(control / (str(sequence) + '.reply.json'), {'status': 'OBSERVED',
             'daemon': cli.original_daemon, 'native_session_ids': ids, 'fixture_scope': provider.scope,
             'daemon_restarts': restarts, 'literal_provider_posts': 0,
+            'native_record_count': len(histories), 'native_history_prefix_conserved': True,
             'queue_posts': queue_posts, **values})
 
     try:
@@ -337,7 +375,7 @@ enabled = false
             command = json.loads(path.read_text())
             assert isinstance(command, dict) and not (set(command) - {
                 'action', 'actor', 'label', 'tool', 'arguments', 'form', 'queue', 'bind_queue', 'expected_literal',
-                'observe_fields', 'expected_request_id', 'expected_body_marker'}), 'OWNER_GROUP_COMMAND_FIELDS'
+                'observe_fields', 'expected_request_id', 'expected_body_marker', 'observe_self_groups'}), 'OWNER_GROUP_COMMAND_FIELDS'
             action, actor = command['action'], command.get('actor', 0)
             assert type(actor) is int and 0 <= actor < 4, 'OWNER_GROUP_ACTOR_INDEX'
             cli.workspace = workspaces[actor]
@@ -373,7 +411,24 @@ enabled = false
                     values = {row[field] for row in output_objects(output) if isinstance(row.get(field), str) and row[field]}
                     assert len(values) <= 1, 'OWNER_GROUP_PUBLIC_FIELD_AMBIGUOUS'
                     public[field] = next(iter(values), '')
-                reply(sequence, output=output, summary=summary, public=public)
+                extra = {}
+                if command.get('observe_self_groups', False):
+                    assert tool == 'cicada_groups' and command['observe_self_groups'] is True, 'OWNER_GROUP_SELF_LIST_TOOL'
+                    rows = [row for row in output_objects(output) if set(row) == {
+                        'groups', 'current_group_id', 'selection_required', 'complete', 'next_cursor', 'freshness'}]
+                    assert len(rows) == 1, 'OWNER_GROUP_SELF_LIST_MISSING_OR_AMBIGUOUS'
+                    row = rows[0]
+                    assert (isinstance(row['groups'], list) and len(row['groups']) <= 64 and
+                            type(row['selection_required']) is bool and type(row['complete']) is bool and
+                            all(isinstance(row[key], str) for key in ('current_group_id', 'next_cursor', 'freshness'))), 'OWNER_GROUP_SELF_LIST_FIELDS'
+                    for group in row['groups']:
+                        assert isinstance(group, dict) and set(group) == {
+                            'group_id', 'name', 'network_id', 'current', 'relation_revision', 'source', 'expires_at', 'freshness'}, 'OWNER_GROUP_SELF_CARD_FIELDS'
+                        assert (type(group['current']) is bool and type(group['relation_revision']) is int and
+                                0 < group['relation_revision'] < 2**63 and all(isinstance(group[key], str) for key in (
+                                    'group_id', 'name', 'network_id', 'source', 'expires_at', 'freshness'))), 'OWNER_GROUP_SELF_CARD_TYPES'
+                    extra['self_groups'] = row
+                reply(sequence, output=output, summary=summary, public=public, **extra)
             elif action == 'restart_host':
                 phase = 'RESTART_PRIVATE_HOST'
                 old = cli.original_daemon
@@ -386,7 +441,6 @@ enabled = false
                 cli.state.mkdir(mode=0o700)
                 start_daemon('owner-daemon-restart-' + str(restarts))
                 assert cli.original_daemon != old, 'OWNER_GROUP_HOST_NOT_RESTARTED'
-                assert all(sid in cli.native_records() for sid in ids), 'OWNER_GROUP_ORIGINAL_RECORD_LOST'
                 reply(sequence)
             elif action == 'literal_join_refused':
                 phase = 'LITERAL_DENY_RECHECK'

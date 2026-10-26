@@ -400,10 +400,10 @@ conflict/unsupported without changing shared Membership; unknown sources reject.
 
 | Case | Required independent observation | Current status |
 | --- | --- | --- |
-| M1 — G2 exists | Fresh owned Hub with default G1 only; actual App creates named G2 and adds exact D after Owner review. Drop committed responses and restart App/Hub; exact originals yield one G2/relation, no extra identity/grants. | NOT_RUN |
+| M1 — G2 exists | Fresh owned Hub with default G1 only; actual App creates named G2 and separately adds exact D after Owner review. An unseen original APPLY is permanently fenced with zero effect; only a new explicit Owner intent may then create G2. Drop committed responses and restart App/Hub; exact original recovery yields one G2/relation, no extra identity/grants. | NOT_RUN |
 | M2 — one Thread, two Groups | Original SID/Endpoint/workspace/key remains identical in G1/G2. Explicit use_group changes current scope; real Cicada ASK/REPLY and receive stay within it, without a new Join or grant. | NOT_RUN |
 | M3 — remove only D-G1 | Actual App removes exact D-G1 with current CAS; A/B/C, shared-principal other Endpoints and D-G2 retain their original authority/key snapshots. Queued D-G1 work fails fresh final Guard. | NOT_RUN |
-| M4 — no automatic resurrection | After removal, literal Join, fresh Attempt, warm/cold recovery, old response replay and Node/MCP restart cannot clear deny. Only exact key completion of a new Owner add at the current head can do so. Manual finite expiry never falls back to default; pending re-add preserves old deny. | NOT_RUN |
+| M4 — no automatic resurrection | Runtime: after removal, literal Join, fresh Attempt, warm/cold recovery, old response replay and Node/MCP restart cannot clear deny; pending re-add preserves old deny. Only exact key completion of a new Owner add at the current head can clear it. Verify finite duration binds the original review and retries do not extend it. Separate production Store/crypto deterministic boundary: finite manual expiry never falls back to default. Actual 24-hour expiry remains a distinct NOT_RUN subitem. | NOT_RUN |
 | M5 — independent lifetime | Revoke/expire default policy while D-G2 is manually authorized. Cross the actual lease-renewal boundary, restart Node/MCP and continue exact G2 ASK/REPLY with App closed. Immediate one-send success is insufficient. | NOT_RUN |
 | M6 — last Group | Remove D's final relation; preserve original key, native Thread/history, Endpoint/workspace and running Node, with zero Group rights. New explicit Owner add cannot substitute an identity/key. | NOT_RUN |
 | M7 — real authority revocation | Independently revoke actual Owner key and Node binding/key; all dependent sources/Groups deny new work, including cold recovery. App closure is not this revocation. | NOT_RUN |
@@ -416,9 +416,24 @@ prove Cicada communication. Windows DPAPI/ACL/physical UI, physical second Node
 and public HTTPS keep separate statuses. Pure contract checks establish only the
 inventory/document constraints, never successful cryptography or implementation.
 
-QA preparation extends the existing `scripts/test-native-pair.sh` with
-`--owner-endpoint-groups`; until the formal runtime adapter is delivered it
-refuses before resource allocation with 125/NOT_RUN. M1–M8 remain NOT_RUN.
+Root's 2026-10-26 scoped acceptance decision preserves the minimum manual duration
+of one day. The 30-minute disposable runtime gate does not claim to cross that
+deadline: M4's permanent Owner-control, restart/Join refusal and immutable finite
+duration use actual Runtime evidence; expiry/no-default-fallback requires separate
+deterministic tests of the same production Store and crypto with explicit source,
+case names and receipts. `M4_24h_wall_clock_expiry` stays **NOT_RUN** even when both
+bounded scopes pass. Do not shorten the product duration, add a product clock
+switch or report injected time as elapsed wall time. M5 still requires a real
+five-minute lease boundary measured by both wall and monotonic clocks. Any top
+result is **SCOPED_PASS** with these separate limits, never all M1–M8 real-clock
+acceptance.
+
+The existing `scripts/test-native-pair.sh --owner-endpoint-groups` now selects
+the actual product parent with M1/M2 scenarios. It uses real Controller actions
+and the original four native Threads; a missing actual Hub/self-list capability
+returns typed 125/NOT_RUN after owned fixture bootstrap. M3–M8 adapters remain
+unfinished: any partial execution fails the complete evidence gate rather than
+becoming an aggregate pass. M1–M8 remain NOT_RUN until source-bound execution.
 The existing N3 fault proxy now targets exact Node RPC operations so concurrent
 traffic cannot consume a key-completion/renewal fault. Shared fixture inputs cover
 response loss, unsigned/corrupt receipts, delayed completion, stale head/profile,
