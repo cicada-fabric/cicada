@@ -1,5 +1,46 @@
 # CICADA technical documentation
 
+## Current development — 2026-10-26
+
+Software **0.0.5 remains unreleased**; **v0.1.0 is the planned first release**.
+The [adopted specification](../CICADA.md) defines the product, while the
+[native App plan and current acceptance ledger](native-app-plan.md#current-feedback-and-acceptance-ledger)
+track implementation and remaining acceptance. Current integrated source includes:
+
+- Explicit Node background `on/off/status` for an already paired, single-Hub
+  relay-only Node, retaining its state and keys. See the
+  [lifecycle plan](native-app-plan.md#native-node-onoffstatus-safety-preparation-2026-10-25)
+  and [distribution contract](distribution.md).
+- A Node-first device request, exact Owner review/approval in the Windows App,
+  and the original Node's private ACK. See the
+  [device-pairing contract](node-pair-trust-contract.md).
+- External-terminal registration/resume of each original Codex Thread, with only
+  the Cicada MCP `PreToolUse` hook in the default plugin. See the
+  [native Endpoint contract](native-endpoint-directory-contract.md).
+- Hub-authoritative Owner management of exact Thread/Group relations: the App
+  creates a named empty Group, then separately reviews adding or removing one
+  Thread. A Thread can retain several Groups and its original identity; current
+  MCP Group selection is separate from membership. See the
+  [Owner-managed Group contract](native-endpoint-directory-contract.md#proposed-owner-managed-endpoint-groups-v1).
+
+Use the [current ledger](native-app-plan.md#current-feedback-and-acceptance-ledger),
+[App validation](native-app-validation.md) and
+[Endpoint/Group source validation](native-endpoint-directory-validation.md) for
+the actual passing scopes and retained failures, including the source-bound
+four-Thread M1–M8 Runtime status. Integration, producer checks and candidate
+packaging retain their separate scopes. Independent physical Windows
+DPAPI/ACL/GUI and 24-hour elapsed expiry remain **NOT_RUN**.
+
+Pre-submit contact/input UI stays in **v0.2 PLANNED/NOT_RUN**; the
+[version decision](native-app-plan.md#current-feedback-and-acceptance-ledger) and
+[existing roadmap](v02-openai-integration-roadmap.md) retain that boundary.
+
+## Historical checkpoints and reference index
+
+The dated checkpoints below retain their original source, artifacts and tested
+scope. Their old “current” descriptions and literal-prompt workflows describe
+those checkpoints; use the entry points above for the present implementation.
+
 The [Node pairing trust contract](node-pair-trust-contract.md) defines one local
 secret device code, independent Owner-to-Node trust and a private ACK while
 retaining the existing Node-Control binding. The Hub service/Store carrier adds

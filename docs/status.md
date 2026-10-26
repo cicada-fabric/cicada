@@ -1,11 +1,45 @@
 # Release status
 
+## 2026-10-26 current development — unreleased; acceptance partial
+
+The development version is **0.0.5**, as recorded in [VERSION](../VERSION).
+**v0.1.0 is the planned first release**; no release or deployment is established
+by integration or documentation updates. Start with the
+[native App plan/current acceptance ledger](native-app-plan.md#current-feedback-and-acceptance-ledger)
+and the [documentation entry point](README.md).
+
+Integrated source includes the existing Node's explicit background `on/off/status`,
+Node-first device requests approved by the Owner in the Windows App, original
+Codex Thread registration/resume through the external CLI, and a default plugin
+with only the Cicada MCP `PreToolUse` hook. The Hub enforces Owner-authorized,
+exact Thread/Group changes through the App; one original Thread can retain
+multiple Groups, with Group selection separate from membership. Contracts and
+scope are recorded in [distribution](distribution.md),
+[device pairing](node-pair-trust-contract.md), and the
+[Endpoint/Owner Group contract](native-endpoint-directory-contract.md).
+
+Current passing scopes and open cases belong to the
+[ledger](native-app-plan.md#current-feedback-and-acceptance-ledger),
+[App validation](native-app-validation.md) and
+[Endpoint/Group validation](native-endpoint-directory-validation.md), with each
+result attributed to its tested source, including the complete four-Thread
+M1–M8 Runtime status. Producer and candidate-package results retain their own
+scopes; independent physical Windows DPAPI/ACL/GUI and 24-hour elapsed expiry
+remain **NOT_RUN**. Pre-submit contact/input UI remains
+[v0.2 PLANNED/NOT_RUN](v02-openai-integration-roadmap.md).
+
+## Historical source and validation snapshots
+
+The snapshots below preserve their original versions, results and limitations.
+Old “current” or “NOT_IMPLEMENTED” statements apply to their dated source and
+do not supersede the current ledger above or change historical failures.
+
 [The clean IP/ARM64 checkpoint](docker-ip-arm64-validation.md) passed its scoped
 amd64/ARM64 first-install Docker gate; [manual installation](node-tls-first-install-cli.md)
 uses independent Owner signatures. Bootstrap standard HTTPS, enrolled PQ TLS,
 Native consumption and physical-phone acceptance remain separate scopes.
 
-## 2026-10-13 current source candidate — unreleased; acceptance partial
+## Historical 2026-10-13 source candidate — unreleased; acceptance partial
 
 The current development version is **0.0.5**: additive Hub schema-60 Owner
 bootstrap changes are scoped against previously accepted schema 59. The bounded
