@@ -7333,6 +7333,26 @@ fixture FAILs remain preserved. No duplicate probe ran. Daemon stop exits 0,
 private root is removed and matching containers are absent; user A/B, Node/Hub
 and product source were untouched.
 
+On 2026-10-26, the target remains whole-Network cross-Node editing-time search;
+native `@` lists tasks known to the currently connected Codex server; it is not
+the Cicada Network directory. No public CLI remote composer-provider is
+verified; `--remote` selects one server. Root accepts the official `Ctrl+G` →
+`VISUAL`/`EDITOR` → same-live-composer return only as **UI_ONLY_SCOPED_ACCEPTED**:
+four frames, two setup static-provider POSTs, zero additional editing POSTs,
+zero draft submissions and zero real-model calls; continued editing is observed.
+SID environment is empty; matching cwd/PID does not establish trusted source
+Thread proof. Source handoff, cross-process selected reference and authorized
+query+cursor remain open; list ≤100, picker first-64 local filtering and exact
+nickname/Endpoint resolution are not full search. This is neither a completed
+Network picker nor a user-approved `@` replacement; full integration stays NOT_RUN.
+Receipts under the same evidence root: Root
+`local-domain-root/external-editor-draft-root-review-20261026.json` SHA-256
+`a816133b85ac326904b2f93f3666475b922e3a54da16c3104812e5c02487448c`;
+raw App `n2-app/native-external-editor-20261026/result.json` SHA-256
+`5d3c0ca04aacb728669d58308db92bcf7e10274a5407ccf8bf3edb0b6f55dd3f`.
+QA read/hash-checked both; owned cleanup is Root-verified. No duplicate probe or
+production Node/Hub/user-session change is claimed.
+
 The subsequent real-machine Hub/Node update and Node on/status → off/stopped →
 on/running feedback remains **USER_REPORTED_PASS**, without independent raw
 execution attribution. User-provided actual 0.164 TUI text establishes only
