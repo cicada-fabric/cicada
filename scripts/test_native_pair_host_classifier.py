@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Synthetic classifier checks only; never product or native Runtime acceptance."""
 import sys
+import json
+import re
 import tempfile
 import threading
 import unittest
@@ -9,7 +11,8 @@ from pathlib import Path
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).parent / 'fixtures/native-pair'))
-from codex_domain_host import NATIVE_TITLE_PREFIX, StaticHostProvider, observed_operation_status
+from codex_domain_host import (NATIVE_TITLE_PREFIX, SHARED_SCOPE_BANNER, QUEUE_HEADERS,
+                               StaticHostProvider, observed_operation_status)
 import codex_product_cli
 
 
@@ -113,6 +116,83 @@ class OperationStatusTests(unittest.TestCase):
         with self.assertRaisesRegex(AssertionError, 'OWNER_GROUP_OPERATION_STATUS_AMBIGUOUS'):
             observed_operation_status([{'operation_id': 'SYNTHETIC', 'status': 'SENT'},
                                        {'operation_id': 'SYNTHETIC', 'status': 'FAILED'}])
+
+
+class NativeQueueTests(unittest.TestCase):
+    def setUp(self):
+        root = Path(__file__).resolve().parents[1] / 'cicada-go/cmd/cicada'
+        source = (root / 'cross_node_group_bridge.go').read_text()
+        self.header = json.loads(re.search(
+            r'return ("Cicada SEALED_V1 same-Group REQUEST;[^\n]+?") \+ string\(encoded\)', source).group(1))
+        source = (root / 'machine_local_group.go').read_text()
+        self.banner = json.loads(re.search(
+            r'prompt = ("CICADA_CONTEXT_SCOPE_SHARED_MEMORY_RISK:[^\n]+?") \+ prompt', source).group(1))
+        self.assertEqual(self.banner, SHARED_SCOPE_BANNER + '\n')
+        self.assertIn(self.header.rstrip('\n'), QUEUE_HEADERS)
+        self.provider = StaticHostProvider.__new__(StaticHostProvider)
+        self.provider.scope, self.provider.phase = 'SYNTHETIC_QUEUE', None
+        self.provider.lock = threading.RLock()
+        self.provider.queue_inputs, self.provider.native_seed_inputs = {}, {}
+        self.packet = {'message_id': 'SYNTHETIC_MESSAGE', 'request_id': 'SYNTHETIC_REQUEST',
+                       'sender_endpoint_id': 'SYNTHETIC_SENDER', 'receiver_endpoint_id': 'SYNTHETIC_RECEIVER',
+                       'group_id': 'SYNTHETIC_GROUP', 'body': 'SYNTHETIC_QUEUE_BODY_'}
+        # Same total shape as the failed native post, with visibly synthetic
+        # metadata and the literal production banner/header, not captured prose.
+        needed = 677 - len(self.text())
+        self.assertGreaterEqual(needed, 0)
+        self.packet['body'] += 'x' * needed
+        self.sid = '11111111-1111-4111-8111-111111111111'
+        self.provider.expect_queue(self.packet['body'], self.sid, self.packet['sender_endpoint_id'],
+                                   self.packet['receiver_endpoint_id'], self.packet['group_id'], 'ask')
+
+    def text(self, prefix=None):
+        return (self.banner if prefix is None else prefix) + self.header + json.dumps(self.packet, separators=(',', ':'))
+
+    def request(self, text=None, sid=None):
+        return {'client_metadata': {'thread_id': sid or self.sid, 'turn_id': 'SYNTHETIC_QUEUE_TURN'},
+                'input': [{'role': 'user', 'content': [{'type': 'input_text', 'text': text or self.text()}]}]}
+
+    def test_production_constants_and_synthetic_677_shape(self):
+        self.assertEqual(len(self.text()), 677)
+        self.assertEqual(self.provider.classify_request(self.request()), (None, 'native_queue'))
+        self.assertTrue(self.provider.queue_inputs[self.packet['body']]['shared_memory_warning'])
+
+    def test_wrong_group_remains_rejected_and_diagnosable(self):
+        self.packet['group_id'] = 'SYNTHETIC_WRONG_GROUP'
+        self.assertEqual(self.provider.classify_request(self.request()), (None, 'literal'))
+        shape = self.provider.queue_diagnostic(self.text(), {'thread_id': self.sid})
+        self.assertFalse(shape['group_id_matches'])
+
+    def test_wrong_sid_remains_rejected(self):
+        self.assertEqual(self.provider.classify_request(self.request(sid='SYNTHETIC_WRONG_SID')), (None, 'literal'))
+
+    def test_wrong_endpoint_remains_rejected(self):
+        self.packet['receiver_endpoint_id'] = 'SYNTHETIC_OTHER_RECEIVER'
+        self.assertEqual(self.provider.classify_request(self.request()), (None, 'literal'))
+
+    def test_duplicate_native_post_remains_rejected(self):
+        self.assertEqual(self.provider.classify_request(self.request()), (None, 'native_queue'))
+        self.assertEqual(self.provider.classify_request(self.request()), (None, 'literal'))
+
+    def test_arbitrary_or_double_prefix_is_not_a_banner(self):
+        for prefix in ('SYNTHETIC UNKNOWN PREFIX\n', self.banner + self.banner):
+            self.assertEqual(self.provider.classify_request(self.request(text=self.text(prefix))), (None, 'literal'))
+
+    def test_unrequested_group_space_refs_remain_rejected(self):
+        self.packet['group_space_refs'] = []
+        self.assertEqual(self.provider.classify_request(self.request()), (None, 'literal'))
+
+    def test_warning_does_not_admit_a_seed(self):
+        seed = 'SYNTHETIC_QUEUE_SEED'
+        self.provider.expect_native_seed(seed)
+        self.assertEqual(self.provider.classify_request(self.request(text=self.banner + seed)), (None, 'literal'))
+
+    def test_changed_original_request_remains_rejected(self):
+        self.provider.bind_queue_request(self.packet['body'], 'SYNTHETIC_DIFFERENT_REQUEST')
+        self.assertEqual(self.provider.classify_request(self.request()), (None, 'literal'))
+
+    def test_original_queue_without_warning_still_works(self):
+        self.assertEqual(self.provider.classify_request(self.request(text=self.text(''))), (None, 'native_queue'))
 
 
 class PrivateCheckpointTests(unittest.TestCase):

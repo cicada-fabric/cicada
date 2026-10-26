@@ -231,7 +231,13 @@ func startAppProcess(t *testing.T, f *hubFixture, step, marker string) *appProce
 	// A resumed child receives no installer/activation material. Its only
 	// connection locator is the authenticated, already-encrypted local profile.
 	writeJSON(t, filepath.Join(f.dir, "synthetic-app-input.json"), input)
-	cmd := exec.Command(must(os.Executable()), "-test.run=^TestN3AppProcess$", "-test.timeout=10m")
+	runtimeBudget := "10m"
+	if os.Getenv("CICADA_N3_OWNER_ENDPOINT_GROUPS") == "1" {
+		// The long-lived actual Controller must survive the full real-clock
+		// Group gate. This is a test-process budget, never a product TTL.
+		runtimeBudget = "60m"
+	}
+	cmd := exec.Command(must(os.Executable()), "-test.run=^TestN3AppProcess$", "-test.timeout="+runtimeBudget)
 	cmd.Env = append(os.Environ(), "CICADA_N3_APP_CHILD=1", "CICADA_N3_FIXTURE="+f.dir, "CICADA_N3_MARKER="+marker)
 	diagnostic := ""
 	if os.Getenv("CICADA_N3_LOCAL_DOMAIN_AUDIT") == "1" {

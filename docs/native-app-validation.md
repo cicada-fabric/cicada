@@ -7544,6 +7544,36 @@ tested binary `754a612af973ab9d4bca58ed10f793e4b0c9e63a440b081d0f38e270c60491a3`
 This paragraph was added afterward. The next full Runtime run must use the
 new integrated production source and preserve the old failures' attribution.
 
+### 2026-10-26 queue-prefix fixture correction
+
+The full clean `0ba69f5af72826eff77dbb609464ce96598a6d13` attempt
+`run-20261026T172626Z-uXmbnk` ended exit 1: M1 PASS 137.91s, M2 FAIL 213.76s.
+The first G2 ASK was actually SENT with one attempt and empty outbox error,
+then an unclassified 677-character native post stopped the static provider.
+Receipt SHA-256 `68aee3443ea3e77963de85589ec3b698a592271276eb6ef5cd858d35fb7587d0`;
+closed audit `owner-groups-protocol-audit/dacb71510e55abd6.json` SHA-256
+`5ab257c46ae7164ea6fda8ef92c438ef67e7258cfe3aabea136a7336044afdac`.
+Source/executable hashes were stable and container cleanup was confirmed.
+
+The queue parser now handles only the production's complete fixed shared-memory
+risk banner before an already known queue header. All original SID, Group,
+Endpoint, body, request and once-only checks remain mandatory. The old artifact
+did not retain the actual prefix/tuple fields, so its precise mismatch remains
+unproven; new closed diagnostics record those comparisons without raw payloads.
+Targeted checks use literals read from production source and a synthetic
+677-character prompt, rejecting wrong scope, unknown prefix and duplicates.
+App actor test-process budget is aligned to the 60-minute parent only for this
+mode; product clocks and other test modes are unchanged. No App timeout had
+caused this M2 failure.
+
+The complete driver compiled and the readonly audit privacy check passed;
+26 classifier/IPC/queue checks passed, all exit 0. Receipt
+`~/Cicada/.local/evidence/n2-acceptance/owner-groups-queue-0ba69f5-01/result.json`
+SHA-256 `ff2c34f5816150b0becc6153d7c2ac7a4da332e6da077dcb07546eb8ed97f1b0`.
+Dirty source manifest `c1cbc91448d4047bdcc897a126c7a02c0d29923fd9ac6cbb41002c7fd2460e3f`
+matched before/after; this paragraph was added afterward. These checks supply
+no M2–M8 product pass. The next run still requires the complete Runtime gate.
+
 ### 2026-10-26 user-reported four-Thread Group continuation
 
 Root relayed the user's report that four real native Threads on the same Node
