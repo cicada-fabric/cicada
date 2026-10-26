@@ -21,7 +21,19 @@ func registerOwnerGroupsProtocolAudit(t *testing.T, v *codexProductFixture) {
 		key, binding := ownerGroupsNodeAuditIdentity(t, v)
 		closedCode := regexp.MustCompile(`^[A-Z][A-Z0-9_]{0,79}$`)
 		var rows []map[string]any
+		var peers []map[string]any
 		for _, ex := range v.f.proxy.snapshot() {
+			if strings.HasSuffix(ex.Path, "/group/sealed/peer-key") && ex.Forwarded && ex.Status == 200 {
+				var peer ownerGroupsActualPeerKey
+				if json.Unmarshal(ex.response, &peer) == nil && peer.Current != nil {
+					if len(peers) == 128 {
+						peers = peers[1:]
+					}
+					peers = append(peers, map[string]any{"recorded_at": ex.RecordedAt, "response_sha256": ex.ResponseSHA256,
+						"sender":   ownerGroupsCoordinate(peer.Current.Sender.Relation, &peer.Current.Sender.OwnerControl),
+						"receiver": ownerGroupsCoordinate(peer.Current.Receiver.Relation, &peer.Current.Receiver.OwnerControl)})
+				}
+			}
 			if ex.Path != "/v2/node/control/rpc" && !strings.HasPrefix(ex.Path, "/v2/owner/endpoint-groups/") {
 				continue
 			}
@@ -88,7 +100,7 @@ func registerOwnerGroupsProtocolAudit(t *testing.T, v *codexProductFixture) {
 		}
 		path := filepath.Join(directory, hash([]byte(v.root))[:16]+".json")
 		writeJSON(t, path, map[string]any{"scope": "CLOSED_PROTOCOL_DIAGNOSTICS_NOT_ACCEPTANCE", "captured_at": time.Now().UTC().Format(time.RFC3339Nano),
-			"trace": rows, "steps": steps, "pending_operation": state.PendingOperation, "pending_sequence": state.PendingSequence})
+			"trace": rows, "steps": steps, "peer_coordinates": peers, "peer_coordinate_limit": 128, "local_coordinates": ownerGroupsAuditLocalCoordinates(v), "pending_operation": state.PendingOperation, "pending_sequence": state.PendingSequence})
 		t.Logf("OWNER_GROUPS_PROTOCOL_AUDIT file=%s sha256=%s", "owner-groups-protocol-audit/"+filepath.Base(path), hash(readPrivate(t, path)))
 	})
 }

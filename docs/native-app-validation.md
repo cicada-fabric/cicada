@@ -7496,6 +7496,54 @@ an executable still fails. Product status is **NOT_RUN** for this check:
 `~/Cicada/.local/evidence/n2-acceptance/owner-groups-oracle-b52ad0e-audit-01/result.json`
 SHA-256 `757140b0df6a41b9fb1a455d5ff99f4e9c3020c49509a250a320b1e3185d72a5`.
 
+### 2026-10-26 actual M2 authority-lineage refusal
+
+The next frozen dirty `4df6545`-based run
+`~/Cicada/.local/evidence/native-pair-acceptance/run-20261026T164716Z-7iOeqO/result.json`
+ended **FAIL**, exit **1**. M1 terminal PASS took 141.85 seconds. M2 failed
+at its first G2 D→B ASK: the actual MCP outbox reported FAILED,
+`retryable=false`, attempts 1 and no request ID. Its single error was exactly
+`nodekeys.ErrEndpointGroupsConflict`; this was observed live before temporary
+state cleanup, rather than inferred from the later missing-request assertion.
+The error text SHA-256 was
+`eb8c7a608fdeecde6c4c601d95fe327708b0c8eed91e035fe5c13533782940f1`.
+M2's old loop continued status queries for 559.91 seconds; M3 and all tail
+scenes remained NOT_RUN. No final identity or real five-minute witness passed.
+
+CLI/test compilation and vet exited 0. Source and both executable hashes were
+stable and the owned container was absent. Receipt SHA-256:
+`176ebb2a9c8e6381207ccee12e50327d780908303b98e436a93686fd0a64087e`.
+Closed Node route/status/step evidence was saved without packets or keys:
+`~/Cicada/.local/artifacts/native-pair-acceptance/run-20261026T164716Z-7iOeqO/owner-groups-protocol-audit/aaac694adf18b5af.json`,
+SHA-256 `d3539c8f33185ed9a6939f90a4b26971234b689229373626400decc05dc03258`.
+That version did not include MCP outbox errors or local source/head coordinates;
+those missing observations cannot be reconstructed from the cleaned fixture.
+
+The failure was handed to Root and the Node implementation owner. The owner's
+code inspection identified a cross-authority contribution comparison: two
+separate real manual policies may both complete at contribution revision 2.
+Production changes and their signed regression fixtures belong to that owner.
+The next QA change stops immediately on an actual non-retryable FAILED view,
+adds closed outbox/error-digest and authority/head coordinate projections to
+the readonly audit, and requires actual Network self-whoami 200 with only its exact identity, and
+Network directory/Leave 403s with original G2 positive controls and unchanged shared Network state. Public nodes-only
+404s cannot satisfy this Guard. These new requirements remain NOT_RUN until
+execution against the corrected integrated source; the old M1 pass stays
+attributed to its original source.
+
+On integrated production `e5d76c29a84ca7538d20ce37df068e62fb1629b7`,
+the corrected complete driver compiled with exit 0; the synthetic readonly
+outbox privacy check and 16 Python checks exited 0. The 114 pure oracle checks
+also passed separately. Product scenarios remain NOT_RUN by these checks.
+Dirty-source manifest `5ba3d927032876b5ecbcde3ca21a695c66538d448fb49e133807e172db2797c2`
+matched before/after; task-private cache and readonly source/module mounts
+were used and container removal was confirmed. Receipt
+`~/Cicada/.local/evidence/n2-acceptance/owner-groups-failure-e5d76c2-02/result.json`
+SHA-256 `3f895ae4684b8170c1ec6263782109b3466fcfdc74ee5058beb756699dffa8a3`;
+tested binary `754a612af973ab9d4bca58ed10f793e4b0c9e63a440b081d0f38e270c60491a3`.
+This paragraph was added afterward. The next full Runtime run must use the
+new integrated production source and preserve the old failures' attribution.
+
 ### 2026-10-26 user-reported four-Thread Group continuation
 
 Root relayed the user's report that four real native Threads on the same Node

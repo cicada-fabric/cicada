@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -77,9 +78,10 @@ func startOwnerGroupsFabricRouter(t *testing.T, v *codexProductFixture) ownerGro
 }
 
 type ownerGroupsRESTCredential struct {
-	token    string
-	endpoint string
-	sid      string
+	token     string
+	endpoint  string
+	sid       string
+	principal string
 }
 
 func originalOwnerGroupsRESTCredential(t *testing.T, v *codexProductFixture, identity ownerGroupsIdentity, selected string) ownerGroupsRESTCredential {
@@ -114,7 +116,7 @@ func originalOwnerGroupsRESTCredential(t *testing.T, v *codexProductFixture, ide
 				row.Binding != identity.BindingID || row.Epoch != identity.BindingEpoch || row.Group != selected || row.Token == "" {
 				t.Fatal("actual MCP credential changed its original actor or selected Group")
 			}
-			found = append(found, ownerGroupsRESTCredential{token: row.Token, endpoint: row.Endpoint, sid: row.SID})
+			found = append(found, ownerGroupsRESTCredential{token: row.Token, endpoint: row.Endpoint, sid: row.SID, principal: identity.Principal})
 		}
 	}
 	if len(found) != 1 {
@@ -157,11 +159,23 @@ func (r ownerGroupsFabricRouter) requireActor(t *testing.T, credential ownerGrou
 	}
 }
 
-func exerciseOwnerGroupsActorCeiling(t *testing.T, v *codexProductFixture, credential ownerGroupsRESTCredential, activeGroup, removedGroup string) {
+func (r ownerGroupsFabricRouter) requireNetworkIdentity(t *testing.T, credential ownerGroupsRESTCredential, group, network string) {
+	t.Helper()
+	status, raw := r.request(t, credential, group, http.MethodGet, "/v2/fabric/networks/"+url.PathEscape(network)+"/whoami", nil)
+	defer clear(raw)
+	var identity map[string]string
+	if status != http.StatusOK || json.Unmarshal(raw, &identity) != nil || len(identity) != 3 || identity["network_id"] != network || identity["endpoint_id"] != credential.endpoint || identity["principal_id"] != credential.principal {
+		t.Fatal("actual managed token did not retain its exact Network self identity without business capabilities")
+	}
+}
+
+func exerciseOwnerGroupsActorCeiling(t *testing.T, v *codexProductFixture, credential ownerGroupsRESTCredential, activeGroup, removedGroup, network string) {
 	t.Helper()
 	router := startOwnerGroupsFabricRouter(t, v)
 	defer router.process.kill(t)
+	originalNetwork := peerSharedAccessState(t, filepath.Join(v.f.dir, "synthetic-hub", "cicada.sqlite3"), network, credential.endpoint)
 	router.requireActor(t, credential, activeGroup)
+	router.requireNetworkIdentity(t, credential, activeGroup, network)
 	status, raw := router.request(t, credential, removedGroup, http.MethodGet, "/v2/fabric/whoami", nil)
 	clear(raw)
 	if status != http.StatusUnauthorized && status != http.StatusForbidden {
@@ -171,6 +185,8 @@ func exerciseOwnerGroupsActorCeiling(t *testing.T, v *codexProductFixture, crede
 		method, path string
 		body         any
 	}{
+		{http.MethodGet, "/v2/fabric/networks/" + url.PathEscape(network) + "/directory", nil},
+		{http.MethodPost, "/v2/fabric/networks/" + url.PathEscape(network) + "/leave", map[string]string{"reason": "SYNTHETIC managed Group Actor has no Network business authority"}},
 		{http.MethodGet, "/v2/fabric/tasks", nil},
 		{http.MethodPost, "/v2/fabric/tasks/claim", fabric.TaskClaimInput{TaskID: "synthetic-owner-group-forbidden-task", ExpectedRevision: 1, IdempotencyKey: "synthetic-forbidden-claim", LeaseSeconds: 30}},
 		{http.MethodPost, "/v2/fabric/tasks/release", fabric.TaskReleaseInput{TaskID: "synthetic-owner-group-forbidden-task", ExpectedRevision: 1, OwnerEpoch: 1}},
@@ -188,5 +204,10 @@ func exerciseOwnerGroupsActorCeiling(t *testing.T, v *codexProductFixture, crede
 			t.Fatalf("actual five-right Actor Guard path=%s method=%s HTTP=%d expected=403", scenario.path, scenario.method, status)
 		}
 		router.requireActor(t, credential, activeGroup)
+	}
+	router.requireNetworkIdentity(t, credential, activeGroup, network)
+	afterNetwork := peerSharedAccessState(t, filepath.Join(v.f.dir, "synthetic-hub", "cicada.sqlite3"), network, credential.endpoint)
+	if afterNetwork != originalNetwork {
+		t.Fatal("managed Group Actor changed shared Network authority through a forbidden route")
 	}
 }

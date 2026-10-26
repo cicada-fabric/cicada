@@ -46,6 +46,14 @@ def output_objects(value):
         yield from output_objects(decoded)
 
 
+def observed_operation_status(value):
+    states = {row['status'] for row in output_objects(value)
+              if isinstance(row.get('operation_id'), str) and row['operation_id'] and
+              row.get('status') in ('PENDING', 'UNKNOWN', 'SENT', 'FAILED')}
+    assert len(states) <= 1, 'OWNER_GROUP_OPERATION_STATUS_AMBIGUOUS'
+    return next(iter(states), '')
+
+
 def unique_output_field(value, name):
     values = {row[name] for row in output_objects(value)
               if isinstance(row.get(name), str) and row[name] and len(row[name]) <= 4096}

@@ -9,7 +9,7 @@ from pathlib import Path
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).parent / 'fixtures/native-pair'))
-from codex_domain_host import NATIVE_TITLE_PREFIX, StaticHostProvider
+from codex_domain_host import NATIVE_TITLE_PREFIX, StaticHostProvider, observed_operation_status
 import codex_product_cli
 
 
@@ -101,6 +101,18 @@ class HostClassifierTests(unittest.TestCase):
         self.seed_once()
         self.assertEqual(self.title(), (None, 'native_title'))
         self.assertEqual(self.title(text=self.host_prompt()), (None, 'literal'))
+
+
+class OperationStatusTests(unittest.TestCase):
+    def test_terminal_failure_survives_actual_text_wrapper(self):
+        output = 'Wall time: 0.0010 seconds\nOutput:\n' + codex_product_cli.json.dumps(
+            {'operation_id': 'SYNTHETIC_NOT_PRODUCT', 'status': 'FAILED', 'retryable': False})
+        self.assertEqual(observed_operation_status(output), 'FAILED')
+
+    def test_conflicting_states_cannot_be_hidden(self):
+        with self.assertRaisesRegex(AssertionError, 'OWNER_GROUP_OPERATION_STATUS_AMBIGUOUS'):
+            observed_operation_status([{'operation_id': 'SYNTHETIC', 'status': 'SENT'},
+                                       {'operation_id': 'SYNTHETIC', 'status': 'FAILED'}])
 
 
 class PrivateCheckpointTests(unittest.TestCase):

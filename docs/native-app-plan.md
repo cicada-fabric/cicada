@@ -451,7 +451,8 @@ first obtains positive delivery authority, Owner removes D-G1, then the released
 writer must observe a fresh rejection and zero native injection. A separate
 task-owned TCP listener uses the complete production Fabric router and the same
 fixture Store with Control absent; valid positive whoami brackets each Task or
-global Leave rejection. Missing routes, expired credentials and plain transport
+global/Network Leave rejection. The actual Network business routes also require
+403 and unchanged shared Network authority. Missing routes, expired credentials and plain transport
 denials do not count as five-right Actor Guard evidence. The four-Thread fixture
 has its existing narrow grants; a wider shared-Principal attack still requires
 separate producer Core/Store evidence and is not inferred from that baseline.

@@ -17,7 +17,7 @@ import sys
 import time
 
 sys.dont_write_bytecode = True
-from codex_domain_host import (DomainHostCLI, StaticHostProvider, output_objects,
+from codex_domain_host import (observed_operation_status, DomainHostCLI, StaticHostProvider, output_objects,
                                require_successful_output, unique_output_field)
 from codex_product_cli import digest, private_json
 
@@ -485,7 +485,15 @@ enabled = false
                     values = {row[field] for row in output_objects(output) if isinstance(row.get(field), str) and row[field]}
                     assert len(values) <= 1, 'OWNER_GROUP_PUBLIC_FIELD_AMBIGUOUS'
                     public[field] = next(iter(values), '')
-                extra = {}
+                extra = {'host_diagnostic': provider.safe_diagnostic()}
+                if tool in ('cicada_ask', 'cicada_reply', 'cicada_operation_status', 'cicada_operation_retry'):
+                    extra['operation_status'] = observed_operation_status(output)
+                    retryable = {row['retryable'] for row in output_objects(output)
+                                 if isinstance(row.get('operation_id'), str) and row['operation_id'] and
+                                 type(row.get('retryable')) is bool}
+                    assert len(retryable) <= 1, 'OWNER_GROUP_OPERATION_RETRYABLE_AMBIGUOUS'
+                    if retryable:
+                        extra['operation_retryable'] = next(iter(retryable))
                 if command.get('observe_self_groups', False):
                     assert tool == 'cicada_groups' and command['observe_self_groups'] is True, 'OWNER_GROUP_SELF_LIST_TOOL'
                     rows = [row for row in output_objects(output) if set(row) == {

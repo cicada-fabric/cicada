@@ -39,19 +39,22 @@ type ownerGroupsQueueInput struct {
 }
 
 type ownerGroupsHostReply struct {
-	Status       string               `json:"status"`
-	Daemon       nativeDomainDaemon   `json:"daemon"`
-	SIDs         []string             `json:"native_session_ids"`
-	FixtureScope string               `json:"fixture_scope"`
-	Output       json.RawMessage      `json:"output"`
-	Summary      json.RawMessage      `json:"summary"`
-	Restarts     int                  `json:"daemon_restarts"`
-	LiteralPosts int                  `json:"literal_provider_posts"`
-	Public       map[string]string    `json:"public"`
-	QueuePosts   map[string]int       `json:"queue_posts"`
-	RecordCount  int                  `json:"native_record_count"`
-	HistoryKept  bool                 `json:"native_history_prefix_conserved"`
-	SelfGroups   *ownerGroupsSelfList `json:"self_groups,omitempty"`
+	Status             string               `json:"status"`
+	Daemon             nativeDomainDaemon   `json:"daemon"`
+	SIDs               []string             `json:"native_session_ids"`
+	FixtureScope       string               `json:"fixture_scope"`
+	Output             json.RawMessage      `json:"output"`
+	Summary            json.RawMessage      `json:"summary"`
+	Restarts           int                  `json:"daemon_restarts"`
+	LiteralPosts       int                  `json:"literal_provider_posts"`
+	Public             map[string]string    `json:"public"`
+	QueuePosts         map[string]int       `json:"queue_posts"`
+	RecordCount        int                  `json:"native_record_count"`
+	HistoryKept        bool                 `json:"native_history_prefix_conserved"`
+	SelfGroups         *ownerGroupsSelfList `json:"self_groups,omitempty"`
+	OperationStatus    string               `json:"operation_status,omitempty"`
+	OperationRetryable *bool                `json:"operation_retryable,omitempty"`
+	Diagnostic         json.RawMessage      `json:"host_diagnostic,omitempty"`
 }
 
 type ownerGroupsSelfList struct {
@@ -303,11 +306,17 @@ func (h *ownerGroupsHost) roundtrip(t *testing.T, label, group string, source, t
 		Arguments:     map[string]any{"target": identities[target].Endpoint, "question": question, "idempotency_key": h.fixtureScope + "-" + label},
 		Queue:         []ownerGroupsQueueInput{{Body: question, SID: h.originalSIDs[target], Sender: identities[source].Endpoint, Receiver: identities[target].Endpoint, GroupID: group, Kind: "ask"}},
 		ObserveFields: []string{"request_id", "operation_id"}})
+	if ask.OperationStatus == "FAILED" && ask.OperationRetryable != nil && !*ask.OperationRetryable {
+		t.Fatalf("actual ASK is terminal FAILED; diagnostic=%s", ask.Diagnostic)
+	}
 	request, operation := ask.Public["request_id"], ask.Public["operation_id"]
 	for attempt := 0; request == "" && operation != "" && attempt < 30; attempt++ {
 		time.Sleep(250 * time.Millisecond)
 		status := h.command(t, ownerGroupsHostCommand{Action: "call", Actor: source, Label: label + "-status", Tool: "cicada_operation_status",
 			Arguments: map[string]any{"operation_id": operation}, ObserveFields: []string{"request_id"}})
+		if status.OperationStatus == "FAILED" && status.OperationRetryable != nil && !*status.OperationRetryable {
+			t.Fatalf("actual ASK reached terminal FAILED; diagnostic=%s", status.Diagnostic)
+		}
 		request = status.Public["request_id"]
 	}
 	if request == "" {

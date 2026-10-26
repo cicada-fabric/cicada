@@ -170,7 +170,7 @@ func exerciseOwnerGroupsM3(t *testing.T, v *codexProductFixture, actors nativePe
 	host.roundtrip(t, "m3-dc-g2", g2, 3, 2, original)
 	credential := originalOwnerGroupsRESTCredential(t, v, d, g2)
 	ownerGroupsEmptyTaskState(t, v)
-	exerciseOwnerGroupsActorCeiling(t, v, credential, g2, actors.active.GroupID)
+	exerciseOwnerGroupsActorCeiling(t, v, credential, g2, actors.active.GroupID, actors.active.NetworkID)
 	ownerGroupsEmptyTaskState(t, v)
 	for index := 0; index < 3; index++ {
 		if ownerGroupsRelationAuthorityHash(t, v, original[index].Endpoint, actors.active.GroupID) != preserved[index][0] ||
@@ -188,7 +188,7 @@ func exerciseOwnerGroupsM3(t *testing.T, v *codexProductFixture, actors nativePe
 	requireOwnerGroupsOriginalIdentities(t, v, actors, host, original)
 	observeOwnerGroupsCase(t, "M3_RemoveOnlyD", map[string]bool{
 		"only_D_G1_removed": true, "A_B_C_unchanged": true, "D_G2_unchanged": true,
-		"shared_Principal_grants_unchanged": true, "actual_five_right_Actor_Guards": true,
+		"shared_Principal_grants_unchanged": true, "actual_five_right_Actor_Guards": true, "Network_business_and_Leave_denied": true,
 		"legacy_global_mutations_denied": true, "fresh_final_delivery_denied": true,
 	})
 	return ownerGroupsDeniedDelivery{RequestID: request, Body: body, Path: path, Group: actors.active.GroupID}
