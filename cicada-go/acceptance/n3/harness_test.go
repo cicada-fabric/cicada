@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -70,7 +71,26 @@ func readPrivate(t *testing.T, path string) []byte {
 	defer f.Close()
 	raw := must(io.ReadAll(io.LimitReader(f, harnessPacketLimit+1)))
 	if len(raw) > harnessPacketLimit {
-		t.Fatal("owned fixture file exceeds its harness bound")
+		clear(raw)
+		_, caller, line, _ := runtime.Caller(1)
+		t.Fatalf("owned fixture file exceeds its harness bound: class=%s bytes=%d limit_bytes=%d caller=%s:%d", filepath.Base(path), must(f.Stat()).Size(), harnessPacketLimit, filepath.Base(caller), line)
+	}
+	return raw
+}
+
+// This is the production protected-history file, not a packet or generic
+// checkpoint. Keep its 8 MiB product bound in one reader, including hash reads.
+func readNodeControlState(t *testing.T, path string) []byte {
+	t.Helper()
+	if filepath.Base(path) != "node-control-state.json" {
+		t.Fatal("protected Node-state reader received another file class")
+	}
+	file := must(os.Open(path))
+	defer file.Close()
+	raw := must(io.ReadAll(io.LimitReader(file, (8<<20)+1)))
+	if len(raw) > 8<<20 {
+		clear(raw)
+		t.Fatalf("owned Node protected state exceeds production bound: class=node-control-state.json bytes=%d limit_bytes=%d", must(file.Stat()).Size(), 8<<20)
 	}
 	return raw
 }
@@ -79,15 +99,7 @@ func readJSON(t *testing.T, path string, value any) {
 	t.Helper()
 	var raw []byte
 	if filepath.Base(path) == "node-control-state.json" {
-		// Production bounds protected Node history separately from packets.
-		// Match maxMachineNodeControlStateBytes, never the 2 MiB wire bound.
-		file := must(os.Open(path))
-		raw = must(io.ReadAll(io.LimitReader(file, (8<<20)+1)))
-		file.Close()
-		if len(raw) > 8<<20 {
-			clear(raw)
-			t.Fatal("owned Node protected state exceeds production's 8 MiB bound")
-		}
+		raw = readNodeControlState(t, path)
 	} else {
 		raw = readPrivate(t, path)
 	}

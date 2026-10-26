@@ -2,6 +2,7 @@ package n3_test
 
 import (
 	"encoding/json"
+	"io"
 	"net/url"
 	"os"
 	"os/exec"
@@ -94,8 +95,18 @@ func (p *nodeProcess) statePath() string {
 
 func (p *nodeProcess) reportFailure(t *testing.T) {
 	t.Helper()
-	raw := readPrivate(t, filepath.Join(p.state, "private-process.log"))
+	// Process logs can grow for the entire Runtime gate. Inspect a bounded
+	// tail for closed diagnostics; never let log growth widen packet readers.
+	log := must(os.Open(filepath.Join(p.state, "private-process.log")))
+	defer log.Close()
+	size := must(log.Stat()).Size()
+	start := size - harnessPacketLimit
+	if start < 0 {
+		start = 0
+	}
+	raw := must(io.ReadAll(io.NewSectionReader(log, start, harnessPacketLimit)))
 	defer clear(raw)
+	t.Logf("NODE_FAILURE_LOG_SCOPE total_bytes=%d observed_tail_bytes=%d truncated=%t", size, len(raw), start > 0)
 	paths := regexp.MustCompile(`/v2/[A-Za-z0-9_./-]+`).FindAll(raw, -1)
 	codes := regexp.MustCompile(`\b[45][0-9][0-9]\b`).FindAll(raw, -1)
 	var categories []string
@@ -126,7 +137,8 @@ func (p *nodeProcess) awaitState(t *testing.T, f *hubFixture, bound bool) nodeAc
 	deadline := time.Now().Add(20 * time.Second)
 	for time.Now().Before(deadline) {
 		if _, err := os.Stat(p.statePath()); err == nil {
-			raw := readPrivate(t, p.statePath())
+			raw := readNodeControlState(t, p.statePath())
+			observedBytes := len(raw)
 			var state nodeActorState
 			err := json.Unmarshal(raw, &state)
 			clear(raw)
@@ -134,6 +146,7 @@ func (p *nodeProcess) awaitState(t *testing.T, f *hubFixture, bound bool) nodeAc
 				t.Fatal("actual Node durable scope differs from its owned fixture")
 			}
 			if bound && state.BindingID != "" && state.BindingVersion > 0 && state.NodeKeyEpoch > 0 && state.HubID == f.cfg.Hub.HubID {
+				t.Logf("NODE_PROTECTED_STATE_SCOPE class=node-control-state.json bytes=%d limit_bytes=%d", observedBytes, 8<<20)
 				return state
 			}
 			if !bound && state.PendingCandidate != nil && state.PendingCode != "" {

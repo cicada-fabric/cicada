@@ -133,7 +133,7 @@ func (v *directIPNodeFixture) publicOwnerPin(t *testing.T) {
 func directIPNativeCodex(t *testing.T, v *directIPNodeFixture) map[string]any {
 	t.Helper()
 	v.publicOwnerPin(t)
-	originalNode := hash(readPrivate(t, v.node.statePath()))
+	originalNode := hash(readNodeControlState(t, v.node.statePath()))
 	var workspaces []string
 	for _, letter := range []string{"a", "b", "c"} {
 		path := filepath.Join(v.root, "native-workspace-"+letter)
@@ -208,7 +208,7 @@ func directIPNativeCodex(t *testing.T, v *directIPNodeFixture) map[string]any {
 		writeJSON(t, filepath.Join(control, strconv.Itoa(step)+".command.json"), value)
 	}
 	await(0)
-	if v.node.running() || hash(readPrivate(t, v.node.statePath())) != originalNode {
+	if v.node.running() || hash(readNodeControlState(t, v.node.statePath())) != originalNode {
 		t.Fatal("original daemon startup changed or started the stopped Node")
 	}
 	assetPaths := []string{".agents/plugins/cicada/.codex-plugin/plugin.json", ".agents/plugins/cicada/.mcp.json", ".agents/plugins/cicada/hooks/hooks.json", ".agents/plugins/cicada/skills/cicada-network/SKILL.md", ".agents/plugins/marketplace.json"}
@@ -219,7 +219,7 @@ func directIPNativeCodex(t *testing.T, v *directIPNodeFixture) map[string]any {
 	assets := hash(must(json.Marshal(map[string]any{"format": "cicada.codex-plugin-assets.v1", "files": rows})))
 	if directIPCLIAt(t, v.hub.binary, "components", "install", "--prefix", v.prefix, "--components", "node", "--binary", v.hub.binary,
 		"--sha256", hash(readPrivateBinary(t, v.hub.binary)), "--licenses", "/licenses", "--codex-plugin-assets", "/repo", "--codex-plugin-sha256", assets) != 0 ||
-		v.node.running() || hash(readPrivate(t, v.node.statePath())) != originalNode {
+		v.node.running() || hash(readNodeControlState(t, v.node.statePath())) != originalNode {
 		t.Fatal("file-only Node/plugin installation changed or started the original Node")
 	}
 	noDirectIPInstalledProcess(t, v.prefix)

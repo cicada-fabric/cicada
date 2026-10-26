@@ -37,7 +37,7 @@ func TestN3CodexProductThreeStagePersistentDaemon(t *testing.T) {
 	v := newCodexProductFixture(t, "1s")
 	t.Cleanup(func() { retainColdCLIDiagnostics(t, v) })
 	v.actualNode.kill(t)
-	originalNode := readPrivate(t, v.actualNode.statePath())
+	originalNode := readNodeControlState(t, v.actualNode.statePath())
 	defer clear(originalNode)
 	prefix := filepath.Join(v.root, "selected-root")
 	if os.Mkdir(prefix, 0755) != nil || os.Chmod(prefix, 0755) != nil {
@@ -109,7 +109,7 @@ func TestN3CodexProductThreeStagePersistentDaemon(t *testing.T) {
 		writeJSON(t, filepath.Join(control, strconv.Itoa(step)+".command.json"), values)
 	}
 	awaitStep(0) // Actual original daemon is already running before installation.
-	if v.actualNode.running() || hash(readPrivate(t, v.actualNode.statePath())) != hash(originalNode) {
+	if v.actualNode.running() || hash(readNodeControlState(t, v.actualNode.statePath())) != hash(originalNode) {
 		t.Fatal("old-plugin setup started or altered the stopped original Node")
 	}
 	assetPaths := []string{".agents/plugins/cicada/.codex-plugin/plugin.json", ".agents/plugins/cicada/.mcp.json", ".agents/plugins/cicada/hooks/hooks.json", ".agents/plugins/cicada/skills/cicada-network/SKILL.md", ".agents/plugins/marketplace.json"}
@@ -126,7 +126,7 @@ func TestN3CodexProductThreeStagePersistentDaemon(t *testing.T) {
 		t.Fatal("actual file-only component installation failed")
 	}
 	checkRoot()
-	if v.actualNode.running() || hash(readPrivate(t, v.actualNode.statePath())) != hash(originalNode) {
+	if v.actualNode.running() || hash(readNodeControlState(t, v.actualNode.statePath())) != hash(originalNode) {
 		t.Fatal("file-only installation started or changed the original Node")
 	}
 	installed := filepath.Join(prefix, "components/node/bin/cicada")
@@ -135,7 +135,7 @@ func TestN3CodexProductThreeStagePersistentDaemon(t *testing.T) {
 	}
 	sendStep(1, map[string]any{"marketplace": filepath.Join(prefix, "components/node/share/codex")})
 	awaitStep(1)
-	if v.actualNode.running() || hash(readPrivate(t, v.actualNode.statePath())) != hash(originalNode) {
+	if v.actualNode.running() || hash(readNodeControlState(t, v.actualNode.statePath())) != hash(originalNode) {
 		t.Fatal("plugin connection auto-started or changed the stopped original Node")
 	}
 	outbox := filepath.Join(filepath.Dir(v.mcpState), "outbox.sqlite3")
@@ -181,10 +181,10 @@ func TestN3CodexProductThreeStagePersistentDaemon(t *testing.T) {
 	}
 	v.requireOwnerDirectory(t, directory)
 	v.actualNode.kill(t)
-	stoppedNodeHash := hash(readPrivate(t, v.actualNode.statePath()))
+	stoppedNodeHash := hash(readNodeControlState(t, v.actualNode.statePath()))
 	sendStep(3, nil)
 	awaitStep(3)
-	if v.actualNode.running() || hash(readPrivate(t, v.actualNode.statePath())) != stoppedNodeHash {
+	if v.actualNode.running() || hash(readNodeControlState(t, v.actualNode.statePath())) != stoppedNodeHash {
 		t.Fatal("offline consumer auto-started or modified the Node")
 	}
 	startNode()

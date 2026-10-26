@@ -81,7 +81,7 @@ func TestN3LocalDomainNativeOriginalDaemonAB(t *testing.T) {
 	// Do it before starting the original Codex daemon or measuring admission.
 	v.coldOwnerPin(t)
 	v.actualNode.kill(t)
-	originalControl := hash(readPrivate(t, v.actualNode.statePath()))
+	originalControl := hash(readNodeControlState(t, v.actualNode.statePath()))
 	prefix := filepath.Join(v.root, "selected-native-root")
 	if os.Mkdir(prefix, 0755) != nil || os.Chmod(prefix, 0755) != nil {
 		t.Fatal("owned selected root unavailable")
@@ -164,7 +164,7 @@ func TestN3LocalDomainNativeOriginalDaemonAB(t *testing.T) {
 		writeJSON(t, filepath.Join(control, strconv.Itoa(step)+".command.json"), value)
 	}
 	await(0)
-	if v.actualNode.running() || hash(readPrivate(t, v.actualNode.statePath())) != originalControl {
+	if v.actualNode.running() || hash(readNodeControlState(t, v.actualNode.statePath())) != originalControl {
 		t.Fatal("Codex startup changed or started the stopped original Node")
 	}
 	assetPaths := []string{".agents/plugins/cicada/.codex-plugin/plugin.json", ".agents/plugins/cicada/.mcp.json", ".agents/plugins/cicada/hooks/hooks.json", ".agents/plugins/cicada/skills/cicada-network/SKILL.md", ".agents/plugins/marketplace.json"}
@@ -177,7 +177,7 @@ func TestN3LocalDomainNativeOriginalDaemonAB(t *testing.T) {
 	install := exec.Command(binary, "components", "install", "--prefix", prefix, "--components", "node", "--binary", binary,
 		"--sha256", hash(readPrivateBinary(t, binary)), "--licenses", "/licenses", "--codex-plugin-assets", "/repo", "--codex-plugin-sha256", assets)
 	install.Env, install.Stdout, install.Stderr = environment, log, log
-	if install.Run() != nil || hash(readPrivate(t, v.actualNode.statePath())) != originalControl || v.actualNode.running() {
+	if install.Run() != nil || hash(readNodeControlState(t, v.actualNode.statePath())) != originalControl || v.actualNode.running() {
 		t.Fatal("actual file-only installation failed or changed original Node state")
 	}
 	installed := filepath.Join(prefix, "components/node/bin/cicada")

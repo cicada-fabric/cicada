@@ -31,7 +31,7 @@ func prepareNativePeerActors(t *testing.T, v *codexProductFixture, tag string, n
 	requireLocalDomainAvailable(t, v)
 	v.coldOwnerPin(t)
 	v.actualNode.kill(t)
-	controlHash := hash(readPrivate(t, v.actualNode.statePath()))
+	controlHash := hash(readNodeControlState(t, v.actualNode.statePath()))
 	prefix := filepath.Join(v.root, tag+"-selected-root")
 	if os.Mkdir(prefix, 0755) != nil || os.Chmod(prefix, 0755) != nil {
 		t.Fatal("owned peer-form installation root unavailable")
@@ -64,7 +64,7 @@ func prepareNativePeerActors(t *testing.T, v *codexProductFixture, tag string, n
 	install := exec.Command(binary, "components", "install", "--prefix", prefix, "--components", "node", "--binary", binary,
 		"--sha256", hash(readPrivateBinary(t, binary)), "--licenses", "/licenses", "--codex-plugin-assets", "/repo", "--codex-plugin-sha256", assetHash)
 	install.Env, install.Stdout, install.Stderr = environment, log, log
-	if install.Run() != nil || hash(readPrivate(t, v.actualNode.statePath())) != controlHash || v.actualNode.running() {
+	if install.Run() != nil || hash(readNodeControlState(t, v.actualNode.statePath())) != controlHash || v.actualNode.running() {
 		t.Fatal("file-only peer-form installation failed or changed original Node state")
 	}
 	installed := filepath.Join(prefix, "components/node/bin/cicada")

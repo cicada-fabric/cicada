@@ -7857,6 +7857,77 @@ paragraph follows those checks. Receipt
 SHA-256 `46c004c9d66c54d0f66b5c24905fb52626438522a2749482303a4f3b178bd658`;
 route log SHA-256 `9659904ad473904882f6e0a068c2e2fa75d7b30adbd8a62a5ca3008127e8c355`.
 
+### 2026-10-26 M3 complete and protected Node-state reading
+
+Complete clean QA `330ff223941aa2252390224e0e09c3929ffd13a3`, production
+defdd9d, produced `run-20261026T203800Z-v1I1hH`: **FAIL / exit 1**.
+M1 passed in 137.58s, M2 in 480.61s and the complete M3 in 199.16s.
+M3's real original-profile login retained Owner/device/binding and changed
+only the expired N3 read projection; original native SID/Endpoint/key/workspace
+and business grants remained. Its exact writer release was **7,414ms**.
+Both Network self observations returned 200 with exactly the original three
+identity fields. Network directory/Leave and all tested five-right/legacy
+global mutations were rejected with 403, surviving original G1/G2 roundtrips
+passed, and A/B/C/D-G2/shared-Principal authorization snapshots were unchanged.
+All eight M3 facts completed before M4 began.
+
+M4 stopped after 72.39s with `owned fixture file exceeds its harness bound`.
+The exact failing filename, operation label and byte size are **NOT_RETAINED**:
+the old message omitted them and owned temporary state was cleaned. Static
+inspection identified a reachable mismatch at restartNativePeerNode →
+nodeProcess.awaitState: it read node-control-state.json through the generic
+2 MiB helper, whereas production and the existing JSON observer allow 8 MiB.
+Cleanup's protected-state audit still decoded successfully using that existing
+8 MiB path. This establishes the conflicting reader, not the missing historical
+byte count or a fully measured failure-site reconstruction.
+
+All direct Node-state hash/await/JSON observations now share a dedicated
+reader for that exact filename and the unchanged production 8 MiB limit.
+Generic private files retain 2 MiB. Overflow diagnostics include only class,
+actual opened-file size, limit and source basename/line, never private content
+or complete private paths. Node failure diagnostics inspect at most the final
+2 MiB of a growing process log and explicitly mark truncation. Tail inspection
+also checked M4–M8: retained outbox is selected by exact SQL row, retained
+ciphertext remains bounded at 256 KiB, Host summaries contain only fixed
+metadata/digests, and small credentials/IPC retain their separate existing limits.
+No product data is truncated or rewritten by these readonly observers.
+
+There is no existing script resume/from-M4 option. Filtering Go subtests to
+M4–M8 skips construction of g2/denied-request prerequisites and cannot supply
+the same covered state. M7's existing independent fresh fixtures can be selected
+with Go's subtest filter after the parent's unavoidable initial four-Thread
+setup; this would be M7-only evidence, with all other cases NOT_RUN and the
+complete collector still rejecting a whole-gate pass. No new driver/resume
+framework or replacement synthetic Runtime baseline was introduced.
+
+Source/harness were clean 330ff22, manifest
+`83107f9f08b7f11e36a91986e7f534fc52b9b464ce07eb84346cfc41cf250cef`;
+source/executable hashes matched before/after, owned container absent. Version,
+compilation and vet exited 0; harness exited 1. Receipt
+`~/Cicada/.local/evidence/native-pair-acceptance/run-20261026T203800Z-v1I1hH/result.json`
+SHA-256 `8b6bd56faff61c39eeaffeeb32253e574e1dfa87e54f38ed769e1b2c7fd419b9`;
+closed artifact `owner-groups-protocol-audit/5647b856c2e20592.json` SHA-256
+`5ca0324eed3e87a368b1852cd5d6b6ccd5ff78673657c4371baacf5d0cd3c9a2`.
+M4 remains FAIL; M5–M8, final identities and real five-minute lease witness
+were not reached. Physical Windows DPAPI/ACL/GUI, Android, second Node,
+public HTTPS and actual 24-hour expiry remain **NOT_RUN**. Production and
+the frozen defdd9d package are unchanged.
+
+The reader correction compiled and passed five synthetic boundary subcases
+plus both readonly privacy checks (eight pass events including the parent,
+zero failures/skips), exit 0. A visibly synthetic 3,145,925-byte restart state
+retains its binding; exactly 8 MiB is readable, larger protected state and
+generic files over 2 MiB reject with closed class/size/limit diagnostics, and
+a growing log exposes only the bounded-tail scope without its private sentinel.
+These synthetic bytes are not the missing historical M4 file size. Pinned
+disposable Docker, readonly modules/source and locked task cache were used.
+Dirty 330ff22 manifest
+`509ccb7ac5b91a1c0a22b44aecdefbffb17b585c6830f6e06d05feb2f7dd746a`
+matched before/after; this final paragraph follows the checks. Receipt
+`~/Cicada/.local/evidence/n2-acceptance/owner-groups-state-330ff22-01/result.json`
+SHA-256 `9a80d5a690357356ddf43a2657656a2712cf0363b4103c417f605325a08776dc`.
+No new M4–M8 product pass is inferred. The original complete entry is retained.
+
 ### 2026-10-26 user-reported four-Thread Group continuation
 
 Root relayed the user's report that four real native Threads on the same Node
