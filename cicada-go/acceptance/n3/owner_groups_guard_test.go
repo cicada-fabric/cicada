@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -133,7 +134,11 @@ func (r ownerGroupsFabricRouter) request(t *testing.T, credential ownerGroupsRES
 		defer clear(encoded)
 	}
 	request := must(http.NewRequest(method, r.origin+path, bytes.NewReader(encoded)))
-	request.Header.Set("Authorization", "CicadaSession "+credential.token)
+	scheme := "CicadaSession "
+	if strings.HasPrefix(path, "/v2/fabric/networks/") {
+		scheme = "Cicada-Network-Session "
+	}
+	request.Header.Set("Authorization", scheme+credential.token)
 	request.Header.Set("Cicada-Group-Scope", group)
 	if body != nil {
 		request.Header.Set("Content-Type", "application/json")
@@ -164,9 +169,12 @@ func (r ownerGroupsFabricRouter) requireNetworkIdentity(t *testing.T, credential
 	status, raw := r.request(t, credential, group, http.MethodGet, "/v2/fabric/networks/"+url.PathEscape(network)+"/whoami", nil)
 	defer clear(raw)
 	var identity map[string]string
-	if status != http.StatusOK || json.Unmarshal(raw, &identity) != nil || len(identity) != 3 || identity["network_id"] != network || identity["endpoint_id"] != credential.endpoint || identity["principal_id"] != credential.principal {
+	parsed := json.Unmarshal(raw, &identity) == nil
+	if status != http.StatusOK || !parsed || len(identity) != 3 || identity["network_id"] != network || identity["endpoint_id"] != credential.endpoint || identity["principal_id"] != credential.principal {
+		t.Logf("OWNER_GROUPS_NETWORK_SELF http=%d parsed=%t fields=%d network_matches=%t endpoint_matches=%t principal_matches=%t response_sha256=%s", status, parsed, len(identity), identity["network_id"] == network, identity["endpoint_id"] == credential.endpoint, identity["principal_id"] == credential.principal, hash(raw))
 		t.Fatal("actual managed token did not retain its exact Network self identity without business capabilities")
 	}
+	t.Log("OWNER_GROUPS_NETWORK_SELF http=200 exact_original_identity=true identity_fields=3 business_capabilities=0")
 }
 
 func exerciseOwnerGroupsActorCeiling(t *testing.T, v *codexProductFixture, credential ownerGroupsRESTCredential, activeGroup, removedGroup, network string) {

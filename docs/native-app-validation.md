@@ -7800,6 +7800,63 @@ matched before/after; this paragraph follows the check. Receipt
 SHA-256 `74f6f871a1180d0d0f0cfbd71a7dbd541f15e455838889bea54a1a1865117b5f`.
 No new Runtime pass is inferred; the full corrected gate is still required.
 
+### 2026-10-26 Network credential scheme in the complete gate
+
+Complete clean QA `529471d1aad305b61ba72d7fbcfe388bd62c5e31`, production
+defdd9d, produced `run-20261026T200649Z-ZwI5k8`: **FAIL / exit 1**.
+M1 passed in 141.02s and M2 passed in 481.48s. M3 now crosses both former
+preconditions: its actual account was OWNER_READY at 20:21:57.525746604Z,
+with expiry 20:22:06.598380572Z and no pending/review. Normal original-profile
+Logout/Login completed with new expiry 20:37:00.164056069Z, unchanged
+Owner/device/binding, zero business APPLYs and read Authorized true→false.
+No read grant or Root/Node approval was added.
+
+M3 then actually removed D-G1 and released its original writer in **7,397ms**
+from the first exact positive authorization, within the ten-second fixture
+bound and unchanged fifteen-second product window. Same-path fresh refusal
+passed; both surviving A→B/G1 and D→C/G2 native roundtrips passed. M3 failed
+after 189.43s at its first Network-self composite assertion, before the full
+Actor/Network ceiling and final preservation assertions. It is not a M3 pass.
+
+Source review identifies a fixture protocol error: the REST helper uniformly
+used `CicadaSession`, while the production Network route parser accepts only
+`Cicada-Network-Session` before authentication. The existing producer HTTP
+regression uses that Network scheme with the same original token. The helper
+now selects it only for `/v2/fabric/networks/` paths; Group routes, original
+credential bytes, exact three-field Network identity and 403 business/Leave
+requirements remain unchanged. The failed version did not retain its HTTP
+status/field comparisons, so no missing wire observation is invented. New
+closed diagnostics preserve status, parse/identity comparisons and response
+digest; only an actual successful Network self response records the 200 fact.
+
+Source/harness were clean 529471d, manifest
+`1a117e0502e12f03f045a91785aa84832227ad2537bf2aef7ee23512871c10cd`;
+source/executables matched before/after and the owned container was absent.
+Version, compilation and vet exited 0, harness exited 1. Receipt
+`~/Cicada/.local/evidence/native-pair-acceptance/run-20261026T200649Z-ZwI5k8/result.json`
+SHA-256 `1d2246b1f928973fb5d545a3ae6ac71bc5f07af8e2da2db84cdaa939e2408a94`;
+closed artifact `owner-groups-protocol-audit/8a98009dbed1fe7c.json` SHA-256
+`aa83c70cd7a524ad11d23b4b6d16c5a98a7a3c795161d32e559c367e67f6b299`.
+M3–M8, final identities, actual five-minute lease witness, Windows/Android,
+physical second Node, public HTTPS and actual 24-hour expiry remain unaccepted
+or NOT_RUN. No production implementation, TTL, clock or package changed.
+
+The corrected fixture compiled and passed both readonly privacy checks,
+exit 0. The existing single real HTTP/crypto/SQLite Network regression
+`TestEndpointGroupsHTTPNetworkActorCannotBorrowPrincipalRightsOrLeaveRegistration`
+also passed: one main plus three subtests, no failures/skips, 2.31s. It uses
+the correct Network scheme and original token, preserves self identity and
+denies wider-Principal directory/Store/global-Leave authority. This protocol
+test is separate from the original four-Runtime M3, which remains unaccepted.
+Pinned disposable Docker, readonly source/modules and locked task cache were
+used. Dirty 529471d manifest
+`83107f9f08b7f11e36a91986e7f534fc52b9b464ce07eb84346cfc41cf250cef`
+matched before, after compilation and after the route regression; this final
+paragraph follows those checks. Receipt
+`~/Cicada/.local/evidence/n2-acceptance/owner-groups-network-scheme-529471d-01/result.json`
+SHA-256 `46c004c9d66c54d0f66b5c24905fb52626438522a2749482303a4f3b178bd658`;
+route log SHA-256 `9659904ad473904882f6e0a068c2e2fa75d7b30adbd8a62a5ca3008127e8c355`.
+
 ### 2026-10-26 user-reported four-Thread Group continuation
 
 Root relayed the user's report that four real native Threads on the same Node
