@@ -92,8 +92,13 @@ func endpointGroupsOriginalFixture(t *testing.T) (*nativePairTCPConsumerFixture,
 	if err != nil {
 		t.Fatal(err)
 	}
+	// A live-capability Hub can adopt the same registration on the ordinary
+	// managed wake. Serialize fixture setup with that real writer and preserve
+	// its anchor, encrypted originals and observation high water if already seen.
+	f.bridge.endpointGroupsMu.Lock()
+	defer f.bridge.endpointGroupsMu.Unlock()
 	r, enrolled, err := f.client.endpointGroupsRegistrationCandidate(q.NativeSessionID, q.Workspace)
-	if err != nil || enrolled {
+	if err != nil {
 		t.Fatal("fixture original candidate", err)
 	}
 	j, d := accepted.Join, accepted.LocalDomain
@@ -103,7 +108,15 @@ func endpointGroupsOriginalFixture(t *testing.T) (*nativePairTCPConsumerFixture,
 	if err != nil {
 		t.Fatal(err)
 	}
-	r.Anchor = wire.EndpointGroupsRegistrationAnchor{Profile: wire.EndpointGroupsNativeProfile, RegistrationSource: wire.EndpointGroupsRegistrationSource, Registration: registration, RegistrationDigest: digest, RegistrationRevision: 1, LocalUserScope: m.LocalUserScope, NetworkID: p.NetworkID, BindingID: m.BindingID, BindingEpoch: m.BindingEpoch, NodeKeyEpoch: p.Node.NodeKeyEpoch, LeaseOwner: m.LeaseOwner, NetworkAccessBindingID: m.NetworkAccessBindingID, NetworkAccessEpoch: m.NetworkAccessEpoch, NetworkMembershipRevision: m.NetworkMembershipRevision, EndpointNetworkRevision: m.EndpointNetworkRevision, CandidateVersion: m.CandidateVersion, CandidateKeyID: k.CandidateKeyID, CandidatePublic: k.CandidatePublicIdentity, CandidateFingerprint: k.CandidateFingerprint, CandidateProofDigest: k.CandidateProofDigest, State: "REGISTERED", LeaseExpiresAt: j.LeaseExpiresAt}
+	expected := wire.EndpointGroupsRegistrationAnchor{Profile: wire.EndpointGroupsNativeProfile, RegistrationSource: wire.EndpointGroupsRegistrationSource, Registration: registration, RegistrationDigest: digest, RegistrationRevision: 1, LocalUserScope: m.LocalUserScope, NetworkID: p.NetworkID, BindingID: m.BindingID, BindingEpoch: m.BindingEpoch, NodeKeyEpoch: p.Node.NodeKeyEpoch, LeaseOwner: m.LeaseOwner, NetworkAccessBindingID: m.NetworkAccessBindingID, NetworkAccessEpoch: m.NetworkAccessEpoch, NetworkMembershipRevision: m.NetworkMembershipRevision, EndpointNetworkRevision: m.EndpointNetworkRevision, CandidateVersion: m.CandidateVersion, CandidateKeyID: k.CandidateKeyID, CandidatePublic: k.CandidatePublicIdentity, CandidateFingerprint: k.CandidateFingerprint, CandidateProofDigest: k.CandidateProofDigest, State: "REGISTERED", LeaseExpiresAt: j.LeaseExpiresAt}
+	if enrolled {
+		expected.RegistrationRevision = r.Anchor.RegistrationRevision
+		if !sameEndpointGroupsAnchor(expected, r.Anchor) {
+			t.Fatal("adopted anchor changed original identity/key/binding")
+		}
+	} else {
+		r.Anchor = expected
+	}
 	if wire.ValidateEndpointGroupsRegistrationAnchor(r.Anchor, f.hub) != nil {
 		t.Fatal("fixture anchor differs from real original receipts")
 	}
@@ -215,14 +228,28 @@ func TestEndpointGroupsLocalLeavePersistsAndKeepsOriginalReceipts(t *testing.T) 
 
 func TestEndpointGroupsExplicitJoinKeepsG1DenyAndG2WithoutAutoSelection(t *testing.T) {
 	f, r := endpointGroupsOriginalFixture(t)
+	f.bridge.endpointGroupsMu.Lock()
+	// Re-read after acquiring the same writer lock: a wake between helper
+	// return and this transition may have observed a newer real snapshot.
+	r, _, err := f.client.endpointGroupsRegistrationCandidate(r.Anchor.Registration.NativeSessionID, r.Anchor.Registration.Workspace)
+	if err != nil {
+		f.bridge.endpointGroupsMu.Unlock()
+		t.Fatal(err)
+	}
 	_, original, completed, err := f.client.endpointGroupsOriginal(r)
 	if err != nil {
+		f.bridge.endpointGroupsMu.Unlock()
 		t.Fatal(err)
+	}
+	if !r.LocallyOffline {
+		r.LocalAccessRevision++
 	}
 	r.LocallyOffline = true
 	if err := f.client.saveEndpointGroupsRegistration(r); err != nil {
+		f.bridge.endpointGroupsMu.Unlock()
 		t.Fatal(err)
 	}
+	f.bridge.endpointGroupsMu.Unlock()
 	anchor := r.Anchor
 	group1 := completed.Description.Policy.GroupID
 	group2 := "zz-synthetic-independent-G2"
@@ -233,7 +260,7 @@ func TestEndpointGroupsExplicitJoinKeepsG1DenyAndG2WithoutAutoSelection(t *testi
 	headDigest, _ := e2ee.EndpointGroupOwnerControlDigest(nativeDigest, group2, head2)
 	relation := wire.EndpointGroupRelation{HubID: anchor.Registration.HubID, OwnerID: anchor.Registration.OwnerID, NodeID: anchor.Registration.NodeID, LocalUserScope: anchor.LocalUserScope, NetworkID: anchor.NetworkID, GroupID: group2, EndpointID: anchor.Registration.EndpointID, PrincipalID: anchor.Registration.PrincipalID, RegistrationDigest: anchor.RegistrationDigest, RegistrationRevision: anchor.RegistrationRevision, Source: "OWNER_EXPLICIT", AuthorityID: policy, AuthorityEpoch: 1, ContributionRevision: 1, State: "ACTIVE", DecisionRevision: 1, OwnerControlDigest: headDigest, PolicyID: policy, PolicyEpoch: 1, BindingID: anchor.BindingID, BindingEpoch: anchor.BindingEpoch, MembershipRevision: 1, EndpointJoinRevision: 1, CandidateVersion: anchor.CandidateVersion, CandidateKeyID: anchor.CandidateKeyID, CandidateFingerprint: anchor.CandidateFingerprint, CandidateProofDigest: anchor.CandidateProofDigest}
 	ref := wire.EndpointGroupSourceReference{Source: relation.Source, AuthorityID: policy, AuthorityEpoch: 1, ContributionRevision: 1}
-	description := wire.EndpointGroupsNodeDescribeResult{ContractRevision: wire.OwnerEndpointGroupsContractRevision, Registration: anchor, Relations: []wire.OwnerEndpointGroupsRelationCard{{GroupID: group1, GroupName: "Synthetic removed G1", NetworkID: anchor.NetworkID, State: "REMOVED", RelationRevision: 1, DecisionRevision: 1, ManualDeny: true, OwnerControl: head1, KeyState: "REVOKED"}, {GroupID: group2, GroupName: "Synthetic independent G2", NetworkID: anchor.NetworkID, State: "ACTIVE", RelationRevision: 1, DecisionRevision: 1, OwnerControl: head2, Contributions: []wire.OwnerEndpointGroupsContributionCard{{Source: relation.Source, AuthorityID: policy, AuthorityEpoch: 1, ContributionRevision: 1, State: "ACTIVE", KeyState: "CURRENT", Effective: true}}, SelectedSource: &ref, KeyState: "CURRENT"}}, Authorities: []wire.EndpointGroupCurrentEndpoint{{OwnerControl: head2, Relation: relation}}, RelationsRevision: 2, Complete: true}
+	description := wire.EndpointGroupsNodeDescribeResult{ContractRevision: wire.OwnerEndpointGroupsContractRevision, Registration: anchor, Relations: []wire.OwnerEndpointGroupsRelationCard{{GroupID: group1, GroupName: "Synthetic removed G1", NetworkID: anchor.NetworkID, State: "REMOVED", RelationRevision: 1, DecisionRevision: 1, ManualDeny: true, OwnerControl: head1, KeyState: "REVOKED"}, {GroupID: group2, GroupName: "Synthetic independent G2", NetworkID: anchor.NetworkID, State: "ACTIVE", RelationRevision: 1, DecisionRevision: 1, OwnerControl: head2, Contributions: []wire.OwnerEndpointGroupsContributionCard{{Source: relation.Source, AuthorityID: policy, AuthorityEpoch: 1, ContributionRevision: 1, State: "ACTIVE", KeyState: "CURRENT", Effective: true}}, SelectedSource: &ref, KeyState: "CURRENT"}}, Authorities: []wire.EndpointGroupCurrentEndpoint{{OwnerControl: head2, Relation: relation}}, RelationsRevision: r.RelationsRevision + 2, Complete: true}
 	keyRaw, err := os.ReadFile(filepath.Join(f.root, "hub", "e2ee", "node-control-identity.json"))
 	if err != nil {
 		t.Fatal(err)
