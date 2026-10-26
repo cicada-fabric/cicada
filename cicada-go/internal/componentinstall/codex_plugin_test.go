@@ -119,7 +119,10 @@ func TestCodexPluginInstallMaterializesOnlyFiles(t *testing.T) {
 	if err != nil || json.Unmarshal(data, &hooks) != nil {
 		t.Fatal("invalid materialized hooks", err)
 	}
-	for _, event := range []string{"UserPromptSubmit", "PreToolUse"} {
+	if len(codexObject(hooks["hooks"])) != 1 || codexObject(hooks["hooks"])["UserPromptSubmit"] != nil {
+		t.Fatal("default plugin still intercepts ordinary prompts")
+	}
+	for _, event := range []string{"PreToolUse"} {
 		entries := codexObject(hooks["hooks"])[event].([]any)
 		handler := codexObject(codexObject(entries[0])["hooks"].([]any)[0])
 		// Parse words through the real POSIX shell without executing the
@@ -172,7 +175,7 @@ func indexCodexSource(path string) int {
 }
 
 func TestCodexPluginInvalidInputsDoNotCreateDestination(t *testing.T) {
-	for _, name := range []string{"missing-digest", "missing-assets", "wrong-digest", "relative-root", "hub-only", "missing-file", "symlink-file", "symlink-parent", "oversized", "extra-server", "extra-hook", "wrong-source"} {
+	for _, name := range []string{"missing-digest", "missing-assets", "wrong-digest", "relative-root", "hub-only", "missing-file", "symlink-file", "symlink-parent", "oversized", "extra-server", "extra-hook", "missing-pretool", "wrong-pretool-matcher", "wrong-pretool-command", "wrong-source"} {
 		t.Run(name, func(t *testing.T) {
 			f := newFixture(t, platform{"linux", "amd64"}, "node")
 			assets, expected := codexFixture(t)
@@ -216,6 +219,12 @@ func TestCodexPluginInvalidInputsDoNotCreateDestination(t *testing.T) {
 				mutate(codexAssetPaths[1], `{"mcpServers":{"cicada":{},"other":{"command":"unexpected"}}}`)
 			case "extra-hook":
 				mutate(codexAssetPaths[2], `{"hooks":{"UserPromptSubmit":[],"PreToolUse":[],"Stop":[]}}`)
+			case "missing-pretool":
+				mutate(codexAssetPaths[2], `{"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"command","command":"cicada codex-hook","timeout":35}]}]}}`)
+			case "wrong-pretool-matcher":
+				mutate(codexAssetPaths[2], `{"hooks":{"PreToolUse":[{"matcher":"^mcp__","hooks":[{"type":"command","command":"cicada codex-hook","timeout":35}]}]}}`)
+			case "wrong-pretool-command":
+				mutate(codexAssetPaths[2], `{"hooks":{"PreToolUse":[{"matcher":"^mcp__(cicada|plugin_cicada_cicada)__","hooks":[{"type":"command","command":"cicada codex-hook --unexpected","timeout":35}]}]}}`)
 			case "wrong-source":
 				mutate(codexAssetPaths[4], `{"name":"cicada-repo","plugins":[{"name":"cicada","source":{"source":"local","path":"../../unexpected"}}]}`)
 			}
@@ -231,6 +240,64 @@ func TestCodexPluginInvalidInputsDoNotCreateDestination(t *testing.T) {
 			}
 			if _, err := os.Lstat(f.prefix); !errors.Is(err, fs.ErrNotExist) {
 				t.Fatal("invalid input created a destination")
+			}
+		})
+	}
+}
+
+func TestCodexPluginLegacyPromptHookRemainsOptionalAndStrict(t *testing.T) {
+	for _, name := range []string{"original-dual-hook", "reject-prompt-matcher", "reject-prompt-command"} {
+		t.Run(name, func(t *testing.T) {
+			f := newFixture(t, platform{"linux", "amd64"}, "node")
+			assets, _ := codexFixture(t)
+			path := filepath.Join(assets, ".agents/plugins/cicada/hooks/hooks.json")
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var root map[string]any
+			if err := json.Unmarshal(data, &root); err != nil {
+				t.Fatal(err)
+			}
+			// Exact retained prompt-hook shape from the previous bundle; this
+			// fixture never enables it in the user's installed plugin.
+			handler := map[string]any{"type": "command", "command": "cicada codex-hook", "timeout": 35, "statusMessage": "Cicada current Thread"}
+			entry := map[string]any{"hooks": []any{handler}}
+			if name == "reject-prompt-matcher" {
+				entry["matcher"] = "*"
+			}
+			if name == "reject-prompt-command" {
+				handler["command"] = "cicada codex-hook --unexpected"
+			}
+			codexObject(root["hooks"])["UserPromptSubmit"] = []any{entry}
+			data, err = json.Marshal(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, data, 0600); err != nil {
+				t.Fatal(err)
+			}
+			args := append(f.installArgs("node"), "--codex-plugin-assets", assets, "--codex-plugin-sha256", codexFixtureDigest(t, assets))
+			err = command(args, io.Discard, f.target)
+			if name != "original-dual-hook" {
+				if err == nil {
+					t.Fatal("legacy prompt hook bypassed its original strict shape")
+				}
+				if _, err := os.Lstat(f.prefix); !errors.Is(err, fs.ErrNotExist) {
+					t.Fatal("rejected legacy hook created a destination")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal("original dual-hook bundle lost compatibility", err)
+			}
+			data, err = os.ReadFile(filepath.Join(f.prefix, "components/node", codexMaterialPath(".agents/plugins/cicada/hooks/hooks.json")))
+			if err != nil || json.Unmarshal(data, &root) != nil {
+				t.Fatal("legacy materialized hooks missing", err)
+			}
+			hooks := codexObject(root["hooks"])
+			if len(hooks) != 2 || len(hooks["PreToolUse"].([]any)) != 1 || len(hooks["UserPromptSubmit"].([]any)) != 1 {
+				t.Fatal("legacy dual-hook bundle was silently rewritten")
 			}
 		})
 	}

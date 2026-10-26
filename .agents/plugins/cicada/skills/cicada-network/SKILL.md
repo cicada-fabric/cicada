@@ -25,31 +25,44 @@ registration or local policy grants execution rights. Installing the plugin,
 logging in or starting MCP does not register or authorize a Thread; current Hub
 Guard remains authoritative for every business operation.
 
-For simple onboarding, ask the user to send one of these literal messages in
-**the current native Codex conversation**, not in a terminal:
+For Linux native Codex onboarding, ask the user to register the intended
+conversation from a separate **system terminal**:
 
-- `cicada join NAME` registers this Thread with a meaningful optional name and
-  joins the local scope already enabled for this Node/user, when available.
-- `cicada peers` shows the private Node operator directory snapshot.
-- `cicada leave` withdraws this Thread's association while retaining its native
-  record and workspace. An explicit new domain Join under the current policy
-  creates a new admission, without reviving the old member/binding or reassigning
-  its unresolved original packets.
-- `cicada help` shows local command help.
+- `cicada join --thread ID --name NAME` registers that existing native Thread
+  with a meaningful name, or explicitly brings its same registration back
+  online after Leave, subject to current authorization checks.
+- Under `OWNER_ENDPOINT_GROUPS_V1`, `cicada leave --thread ID` persists only a
+  local offline state. It retains the native Thread and workspace, original
+  SID, keys and binding, and every Owner-managed Group relation. A later Join
+  restores that same registration and rechecks current authorization; it does
+  not create another identity, automatically restore default Group G1 or
+  replace unresolved original packets.
 
-The existing Pair flow is advanced: `cicada connect` lists available human Pair
-labels and A/B slots; `cicada connect "PAIR LABEL" A` selects that exact label and
-slot. B must be chosen explicitly for the other Thread. Never guess the first
-or newest Pair. Pair keeps its original strict native verification and separate
-Owner consents; a local-domain context does not authorize a Pair Join.
+Use the actual native Thread ID exposed by the Host and quote argument values
+for the user's shell. Never invent an ID, borrow a parent Thread or replace a
+lost identity. The CLI must validate the selected Thread's native record,
+workspace and Node OS user; a supplied ID alone is not identity proof. Do not
+run this registration inside the model's active conversation tool call or
+imitate Hook JSON. Unconfirmed results require the same command's original
+recovery; an HTTP error is not evidence that an uncertain request failed.
 
-The local Hook handles these literal operator messages and confirms only verified
-results. Do not run them as shell commands, imitate Hook JSON, supply a Thread
-UUID or replace a lost identity. Unconfirmed results require the same command's
-original recovery; an HTTP error is not evidence that an uncertain request failed.
-The private operator directory is user feedback, not an MCP permission fallback.
+The default plugin retains only the Cicada MCP `PreToolUse` Hook. It does not
+intercept ordinary prompts or run registration through `UserPromptSubmit`.
 Standard `$cicada-network` and `@cicada` invocations remain normal skill/model
-workflows. Ask/send/reply requests are not aliases for the literal commands.
+workflows; ask/send/reply requests do not become local operator commands.
+
+Older installations may explicitly retain the literal-message operator Hook
+for compatibility. Only there, `cicada peers` is a private Node operator
+snapshot, and the advanced Pair commands `cicada connect` and
+`cicada connect "PAIR LABEL" A` list or select exact human Pair labels and A/B
+slots. B must be chosen explicitly for the other Thread. Do not translate
+these compatibility messages into external CLI commands or recommend them for
+default registration. Pair keeps its strict native verification and separate
+Owner consents; a local-domain context does not authorize a Pair Join. The
+private operator directory is user feedback, not an MCP permission fallback.
+Under the retained legacy local-domain profile, a later Join creates a new
+admission without reviving the old member/binding or reassigning unresolved
+original packets. That legacy rule does not apply to `OWNER_ENDPOINT_GROUPS_V1`.
 
 Every managed MCP tool declares `_cicada_context`. Echo its connection nonce
 exactly as declared by the current connection schema. The local trusted Hook
@@ -65,7 +78,7 @@ standard selection form. Set `scope` to `group` for the current joined Group, or
 to `network` with an explicit already joined `network_id`. An optional `query`
 narrows that authorized directory. The form can include peers on other Nodes;
 only show names, workspaces and snapshot status that the caller may read.
-The private `cicada peers` operator snapshot supplies no Thread directory rights.
+The retained legacy `cicada peers` snapshot supplies no Thread directory rights.
 
 An accepted form returns an opaque `peer_selection_id`. Preserve it exactly for
 the intended `cicada_send` or `cicada_ask` call, without `target`, `network_id` or

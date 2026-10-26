@@ -187,10 +187,14 @@ func materializeCodexPlugin(files map[string][]byte, record *codexPluginRecord) 
 	delete(server, "env_vars")
 	hookFile, err := read(bundle + "hooks/hooks.json")
 	hooks := codexObject(hookFile["hooks"])
-	if err != nil || len(hookFile) != 1 || len(hooks) != 2 {
+	if err != nil || len(hookFile) != 1 || !codexOnlyFields(hooks, "PreToolUse", "UserPromptSubmit") {
 		return invalid
 	}
-	for _, event := range []string{"UserPromptSubmit", "PreToolUse"} {
+	events := []string{"PreToolUse"}
+	if _, legacy := hooks["UserPromptSubmit"]; legacy {
+		events = append(events, "UserPromptSubmit")
+	}
+	for _, event := range events {
 		entries, _ := hooks[event].([]any)
 		if len(entries) != 1 {
 			return invalid

@@ -1,17 +1,5 @@
 {
   "hooks": {
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "cicada codex-hook",
-            "timeout": 35,
-            "statusMessage": "Cicada current Thread"
-          }
-        ]
-      }
-    ],
     "PreToolUse": [
       {
         "matcher": "^mcp__(cicada|plugin_cicada_cicada)__",
