@@ -75,7 +75,8 @@
         "apply-before-forward",
         "apply-lost-response",
         "apply-unsigned403",
-        "apply-corrupt-response"
+        "apply-corrupt-response",
+        "complete-held-before-forward"
       ],
       "negative_inputs": [
         "same-id-changed-packet",
@@ -112,8 +113,9 @@
         "legacy_global_mutations_denied",
         "fresh_final_delivery_denied"
       ],
-      "faults": [
-        "complete-held-before-forward"
+      "faults": [],
+      "native_faults": [
+        "hold_original_native_writer"
       ],
       "negative_inputs": [
         "shared-Principal-wide-grant",

@@ -242,8 +242,8 @@ class ActualCLI:
         rows = [row for row in hooks['data'] if row['cwd'] == str(self.workspace)]
         assert len(rows) == 1 and not rows[0]['errors'], 'PRODUCT_HOOK_LOAD_ERROR'
         actual = rows[0]['hooks']
-        assert len(actual) == 2, 'UNEXPECTED_HOOK_DEFINITIONS'
-        assert {h['eventName'] for h in actual} == {'userPromptSubmit', 'preToolUse'}
+        assert len(actual) == 1, 'UNEXPECTED_HOOK_DEFINITIONS'
+        assert {h['eventName'] for h in actual} == {'preToolUse'}, 'DEFAULT_PRETOOL_ONLY_HOOK_REQUIRED'
         source_hash = digest(self.marketplace / '.agents/plugins/cicada/hooks/hooks.json')
         for hook in actual:
             assert hook['source'] == 'plugin' and hook['pluginId'] == plugin['id'], 'HOOK_NOT_FROM_INSTALLED_PLUGIN'
@@ -404,7 +404,7 @@ class ActualCLI:
                     os.write(master, b'\x1b[?1;2c')
                 plain = render_terminal(captured)
                 compact = re.sub(r'\s+', '', plain)
-                # The two definitions were read from the actual installed
+                # The default definition was read from the actual installed
                 # plugin and checked above. Use only the observed normal TUI
                 # control; never inject prepared trust hashes or bypass flags.
                 if '2.Trustallandcontinue' in compact and not trusted_by_tui:

@@ -22,7 +22,6 @@ type ownerGroupsHostCommand struct {
 	Form               map[string]any          `json:"form,omitempty"`
 	Queue              []ownerGroupsQueueInput `json:"queue,omitempty"`
 	BindQueue          map[string]string       `json:"bind_queue,omitempty"`
-	ExpectedLiteral    string                  `json:"expected_literal,omitempty"`
 	ObserveFields      []string                `json:"observe_fields,omitempty"`
 	ExpectedRequestID  string                  `json:"expected_request_id,omitempty"`
 	ExpectedBodyMarker string                  `json:"expected_body_marker,omitempty"`

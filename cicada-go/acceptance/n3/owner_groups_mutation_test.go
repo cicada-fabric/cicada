@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cicada-ai/cicada/internal/appcore"
 	"github.com/cicada-ai/cicada/internal/appvault"
 	wire "github.com/cicada-ai/cicada/internal/hubaccountwire"
 )
@@ -56,7 +57,7 @@ func exerciseOwnerGroupsLostApply(t *testing.T, v *codexProductFixture, review o
 		t.Fatal("actual TCP fault did not reach the intended original admission boundary")
 	}
 	// A new mutation must not replace this immutable unresolved original.
-	blocked, blockedView, blockedTrace := ownerGroupsAppGesture(t, v, "APPLY_REVIEWED_THREAD_GROUP_CHANGE", ownerGroupsGesture{
+	blocked, blockedView, blockedTrace := ownerGroupsAppGesture(t, v, appcore.ActionApplyThreadGroup, ownerGroupsGesture{
 		GestureID: review.Review.GestureID, Confirm: true})
 	if !blocked.ActionFailed || !blockedView.Pending || len(blockedTrace) != 0 {
 		t.Fatal("uncertain original allowed another App mutation or redispatch")
@@ -68,7 +69,7 @@ func exerciseOwnerGroupsLostApply(t *testing.T, v *codexProductFixture, review o
 	from := len(v.f.proxy.snapshot())
 	current := restartOwnerGroupsApp(t, v)
 	if current.Pending {
-		_, current, _ = ownerGroupsAppGesture(t, v, "RECOVER_ORIGINAL_THREAD_GROUP_REQUEST", ownerGroupsGesture{})
+		_, current, _ = ownerGroupsAppGesture(t, v, appcore.ActionRecoverThreadGroup, ownerGroupsGesture{})
 	}
 	if current.Pending || current.Current || (wantFence && current.ErrorCode != wire.OwnerEndpointGroupsOriginalNotAdmitted) ||
 		(!wantFence && current.ErrorCode != "") {

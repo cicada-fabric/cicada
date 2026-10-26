@@ -374,7 +374,7 @@ enabled = false
             assert path.is_file(), 'OWNER_GROUP_PARENT_TIMEOUT'
             command = json.loads(path.read_text())
             assert isinstance(command, dict) and not (set(command) - {
-                'action', 'actor', 'label', 'tool', 'arguments', 'form', 'queue', 'bind_queue', 'expected_literal',
+                'action', 'actor', 'label', 'tool', 'arguments', 'form', 'queue', 'bind_queue',
                 'observe_fields', 'expected_request_id', 'expected_body_marker', 'observe_self_groups'}), 'OWNER_GROUP_COMMAND_FIELDS'
             action, actor = command['action'], command.get('actor', 0)
             assert type(actor) is int and 0 <= actor < 4, 'OWNER_GROUP_ACTOR_INDEX'
@@ -441,13 +441,6 @@ enabled = false
                 cli.state.mkdir(mode=0o700)
                 start_daemon('owner-daemon-restart-' + str(restarts))
                 assert cli.original_daemon != old, 'OWNER_GROUP_HOST_NOT_RESTARTED'
-                reply(sequence)
-            elif action == 'literal_join_refused':
-                phase = 'LITERAL_DENY_RECHECK'
-                assert command['expected_literal'] == 'OWNER_READD_REQUIRED', 'OWNER_GROUP_LITERAL_EXPECTATION'
-                assert isinstance(command.get('label'), str) and re.fullmatch('[A-Za-z0-9_.-]{1,80}', command['label']), 'OWNER_GROUP_CALL_LABEL'
-                sid = cli.literal(command['label'], 'cicada join', command['expected_literal'], resume=ids[actor])
-                assert sid == ids[actor], 'OWNER_GROUP_LITERAL_REPLACED_THREAD'
                 reply(sequence)
             elif action == 'checkpoint':
                 reply(sequence)

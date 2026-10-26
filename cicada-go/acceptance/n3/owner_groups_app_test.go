@@ -1,9 +1,6 @@
 package n3_test
 
 import (
-	"bytes"
-	"encoding/json"
-	"io"
 	"testing"
 	"time"
 
@@ -11,89 +8,31 @@ import (
 	wire "github.com/cicada-ai/cicada/internal/hubaccountwire"
 )
 
-// A private UI projection of the actual Controller Snapshot. The acceptance
-// branch can compile while the independently delivered consumer is pending.
-// Missing product fields are errors, never a substitute implementation or a
-// positive fixture. Every gesture and target comes from an actual Core card.
-type ownerGroupsPanel struct {
-	AvailabilityKnown, Available, Current, Pending bool
-	NodeID, NetworkID, GestureID, ErrorCode        string
-	CapturedAt, FreshUntil, Outcome                string
-	CanCreate                                      bool
-	Threads                                        []ownerGroupsThreadCard
-	ThreadsNextCursor                              string
-	Selected                                       *ownerGroupsThreadCard
-	Candidates                                     []ownerGroupsCandidateCard
-	CandidatesLoaded                               bool
-	CandidatesCursor                               string
-	Review                                         *ownerGroupsReviewCard
-}
-
-type ownerGroupsThreadCard struct {
-	EndpointID, Name, Workspace, Harness, GestureID string
-	Relations                                       []ownerGroupsRelationCard
-	RelationsComplete                               bool
-	RelationsCursor                                 string
-}
-
-type ownerGroupsRelationCard struct {
-	GroupID, Name, State, KeyState, ExpiresAt string
-	OwnerMode, DenyReason, GestureID          string
-	CanRemove                                 bool
-	Contributions                             []ownerGroupsContributionCard
-}
-
-type ownerGroupsContributionCard struct {
-	Source, State, KeyState, ExpiresAt string
-	Effective                          bool
-}
-
-type ownerGroupsCandidateCard struct {
-	GroupID, Name, GestureID, UnavailableReason string
-	CanAdd                                      bool
-}
-
-type ownerGroupsReviewCard struct {
-	GestureID, Action, ThreadName, Workspace, GroupName string
-	ExpiresAt, PolicyExpiresAt, Duration                string
-}
-
-type ownerGroupsGesture struct {
-	GestureID, EndpointID, GroupID, Cursor string
-	Change, Name, Duration                 string
-	Confirm                                bool
-}
+// Formally delivered Core API: no mirrored DTO, JSON adapter or substitute
+// Controller. Every gesture and exact target comes from the actual Core card.
+type ownerGroupsPanel = appcore.ThreadGroupsSnapshot
+type ownerGroupsThreadCard = appcore.GroupThreadView
+type ownerGroupsRelationCard = appcore.ThreadGroupRelation
+type ownerGroupsCandidateCard = appcore.ThreadGroupCandidate
+type ownerGroupsGesture = appcore.ThreadGroupAction
 
 func actualOwnerGroupsPanel(t *testing.T, snapshot appcore.Snapshot) ownerGroupsPanel {
 	t.Helper()
-	var top map[string]json.RawMessage
-	if json.Unmarshal(must(json.Marshal(snapshot)), &top) != nil || len(top["thread_groups"]) == 0 || string(top["thread_groups"]) == "null" {
-		t.Fatal("actual App consumer has no ThreadGroups snapshot; no fixture may synthesize it")
-	}
-	var panel ownerGroupsPanel
-	if json.Unmarshal(top["thread_groups"], &panel) != nil {
-		t.Fatal("actual App ThreadGroups projection is malformed")
-	}
-	return panel
+	return snapshot.ThreadGroups
 }
 
-func actualOwnerGroupsAction(t *testing.T, kind string, input ownerGroupsGesture) appcore.Action {
+func actualOwnerGroupsAction(t *testing.T, kind appcore.ActionKind, input ownerGroupsGesture) appcore.Action {
 	t.Helper()
-	raw := must(json.Marshal(struct {
-		Kind         string
-		ThreadGroups ownerGroupsGesture
-	}{kind, input}))
-	defer clear(raw)
-	var action appcore.Action
-	d := json.NewDecoder(bytes.NewReader(raw))
-	d.DisallowUnknownFields()
-	if d.Decode(&action) != nil || d.Decode(new(any)) != io.EOF {
-		t.Fatal("actual App consumer has not delivered the exact Group action; unknown fields cannot be ignored")
+	switch kind {
+	case appcore.ActionReadThreadGroups, appcore.ActionReadThreadRelations, appcore.ActionReadGroupCandidates,
+		appcore.ActionPrepareThreadGroup, appcore.ActionApplyThreadGroup, appcore.ActionDismissThreadGroup, appcore.ActionRecoverThreadGroup:
+	default:
+		t.Fatal("unreviewed actual Core Group action")
 	}
-	return action
+	return appcore.Action{Kind: kind, ThreadGroups: input}
 }
 
-func ownerGroupsAppGesture(t *testing.T, v *codexProductFixture, kind string, input ownerGroupsGesture) (appActorReply, ownerGroupsPanel, []exchange) {
+func ownerGroupsAppGesture(t *testing.T, v *codexProductFixture, kind appcore.ActionKind, input ownerGroupsGesture) (appActorReply, ownerGroupsPanel, []exchange) {
 	t.Helper()
 	action := actualOwnerGroupsAction(t, kind, input)
 	reply, trace := performOwnerGroupsAppAction(t, v, action)
@@ -130,7 +69,7 @@ func refreshOwnerGroups(t *testing.T, v *codexProductFixture, network string) ow
 	seen := make(map[string]bool)
 	cursor := ""
 	for page := 0; page < 8; page++ {
-		reply, next, _ := ownerGroupsAppGesture(t, v, "READ_THREAD_GROUPS", ownerGroupsGesture{GestureID: panel.GestureID, Cursor: cursor})
+		reply, next, _ := ownerGroupsAppGesture(t, v, appcore.ActionReadThreadGroups, ownerGroupsGesture{GestureID: panel.GestureID, Cursor: cursor})
 		if reply.ActionFailed {
 			t.Fatal("actual App could not read the original Thread cards")
 		}
@@ -170,7 +109,7 @@ func selectOwnerGroupsThread(t *testing.T, v *codexProductFixture, network strin
 	seen := make(map[string]bool)
 	cursor := ""
 	for page := 0; page < 8; page++ {
-		reply, next, _ := ownerGroupsAppGesture(t, v, "READ_THREAD_GROUP_RELATIONS", ownerGroupsGesture{
+		reply, next, _ := ownerGroupsAppGesture(t, v, appcore.ActionReadThreadRelations, ownerGroupsGesture{
 			GestureID: selected.GestureID, EndpointID: selected.EndpointID, Cursor: cursor})
 		if reply.ActionFailed {
 			t.Fatal("actual App could not read the original Endpoint's relations")
@@ -205,7 +144,7 @@ func ownerGroupsCandidates(t *testing.T, v *codexProductFixture, panel ownerGrou
 	seen := make(map[string]bool)
 	cursor := ""
 	for page := 0; page < 8; page++ {
-		reply, next, _ := ownerGroupsAppGesture(t, v, "READ_THREAD_GROUP_CANDIDATES", ownerGroupsGesture{
+		reply, next, _ := ownerGroupsAppGesture(t, v, appcore.ActionReadGroupCandidates, ownerGroupsGesture{
 			GestureID: panel.Selected.GestureID, EndpointID: endpoint, Cursor: cursor})
 		if reply.ActionFailed {
 			t.Fatal("actual App could not read exact Group candidates")
@@ -279,7 +218,7 @@ func prepareOwnerGroupsChange(t *testing.T, v *codexProductFixture, panel ownerG
 	if input.GestureID == "" || groupName == "" {
 		t.Fatal("actual Core did not offer the exact requested Group mutation")
 	}
-	reply, next, _ := ownerGroupsAppGesture(t, v, "REVIEW_THREAD_GROUP_CHANGE", input)
+	reply, next, _ := ownerGroupsAppGesture(t, v, appcore.ActionPrepareThreadGroup, input)
 	r := next.Review
 	if reply.ActionFailed || next.Pending || !next.Current || next.NetworkID != panel.NetworkID || r == nil ||
 		r.GestureID == "" || r.Action != change || r.ThreadName != threadName || r.Workspace != workspace ||
@@ -299,5 +238,5 @@ func applyOwnerGroupsReview(t *testing.T, v *codexProductFixture, panel ownerGro
 	if panel.Review == nil || panel.Review.GestureID == "" || panel.Pending || !panel.Current {
 		t.Fatal("actual APPLY requires the original live explicit Owner review")
 	}
-	return ownerGroupsAppGesture(t, v, "APPLY_REVIEWED_THREAD_GROUP_CHANGE", ownerGroupsGesture{GestureID: panel.Review.GestureID, Confirm: true})
+	return ownerGroupsAppGesture(t, v, appcore.ActionApplyThreadGroup, ownerGroupsGesture{GestureID: panel.Review.GestureID, Confirm: true})
 }

@@ -29,9 +29,14 @@ func TestN3OwnerEndpointGroupsAcceptance(t *testing.T) {
 	}) {
 		return
 	}
+	if !t.Run("M3_RemoveOnlyD", func(t *testing.T) {
+		exerciseOwnerGroupsM3(t, v, actors, host, original, g2)
+	}) {
+		return
+	}
 	host.finish(t)
 	// Do not fabricate missing cases, set their observation booleans or emit the
 	// final pre-revocation identity witness early. The full evidence gate fails
-	// closed until M3-M8 have actual executable adapters and measured results.
-	t.Log("OWNER_GROUPS_INCOMPLETE M3_M8_NOT_RUN final_identity_and_real_lease_witness_NOT_RUN")
+	// closed until M4-M8 have actual executable adapters and measured results.
+	t.Log("OWNER_GROUPS_INCOMPLETE M4_M8_NOT_RUN final_identity_and_real_lease_witness_NOT_RUN")
 }

@@ -191,7 +191,7 @@ class PersistentCLI(ActualCLI):
         rows = [row for row in hooks['data'] if row['cwd'] == str(self.workspace)]
         assert len(rows) == 1 and not rows[0]['errors']
         actual = rows[0]['hooks']
-        assert len(actual) == 2 and {row['eventName'] for row in actual} == {'userPromptSubmit', 'preToolUse'}
+        assert len(actual) == 1 and {row['eventName'] for row in actual} == {'preToolUse'}, 'DEFAULT_PRETOOL_ONLY_HOOK_REQUIRED'
         expected_hash = digest(self.marketplace / '.agents/plugins/cicada/hooks/hooks.json')
         for hook in actual:
             assert hook['source'] == 'plugin' and hook['pluginId'] == self.original_plugin_id and hook['enabled']

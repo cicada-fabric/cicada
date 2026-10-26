@@ -108,13 +108,14 @@ func ownerGroupsRelationAuthorityHash(t *testing.T, v *codexProductFixture, endp
 	db := nodePairReadOnlyDB(t, filepath.Join(v.f.dir, "synthetic-hub", "cicada.sqlite3"))
 	defer db.Close()
 	rows := must(db.Query(`SELECT json_object('binding_id',b.id,'principal',b.principal_id,'endpoint',b.endpoint_id,
-'group_id',b.group_id,'native',b.native_session_id,'node',b.node_id,'workspace',b.workspace_id,'epoch',b.epoch,
+'enrolled_group_id',b.group_id,'selected_group_id',m.group_id,'native',b.native_session_id,'node',b.node_id,'workspace',b.workspace_id,'epoch',b.epoch,
 'lease_owner',b.lease_owner,'credential_hash',b.credential_hash,'status',b.status,'mode',b.mode,'caps',b.capabilities_json,
 'membership_id',m.id,'membership_status',m.status,'membership_revision',m.revision,'grants',m.grants_json,
 'endpoint_status',eg.status,'endpoint_revision',eg.revision)
-FROM session_bindings b JOIN memberships m ON m.principal_id=b.principal_id AND m.group_id=b.group_id
-JOIN endpoint_group_memberships eg ON eg.endpoint_id=b.endpoint_id AND eg.group_id=b.group_id
-WHERE b.endpoint_id=? AND b.group_id=? ORDER BY b.id`, endpoint, group))
+FROM session_bindings b JOIN memberships m ON m.principal_id=b.principal_id AND m.group_id=?
+JOIN endpoint_group_memberships eg ON eg.endpoint_id=b.endpoint_id AND eg.group_id=m.group_id
+WHERE b.endpoint_id=? AND b.id=(SELECT binding_id FROM endpoint_key_candidates_v2 WHERE endpoint_id=b.endpoint_id)
+ORDER BY b.id`, group, endpoint))
 	defer rows.Close()
 	var values []json.RawMessage
 	for rows.Next() {

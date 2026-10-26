@@ -418,7 +418,8 @@ inventory/document constraints, never successful cryptography or implementation.
 
 Root's 2026-10-26 scoped acceptance decision preserves the minimum manual duration
 of one day. The 30-minute disposable runtime gate does not claim to cross that
-deadline: M4's permanent Owner-control, restart/Join refusal and immutable finite
+deadline: M4's permanent Owner-control, original G1 permission refusal after
+restart/Join and immutable finite
 duration use actual Runtime evidence; expiry/no-default-fallback requires separate
 deterministic tests of the same production Store and crypto with explicit source,
 case names and receipts. `M4_24h_wall_clock_expiry` stays **NOT_RUN** even when both
@@ -429,9 +430,9 @@ result is **SCOPED_PASS** with these separate limits, never all M1–M8 real-clo
 acceptance.
 
 The existing `scripts/test-native-pair.sh --owner-endpoint-groups` now selects
-the actual product parent with M1/M2 scenarios. It uses real Controller actions
+the actual product parent with M1–M3 scenarios. It uses real Controller actions
 and the original four native Threads; a missing actual Hub/self-list capability
-returns typed 125/NOT_RUN after owned fixture bootstrap. M3–M8 adapters remain
+returns typed 125/NOT_RUN after owned fixture bootstrap. M4–M8 adapters remain
 unfinished: any partial execution fails the complete evidence gate rather than
 becoming an aggregate pass. M1–M8 remain NOT_RUN until source-bound execution.
 The existing N3 fault proxy now targets exact Node RPC operations so concurrent
@@ -441,6 +442,19 @@ shared-Principal rights, pending deny, finite expiry and wrong-scope recovery.
 The evidence gate requires all eight measured cases exactly once, four original
 SID/Endpoint/key/binding snapshots, pinned Host and actual wall/monotonic lease
 crossing. No synthetic fact, missing/duplicate case or skip supplies acceptance.
+M3's delivery fault holds the production per-SID OS writer: a real queued ASK
+first obtains positive delivery authority, Owner removes D-G1, then the released
+writer must observe a fresh rejection and zero native injection. A separate
+task-owned TCP listener uses the complete production Fabric router and the same
+fixture Store with Control absent; valid positive whoami brackets each Task or
+global Leave rejection. Missing routes, expired credentials and plain transport
+denials do not count as five-right Actor Guard evidence. The four-Thread fixture
+has its existing narrow grants; a wider shared-Principal attack still requires
+separate producer Core/Store evidence and is not inferred from that baseline.
+The newly delivered default plugin has only PreToolUse. Its native bootstrap
+must be switched to actual external CLI registration of real Host-created SIDs
+after the formal Node CLI delivery; old literal tests remain compatibility
+evidence for their tested source. No new CLI, Hook or M1–M8 Runtime pass is claimed.
 The [preparation record](native-app-validation.md#2026-10-26-owner-managed-group-driver-preparation)
 separates the pure oracle and synthetic TCP self-check from product validation.
 

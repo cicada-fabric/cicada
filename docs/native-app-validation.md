@@ -7347,7 +7347,7 @@ Real App Group actions and delivered Hub/Node handlers still need connection;
 the complete runtime adapter remains unavailable and all new product gates NOT_RUN.
 
 Root approved an explicit scope split on 2026-10-26: M4's permanent Owner control,
-Join/restart refusal and original finite duration/retry behavior need actual
+original G1 permission refusal after Join/restart and original finite duration/retry behavior need actual
 Runtime evidence. The one-day minimum policy-expiry boundary and no-default-
 fallback need separate deterministic production Store/crypto evidence, with
 their own tested source, case names, command and receipt hashes. Neither scope
@@ -7388,6 +7388,33 @@ SHA-256 `43cc9d9ae41351ddc6572659a1d0e35268ad00dc085ed695c849c1023752a716`.
 All new M1–M8 product results, M4's 24-hour wall-clock boundary and Windows
 DPAPI/ACL/GUI remain **NOT_RUN**. No user Host, shared Hub or public deployment
 was used or modified.
+
+The next `3f32ea9`-based increment connects M3's real OS-writer/delivery race
+and a separate complete production Fabric TCP router over the same owned
+SQLite Store, with no Control object. The API checks first authenticate the
+original Endpoint/G2, then require actual 403s for Task/global Leave mutations
+and unchanged original authority. A missing route never counts as a Guard.
+The audit follows the existing shared native SessionBinding across selected
+Groups instead of requiring a new G2 binding. Formal App actions/cards now use
+the delivered `appcore` types directly. Default Hook inventory requires only
+PreToolUse; the obsolete blanket Join-refusal fixture was removed. Actual
+external CLI registration and M4–M8 remain unfinished. No M1–M8 runtime or new
+CLI result has been accepted.
+
+Compile only, exit **0**, with the same pinned offline Docker constraints and
+confirmed cleanup. Dirty source manifest
+`528f447777f492a3723ab1a78aaffc0b818ec8a67ddc1333d7e7463c156b63f7`
+matched before/after; this paragraph was added afterward. Binary SHA-256
+`f6e5df321a39e3b5456715f23a11da875ec7ca22103efad7e1e5cf7cb5f1b4e6`.
+`/home/zyf/Cicada/.local/evidence/n2-acceptance/owner-groups-m3-3f32ea9-02/result.json`
+SHA-256 `511cf7f6526796621db04d6eb6e7b3eb481b9361901cc760ffceb9afaa51d6e5`.
+Python/JSON syntax passed. The existing 111 pure oracle checks pass after adding
+the explicitly separate native-writer fault class; product status is NOT_RUN:
+`/home/zyf/Cicada/.local/evidence/n2-acceptance/owner-groups-oracle-3f32ea9-m3-01/result.json`
+SHA-256 `c455b3347bbf5fe2e60075b08509cd63516cbdb52125d79e05c6a0017f7d134e`.
+Wider shared-Principal ceiling tests are a separate producer Core/Store scope;
+the runtime's existing narrow Principal grants do not prove that adversarial
+baseline. Windows DPAPI/ACL/GUI and the 24-hour wall-clock expiry remain NOT_RUN.
 
 ### 2026-10-26 user-reported four-Thread Group continuation
 

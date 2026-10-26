@@ -427,6 +427,8 @@ def owner_groups_inputs():
         faults.add(fault['id'])
     for number, case in enumerate(value['cases'], 1):
         fields = {'id', 'observations', 'faults', 'negative_inputs'}
+        if number == 3:
+            fields |= {'native_faults'}
         if number == 4:
             fields |= {'deterministic_observations', 'not_run'}
         if (not isinstance(case, dict) or set(case) != fields
@@ -437,6 +439,8 @@ def owner_groups_inputs():
                 or not isinstance(case['faults'], list) or not set(case['faults']) <= faults
                 or not isinstance(case['negative_inputs'], list) or not case['negative_inputs']):
             raise ValueError('Invalid Owner Group case')
+        if number == 3 and case['native_faults'] != ['hold_original_native_writer']:
+            raise ValueError('Native writer fault must preserve the original actor and production lock')
         if number == 4 and (case['deterministic_observations'] != ['finite_manual_expiry_no_default_fallback']
                             or case['not_run'] != ['M4_24h_wall_clock_expiry']
                             or 'finite_manual_duration_bound_to_original_review' not in case['observations']
