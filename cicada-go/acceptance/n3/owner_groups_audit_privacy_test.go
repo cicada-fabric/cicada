@@ -42,3 +42,43 @@ group_id TEXT,attempt_count INTEGER,last_error TEXT,input_digest TEXT,created_at
 		t.Fatal("readonly audit modified its synthetic persistent source")
 	}
 }
+
+func TestN3OwnerGroupsInboxAuditRetainsOnlyClosedMetadata(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "synthetic-inbox.sqlite")
+	db := must(sql.Open("sqlite", path))
+	for _, statement := range []string{
+		`CREATE TABLE node_inbox_deliveries(message_id TEXT,endpoint_id TEXT,session_id TEXT,binding_epoch INTEGER,state TEXT,failure TEXT,updated_at TEXT,payload TEXT)`,
+		`CREATE TABLE node_inbox_message_groups(message_id TEXT,group_id TEXT)`,
+		`CREATE TABLE node_inbox_message_routes(message_id TEXT,kind TEXT,request_id TEXT)`,
+		`INSERT INTO node_inbox_deliveries VALUES('SYNTHETIC_MESSAGE','SYNTHETIC_ENDPOINT','SYNTHETIC_SID',2,'CONSUMPTION_UNCONFIRMED','SYNTHETIC_PRIVATE_FAILURE','2026-10-26T00:00:00Z','SYNTHETIC_PRIVATE_PAYLOAD')`,
+		`INSERT INTO node_inbox_message_groups VALUES('SYNTHETIC_MESSAGE','SYNTHETIC_GROUP')`,
+		`INSERT INTO node_inbox_message_routes VALUES('SYNTHETIC_MESSAGE','REPLY','SYNTHETIC_REQUEST')`,
+	} {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal("synthetic inbox observation unavailable")
+		}
+	}
+	db.Close()
+	before := must(os.ReadFile(path))
+	result := ownerGroupsInboxDiagnostics(path)
+	raw := must(json.Marshal(result))
+	if result["available"] != true || !bytes.Contains(raw, []byte(`"kind":"REPLY"`)) ||
+		!bytes.Contains(raw, []byte(`"binding_epoch":2`)) || !bytes.Contains(raw, []byte("CONSUMPTION_UNCONFIRMED")) {
+		t.Fatal("closed inbox observation lost its delivery coordinates")
+	}
+	for _, private := range []string{"SYNTHETIC_MESSAGE", "SYNTHETIC_ENDPOINT", "SYNTHETIC_SID", "SYNTHETIC_GROUP", "SYNTHETIC_REQUEST", "SYNTHETIC_PRIVATE_FAILURE", "SYNTHETIC_PRIVATE_PAYLOAD"} {
+		if bytes.Contains(raw, []byte(private)) {
+			t.Fatal("closed inbox observation exported private content")
+		}
+	}
+	if !bytes.Contains(raw, []byte(hash([]byte("SYNTHETIC_PRIVATE_FAILURE")))) || !bytes.Equal(before, must(os.ReadFile(path))) {
+		t.Fatal("readonly inbox observation lost the failure digest or modified its source")
+	}
+	missing := filepath.Join(t.TempDir(), "missing-inbox.sqlite")
+	if ownerGroupsInboxDiagnostics(missing)["available"] != false {
+		t.Fatal("missing inbox reported available")
+	}
+	if _, err := os.Stat(missing); !os.IsNotExist(err) {
+		t.Fatal("readonly inbox observation initialized missing state")
+	}
+}

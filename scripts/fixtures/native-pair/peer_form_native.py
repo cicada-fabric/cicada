@@ -466,6 +466,29 @@ enabled = false
                     form = {**form, 'server': servers[0]['name']}
                 if action == 'receive_match':
                     assert tool == 'cicada_receive' and command.get('expected_request_id') and command.get('expected_body_marker'), 'OWNER_GROUP_RECEIVE_EXPECTATION'
+                if action == 'receive_match':
+                    # Let this exact original native queue turn arrive before
+                    # starting more turns on that same SID. SENT is not arrival.
+                    phase = 'WAIT_ORIGINAL_NATIVE_QUEUE'
+                    deadline = time.monotonic() + 75
+                    wait_poll = 0
+                    while True:
+                        with provider.lock:
+                            expected = provider.queue_inputs.get(command['expected_body_marker'])
+                            assert expected and expected['sid'] == ids[actor] and expected['request_id'] == command['expected_request_id'], 'OWNER_GROUP_NATIVE_BARRIER_SCOPE'
+                            arrived = expected['posts']
+                        private_json(control / (str(sequence) + '.progress-native-' + str(wait_poll) + '.json'), {
+                            'scope': 'CLOSED_NATIVE_QUEUE_PROGRESS_NOT_ACCEPTANCE', 'phase': phase,
+                            'expected_request_sha256': hashlib.sha256(command['expected_request_id'].encode()).hexdigest(),
+                            'expected_body_sha256': hashlib.sha256(command['expected_body_marker'].encode()).hexdigest(),
+                            'native_queue_posts_for_body': arrived, 'provider_unclassified_posts': provider.request_counts()['literal']})
+                        assert provider.request_counts()['literal'] == 0, 'ACTUAL_PROVIDER_REQUEST_UNCLASSIFIED'
+                        if arrived == 1:
+                            break
+                        assert time.monotonic() < deadline, 'OWNER_GROUP_EXACT_NATIVE_QUEUE_NOT_ARRIVED'
+                        wait_poll += 1
+                        time.sleep(1)
+                    phase = 'HOST_CALL'
                 for poll in range(60 if action == 'receive_match' else 1):
                     output, summary = cli.host_call(provider, ids[actor], command['label'] + '-' + str(poll), tool, args, form)
                     summaries.append(summary)
@@ -473,8 +496,26 @@ enabled = false
                     if ids[actor] in retired_nonces:
                         assert nonce != retired_nonces[ids[actor]], 'OWNER_GROUP_MCP_NONCE_REUSED_AFTER_RESTART'
                     nonces[ids[actor]] = nonce
-                    if action != 'receive_match' or any(row.get('request_id') == command['expected_request_id'] and
-                                                       command['expected_body_marker'] in json.dumps(row) for row in output_objects(output)):
+                    if action == 'receive_match':
+                        objects = list(output_objects(output))
+                        request_match = [row for row in objects if row.get('request_id') == command['expected_request_id']]
+                        matched = any(command['expected_body_marker'] in json.dumps(row) for row in request_match)
+                        with provider.lock:
+                            queue_row = provider.queue_inputs.get(command['expected_body_marker'])
+                            queue_posts = queue_row['posts'] if queue_row else 0
+                        private_json(control / (str(sequence) + '.progress-' + str(poll) + '.json'), {
+                            'scope': 'CLOSED_RECEIVE_PROGRESS_NOT_ACCEPTANCE', 'poll': poll,
+                            'expected_request_sha256': hashlib.sha256(command['expected_request_id'].encode()).hexdigest(),
+                            'expected_body_sha256': hashlib.sha256(command['expected_body_marker'].encode()).hexdigest(),
+                            'matched': matched, 'request_match_count': len(request_match),
+                            'page_message_counts': [len(row['messages']) for row in objects if isinstance(row.get('messages'), list)],
+                            'observed_request_sha256': sorted({hashlib.sha256(row['request_id'].encode()).hexdigest()
+                                                              for row in objects if isinstance(row.get('request_id'), str) and row['request_id']}),
+                            'native_queue_posts_for_body': queue_posts,
+                            'host_diagnostic': provider.safe_diagnostic()})
+                        if matched:
+                            break
+                    else:
                         break
                     time.sleep(.25)
                 else:

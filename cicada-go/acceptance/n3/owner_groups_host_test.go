@@ -193,6 +193,18 @@ func (h *ownerGroupsHost) await(t *testing.T, sequence int) ownerGroupsHostReply
 		}
 		time.Sleep(25 * time.Millisecond)
 	}
+	progress := must(filepath.Glob(filepath.Join(h.control, strconv.Itoa(sequence)+".progress-*.json")))
+	var latest string
+	var last time.Time
+	for _, path := range progress {
+		info, err := os.Stat(path)
+		if err == nil && info.ModTime().After(last) {
+			latest, last = path, info.ModTime()
+		}
+	}
+	if latest != "" {
+		t.Logf("OWNER_GROUPS_RECEIVE_PROGRESS %s", readPrivate(t, latest))
+	}
 	t.Fatal("actual Owner Group Host checkpoint timed out")
 	return ownerGroupsHostReply{}
 }
@@ -336,5 +348,6 @@ func (h *ownerGroupsHost) roundtrip(t *testing.T, label, group string, source, t
 	if replied.QueuePosts[answer] != 1 {
 		t.Fatal("correlated reply did not reach the original requester Runtime once")
 	}
+	t.Logf("OWNER_GROUPS_ROUNDTRIP label=%s original_Group_and_native_SIDs=true request_and_reply_received=true native_each_once=true", label)
 	return request
 }

@@ -7574,6 +7574,92 @@ Dirty source manifest `c1cbc91448d4047bdcc897a126c7a02c0d29923fd9ac6cbb41002c7fd
 matched before/after; this paragraph was added afterward. These checks supply
 no M2–M8 product pass. The next run still requires the complete Runtime gate.
 
+### 2026-10-26 actual M2 reply delivery diagnosis
+
+The complete clean `8d65fbe98f96f621216e95a297bfbfb2ec37e684` run
+`run-20261026T175227Z-sSjnhX` ended **FAIL / exit 1**. M1 passed in 162.54s;
+M2 failed in 426.92s. The first actual G2 D→B ASK reached B's original native
+queue and matched MCP receive. B's actual reply outbox was SENT, but the D
+reply-receive checkpoint exceeded its 180-second wait. Both outbox rows were
+SENT, one attempt each, with empty errors. No unclassified provider request or
+authenticated Node RPC error was observed. This version did not retain receive
+poll/queue-stage observations; its exact reply failure stage remains unknown.
+Receipt SHA-256 `5ad4c46676f035e9833f4f7fbbf40efd6e2979676addedc81bd4d4d90ab282d2`;
+closed audit `owner-groups-protocol-audit/3784d59164777f95.json` SHA-256
+`cee621924f65ed05b3b7c8eed514429c7a9f704c1e75c5c313dc2d5f624375b9`.
+
+The subsequent focused diagnosis retained the same four original native
+identities, all M1 mutations and D's G2 remove/re-add at policy epoch 2. It used
+detached dirty `8d65fbe` in `n2-acceptance-full`: only QA progress observations,
+a natural native-queue arrival barrier and explicit truncation after the first
+original D→B roundtrip were added. It cannot satisfy the complete M2 facts,
+M3–M8, the final four-identity witness or M5's actual lease boundary, even if
+that roundtrip succeeds. The existing strict collector remains authoritative.
+
+Focused `run-20261026T182541Z-vhrU68` also ended **FAIL / exit 1**:
+M1 passed in 121.65s, M2 failed in 316.03s. Its ASK's original native post count
+was 1 and receive poll 0 matched the exact request/body. After the actual REPLY
+was SENT, D remained idle for the entire 75-second arrival wait: the exact
+reply native-post count stayed 0, unclassified provider count stayed 0, and no
+MCP receive turn was started on D. The readonly live snapshot and final audit
+both show only the REQUEST delivery in unified Inbox, in
+CONSUMPTION_UNCONFIRMED state; local Inbox is empty, with no REPLY delivery.
+Both outbox operations remain SENT, one attempt each, with empty error hashes.
+Thus repeated receive calls occupying D cannot sufficiently explain this
+reproduction. The precise missing sealed-reply/claim/Inbox transition remains
+open and was handed to Root and the Hub/Node implementation owners.
+
+Focused source manifest `876f454d9878eb643b36f358aa1f206b47158eb59e2284af0fe131f1ce474071`
+and both executable hashes matched before/after; owned container absence was
+confirmed. Version, both compilations and vet exited 0, harness exited 1.
+Evidence under `~/Cicada/.local/evidence/native-pair-acceptance/`:
+
+| Artifact | SHA-256 |
+| --- | --- |
+| `run-20261026T182541Z-vhrU68/result.json` | `5563ca07a133732bb3b1f3350d003cd4cd5c326a17b77726723b00685cd276ec` |
+| `run-20261026T182541Z-vhrU68/live-receive-progress.jsonl` | `23e3de06bdb2e07d5e79a49a90de61d12ddda456ebb7b25fe1e6801b9efc193e` |
+| `run-20261026T182541Z-vhrU68/live-inbox-reply-barrier.json` | `e78c5cf34a74c1b1568b6166eeff2ce64a6d46998477fddd6108da3ce6f56003` |
+| Artifact-root `run-20261026T182541Z-vhrU68/owner-groups-protocol-audit/89e78c9cbaff895c.json` | `c38c0a14fa1fd5cf7a424624e2b74adc2b43f94fc2d4694a0ae0c51bbb44fb21` |
+
+The QA diagnostic checkpoint compiled and passed both readonly outbox/Inbox
+privacy tests plus 26 Python checks, all exit 0. Inbox observations export only
+closed state/kind/epoch/timestamp fields and hashed coordinates/failure text;
+the synthetic test rejects private payload, failure text and raw identities,
+checks unchanged persistent bytes and verifies a missing database is not
+initialized. Receipt
+`~/Cicada/.local/evidence/n2-acceptance/owner-groups-receive-8d65fbe-02/result.json`
+SHA-256 `21e9a0bc7240faf83311cab913cc0cda3181669388ea0bde5f5b990de4894638`.
+Dirty `8d65fbe` source manifest
+`37477212759609419aff3d96aa893f68d8d01e9a831eae0836b203f8032510ce`
+matched before/after; these final record paragraphs were added afterward.
+The exact historical focused patch is retained there as `focus-source.patch`,
+SHA-256 `da9e9217d3fd58b3258d9377a05f233be2fe87c1fc75ceb29d9f33a022dc7582`,
+to apply to a fresh detached `8d65fbe` worktree. The normal committed driver
+retains M1–M8 and contains no diagnostic truncation. These unit checks supply
+no additional product pass.
+
+M4's separate deterministic finite-expiry attribution is accepted by Root in
+`~/Cicada/.local/evidence/local-domain-root/owner-groups-core-combination-20261026T1502/review-e5-finite-expiry-attribution.json`,
+SHA-256 `349021be87ce67f40a2f08450028674b85ec6e933f0f3c801a12086f7bca900e`.
+That is a byte/source review of the original `755053b` Store/crypto normal/race
+receipts against `e5d76c2`, not a new runtime execution or 24-hour observation.
+
+Reproduce the full gate from its reviewed clean source with the existing entry:
+
+```sh
+CICADA_NATIVE_PAIR_LICENSES_DIR=/home/zyf/Cicada/.local/artifacts/native-ip-complete/run-owner-thread-groups-e5d76c2-20261026/payload/licenses \
+  bash scripts/test-native-pair.sh --owner-endpoint-groups
+```
+
+The focused historical reproduction uses the preserved detached
+`n2-acceptance-full` source and its recorded QA-only patch; it is not a new
+acceptance entry. Every run owns its fixture, TCP listeners, persistent databases,
+private output and disposable Docker container. Module sources are mounted
+readonly and the build cache is locked. No shared Hub, public deployment,
+product clock or production permission was changed. Full M2–M8 remain unaccepted;
+Windows DPAPI/ACL/GUI, Android, physical second Node, public HTTPS and actual
+24-hour expiry remain **NOT_RUN**.
+
 ### 2026-10-26 user-reported four-Thread Group continuation
 
 Root relayed the user's report that four real native Threads on the same Node

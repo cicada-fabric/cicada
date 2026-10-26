@@ -127,5 +127,42 @@ func ownerGroupsOutboxDiagnostics(path string) map[string]any {
 
 func ownerGroupsAuditLocalCoordinates(v *codexProductFixture) map[string]any {
 	return map[string]any{"node": ownerGroupsNodeCoordinates(filepath.Join(ownerGroupsNodeRoot(v), "node-crypto-state.sqlite")),
-		"outbox": ownerGroupsOutboxDiagnostics(filepath.Join(filepath.Dir(v.mcpState), "outbox.sqlite3"))}
+		"outbox":      ownerGroupsOutboxDiagnostics(filepath.Join(filepath.Dir(v.mcpState), "outbox.sqlite3")),
+		"relay_inbox": ownerGroupsInboxDiagnostics(filepath.Join(ownerGroupsNodeRoot(v), "inbox.sqlite")),
+		"local_inbox": ownerGroupsInboxDiagnostics(filepath.Join(ownerGroupsNodeRoot(v), "local-inbox.sqlite3"))}
+}
+
+func ownerGroupsInboxDiagnostics(path string) map[string]any {
+	result := map[string]any{"available": false}
+	db, err := ownerGroupsAuditDB(path)
+	if err != nil {
+		return result
+	}
+	defer db.Close()
+	rows, err := db.Query(`SELECT d.message_id,d.endpoint_id,d.session_id,d.binding_epoch,d.state,
+COALESCE(g.group_id,''),COALESCE(r.kind,''),COALESCE(r.request_id,''),COALESCE(d.failure,''),d.updated_at
+FROM node_inbox_deliveries d LEFT JOIN node_inbox_message_groups g ON g.message_id=d.message_id
+LEFT JOIN node_inbox_message_routes r ON r.message_id=d.message_id ORDER BY d.updated_at DESC LIMIT 128`)
+	if err != nil {
+		return result
+	}
+	defer rows.Close()
+	var deliveries []map[string]any
+	counts := map[string]int{}
+	for rows.Next() {
+		var message, endpoint, sid, state, group, kind, request, failure, updated string
+		var epoch uint64
+		if rows.Scan(&message, &endpoint, &sid, &epoch, &state, &group, &kind, &request, &failure, &updated) != nil {
+			return result
+		}
+		counts[state]++
+		deliveries = append(deliveries, map[string]any{"message_sha256": hash([]byte(message)),
+			"endpoint_sha256": hash([]byte(endpoint)), "sid_sha256": hash([]byte(sid)), "binding_epoch": epoch,
+			"state": state, "group_sha256": hash([]byte(group)), "kind": kind, "request_sha256": hash([]byte(request)),
+			"failure_present": failure != "", "failure_sha256": hash([]byte(failure)), "updated_at": updated})
+	}
+	if rows.Err() == nil {
+		result["available"], result["state_counts"], result["deliveries"] = true, counts, deliveries
+	}
+	return result
 }
