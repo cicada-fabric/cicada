@@ -74,6 +74,10 @@ def check_owner_endpoint_groups(g, prose):
     assert g["manual_deny_cleared_at"] == "EXACT_PROJECTED_KEY_COMPLETE_ONLY"
     assert g["effective_source_rule"] == "OWNER_MODE_MANUAL_ONLY_ELSE_BLOCKED_DEFAULT_MODE_DEFAULT_ONLY"
     assert g["current_endpoint_fields"] == ["owner_control", "relation"]
+    assert g["node_packet_digest"] == "SHA256_EXACT_ORIGINAL_NODE_PACKET"
+    assert g["targetless_original_fence_error"] == "ORIGINAL_NOT_ADMITTED"
+    assert g["targetless_original_fence_scope"] == "EXACT_APPLY_RESPONSE_ONLY_NO_OPERATION_NO_CURRENT"
+    assert "ORIGINAL_NOT_ADMITTED" in g["terminal_errors"]
     assert g["source_reference_fields"] == "source authority_id authority_epoch contribution_revision".split()
     assert g["group_creation_authorized_by"] == "SIGNED_OWNER_SCOPE_ACTION_NOT_GROUP_CARD_OR_PUBLIC_CAPABILITY"
     assert g["operation_id_source"] == "ORIGINAL_APPLY_CONTEXT_REQUEST_ID"

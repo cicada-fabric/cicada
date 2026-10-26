@@ -366,7 +366,8 @@
       "SHARED_MEMBERSHIP_CONFLICT",
       "CURSOR_STALE",
       "MANUAL_SOURCE_ALREADY_ACTIVE",
-      "RELATION_PENDING"
+      "RELATION_PENDING",
+      "ORIGINAL_NOT_ADMITTED"
     ],
     "manual_deny_precedence": "OWNER_EXPLICIT_REMOVE_OVERRIDES_DEFAULT_ADMISSION",
     "deny_cleared_only_by": "NEW_OWNER_SIGNED_ADD_FOR_EXACT_RELATION",
@@ -881,6 +882,75 @@
     "current_endpoint_fields": [
       "owner_control",
       "relation"
+    ],
+    "node_registration_anchor_fields": [
+      "profile",
+      "registration_source",
+      "registration",
+      "registration_digest",
+      "registration_revision",
+      "local_user_scope",
+      "network_id",
+      "binding_id",
+      "binding_epoch",
+      "node_key_epoch",
+      "lease_owner",
+      "network_access_binding_id",
+      "network_access_epoch",
+      "network_membership_revision",
+      "endpoint_network_revision",
+      "candidate_version",
+      "candidate_key_id",
+      "candidate_public_identity",
+      "candidate_fingerprint",
+      "candidate_proof_digest",
+      "state",
+      "lease_expires_at"
+    ],
+    "node_describe_result_fields": [
+      "contract_revision",
+      "registration",
+      "relations",
+      "authorities",
+      "relations_revision",
+      "complete",
+      "next_cursor",
+      "observed_at"
+    ],
+    "node_key_result_fields": [
+      "contract_revision",
+      "registration",
+      "policy_proof",
+      "challenge",
+      "grant",
+      "owner_control",
+      "observed_at"
+    ],
+    "node_renew_result_fields": [
+      "contract_revision",
+      "registration",
+      "observed_at"
+    ],
+    "peer_source_fields": [
+      "local_domain_grant",
+      "endpoint_group_grant"
+    ],
+    "node_reconciled_fields": [
+      "contract_revision",
+      "original_operation",
+      "original_operation_id",
+      "original_sequence",
+      "original_packet_digest",
+      "state",
+      "receipt_packet",
+      "observed_at"
+    ],
+    "node_packet_digest": "SHA256_EXACT_ORIGINAL_NODE_PACKET",
+    "targetless_original_fence_error": "ORIGINAL_NOT_ADMITTED",
+    "targetless_original_fence_scope": "EXACT_APPLY_RESPONSE_ONLY_NO_OPERATION_NO_CURRENT",
+    "current_operations": [
+      "peer_key",
+      "native_delivery"
     ]
   }
 }

@@ -943,7 +943,9 @@ BodyDigest and PacketDigest are lowercase SHA-256 of, respectively,
 Owner packet bytes. Canonical typed JSON uses declared field order, ordinary
 Go JSON escaping and no whitespace. PolicyDigest is SHA-256 of the policy
 signature input described below, without the signature. Node RPC originals
-retain their existing Node carrier packet-digest algorithm and replay ledger.
+retain SHA-256 of the exact Node packet (`nodewire.RecoveryDigest`) and their
+existing replay ledger. This does not change old LocalDomain recovery's retained
+historical prefixed digest.
 
 The machine inventory lists every closed field set in canonical DTO order;
 unknown fields, duplicate JSON keys, invalid UTF-8, noncanonical UTC times,
@@ -1344,6 +1346,27 @@ original ciphertext/pending intent and never clears it, allocates another ID,
 or infers success from a directory/card. Only authenticated terminal original
 receipt or permanent no-effect fence settles that pending mutation.
 
+For this profile, reconcile never executes an unseen original request, including
+while its old proof/review remains fresh. When both permanent request floor and
+operation receipt are absent, the writer atomically records an immutable no-effect
+fence. An unseen original APPLY gets an exact original-route sealed
+REJECTED_FENCED receipt with error ORIGINAL_NOT_ADMITTED, empty NodeID, nil
+Operation and no cards/current/review/recursive receipt. This is the only
+targetless original APPLY exception; missing/expired review cannot manufacture
+its old target. A fresh wrapper embeds that exact original receipt. The App
+opens it using the retained original ciphertext and calls
+VerifyOwnerEndpointGroupsOriginalFence before settling pending. The wrapper's
+NodeID may also be empty when GC removed the target. That exception is accepted
+only after independently opening and verifying the exact nested original fence;
+all other completed operations bind their retained target Node. The wrapper's
+status/error, a missing row or a timeout cannot settle it. Unseen original
+read/prepare/status gets READ_EXPIRED without performing a new read.
+If a floor exists but its receipt is missing, return OUTCOME_UNCERTAIN and retain
+pending. Direct retransmission of the same fresh unseen APPLY remains normal
+first admission; the SQLite writer determines whether that admission or the
+reconcile fence wins. Once fenced, later original retries return that fence and
+never execute. A new review/new ID is a separately explicit Owner intent.
+
 SQLite writer commit of fresh final authorization for the exact native attempt
 remains the in-flight boundary. A remove committed before it denies queued,
 claimed and new work; an already authorized attempt can remain in flight only
@@ -1456,3 +1479,29 @@ This source phase does not provide Store transactions/migrations, durable
 anti-replay/receipt storage, a current-authority service, private native Hook
 profile, Node renewal/current-evidence verification, self-groups MCP or an App
 consumer. Shared crypto and DTO tests cannot establish those behaviors or M1–M8.
+
+The Node DTO supplement supplies EndpointGroupsRegistrationAnchor with explicit
+OWNER_ENDPOINT_GROUPS_V1/CODEX_LOCAL_DOMAIN provenance, the original private
+registration/key/binding/access/lease coordinates and no replacement token.
+EndpointGroupsNodeDescribeResult pages exact relation cards and ACTIVE authority
+snapshots in a one-to-one correspondence, at most 64 rows/128 KiB. Node-owned
+selection/outbox state freezes that full EndpointGroupCurrentEndpoint source,
+contribution revision and Owner-control digest; aggregate relation changes do
+not replace its original controlling authority. The Node must independently
+match its protected native record/UID, original encrypted join receipt and key
+before selecting this profile. Availability alone cannot migrate Pair/legacy.
+
+EndpointGroupsNodeKeyResult contains that anchor, exact Owner policy proof and
+either the frozen EndpointGroupKeyPrepareResult or the original ACTIVE delegated
+grant/head. The challenge binds the projected manifest's issued time to its
+observation time, applicable Group/CAS revisions and the exact projected Owner
+head/relation/manifest; Node signs those bytes with the existing primitive.
+The independent peer-source union allows exactly one default/manual proof per
+Endpoint, with separate original Owner pins and no legacy fallback.
+EndpointGroupsNodeRenewResult only refreshes original liveness coordinates;
+the Node retains its original token. Node request bodies retain the frozen field
+sets, no added identity selectors. Only exact node.endpoint_groups.reconcile
+accepts 128 KiB plaintext; response/default packet ceilings remain unchanged,
+with additional 64/224/560 KiB profile packet bounds. The inventory defines all
+new closed Node result field orders. These are shared codecs, not installed
+Node RPC handlers or a completed Runtime.

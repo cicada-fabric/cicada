@@ -804,3 +804,17 @@ policy ID/epoch and revisions, cross-Group/Network/Node current snapshots and an
 unresolved operation with untargeted current cards. Before/after fingerprints
 match and are checked against the fix commit. Actual Store/Node/Guard and all
 M1–M8 remain NOT_RUN.
+
+Node shared supplement evidence is
+`/home/zyf/Cicada/.local/evidence/owner-groups-node-shared-20261026T124346Z/`.
+Normal has 21 pass / 0 fail / 0 skip (18 top-level); race has 17 / 0 / 0
+(14 top-level). This validates the closed Node DTOs, frozen projected
+head/relation/manifest, exact manifest/challenge issue time and CAS bounds,
+relation/authority page bijection, strict source union, raw Node replay digest,
+scoped 128 KiB Node reconcile carrier and authenticated original APPLY no-effect
+fence. Metadata/oracle checks pass. The unique targetless fence code is
+ORIGINAL_NOT_ADMITTED; unseen originals are fenced even while fresh, and no
+wrapper status or missing row settles pending. Node/Store/MCP/App consumers,
+full current Guard/renewal state, maximum legal product DTO, Docker interop,
+Runtime and M1–M8 are still NOT_RUN at this shared supplement. Source
+fingerprints match before/after and are verified against its commit.

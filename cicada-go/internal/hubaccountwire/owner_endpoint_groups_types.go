@@ -18,6 +18,7 @@ const (
 	OwnerEndpointGroupsCreateGroup             = "CREATE_GROUP"
 	OwnerEndpointGroupsAddEndpoint             = "ADD_ENDPOINT"
 	OwnerEndpointGroupsRemoveEndpoint          = "REMOVE_ENDPOINT"
+	OwnerEndpointGroupsOriginalNotAdmitted     = "ORIGINAL_NOT_ADMITTED"
 	MaxOwnerEndpointGroupsBodyBytes            = 192 << 10
 	MaxOwnerEndpointGroupsPageBytes            = 128 << 10
 	MaxOwnerEndpointGroupsOriginalBytes        = 256 << 10

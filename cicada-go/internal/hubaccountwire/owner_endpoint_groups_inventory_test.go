@@ -22,6 +22,7 @@ func TestOwnerEndpointGroupsMachineContractMatchesSharedDTO(t *testing.T) {
 		t.Fatal("invalid inventory")
 	}
 	fields := map[string]any{
+		"key_prepare_result_fields": EndpointGroupKeyPrepareResult{}, "node_registration_anchor_fields": EndpointGroupsRegistrationAnchor{}, "node_describe_result_fields": EndpointGroupsNodeDescribeResult{}, "node_key_result_fields": EndpointGroupsNodeKeyResult{}, "node_renew_result_fields": EndpointGroupsNodeRenewResult{}, "node_reconciled_fields": EndpointGroupsNodeReconciled{}, "peer_source_fields": EndpointGroupPeerSource{},
 		"owner_request_fields": OwnerEndpointGroupsReadRequest{}, "capability_fields": OwnerEndpointGroupsCapabilities{},
 		"owner_thread_card_fields": OwnerEndpointGroupsThreadCard{}, "owner_relation_card_fields": OwnerEndpointGroupsRelationCard{}, "owner_group_card_fields": OwnerEndpointGroupsGroupCard{},
 		"review_fields": OwnerEndpointGroupsReview{}, "cas_fields": OwnerEndpointGroupsCAS{}, "policy_fields": e2ee.EndpointGroupPolicy{}, "owner_request_claim_fields": e2ee.OwnerEndpointGroupsRequestClaims{},

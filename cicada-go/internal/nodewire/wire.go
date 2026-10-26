@@ -26,15 +26,19 @@ const (
 	// Only local-domain reconciliation may embed a complete original packet
 	// in a 128KiB body. Other requests retain the 64KiB management ceiling.
 	// Responses retain the 2MiB body limit for bounded Worker prompts/results.
-	MaxRequestPacketBytes                 = 256 << 10
-	MaxPacketBytes                        = 5 << 20
-	MaxRequestPlaintextBytes              = 64 << 10
-	MaxLocalDomainReconcilePlaintextBytes = 128 << 10
-	MaxPlaintextBytes                     = 2 << 20 // maximum response plaintext
-	aadDomain                             = "cicada/node-control/packet/v1\x00"
+	MaxRequestPacketBytes                    = 256 << 10
+	MaxPacketBytes                           = 5 << 20
+	MaxRequestPlaintextBytes                 = 64 << 10
+	MaxLocalDomainReconcilePlaintextBytes    = 128 << 10
+	MaxEndpointGroupsReconcilePlaintextBytes = 128 << 10
+	MaxPlaintextBytes                        = 2 << 20 // maximum response plaintext
+	aadDomain                                = "cicada/node-control/packet/v1\x00"
 )
 
 func requestPlaintextLimit(operation string) int {
+	if operation == "node.endpoint_groups.reconcile" {
+		return MaxEndpointGroupsReconcilePlaintextBytes
+	}
 	if operation == "node.local_domain.reconcile" {
 		return MaxLocalDomainReconcilePlaintextBytes
 	}

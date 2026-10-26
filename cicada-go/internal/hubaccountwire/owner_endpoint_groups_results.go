@@ -20,6 +20,9 @@ func endpointGroupsContains(values []string, value string) bool {
 }
 
 func endpointGroupsError(code string) bool {
+	if code == OwnerEndpointGroupsOriginalNotAdmitted {
+		return true
+	}
 	return code == "" || endpointGroupsContains([]string{"UNSUPPORTED_PROFILE", "OWNER_AUTHORITY_REQUIRED", "TARGET_NOT_AUTHORIZED", "REVIEW_EXPIRED", "CAS_CONFLICT", "KEY_NOT_READY", "OWNER_READD_REQUIRED", "ORIGINAL_PACKET_CONFLICT", "OUTCOME_UNCERTAIN", "GROUP_RELATION_LIMIT", "SHARED_MEMBERSHIP_CONFLICT", "CURSOR_STALE", "MANUAL_SOURCE_ALREADY_ACTIVE", "RELATION_PENDING"}, code)
 }
 
@@ -153,6 +156,11 @@ func validateOwnerEndpointGroupsResponse(body any, route clientwire.Route) error
 	if route.Operation == OperationOwnerEndpointGroupsApply && (len(r.ReceiptPacket) != 0 || r.State == "COMPLETED" && r.ErrorCode == "" && r.Operation == nil) {
 		return ErrInvalid
 	}
+	if route.Operation == OperationOwnerEndpointGroupsApply && r.Operation == nil {
+		if r.State != "REJECTED_FENCED" || r.ErrorCode != OwnerEndpointGroupsOriginalNotAdmitted || !ownerEndpointGroupsTargetlessFence(r) {
+			return ErrInvalid
+		}
+	}
 	if route.Operation == OperationOwnerEndpointGroupsPrepare && r.State == "PREPARED" && r.ErrorCode == "" && r.Review == nil {
 		return ErrInvalid
 	}
@@ -166,6 +174,12 @@ func validateOwnerEndpointGroupsResponse(body any, route clientwire.Route) error
 		return ErrInvalid
 	}
 	if r.Operation == nil && (r.CurrentRelation != nil || r.CurrentGroup != nil) {
+		return ErrInvalid
+	}
+	if r.NodeID != "" && !validID(r.NodeID) {
+		return ErrInvalid
+	}
+	if route.Operation != OperationOwnerEndpointGroupsRead && (len(r.Threads) != 0 || len(r.Groups) != 0 || len(r.Relations) != 0 || r.ScopeActions != nil || r.RelationPage != nil || r.NextCursor != "") {
 		return ErrInvalid
 	}
 	if r.Operation != nil {
@@ -211,6 +225,19 @@ func validateOwnerEndpointGroupsResponse(body any, route clientwire.Route) error
 		if err != nil || len(raw) > MaxOwnerEndpointGroupsPageBytes || r.State == "COMPLETED" && r.ErrorCode == "" && r.ScopeActions == nil {
 			return ErrInvalid
 		}
+	}
+	return nil
+}
+
+func ownerEndpointGroupsTargetlessFence(r OwnerEndpointGroupsResult) bool {
+	return r.NodeID == "" && r.Operation == nil && r.Review == nil && len(r.Threads) == 0 && len(r.Groups) == 0 && len(r.Relations) == 0 && r.ScopeActions == nil && r.RelationPage == nil && r.NextCursor == "" && r.CurrentRelation == nil && r.CurrentGroup == nil && len(r.ReceiptPacket) == 0
+}
+
+// Call only after opening the nested ORIGINAL apply response with its retained
+// original ciphertext. A wrapper error, missing row or timeout is never a fence.
+func VerifyOwnerEndpointGroupsOriginalFence(q OwnerEndpointGroupsApplyRequest, original []byte, r OwnerEndpointGroupsResult, hub HubIdentity) error {
+	if VerifyOwnerEndpointGroupsResult(q, original, r, hub) != nil || r.State != "REJECTED_FENCED" || r.ErrorCode != OwnerEndpointGroupsOriginalNotAdmitted || !ownerEndpointGroupsTargetlessFence(r) {
+		return ErrInvalid
 	}
 	return nil
 }
