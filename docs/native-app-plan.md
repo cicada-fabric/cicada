@@ -400,6 +400,19 @@ recorded in the [lifecycle preparation](native-app-validation.md#2026-10-25-node
 | FB-15 | Keep Go core and existing crypto/TCP/persistence, with no new coordination service or model polling. Record idle/request/resource costs and exact source/toolchain/product versions; verify upstream stable versions when choosing updates. | Root checked upstream stable versions on 2026-10-20: Go 1.27.3, Gio 0.10.3, x/sys 0.49.0 and latest official Codex CLI changelog entry 0.163.0 (2026-10-15). Exact JSON/hash evidence is linked in validation; no dependency/global runtime/deployment update was performed. |
 | FB-16 | 2026-10-23 user now selects deletion of old installation identities followed by complete fresh setup, rather than a repair package. Preserve only reviewed non-sensitive evidence outside the removed root, Git worktrees/.local evidence and Codex history. | 2026-10-25 Hub reinstall/App first setup/Enter login, corrected Node pairing/local policy and native A/B are USER_REPORTED_PASS. The initial plugin digest preflight FAIL remains; corrected ZIP file installation has independent scoped PASS. Root log review confirms A→B sealed request/reply and correlated native injection; reverse is user report only. The 2026-10-26 user continuation reports App-close and original-identity Node off/on recovery passed; revoke and dedicated Windows DPAPI/ACL security remain pending. See [continuation and lifecycle preparation](native-app-validation.md#2026-10-25-node-lifecycle-preparation-and-user-native-continuation). No additional resident cleanup, binary replacement or deployment is performed by QA. |
 
+**2026-10-26 four-Thread Group continuation.** Same-Node four-real-Thread
+directory/coordination, three correlated ASK/replies with aggregate 78, and D→B
+cross-member lookup/ASK are
+[USER_REPORTED_PASS](native-app-validation.md#2026-10-26-user-reported-four-thread-group-continuation).
+D's preceding `cicada_whoami` returned `CODEX_CALL_CONTEXT_REQUIRED`; this remains
+an open user-observed anomaly despite later successful calls; its cause remains
+unconfirmed. Clean production `a1987d8` shortens injection guidance/skill only;
+one independent disposable `--codex-product-guards` run exits 0 (2 top-level +
+5 subtest PASS, no FAIL/SKIP). This does not reproduce or fix D's anomaly.
+Existing `cicada join`, Hook decisions and Host styling stay unchanged; the
+proposed green-indicator Join entry is cancelled. App manual Group-member changes
+and one-Thread/multi-Group acceptance remain pending/NOT_RUN.
+
 **2026-10-26 user continuation.** The user reports all six checks normal on the
 unchanged complete 250ff6d package: forward/reverse original A/B exchange,
 cancel/selection without sending followed by ASK/reply, nonexistent-name refusal,

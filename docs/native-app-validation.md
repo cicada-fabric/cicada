@@ -7301,6 +7301,46 @@ missing-token recovery.
 
 ## 2026-10-25 Independent peer-form and authorized-directory acceptance
 
+### 2026-10-26 user-reported four-Thread Group continuation
+
+Root relayed the user's report that four real native Threads on the same Node
+completed the Group batch: current-Group directory lookup, three correlated
+ASK/reply results and coordinator aggregate **78**, plus D→B cross-member
+lookup/ASK. These observations are **USER_REPORTED_PASS**, not independent
+full-log, durable-effect-count or four-runtime trace acceptance. The supplied D
+excerpt shows a real SEALED request followed by reply, then finding UX-B and
+successfully asking it; no missing request/message identifiers are invented.
+
+**Open anomaly:** D first received `CODEX_CALL_CONTEXT_REQUIRED` from
+`cicada_whoami`. Later successful find/ASK does not close or explain that error.
+Root's audit reports consistent original parameters/nonce and parallel calls,
+but cannot identify the refusal stage or cause; ticket expiry is not established.
+
+Clean production freeze `a1987d8e1576797bdd1c26ea1727bc1085724317` includes skill
+`9f8b443` and the Hub's shortened injection guidance. The diff changes only those
+texts: Guard, existing `cicada join`, Hook decisions and Host styling are unchanged.
+The user cancelled the proposed green-indicator Join entry.
+
+QA ran **once** from clean canonical `/home/zyf/Cicada/cicada`:
+`bash scripts/test-native-pair.sh --codex-product-guards`. Exit **0 / SCOPED_PASS**:
+2 top-level + 5 subtest PASS, 0 FAIL, 0 SKIP; version, CLI/test compilation,
+harness and vet each exit 0. This checks actual App-approved Node/stdio-MCP
+missing/forged-context refusal and restart nonce rotation, not D's original call.
+Receipt `/home/zyf/Cicada/.local/evidence/native-pair-acceptance/run-20261026T090501Z-Alljfp/result.json`
+SHA-256: `05f9c37d718ad6fb9b791080d4b0926857ad03a464e36bffa671e21fda596026`.
+Source manifest: `cf422e4508cdf6d6bcf11408abbff2698f31dea17796e57a348cbd3f614e80d3`.
+Executed CLI: `44fb2d7d66796bee7908beb8a8f16fa558b9895fb20f58a4425f7f5572f40cdd`;
+test binary: `952a177e2b70c203ea906c6276348976ad3764f50f91040287a27ff79a5941e7`.
+Source/binary before-after hashes match. Pinned offline Docker uses readonly
+source/module mounts and a locked build cache; owned container absence was
+confirmed with a reachable Docker server. Canonical stayed clean, model turns 0,
+and no user deployment/Codex was changed. No deterministic rerun, race, paid
+native/TTL/UI gate was added; installed-plugin/native consumption, Windows
+DPAPI/ACL/GUI, Android and public HTTPS remain NOT_RUN in this lane.
+App manual Group-member addition/removal and one-Thread/multi-Group isolation
+remain pending/NOT_RUN. Earlier user reports, failures and source-bound
+independent receipts keep their original attribution.
+
 ### 2026-10-26 user-reported six-check continuation
 
 Root relayed the user's explicit report that all six checks below were normal.
