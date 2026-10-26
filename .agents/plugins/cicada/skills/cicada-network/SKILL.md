@@ -5,6 +5,10 @@ description: Use for Cicada current-Thread registration, Owner-enabled local col
 
 # Cicada current Thread and authorized communication
 
+Follow Host-required skill announcements. Handle routine requests directly in
+the user's language, omitting unnecessary repeated announcements, procedural
+steps or cryptographic details unless the user asks or they explain a failure.
+
 The Hub retains shared authorization. The Cicada Windows App provides trusted
 setup, account login and Owner approval; private Owner keys stay in local secure
 storage. For the default local workflow, the Owner enables one named private
@@ -68,16 +72,24 @@ the intended `cicada_send` or `cicada_ask` call, without `target`, `network_id` 
 `link_id`. Selection sends nothing and grants no authority. The later call needs
 its own fresh runtime proof and current Guard approval. If the selection expires,
 the binding changes or access is revoked, open a new form; never resolve a label
-again or substitute another peer. Decline or cancel ends that selection attempt.
+again or substitute another peer. Decline or cancel ends that selection attempt;
+do not send afterward.
 If the Host cannot display forms, report the explicit refusal without claiming
 that a peer was selected. Do not invent a local slash command or a colored
 composer mention. Standard skill/plugin invocation still uses the normal Host.
 
-For directory lookup outside the form, use only permitted fields to distinguish
-ambiguous candidates and require an exact choice. MCP directory tools retain the
-current Endpoint's authorization; they do not expose the Node operator inventory.
-Queued or relay-persisted messages do not establish native consumption or a reply.
-Report actual delivery/consumption evidence.
+For an ordinary request to a named peer in the current Group, use
+`cicada_resolve`. If it returns one authorized target, call `cicada_ask` directly
+when an answer is expected, or `cicada_send` for a notification that needs no
+response. For an explicitly selected authorized Network, use
+`cicada_network_resolve` and the existing Network message route; preserve that
+scope. Do not routinely call `cicada_whoami` or list the directory first. Every
+call still requires fresh identity proof from the existing trusted Hook; never
+cache or fabricate context.
+If resolution is ambiguous, show permitted candidate addresses and use workspace,
+Goal or Machine context to distinguish them; ask the user only if that context is
+insufficient. MCP directory tools retain the current Endpoint's authorization;
+they do not expose the Node operator inventory.
 
 Advanced Network and Group joins remain separate from the default local policy.
 Use an explicit target and existing private invitation/Owner-proof sources. A
@@ -135,10 +147,12 @@ read authorization. These tools currently support only same-Owner Groups;
 cross-Owner board access fails closed. The Client management catalog does not
 provide Android board contents.
 
-Never guess when resolution is ambiguous. Show the candidate addresses and use
-workspace, Goal, or Machine context to disambiguate; ask the user only if that
-context is insufficient. Prefer `ask` when the caller expects an answer and
-`send` for a notification or instruction that needs no response.
+After a confirmed ask with no reply yet, say only “已发给 X，等待回复” or its
+equivalent in the user's language. For a confirmed one-way send, say “已发给 X”.
+When a correlated reply arrives, give its result directly; explain the association
+only if the request or peer is unclear. `SENT`, queued or relay-persisted messages
+do not establish reading, native consumption, a reply or task completion. Report
+failures and uncertain outcomes plainly; never present them as success.
 
 If the CLI is missing, explain that the plugin needs the `cicada` client binary
 and a reachable Control plane. Point the user to
