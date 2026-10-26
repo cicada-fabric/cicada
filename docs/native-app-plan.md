@@ -352,6 +352,13 @@ actual MCP reply delivery and do not change this failure. M5–M8 were not reach
 The current source-bound status is in the table
 below; historical receipts remain in
 [the validation record](native-app-validation.md#2026-10-26-m4-reply-ticket-failure-after-released-completion).
+Node-author candidate `c58bf1954cc9ce06e22b01d677723a1445e9b3d7` adds bounded
+same-issue Describe recovery and caller-scoped retirement of superseded Challenge
+responses. Its frozen controlled normal gate and finite M4/M6 preflight passed;
+final-source race/Docker are **PENDING**, and its full native Runtime acceptance
+is **NOT_RUN** at this checkpoint. Root combines the candidate before a new
+source-bound full run; no earlier Runtime failure is attributed to these probes.
+See [the controlled correction record](native-app-validation.md#2026-10-26-controlled-issuer-recovery-and-challenge-retention-checkpoint).
 The existing Session page may show registered
 Thread cards, their Group relations and authorized candidate Groups. It may
 offer one same-Owner/same-Network named Group creation followed by a separate

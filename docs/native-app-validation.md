@@ -8016,8 +8016,10 @@ Receipt `~/Cicada/.local/evidence/owner-groups-ticket-after-revoke/receipt.json`
 SHA-256 `e821fadb90dda5309203ea39a7ea6bd85dc21a496147e4967ea98f72f43eb197`.
 
 The finite four-record case retained the same four registrations, keys, binding
-and epochs through its prescribed M1–M4 Owner sequence and actual protected-state
-reopen. After the authenticated old-completion refusal, C's Unix reply-context
+and epochs through the M1–M3 prerequisites, protected-state reopen and M4's
+D pending-re-add/remove/release sequence, ending at C's original issuer failure
+frontier. It did not reach M4's later A finite takeover/re-add/restart scenes or
+M5–M8. After the authenticated old-completion refusal, C's Unix reply-context
 issue and consume passed in 3,737ms, error class NONE. Total package time was
 19.146s. Closed checkpoints measured disk state 4,531,625 bytes after refusal
 and 5,566,198 bytes after issue, with ordinary restart-worker Group key-prepare
@@ -8043,6 +8045,107 @@ disposable Docker interop gate. Their conclusion is **NO_REPRODUCTION** for thes
 logical sequences. They establish neither the earlier Runtime failure's cause
 nor its missing final capacity metrics. The complete M4 remains FAIL, M5–M8 and
 physical-platform items remain NOT_RUN, and production remains unchanged.
+
+### 2026-10-26 controlled issuer recovery and Challenge retention checkpoint
+
+Node-author candidate `c58bf1954cc9ce06e22b01d677723a1445e9b3d7` contains six
+production Go files, two new test files and the authoritative contract update.
+QA changes only this record and the plan. The latest complete native Runtime
+`run-20261026T211806Z-86ORrx` remains **FAIL**; its anonymous Describe sequence
+459 cannot be bound to C's Hook 86 from retained fields. Host 86 start/end and
+its underlying issuer error remain NOT_RETAINED. Adjacent trace and external
+progress-sampling times do not establish that association.
+
+The controlled response-loss RED used real Owner/Node TCP and Unix issue. The
+Hub produced an authenticated successful Describe response, then transport lost
+it. First issue failed DEADLINE_EXCEEDED after 5,004ms without minting a ticket;
+the original sequence 7/pending ciphertext remained durable. A second, separate
+issue recovered the exact request/response, obtained a fresh Describe, verified
+the original registration/binding/epoch and consumed its ticket in 133ms. The
+probe's exit 0 asserts that first failure and second success, not first-call
+success. Receipt `~/Cicada/.local/evidence/owner-groups-issuer-describe-timeout/receipt.json`
+SHA-256 `93b71263b02adbc164b1667371745862352aa40f6c58656497dbb70ecc4abdb5`.
+
+The separate finite-tail capacity RED, with recovery-only overlay bytes on clean
+d6b1b75, reached D-G1 re-add, real committed Complete response loss, reopen and
+original recovery to ACTIVE. C's next issue failed ENDPOINT_LOCAL_HISTORY_FULL
+in 449ms. Serialized state was 6,277,756 bytes (disk 6,277,757), managed reserve
+zero, leaving 13,700 bytes after the unchanged 2 MiB RPC reserve. Pending stayed
+empty before/after the failed issue; prospective pending JSON size was not
+retained. The later A finite takeover and M6 were not reached. Exit 1, one test
+FAIL, package 21.485s; receipt
+`~/Cicada/.local/evidence/owner-groups-four-thread-tail/receipt.json` SHA-256
+`eb3f5ea98dc6af627f4bdd5e4a4702029da1d808b889a0c0bc66c25ddecf7737`.
+Its separate read-only classification remained RED: six eligible Challenge
+responses totaled 683,320 raw / 911,230 JSON bytes. That classification had only
+step hashes, so no individual estimate is retroactively assigned to C.
+
+The candidate allows at most one bounded recovery attempt inside the same issue
+for its exact pending registration Describe. It then obtains a fresh read and
+rechecks the original native/transcript, registration, Owner/key and binding.
+Refusals, invalid responses, changed identity, capacity errors and pending writes
+do not authorize retry or business redispatch. Each read retains its five-second
+bound and uses the original thirty-second connection budget, including mutex
+waiting; the thirty-five-second client deadline and thirty-second ticket lifetime
+are unchanged.
+Retention only removes the calling origin's historical Challenge response after
+authenticated, independently retained successful Complete and exact projected
+claims/policy/head/relation/manifest validation. Original requests, intent/body
+fences, Complete receipts, ACTIVE reads, current grants and Owner deny remain.
+No origin-wide scan, state-limit increase or response-reserve reduction was added.
+
+The final normal command compiled clean canonical d6b1b75 plus the exact eight
+Go-file overlay, with identical selected hashes before/after. All eight blobs
+match c58bf19; this is not attribution of an overlay build solely to its base HEAD.
+Exit **0**, **10 top-level + 3 subtest PASS**, **0 FAIL/SKIP**, package 78.910s.
+Its single-issue loss recovery took 5,142ms, with identical original request and
+response, independent fresh read, native re-verification and successful consume.
+Two timeouts stopped after two attempts/10,004ms and retained the original;
+the real pending-write case recorded zero issuer write replays or forwarded effects.
+Refusal, bad-response, changed-native, expired-budget, mutex-wait and legacy
+profile/consumption cases also passed.
+
+The finite four-record retention test passed in **37.14s within that same
+command**. It checked 13 pending/retained-execution fields, skipped ACTIVE-only
+metadata before crypto, retained rejected/unsettled Complete dependencies,
+returned local receipt-expired for the exact retired read and conflict for
+changed body with **zero new RPC**, and preserved original Complete recovery,
+four anchors/keys and current heads across reopen. It then reached D-G1 re-add
+with actual lost-response recovery, A's finite takeover with the same reviewed
+expiry across restart, D's last-Group removal, original Join with zero business
+Groups and exact Owner re-add. C's issue succeeded at every prescribed tail
+checkpoint. Actor index 2 now measured its own reclaimed response as **113,878
+raw / 151,861 JSON bytes**; this new measurement does not fill the old
+classification's missing actor mapping. Final disk state was 6,234,030 bytes,
+serialized 6,234,029, managed reserve zero, with 57,427 bytes remaining after
+the unchanged 2 MiB RPC reserve. Actual 24-hour expiry was not exercised.
+
+Final receipt
+`~/Cicada/.local/evidence/owner-groups-challenge-retention-final/normal-receipt.json`
+SHA-256 `1ff4c96f4361a06582ac9fcc546d138e8f24aace3f91000db47ab1d817ffbcdb`;
+its exact command and eight selected source hashes are retained there. Overlay
+SHA-256 `9e35ae038cb0b5b73f1eeb50e503c21fddb62a5875b74398b1fadc54c752bc5a`.
+QA verified test/log/commit blob hashes and all 29 explicit checkpoint rows
+against the log, retaining matching source copies and review in
+`~/Cicada/.local/evidence/n2-acceptance/owner-groups-recovery-retention-review-c58bf19-01/result.json`,
+SHA-256 `57d6ed87dc26022c103b1c8dc6de68b6b712234dfdcdf186cebca4ff87c4b3b0`.
+QA did not re-execute these producer tests.
+
+**Final-source race and disposable Docker: PENDING at this checkpoint.** Earlier
+recovery-only overlay normal/Docker results do not cover this final retention
+source. Its earlier race command retains exit 1/package timeout at 300.041s;
+the four remaining cases passed a separate command (65.463s, exit 0). Their
+union is coverage of that earlier source, never a successful original command
+or a final-source gate. The source-inconsistent 37.507s GC trial is not a PASS.
+
+Root must combine the production candidate and QA record before authorizing a
+new exact-source full Runtime run. No such run was started here. This controlled
+Node/Hub preflight used synthetic original-native records, not external Codex
+Runtime or actual MCP reply/outbox/native receive. It is **SCOPED_PASS** only for
+the frozen normal/finite tests. Full native M4 remains FAIL at the old source;
+M5–M8, final four-identity/five-minute witnesses, Windows DPAPI/ACL/GUI, Android,
+physical second Node, public HTTPS and actual 24-hour expiry remain NOT_RUN.
+All gates must finish before candidate finalization.
 
 ### 2026-10-26 user-reported four-Thread Group continuation
 
