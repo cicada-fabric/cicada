@@ -24,6 +24,7 @@ import (
 	wire "github.com/cicada-ai/cicada/internal/hubaccountwire"
 	"github.com/cicada-ai/cicada/internal/hubauth"
 	"github.com/cicada-ai/cicada/internal/hubidentity"
+	"github.com/cicada-ai/cicada/internal/nodewire"
 	"github.com/cicada-ai/cicada/internal/store"
 )
 
@@ -174,17 +175,18 @@ type exchange struct {
 }
 
 type faultProxy struct {
-	server *httptest.Server
-	origin string
-	client *http.Client
-	mu     sync.Mutex
-	path   string
-	method string
-	mode   string
-	count  int
-	gate   *pausePoint
-	gates  []*pausePoint
-	trace  []exchange
+	server        *httptest.Server
+	origin        string
+	client        *http.Client
+	mu            sync.Mutex
+	path          string
+	method        string
+	nodeOperation string
+	mode          string
+	count         int
+	gate          *pausePoint
+	gates         []*pausePoint
+	trace         []exchange
 }
 
 type pausePoint struct {
@@ -221,9 +223,14 @@ func (p *faultProxy) arm(path, mode string, count int) (<-chan struct{}, func())
 // Discovery GET and the authorized POST can share a path. A mutation fault
 // must not accidentally consume the discovery request that precedes it.
 func (p *faultProxy) armMethod(path, method, mode string, count int) (<-chan struct{}, func()) {
+	return p.armMatch(path, method, "", mode, count)
+}
+
+func (p *faultProxy) armMatch(path, method, nodeOperation, mode string, count int) (<-chan struct{}, func()) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.path, p.method, p.mode, p.count = path, method, mode, count
+	p.nodeOperation = nodeOperation
 	p.gate = &pausePoint{entered: make(chan struct{}), release: make(chan struct{})}
 	p.gates = append(p.gates, p.gate)
 	return p.gate.entered, p.gate.unblock
@@ -250,7 +257,12 @@ func (p *faultProxy) serve(w http.ResponseWriter, r *http.Request) {
 	p.mu.Lock()
 	mode := ""
 	var gate *pausePoint
-	if p.count > 0 && r.URL.Path == p.path && (p.method == "" || r.Method == p.method) {
+	operationMatches := p.nodeOperation == ""
+	if !operationMatches {
+		var packet nodewire.Packet
+		operationMatches = json.Unmarshal(raw, &packet) == nil && packet.Route.Operation == p.nodeOperation
+	}
+	if p.count > 0 && r.URL.Path == p.path && (p.method == "" || r.Method == p.method) && operationMatches {
 		mode, gate = p.mode, p.gate
 		p.count--
 	}

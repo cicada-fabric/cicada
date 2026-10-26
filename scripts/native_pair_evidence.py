@@ -3,7 +3,9 @@
 import hashlib
 import datetime
 import json
+import math
 import os
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -398,7 +400,189 @@ def terminal_event_counts(path):
     return counts
 
 
+OWNER_GROUPS_PARENT = 'TestN3OwnerEndpointGroupsAcceptance'
+OWNER_GROUPS_INPUTS = Path(__file__).parent / 'fixtures/native-pair/owner_groups_cases.json'
+
+
+def owner_groups_inputs():
+    """Reviewed fault inputs, not executed observations or product DTOs."""
+    value = decode_node_pair_measurement(OWNER_GROUPS_INPUTS.read_text())
+    if (not isinstance(value, dict) or set(value) != {'format', 'contract_revision', 'status', 'faults', 'cases'}
+            or value['format'] != 'cicada.acceptance.owner-groups-inputs.v1'
+            or value['contract_revision'] != 'owner-endpoint-groups-v1'
+            or value['status'] != 'PREPARED_NOT_EXECUTED'
+            or not isinstance(value['cases'], list) or len(value['cases']) != 8):
+        raise ValueError('Invalid Owner Group preparation inputs')
+    ids, faults = set(), set()
+    for fault in value['faults']:
+        if (not isinstance(fault, dict) or set(fault) != {'id', 'path', 'method', 'node_operation', 'mode', 'count'}
+                or fault['id'] in faults or fault['method'] != 'POST' or type(fault['count']) is not int or fault['count'] != 1
+                or fault['mode'] not in {'before-forward', 'drop-after-response', 'unsigned-403', 'corrupt-response', 'hold-before-forward'}):
+            raise ValueError('Invalid Owner Group fault')
+        if fault['path'] == '/v2/node/control/rpc':
+            if fault['node_operation'] not in {'node.endpoint_groups.key_complete', 'node.endpoint_groups.renew'}:
+                raise ValueError('Group fault may not intercept another Node RPC')
+        elif fault['path'] != '/v2/owner/endpoint-groups/apply' or fault['node_operation']:
+            raise ValueError('Group fault may not target a foreign path')
+        faults.add(fault['id'])
+    for number, case in enumerate(value['cases'], 1):
+        if (not isinstance(case, dict) or set(case) != {'id', 'observations', 'faults', 'negative_inputs'}
+                or not isinstance(case['id'], str) or not case['id'].startswith('M' + str(number) + '_') or case['id'] in ids
+                or not isinstance(case['observations'], list) or not case['observations']
+                or any(not isinstance(v, str) or not v for v in case['observations'])
+                or len(set(case['observations'])) != len(case['observations'])
+                or not isinstance(case['faults'], list) or not set(case['faults']) <= faults
+                or not isinstance(case['negative_inputs'], list) or not case['negative_inputs']):
+            raise ValueError('Invalid Owner Group case')
+        ids.add(case['id'])
+    return value
+
+
+def valid_owner_groups_facts(facts, results, counts):
+    required = {c['id']: set(c['observations']) for c in owner_groups_inputs()['cases']}
+    expected = {OWNER_GROUPS_PARENT} | {OWNER_GROUPS_PARENT + '/' + case for case in required}
+    if (set(results) != expected or any(v != 'pass' for v in results.values())
+            or counts != {name: 1 for name in expected} or len(facts) != len(required)):
+        return False
+    seen = set()
+    for item in facts:
+        if not isinstance(item, dict) or set(item) != {'test', 'measurement'}:
+            return False
+        value = item.get('measurement')
+        if not isinstance(value, dict) or set(value) != {'case', 'observed'}:
+            return False
+        name, observed = value['case'], value['observed']
+        if (not isinstance(name, str) or name not in required or name in seen
+                or item.get('test') != OWNER_GROUPS_PARENT + '/' + name or not isinstance(observed, dict)
+                or set(observed) != required[name] or any(v is not True for v in observed.values())):
+            return False
+        seen.add(name)
+    return seen == set(required)
+
+
+def valid_owner_groups_lease(value):
+    fields = {'clock', 'source', 'baseline_at', 'original_lease_expires_at', 'after_boundary_at',
+              'renewed_lease_expires_at', 'monotonic_elapsed_seconds'}
+    if (not isinstance(value, dict) or set(value) != fields or value['clock'] != 'REAL_WALL_AND_MONOTONIC'
+            or value['source'] != 'G2_OWNER_EXPLICIT'
+            or type(value['monotonic_elapsed_seconds']) not in (int, float)
+            or not math.isfinite(value['monotonic_elapsed_seconds'])):
+        return False
+    try:
+        times = []
+        for key in ('baseline_at', 'original_lease_expires_at', 'after_boundary_at', 'renewed_lease_expires_at'):
+            raw = value[key]
+            if not isinstance(raw, str) or not raw.endswith('Z'):
+                return False
+            times.append(datetime.datetime.fromisoformat(raw.replace('Z', '+00:00')))
+        baseline, original, after, renewed = times
+        elapsed = (after - baseline).total_seconds()
+        return (baseline < original < after < renewed and elapsed > 0
+                and value['monotonic_elapsed_seconds'] > 0
+                and abs(value['monotonic_elapsed_seconds'] - elapsed) <= 2)
+    except (ValueError, TypeError, OverflowError):
+        return False
+
+
+def valid_owner_groups_identities(value):
+    fields = {'native_session_id', 'endpoint_id', 'principal_id', 'workspace', 'node_id',
+              'binding_id', 'binding_epoch', 'endpoint_public_key_sha256'}
+    if not isinstance(value, dict) or set(value) != {'before', 'after_group_operations'}:
+        return False
+    snapshots = []
+    for key in ('before', 'after_group_operations'):
+        actors = value[key]
+        if not isinstance(actors, list) or len(actors) != 4:
+            return False
+        indexed, endpoints, nodes = {}, set(), set()
+        for actor in actors:
+            if (not isinstance(actor, dict) or set(actor) != fields
+                    or type(actor['binding_epoch']) is not int or actor['binding_epoch'] <= 0
+                    or any(not isinstance(v, str) or not v or len(v) > 4096 for k, v in actor.items() if k != 'binding_epoch')
+                    or not re.fullmatch(r'[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}', actor['native_session_id'])
+                    or not re.fullmatch(r'[0-9a-f]{64}', actor['endpoint_public_key_sha256'])
+                    or actor['native_session_id'] in indexed or actor['endpoint_id'] in endpoints):
+                return False
+            indexed[actor['native_session_id']] = actor
+            endpoints.add(actor['endpoint_id'])
+            nodes.add(actor['node_id'])
+        if len(nodes) != 1:
+            return False
+        snapshots.append(indexed)
+    return snapshots[0] == snapshots[1]
+
+
+def finish_owner_groups(run, artifacts, image, owned):
+    """M1-M8 extension of this driver; no synthetic result can fill absent cases."""
+    before, after = [json.loads((run / f'source-{side}.json').read_text()) for side in ('before', 'after')]
+    expected = {OWNER_GROUPS_PARENT} | {OWNER_GROUPS_PARENT + '/' + c['id'] for c in owner_groups_inputs()['cases']}
+    results, counts = terminal_events(run / 'harness.log'), terminal_event_counts(run / 'harness.log')
+    facts, lease, identities, diagnostics = [], [], [], []
+    malformed = False
+    for line in (run / 'harness.log').read_text().splitlines():
+        try:
+            item = json.loads(line)
+            output = item.get('Output', '')
+            if 'OWNER_GROUPS_NOT_RUN' in output:
+                diagnostics.append({'test': item.get('Test'), 'reason': 'OWNER_GROUPS_NOT_RUN'})
+            for marker, destination in (('OWNER_GROUPS_FACTS ', facts), ('OWNER_GROUPS_LEASE ', lease), ('OWNER_GROUPS_IDENTITIES ', identities)):
+                if marker in output:
+                    if item.get('Action') != 'output':
+                        malformed = True
+                    destination.append({'test': item.get('Test'), 'measurement': decode_node_pair_measurement(output.split(marker, 1)[1])})
+        except (ValueError, TypeError, AttributeError):
+            malformed = True
+    stages = ('version', 'compile-cli', 'compile-tests', 'harness', 'vet')
+    exits = {name: int((run / (name + '.exit')).read_text()) if (run / (name + '.exit')).exists() else None for name in stages}
+    records = [json.loads((run / f'binaries-{side}.json').read_text()) if (run / f'binaries-{side}.json').exists() else {} for side in ('before', 'after')]
+    stable = set(records[0]) == {'cicada', 'n3.test'} and records[0] == records[1]
+    if stable:
+        stable = all((artifacts / name).is_file() and sha(artifacts / name) == meta.get('sha256')
+                     and (artifacts / name).stat().st_size == meta.get('bytes') for name, meta in records[0].items())
+    source_stable = before == after
+    tools = before.get('external_runtime_tools', {})
+    codex = tools.get('codex', {})
+    runtime_pinned = codex.get('sha256') == DIRECT_IP_CODEX_SHA256 and codex.get('version') == DIRECT_IP_CODEX_VERSION
+    facts_valid = not malformed and valid_owner_groups_facts(facts, results, counts)
+    lease_valid = (len(lease) == 1 and lease[0]['test'] == OWNER_GROUPS_PARENT + '/M5_IndependentRealLease'
+                   and valid_owner_groups_lease(lease[0]['measurement']))
+    identities_valid = (len(identities) == 1 and identities[0]['test'] == OWNER_GROUPS_PARENT
+                        and valid_owner_groups_identities(identities[0]['measurement']))
+    infrastructure = all(exits[name] == 0 for name in stages) and stable and source_stable and owned == 'false'
+    passed = infrastructure and runtime_pinned and facts_valid and lease_valid and identities_valid and not diagnostics
+    not_run = (infrastructure and not malformed and results == {OWNER_GROUPS_PARENT: 'skip'}
+               and counts == {OWNER_GROUPS_PARENT: 1} and len(diagnostics) == 1
+               and diagnostics[0]['test'] == OWNER_GROUPS_PARENT and not facts and not lease and not identities)
+    code = 0 if passed else 125 if not_run else 1
+    summary = {'scope': 'OWNER_GROUPS_M1_M8_ACTUAL_APP_NODE_HUB_FOUR_NATIVE_THREADS_NOT_PHYSICAL_WINDOWS',
+               'status': 'SCOPED_PASS' if passed else 'NOT_RUN' if not_run else 'FAIL', 'exit_code': code,
+               'exit_codes': exits, 'head': before['head'], 'dirty': before['dirty'],
+               'harness_head': before['harness_head'], 'harness_dirty': before['harness_dirty'],
+               'source_root': before['source_root'], 'harness_root': before['harness_root'],
+               'source_manifest_sha256': before['manifest_sha256'], 'source_stable': source_stable,
+               'source_before_sha256': sha(run / 'source-before.json'), 'source_after_sha256': sha(run / 'source-after.json'),
+               'tests': results, 'terminal_counts': counts, 'facts': facts, 'facts_valid': facts_valid,
+               'lease_observations': lease, 'actual_lease_boundary_valid': lease_valid,
+               'identities': identities, 'identities_unchanged': identities_valid,
+               'runtime_pinned': runtime_pinned, 'external_runtime_tools': tools,
+               'external_codex_package': before.get('external_codex_package'),
+               'external_component_licenses': before.get('external_component_licenses'),
+               'executed_binaries': records, 'executed_binary_hashes_before_after_match': stable,
+               'container_absent': owned == 'false', 'diagnostics': diagnostics, 'malformed_evidence': malformed,
+               'docker_image_reference': image, 'docker_image_digest': image.rsplit('@', 1)[-1],
+               'artifacts': {p.name: {'sha256': sha(p), 'bytes': p.stat().st_size} for p in artifacts.iterdir() if p.is_file()},
+               'evidence_sha256': {p.name: sha(p) for p in run.iterdir() if p.is_file() and p.name != 'result.json'},
+               'not_run': sorted(name for name in expected if results.get(name) in (None, 'skip')) +
+                          ['Windows_DPAPI', 'Windows_ACL', 'Windows_GUI', 'Android', 'physical_second_Node', 'public_HTTPS'],
+               'private_payloads_exported': False, 'public_deployment_touched': False}
+    save(run / 'result.json', summary)
+    print(f'Native pair {summary["status"]} exit={code} evidence={run / "result.json"}')
+    raise SystemExit(code)
+
+
 def finish(run, artifacts, image, owned, mode='protocol'):
+    if mode == 'owner-endpoint-groups':
+        return finish_owner_groups(run, artifacts, image, owned)
     if mode not in ('protocol', 'store', 'a3', 'a3-http', 'a3-size-store', 'app-owner', 'endpoint-security', 'endpoint-security-boundaries', 'endpoint-security-app-fixture', 'endpoint-security-owner-directory', 'endpoint-security-owner-directory-recovery', 'codex-product-guards', 'codex-product-cli', 'codex-product-cold', 'codex-product-three-stage', 'codex-product-other-uid', 'codex-product-domain-app', 'codex-product-domain-native', 'codex-product-peer-form', 'codex-product-peer-form-native', 'peer-form-network', 'peer-form-network-focus', 'direct-ip-tls', 'node-pair-trust'):
         raise ValueError('Only protocol and isolated core regression modes are active.')
     before, after = [json.loads((run / f'source-{side}.json').read_text()) for side in ('before', 'after')]

@@ -1,0 +1,225 @@
+{
+  "format": "cicada.acceptance.owner-groups-inputs.v1",
+  "contract_revision": "owner-endpoint-groups-v1",
+  "status": "PREPARED_NOT_EXECUTED",
+  "faults": [
+    {
+      "id": "apply-before-forward",
+      "path": "/v2/owner/endpoint-groups/apply",
+      "method": "POST",
+      "node_operation": "",
+      "mode": "before-forward",
+      "count": 1
+    },
+    {
+      "id": "apply-lost-response",
+      "path": "/v2/owner/endpoint-groups/apply",
+      "method": "POST",
+      "node_operation": "",
+      "mode": "drop-after-response",
+      "count": 1
+    },
+    {
+      "id": "apply-unsigned403",
+      "path": "/v2/owner/endpoint-groups/apply",
+      "method": "POST",
+      "node_operation": "",
+      "mode": "unsigned-403",
+      "count": 1
+    },
+    {
+      "id": "apply-corrupt-response",
+      "path": "/v2/owner/endpoint-groups/apply",
+      "method": "POST",
+      "node_operation": "",
+      "mode": "corrupt-response",
+      "count": 1
+    },
+    {
+      "id": "complete-held-before-forward",
+      "path": "/v2/node/control/rpc",
+      "method": "POST",
+      "node_operation": "node.endpoint_groups.key_complete",
+      "mode": "hold-before-forward",
+      "count": 1
+    },
+    {
+      "id": "complete-lost-response",
+      "path": "/v2/node/control/rpc",
+      "method": "POST",
+      "node_operation": "node.endpoint_groups.key_complete",
+      "mode": "drop-after-response",
+      "count": 1
+    },
+    {
+      "id": "renew-lost-response",
+      "path": "/v2/node/control/rpc",
+      "method": "POST",
+      "node_operation": "node.endpoint_groups.renew",
+      "mode": "drop-after-response",
+      "count": 1
+    }
+  ],
+  "cases": [
+    {
+      "id": "M1_G2OriginalMutation",
+      "observations": [
+        "actual_App_Owner_review",
+        "one_G2_one_relation",
+        "PENDING_KEY_zero_new_rights",
+        "same_original_packet_after_loss",
+        "restart_recovers_original_receipt",
+        "identity_and_keys_unchanged"
+      ],
+      "faults": [
+        "apply-before-forward",
+        "apply-lost-response",
+        "apply-unsigned403",
+        "apply-corrupt-response"
+      ],
+      "negative_inputs": [
+        "same-id-changed-packet",
+        "wrong-Owner-proof",
+        "stale-review-CAS"
+      ]
+    },
+    {
+      "id": "M2_ExactMultiGroup",
+      "observations": [
+        "four_original_native_threads",
+        "original_SID_Endpoint_key_workspace",
+        "fresh_OWNER_ENDPOINT_GROUPS_V1",
+        "explicit_group_selection",
+        "Cicada_request_reply_correlation",
+        "Group_grants_independent"
+      ],
+      "faults": [],
+      "negative_inputs": [
+        "unknown-profile",
+        "partial-profile",
+        "mixed-profile",
+        "wrong-Group-grant"
+      ]
+    },
+    {
+      "id": "M3_RemoveOnlyD",
+      "observations": [
+        "only_D_G1_removed",
+        "A_B_C_unchanged",
+        "D_G2_unchanged",
+        "shared_Principal_grants_unchanged",
+        "actual_five_right_Actor_Guards",
+        "legacy_global_mutations_denied",
+        "fresh_final_delivery_denied"
+      ],
+      "faults": [
+        "complete-held-before-forward"
+      ],
+      "negative_inputs": [
+        "shared-Principal-wide-grant",
+        "foreign-Endpoint",
+        "stale-decision-revision"
+      ]
+    },
+    {
+      "id": "M4_PermanentOwnerControl",
+      "observations": [
+        "manual_deny_survives_Join_and_restart",
+        "pending_does_not_clear_deny",
+        "pending_preserves_undenied_default",
+        "Complete_commits_exact_ACTIVE_projection",
+        "OWNER_mode_permanent",
+        "finite_manual_expiry_no_default_fallback",
+        "old_completion_after_remove_denied"
+      ],
+      "faults": [
+        "complete-held-before-forward",
+        "complete-lost-response"
+      ],
+      "negative_inputs": [
+        "tampered-projected-head",
+        "tampered-manifest-revision",
+        "old-default-proof",
+        "new-Attempt-after-deny"
+      ]
+    },
+    {
+      "id": "M5_IndependentRealLease",
+      "observations": [
+        "App_closed",
+        "default_policy_revoked",
+        "G2_OWNER_EXPLICIT_renewal",
+        "new_MCP_after_default_revoke",
+        "new_fresh_Hook_after_default_revoke",
+        "Node_restart_original_identity",
+        "G2_Cicada_ASK_REPLY_after_boundary",
+        "normal_binding_epoch_unchanged"
+      ],
+      "faults": [
+        "renew-lost-response"
+      ],
+      "negative_inputs": [
+        "revoked-default-profile",
+        "unknown-renewal-no-new-token"
+      ]
+    },
+    {
+      "id": "M6_LastGroupRetainsIdentity",
+      "observations": [
+        "last_Group_business_denied",
+        "registration_zero_business_rights",
+        "original_SID_Endpoint_key_workspace",
+        "native_history_and_results_retained",
+        "Node_still_running",
+        "explicit_readd_same_identity"
+      ],
+      "faults": [
+        "apply-lost-response"
+      ],
+      "negative_inputs": [
+        "automatic-Join",
+        "replacement-key",
+        "replacement-Endpoint"
+      ]
+    },
+    {
+      "id": "M7_TrueAuthorityRevocation",
+      "observations": [
+        "actual_Owner_key_revoke",
+        "actual_Node_binding_or_key_revoke",
+        "all_Groups_denied",
+        "cold_renewal_denied",
+        "final_native_injection_denied",
+        "App_logout_not_revocation"
+      ],
+      "faults": [
+        "complete-held-before-forward"
+      ],
+      "negative_inputs": [
+        "stale-Node-epoch",
+        "stale-Owner-key",
+        "borrowed-Principal-rights"
+      ]
+    },
+    {
+      "id": "M8_OriginalScopeRecovery",
+      "observations": [
+        "request_reply_selection_original_Group",
+        "outbox_original_ID_and_ciphertext",
+        "no_Group_Network_Link_fallback",
+        "same_ID_changed_intent_rejected",
+        "original_read_not_redispatch",
+        "old_default_chain_after_takeover_denied"
+      ],
+      "faults": [
+        "apply-lost-response",
+        "renew-lost-response"
+      ],
+      "negative_inputs": [
+        "G1-reference-in-G2",
+        "wrong-request-Group",
+        "original-intent-new-target"
+      ]
+    }
+  ]
+}

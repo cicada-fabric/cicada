@@ -7301,6 +7301,37 @@ missing-token recovery.
 
 ## 2026-10-25 Independent peer-form and authorized-directory acceptance
 
+### 2026-10-26 Owner-managed Group driver preparation
+
+QA prepared the existing native-pair driver for contract `e3544d9`, without
+changing production or public contracts. `--owner-endpoint-groups` is reserved
+for actual App/Hub/Node/four-Thread M1–M8 and returns 125 before allocating
+resources while its formal runtime adapter is absent. No product gate ran;
+all M1–M8, Windows DPAPI/ACL/GUI, Android, second physical Node and public HTTPS
+remain **NOT_RUN**. Real shared wire/App action integration awaits formal delivery.
+
+Fault inputs and N3 helpers reuse the existing proxy, processes and evidence
+tool. Exact RPC-operation matching prevents unrelated Node traffic consuming a
+fault. The gate refuses incomplete/duplicate/skipped cases, false observations,
+changed original identities, source/binary drift, an unreviewed Host, remaining
+containers and synthetic elapsed-time claims. The M5 witness uses the actual
+parent monotonic clock across child restarts and requires renewed G2 authority
+beyond the original lease deadline. Input definitions are never auto-emitted as
+executed facts; a synthetic oracle control is not a real signature or Runtime.
+
+Pure oracle: 111 cases, exit 0 / ORACLE_PASS, product status NOT_RUN.
+`/home/zyf/Cicada/.local/evidence/n2-acceptance/owner-groups-oracle-20261026-preparation-01/result.json`
+SHA-256 `02ce4e1d721b7f7fe8a84ef05fe7d29356cb5d7f4b0fac86c0aceb6dd81771ce`.
+One synthetic TCP proxy self-check also exits 0, with no skip/fail; it tests only
+the helper, not Hub authorization. Source was dirty `e3544d9`, manifest
+`b748a45b956f354cc5df276d16ff9d46e28da80a5678dfcc638d109ee465cae9`, stable
+before/after; this documentation was added afterward.
+`/home/zyf/Cicada/.local/evidence/n2-acceptance/owner-groups-fixture-20261026-preparation-01/result.json`
+SHA-256 `fa82ab32c52e2f35f965c5c4f6948cd353e04cdb99603e28ce80e8717dde479b`.
+Both use task-owned outputs. The helper ran in the existing pinned offline Go
+image with readonly source/modules, exclusive build-cache lock and confirmed
+owned-container absence. No user Codex, device, deployment or model was used.
+
 ### 2026-10-26 user-reported four-Thread Group continuation
 
 Root relayed the user's report that four real native Threads on the same Node

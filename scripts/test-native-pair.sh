@@ -26,9 +26,14 @@ elif [[ $# == 1 && "$1" == --peer-form-network ]]; then mode=peer-form-network
 elif [[ $# == 1 && "$1" == --peer-form-network-focus ]]; then mode=peer-form-network-focus
 elif [[ $# == 1 && "$1" == --direct-ip-tls ]]; then mode=direct-ip-tls
 elif [[ $# == 1 && "$1" == --node-pair-trust ]]; then mode=node-pair-trust
-elif [[ $# != 0 ]]; then printf 'Usage: scripts/test-native-pair.sh [--store-regressions|--a3-core|--a3-http|--a3-size-store|--app-owner|--endpoint-security|--endpoint-security-boundaries|--endpoint-security-app-fixture|--endpoint-security-owner-directory|--endpoint-security-owner-directory-recovery|--codex-product-guards|--codex-product-cli|--codex-product-cold|--codex-product-three-stage|--codex-product-other-uid|--codex-product-domain-app|--codex-product-domain-native|--codex-product-peer-form|--codex-product-peer-form-native|--peer-form-network|--peer-form-network-focus|--direct-ip-tls|--node-pair-trust]\n' >&2; exit 2; fi
+elif [[ $# == 1 && "$1" == --owner-endpoint-groups ]]; then mode=owner-endpoint-groups
+elif [[ $# != 0 ]]; then printf 'Usage: scripts/test-native-pair.sh [--store-regressions|--a3-core|--a3-http|--a3-size-store|--app-owner|--endpoint-security|--endpoint-security-boundaries|--endpoint-security-app-fixture|--endpoint-security-owner-directory|--endpoint-security-owner-directory-recovery|--codex-product-guards|--codex-product-cli|--codex-product-cold|--codex-product-three-stage|--codex-product-other-uid|--codex-product-domain-app|--codex-product-domain-native|--codex-product-peer-form|--codex-product-peer-form-native|--peer-form-network|--peer-form-network-focus|--direct-ip-tls|--node-pair-trust|--owner-endpoint-groups]\n' >&2; exit 2; fi
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source_root="$repo_root"
+if [[ "$mode" == owner-endpoint-groups && ! -f "$source_root/cicada-go/acceptance/n3/owner_groups_runtime_test.go" ]]; then
+ printf 'OWNER_GROUPS_NOT_RUN: formal App/Hub/Node/native adapter has not been delivered; M1-M8 NOT_RUN.\n' >&2
+ exit 125
+fi
 if [[ "$mode" == endpoint-security* && ! -f "$source_root/docs/native-endpoint-directory-contract.md" ]]; then
  printf 'Endpoint security requires the frozen Endpoint directory contract.\n' >&2; exit 2
 fi
@@ -46,7 +51,7 @@ if [[ "$mode" == peer-form-network* && ! -f "$source_root/cicada-go/cmd/cicada/m
  printf 'Peer Network gate requires the formally integrated real Network fixture; NOT_RUN.\n' >&2; exit 125
 fi
 if [[ -n "$alternate_source" ]]; then
- if [[ "$mode" == protocol || "$mode" == app-owner || "$mode" == endpoint-security* || "$mode" == codex-product-* || "$mode" == peer-form-network* || "$mode" == direct-ip-tls || "$mode" == node-pair-trust ]]; then printf 'Alternate source is limited to isolated core regressions.\n' >&2; exit 2; fi
+ if [[ "$mode" == protocol || "$mode" == app-owner || "$mode" == endpoint-security* || "$mode" == codex-product-* || "$mode" == peer-form-network* || "$mode" == direct-ip-tls || "$mode" == node-pair-trust || "$mode" == owner-endpoint-groups ]]; then printf 'Alternate source is limited to isolated core regressions.\n' >&2; exit 2; fi
  source_root="$(cd "$alternate_source" && pwd -P)"
  if [[ ! -f "$source_root/cicada-go/go.mod" ]]; then printf 'Store source must be a Cicada worktree.\n' >&2; exit 2; fi
 fi
@@ -82,14 +87,14 @@ elif [[ -n "${CICADA_NATIVE_PAIR_DOMAIN_WAIT_LOGIN_EXPIRY:-}" ]]; then
  printf 'Domain login-expiry parameter requires --codex-product-domain-native.\n' >&2; exit 2
 fi
 codex_mount=()
-if [[ "$mode" == codex-product-cli || "$mode" == codex-product-cold || "$mode" == codex-product-three-stage || "$mode" == codex-product-domain-native || "$mode" == codex-product-peer-form* || "$mode" == direct-ip-tls || "$mode" == node-pair-trust ]]; then
+if [[ "$mode" == codex-product-cli || "$mode" == codex-product-cold || "$mode" == codex-product-three-stage || "$mode" == codex-product-domain-native || "$mode" == codex-product-peer-form* || "$mode" == direct-ip-tls || "$mode" == node-pair-trust || "$mode" == owner-endpoint-groups ]]; then
  if [[ ! -f "$source_root/.agents/plugins/cicada/hooks/hooks.json" || ! -f "$source_root/.agents/plugins/cicada/.mcp.json" || ! -f "$source_root/.agents/plugins/cicada/.codex-plugin/plugin.json" ]]; then
   printf 'Installed-plugin gate requires the integrated existing-plugin assets; NOT_RUN.\n' >&2; exit 2
  fi
  codex_binary='/home/zyf/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/bin/codex'
  codex_expected_sha='399ff69c431c066e40de318fba45c2b07f45a76b19939d247ee4828fc70c4215'
  codex_expected_version=''
- if [[ "$mode" == direct-ip-tls || "$mode" == node-pair-trust || "$mode" == codex-product-peer-form* ]]; then
+ if [[ "$mode" == direct-ip-tls || "$mode" == node-pair-trust || "$mode" == owner-endpoint-groups || "$mode" == codex-product-peer-form* ]]; then
   codex_binary='/home/zyf/.codex/packages/standalone/releases/0.164.0-x86_64-unknown-linux-musl/bin/codex'
   codex_expected_sha='b93f6811d3f653f0fb83be4050d857fb9abbb111dfa2ce160563327daff7f306'
   codex_expected_version='0.164.0'
@@ -110,7 +115,7 @@ PY
  codex_mount=(--mount "type=bind,src=$codex_binary,dst=/tools/codex,readonly" -e CICADA_N3_CODEX_BINARY=/tools/codex)
 fi
 license_mount=()
-if [[ "$mode" == codex-product-three-stage || "$mode" == codex-product-domain-native || "$mode" == codex-product-peer-form* || "$mode" == direct-ip-tls || "$mode" == node-pair-trust ]]; then
+if [[ "$mode" == codex-product-three-stage || "$mode" == codex-product-domain-native || "$mode" == codex-product-peer-form* || "$mode" == direct-ip-tls || "$mode" == node-pair-trust || "$mode" == owner-endpoint-groups ]]; then
  licenses="${CICADA_NATIVE_PAIR_LICENSES_DIR:-}"
  if [[ -z "$licenses" || ! -f "$licenses/go/MODULES.json" || ! -f "$licenses/go/LICENSE" || ! -f "$licenses/cicada/LICENSE" ]]; then
   printf 'File-install gate requires matching complete CLI notices through CICADA_NATIVE_PAIR_LICENSES_DIR; NOT_RUN.\n' >&2; exit 2
@@ -119,7 +124,7 @@ if [[ "$mode" == codex-product-three-stage || "$mode" == codex-product-domain-na
  export CICADA_NATIVE_PAIR_LICENSES_DIR="$licenses"
  license_mount=(--mount "type=bind,src=$licenses,dst=/licenses,readonly")
 fi
-if [[ "$mode" == codex-product-three-stage || "$mode" == codex-product-domain-native || "$mode" == codex-product-peer-form* || "$mode" == direct-ip-tls || "$mode" == node-pair-trust ]]; then
+if [[ "$mode" == codex-product-three-stage || "$mode" == codex-product-domain-native || "$mode" == codex-product-peer-form* || "$mode" == direct-ip-tls || "$mode" == node-pair-trust || "$mode" == owner-endpoint-groups ]]; then
  codex_package="$(dirname "$(dirname "$codex_binary")")"
  if [[ ! -f "$codex_package/codex-package.json" || ! -f "$codex_package/bin/codex-code-mode-host" ]]; then
   printf 'Persistent daemon gate requires the existing complete reviewed Codex package; NOT_RUN.\n' >&2; exit 2
@@ -149,6 +154,8 @@ elif [[ "$mode" == node-pair-trust ]]; then
   -e CICADA_N3_NODE_PAIR_CONSUMER_PUBLIC_SUMMARY=/state/node-pair-native-consumer-public-summary.json)
 elif [[ "$mode" == codex-product-peer-form* ]]; then
  direct_ip_parameters=(-e CICADA_N3_PEER_FORM=1 -e CICADA_N3_PEER_FORM_PUBLIC_SUMMARY=/state/peer-form-native-public-summary.json)
+elif [[ "$mode" == owner-endpoint-groups ]]; then
+ direct_ip_parameters=(-e CICADA_N3_OWNER_ENDPOINT_GROUPS=1)
 fi
 if [[ "$mode" == codex-product-other-uid ]]; then
  mkdir "$state/other-uid-control"
@@ -206,7 +213,7 @@ other_uid_worker() {
  fi
  bash "$repo_root/scripts/fixtures/native-pair/other_uid_host.sh" "$container" "$run_id" "$state/other-uid-control/request.json" "$state/other-uid-control/result.json"
 }
-if [[ "$mode" != protocol && "$mode" != app-owner && "$mode" != endpoint-security* && "$mode" != codex-product-* && "$mode" != direct-ip-tls && "$mode" != node-pair-trust ]]; then
+if [[ "$mode" != protocol && "$mode" != app-owner && "$mode" != endpoint-security* && "$mode" != codex-product-* && "$mode" != direct-ip-tls && "$mode" != node-pair-trust && "$mode" != owner-endpoint-groups ]]; then
  if [[ "$mode" == store ]]; then
   overlay=/qa/scripts/fixtures/native-pair/overlay.json
   package=./internal/store
@@ -310,6 +317,9 @@ else
   elif [[ "$mode" == direct-ip-tls ]]; then
    selector='^TestN3DirectIPTLSAcceptance$'
    runtime_timeout=20m
+  elif [[ "$mode" == owner-endpoint-groups ]]; then
+   selector='^TestN3OwnerEndpointGroupsAcceptance$'
+   runtime_timeout=30m
   elif [[ "$mode" == node-pair-trust ]]; then
    selector='^TestN3NodePairTrustAcceptance$'
    runtime_timeout=20m
@@ -357,4 +367,5 @@ python3 "$repo_root/scripts/native_pair_evidence.py" snapshot "$source_root" "$e
 cleanup
 owned=false
 if docker inspect "$container" >/dev/null 2>&1; then owned=true; fi
+if [[ "$mode" == owner-endpoint-groups ]] && ! docker info >/dev/null 2>&1; then owned=UNKNOWN; fi
 python3 "$repo_root/scripts/native_pair_evidence.py" finish "$evidence" "$artifacts" "$image" "$owned" "$mode"

@@ -416,6 +416,19 @@ prove Cicada communication. Windows DPAPI/ACL/physical UI, physical second Node
 and public HTTPS keep separate statuses. Pure contract checks establish only the
 inventory/document constraints, never successful cryptography or implementation.
 
+QA preparation extends the existing `scripts/test-native-pair.sh` with
+`--owner-endpoint-groups`; until the formal runtime adapter is delivered it
+refuses before resource allocation with 125/NOT_RUN. M1–M8 remain NOT_RUN.
+The existing N3 fault proxy now targets exact Node RPC operations so concurrent
+traffic cannot consume a key-completion/renewal fault. Shared fixture inputs cover
+response loss, unsigned/corrupt receipts, delayed completion, stale head/profile,
+shared-Principal rights, pending deny, finite expiry and wrong-scope recovery.
+The evidence gate requires all eight measured cases exactly once, four original
+SID/Endpoint/key/binding snapshots, pinned Host and actual wall/monotonic lease
+crossing. No synthetic fact, missing/duplicate case or skip supplies acceptance.
+The [preparation record](native-app-validation.md#2026-10-26-owner-managed-group-driver-preparation)
+separates the pure oracle and synthetic TCP self-check from product validation.
+
 The contract branch preserves original header checkpoint `307836ab8bd416f4df81968e55f0b8946d18d6d6`
 at `refs/archive/group-management/hub-before-sync`. Root integrated that identical
 production change as `a1987d8e1576797bdd1c26ea1727bc1085724317`; the unpublished
