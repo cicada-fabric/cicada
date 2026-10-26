@@ -44,6 +44,9 @@ func (b *machineAgentJoinBridge) localCodexVerificationProfile(q localCodexConte
 	if pair {
 		return v, nil
 	}
+	if managed, selected, err := b.endpointGroupsVerificationProfile(q); selected || err != nil {
+		return managed, err
+	}
 	var p *nodekeys.LocalDomainPolicy
 	if q.ToolName == "codex.operator.endpoint_register" || q.ToolName == "cicada_endpoint_register" {
 		p, err = b.readLocalDomainCurrent(b.ctx, client)

@@ -24,6 +24,9 @@ func (b *machineAgentJoinBridge) joinNetwork(request localNetworkJoinRequest) (*
 }
 
 func (b *machineAgentJoinBridge) joinNetworkWithScope(request localNetworkJoinRequest) (*fabricpkg.NetworkJoinResult, *nodeinbox.NativeContextScopeDecision, error) {
+	if err := b.rejectEndpointGroupsLegacySource(request.NativeSessionID, request.Workspace); err != nil {
+		return nil, nil, err
+	}
 	if request.Version != localJoinProtocolVersion || request.Operation != "network_join" ||
 		strings.TrimSpace(request.NetworkID) == "" || strings.TrimSpace(request.InvitationToken) == "" ||
 		strings.TrimSpace(request.OwnerJoinProof) == "" {
@@ -133,6 +136,9 @@ func (b *machineAgentJoinBridge) completeNetworkNativeJoin(joined *fabricpkg.Net
 }
 
 func (b *machineAgentJoinBridge) renewNetwork(request localNetworkRenewRequest) (*fabricpkg.NetworkJoinResult, error) {
+	if err := b.rejectEndpointGroupsLegacySource(request.NativeSessionID, request.Workspace); err != nil {
+		return nil, err
+	}
 	if request.Version != localJoinProtocolVersion || request.Operation != "network_renew" ||
 		!validNetworkRouteID(request.NetworkID) ||
 		strings.TrimSpace(request.Harness) != "codex" || harness.Canonical(request.Harness) != "codex" ||

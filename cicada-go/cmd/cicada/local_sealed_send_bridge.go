@@ -158,6 +158,9 @@ type localLinkContract struct {
 }
 
 func (b *machineAgentJoinBridge) sealedSend(request localSealedSendRequest) (*localSealedSendResult, error) {
+	if err := b.rejectEndpointGroupsLegacySource(request.NativeSessionID, request.Workspace); err != nil {
+		return nil, err
+	}
 	if err := validateLocalSealedSendRequest(request, b.nodeID); err != nil {
 		return nil, err
 	}

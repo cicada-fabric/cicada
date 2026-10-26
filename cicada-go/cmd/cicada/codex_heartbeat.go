@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/cicada-ai/cicada/internal/harness"
+	wire "github.com/cicada-ai/cicada/internal/hubaccountwire"
 )
 
 // A worker can renew only this immutable authorized actor. Parent fields are
@@ -28,7 +29,7 @@ type codexFrozenHeartbeat struct {
 func (m *mcpServer) codexHeartbeatSnapshot() *codexFrozenHeartbeat {
 	m.sessionMu.RLock()
 	defer m.sessionMu.RUnlock()
-	if !m.sessionContextSet || m.sessionToken == "" || m.sessionScope == "" || m.sessionGroupID == "" || m.endpointID == "" || m.sessionPublic.BindingID == "" || m.sessionPublic.BindingEpoch == 0 || m.sessionPublic.NetworkCard.PrincipalID == "" {
+	if !m.sessionContextSet || m.sessionToken == "" || m.sessionScope == "" || m.sessionGroupID == "" && m.sessionDomain.EndpointGroupsVersion == 0 || m.endpointID == "" || m.sessionPublic.BindingID == "" || m.sessionPublic.BindingEpoch == 0 || m.sessionPublic.NetworkCard.PrincipalID == "" {
 		return nil
 	}
 	t := m.sessionContext
@@ -40,7 +41,7 @@ func (m *mcpServer) codexHeartbeatSnapshot() *codexFrozenHeartbeat {
 	}
 	return &codexFrozenHeartbeat{connection: connection, cache: mcpCachedSession{ConnectionPin: pin, Scope: m.sessionScope, APIOrigin: m.baseURL, Harness: t.Harness, NativeSessionID: t.NativeSessionID,
 		NodeID: t.NodeID, Workspace: t.Workspace, GroupID: m.sessionGroupID, EndpointID: m.endpointID, OwnerID: m.sessionPublic.Endpoint.Owner,
-		BindingID: m.sessionPublic.BindingID, BindingEpoch: m.sessionPublic.BindingEpoch, LeaseExpiresAt: m.sessionPublic.LeaseExpiresAt, SessionToken: m.sessionToken, codexDomainBinding: m.sessionDomain},
+		BindingID: m.sessionPublic.BindingID, BindingEpoch: m.sessionPublic.BindingEpoch, LeaseExpiresAt: m.sessionPublic.LeaseExpiresAt, SessionToken: m.sessionToken, codexDomainBinding: m.sessionDomain, EndpointGroupAuthority: m.sessionEndpointGroupAuthority, EndpointGroupsLocalAccessRevision: m.sessionEndpointGroupsLocalAccessRevision},
 		principal: m.sessionPublic.NetworkCard.PrincipalID, socket: m.joinSocketPath(harness.SessionContext{MachineID: t.NodeID}), pqtls: m.pqtlsSelected, nativeHTTP: m.selectedNodeHTTPPool()}
 }
 
@@ -132,6 +133,10 @@ func (h *codexFrozenHeartbeat) runWithTicks(ctx context.Context, m *mcpServer, t
 			if ctx.Err() != nil {
 				return
 			}
+			if h.cache.EndpointGroupsVersion == 1 && err != nil && strings.HasPrefix(err.Error(), "ENDPOINT_LOCAL_OFFLINE:") {
+				h.clearMemoryIfMatching(m)
+				return
+			}
 			if errors.Is(err, ErrLocalNodeBindingChanged) || errors.Is(err, ErrLocalNodeConfigRequired) {
 				h.clearMemoryIfMatching(m)
 				return
@@ -154,9 +159,18 @@ func (h *codexFrozenHeartbeat) clearMemoryIfMatching(m *mcpServer) {
 	t := m.sessionContext
 	if m.baseURL != h.cache.APIOrigin || m.sessionToken != h.cache.SessionToken || m.sessionScope != h.cache.Scope || m.sessionGroupID != h.cache.GroupID || m.endpointID != h.cache.EndpointID ||
 		m.sessionDomain != h.cache.codexDomainBinding ||
+		m.sessionEndpointGroupAuthority != h.cache.EndpointGroupAuthority ||
+		m.sessionEndpointGroupsLocalAccessRevision != h.cache.EndpointGroupsLocalAccessRevision ||
 		m.pqtlsSelected != h.pqtls || m.sessionPublic.Endpoint.Owner != h.cache.OwnerID || m.sessionPublic.LeaseExpiresAt != h.cache.LeaseExpiresAt ||
 		!m.sessionContextSet || t.Harness != h.cache.Harness || t.NativeSessionID != h.cache.NativeSessionID || t.NodeID != h.cache.NodeID || t.Workspace != h.cache.Workspace ||
 		m.sessionPublic.BindingID != h.cache.BindingID || m.sessionPublic.BindingEpoch != h.cache.BindingEpoch || m.sessionPublic.NetworkCard.PrincipalID != h.principal {
+		return
+	}
+	if h.cache.EndpointGroupsVersion == 1 {
+		m.sessionGroupID = ""
+		m.sessionEndpointGroupAuthority = wire.EndpointGroupCurrentEndpoint{}
+		m.sessionPublic.Endpoint.GroupID = ""
+		m.sessionPublic.NetworkCard.GroupID = ""
 		return
 	}
 	m.sessionToken, m.endpointID, m.sessionGroupID, m.sessionScope = "", "", "", ""
@@ -170,10 +184,16 @@ func (h *codexFrozenHeartbeat) renew(ctx context.Context) (any, error) {
 	}
 	var raw []byte
 	var status int
-	if h.pqtls {
-		result, err := requestMachineAgentMCPMetadataContext(ctx, h.socket, localMCPMetadataRequest{Operation: "mcp_metadata_heartbeat", Harness: h.cache.Harness,
+	if h.pqtls || h.cache.EndpointGroupsVersion == 1 {
+		request := localMCPMetadataRequest{Operation: "mcp_metadata_heartbeat", Harness: h.cache.Harness,
 			NativeSessionID: h.cache.NativeSessionID, NodeID: h.cache.NodeID, Workspace: h.cache.Workspace, APIOrigin: h.cache.APIOrigin,
-			SessionToken: h.cache.SessionToken, EndpointID: h.cache.EndpointID, PrincipalID: h.principal, GroupID: h.cache.GroupID, BindingID: h.cache.BindingID, BindingEpoch: h.cache.BindingEpoch})
+			SessionToken: h.cache.SessionToken, EndpointID: h.cache.EndpointID, PrincipalID: h.principal, GroupID: h.cache.GroupID, BindingID: h.cache.BindingID, BindingEpoch: h.cache.BindingEpoch}
+		if h.cache.EndpointGroupsVersion == 1 {
+			request.GroupID = ""
+			request.LocalAccessRevision = h.cache.EndpointGroupsLocalAccessRevision
+			request.codexOutboxBinding = codexOutboxBinding{codexDomainBinding: h.cache.codexDomainBinding, NativeBindingID: h.cache.BindingID, NativeBindingEpoch: h.cache.BindingEpoch}
+		}
+		result, err := requestMachineAgentMCPMetadataContext(ctx, h.socket, request)
 		if err != nil {
 			return nil, err
 		}

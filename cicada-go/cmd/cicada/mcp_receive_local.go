@@ -42,7 +42,8 @@ func (m *mcpServer) receiveMCPInbox(cursor string, limit int) (any, error) {
 		return nil, errors.New("unsupported peer-delivery capability; no Hub inbox fallback")
 	}
 	request := localGroupRequest{
-		Operation: "local_receive", Harness: trusted.Harness,
+		codexOutboxBinding: scope.codexOutboxBinding,
+		Operation:          "local_receive", Harness: trusted.Harness,
 		NativeSessionID: trusted.NativeSessionID, NodeID: trusted.NodeID,
 		Workspace: trusted.Workspace, SessionToken: trusted.SessionToken,
 		EndpointID: trusted.EndpointID, PrincipalID: trusted.PrincipalID,

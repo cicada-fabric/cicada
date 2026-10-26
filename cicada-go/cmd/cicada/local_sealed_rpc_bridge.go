@@ -114,6 +114,9 @@ func requestMachineAgentSealedRPC(socketPath string, request localSealedRPCReque
 }
 
 func (b *machineAgentJoinBridge) sealedRPC(request localSealedRPCRequest) (*localSealedRPCResult, error) {
+	if err := b.rejectEndpointGroupsLegacySource(request.NativeSessionID, request.Workspace); err != nil {
+		return nil, err
+	}
 	if err := validateLocalSealedRPCRequest(request, b.nodeID); err != nil {
 		return nil, err
 	}

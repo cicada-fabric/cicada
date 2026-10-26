@@ -35,6 +35,7 @@ var errGenericNativeDirectUnsupported = errors.New("UNSUPPORTED: generic native 
 // comes from the joined native Session and the durable MCP outbox. The Node
 // independently rechecks both the Codex record and Hub Session binding.
 type localGroupRequest struct {
+	codexOutboxBinding
 	Version              int                                  `json:"version"`
 	Operation            string                               `json:"operation"`
 	Harness              string                               `json:"harness"`
@@ -254,8 +255,17 @@ func (b *machineAgentJoinBridge) verifyLocalGroupSource(request localGroupReques
 	if err := validateLocalGroupRequest(request, b.nodeID); err != nil {
 		return fabric.NetworkCard{}, err
 	}
-	if err := verifyCodexSessionRecord(request.NativeSessionID, request.Workspace); err != nil {
+	managed, err := b.verifyEndpointGroupsSource(b.ctx, request.SessionToken, request.EndpointID, request.PrincipalID, request.NativeSessionID, request.Workspace, request.GroupID, request.BindingID, request.BindingEpoch, request.codexOutboxBinding)
+	if err != nil {
 		return fabric.NetworkCard{}, err
+	}
+	if managed && request.Operation != "local_receive" {
+		return fabric.NetworkCard{}, errEndpointGroupsRegistration
+	}
+	if !managed {
+		if err := verifyCodexSessionRecord(request.NativeSessionID, request.Workspace); err != nil {
+			return fabric.NetworkCard{}, err
+		}
 	}
 	card, err := b.verifyCurrentMCPBinding(request.SessionToken, request.GroupID)
 	if err != nil {

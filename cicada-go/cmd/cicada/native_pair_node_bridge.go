@@ -146,6 +146,9 @@ func (b *machineAgentJoinBridge) nativePairAvailable() error {
 }
 
 func (b *machineAgentJoinBridge) nativePairJoin(request localNativePairJoinRequest) (*fabric.JoinResult, *nodeinbox.NativeContextScopeDecision, error) {
+	if err := b.rejectEndpointGroupsLegacySource(request.NativeSessionID, request.Workspace); err != nil {
+		return nil, nil, err
+	}
 	selection := nativePairJoinSelection{PairID: request.PairID, Slot: request.Slot}
 	if _, err := nativePairLocalJoinRequest(selection, harness.SessionContext{Harness: request.Harness, NativeSessionID: request.NativeSessionID, MachineID: b.nodeID, Workspace: request.Workspace}); err != nil || request.Version != localJoinProtocolVersion || request.Operation != "native_pair_join" {
 		return nil, nil, errors.New("invalid reserved Pair Join context")

@@ -120,7 +120,8 @@ func (m *mcpServer) localGroupRequestControl(operation, requestID, reason string
 	// The Node validates the current native binding and requester ownership.
 	// A missing local request returns an error; it never falls back to Hub.
 	request := crossNodeGroupRequest{
-		Operation: operation, Harness: trusted.Harness,
+		codexOutboxBinding: scope.codexOutboxBinding,
+		Operation:          operation, Harness: trusted.Harness,
 		NativeSessionID: trusted.NativeSessionID, NodeID: trusted.NodeID,
 		Workspace: trusted.Workspace, SessionToken: trusted.SessionToken,
 		EndpointID: trusted.EndpointID, PrincipalID: trusted.PrincipalID,

@@ -105,8 +105,8 @@ func (m *mcpServer) currentMCPDeliveryRequest(operation mcpOutboxOperation,
 	storedScope := strings.TrimSpace(m.sessionScope)
 	cached := m.sessionPublic
 	domain := codexOutboxBinding{}
-	if m.sessionDomain.LocalDomainVersion != 0 {
-		domain = codexOutboxBinding{codexDomainBinding: m.sessionDomain, NativeBindingID: cached.BindingID, NativeBindingEpoch: cached.BindingEpoch}
+	if m.sessionDomain != (codexDomainBinding{}) {
+		domain = codexOutboxBinding{codexDomainBinding: m.sessionDomain, NativeBindingID: cached.BindingID, NativeBindingEpoch: cached.BindingEpoch, EndpointGroupAuthority: m.sessionEndpointGroupAuthority}
 	}
 	m.sessionMu.RUnlock()
 	if token == "" || !boundContextSet || boundContext != trusted {

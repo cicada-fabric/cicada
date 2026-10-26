@@ -15,10 +15,12 @@ import (
 
 	"github.com/cicada-ai/cicada/internal/apppaths"
 	"github.com/cicada-ai/cicada/internal/harness"
+	wire "github.com/cicada-ai/cicada/internal/hubaccountwire"
 )
 
 const mcpSessionStateVersion = 1
 const mcpDomainSessionStateVersion = 2
+const mcpEndpointGroupsSessionStateVersion = 3
 
 // mcpTrustedContext is the identity boundary used for local session state.
 // Managed Codex values come from a consumed Node ticket; legacy compatibility
@@ -35,20 +37,22 @@ type mcpTrustedContext struct {
 // authenticate after a process restart, so the containing file is protected
 // with a private directory and a 0600 file mode.
 type mcpCachedSession struct {
-	ConnectionPin   *LocalNodeConnectionPin `json:"connection_pin,omitempty"`
-	Scope           string                  `json:"scope"`
-	APIOrigin       string                  `json:"api_origin"`
-	Harness         string                  `json:"harness"`
-	NativeSessionID string                  `json:"native_session_id"`
-	NodeID          string                  `json:"node_id"`
-	Workspace       string                  `json:"workspace,omitempty"`
-	GroupID         string                  `json:"group_id"`
-	EndpointID      string                  `json:"endpoint_id"`
-	OwnerID         string                  `json:"owner_id,omitempty"`
-	BindingID       string                  `json:"binding_id,omitempty"`
-	BindingEpoch    uint64                  `json:"binding_epoch,omitempty"`
-	LeaseExpiresAt  string                  `json:"lease_expires_at,omitempty"`
-	SessionToken    string                  `json:"session_token"`
+	ConnectionPin                     *LocalNodeConnectionPin           `json:"connection_pin,omitempty"`
+	Scope                             string                            `json:"scope"`
+	APIOrigin                         string                            `json:"api_origin"`
+	Harness                           string                            `json:"harness"`
+	NativeSessionID                   string                            `json:"native_session_id"`
+	NodeID                            string                            `json:"node_id"`
+	Workspace                         string                            `json:"workspace,omitempty"`
+	GroupID                           string                            `json:"group_id"`
+	EndpointID                        string                            `json:"endpoint_id"`
+	OwnerID                           string                            `json:"owner_id,omitempty"`
+	BindingID                         string                            `json:"binding_id,omitempty"`
+	BindingEpoch                      uint64                            `json:"binding_epoch,omitempty"`
+	LeaseExpiresAt                    string                            `json:"lease_expires_at,omitempty"`
+	SessionToken                      string                            `json:"session_token"`
+	EndpointGroupAuthority            wire.EndpointGroupCurrentEndpoint `json:"endpoint_group_authority,omitzero"`
+	EndpointGroupsLocalAccessRevision uint64                            `json:"endpoint_groups_local_access_revision,omitempty"`
 
 	codexDomainBinding
 }
@@ -201,10 +205,10 @@ func (s *mcpSessionStateStore) load(origin string, context harness.SessionContex
 	for index := range disk.Sessions {
 		entry := disk.Sessions[index]
 		if entry.matches(normalizedOrigin, scope, trusted) {
-			if entry.codexDomainBinding.validate() != nil {
+			if entry.validateManagedAuthority() != nil {
 				return nil, errCodexMCPContext
 			}
-			if strings.TrimSpace(entry.SessionToken) == "" || strings.TrimSpace(entry.EndpointID) == "" || strings.TrimSpace(entry.GroupID) == "" {
+			if strings.TrimSpace(entry.SessionToken) == "" || strings.TrimSpace(entry.EndpointID) == "" || strings.TrimSpace(entry.GroupID) == "" && entry.EndpointGroupsVersion == 0 {
 				return nil, errors.New("cached Cicada session is incomplete")
 			}
 			return &entry, nil
@@ -214,6 +218,36 @@ func (s *mcpSessionStateStore) load(origin string, context harness.SessionContex
 }
 
 func (s *mcpSessionStateStore) save(entry mcpCachedSession) error {
+	return s.saveChecked(entry, false)
+}
+
+// Called only after the Node has verified the original registration receipt.
+// Migration retains the same credential and native binding; cache contents
+// alone can never select this profile or create a registration.
+func (s *mcpSessionStateStore) saveEndpointGroupsAuthenticated(entry mcpCachedSession) error {
+	if entry.EndpointGroupsVersion != 1 {
+		return errCodexMCPContext
+	}
+	return s.saveChecked(entry, true)
+}
+
+func (entry mcpCachedSession) validateManagedAuthority() error {
+	if entry.codexDomainBinding.validate() != nil {
+		return errCodexMCPContext
+	}
+	if entry.EndpointGroupsVersion != 0 {
+		if entry.EndpointGroupsLocalAccessRevision == 0 || entry.EndpointGroupsLocalAccessRevision >= 1<<63 || entry.BindingID != entry.RegistrationBindingID || entry.BindingEpoch != entry.RegistrationBindingEpoch ||
+			entry.GroupID != "" && (entry.codexDomainBinding.validateEndpointGroupAuthority(entry.EndpointGroupAuthority) != nil || entry.EndpointGroupAuthority.Relation.GroupID != entry.GroupID || entry.EndpointGroupAuthority.Relation.EndpointID != entry.EndpointID) ||
+			entry.GroupID == "" && entry.EndpointGroupAuthority != (wire.EndpointGroupCurrentEndpoint{}) {
+			return errCodexMCPContext
+		}
+	} else if entry.EndpointGroupAuthority != (wire.EndpointGroupCurrentEndpoint{}) || entry.EndpointGroupsLocalAccessRevision != 0 {
+		return errCodexMCPContext
+	}
+	return nil
+}
+
+func (s *mcpSessionStateStore) saveChecked(entry mcpCachedSession, authenticatedRegistration bool) error {
 	if s == nil || strings.TrimSpace(s.path) == "" {
 		return nil
 	}
@@ -224,10 +258,10 @@ func (s *mcpSessionStateStore) save(entry mcpCachedSession) error {
 	}
 	if entry.APIOrigin == "" || strings.TrimSpace(entry.Scope) == "" || strings.TrimSpace(entry.Harness) == "" ||
 		strings.TrimSpace(entry.NativeSessionID) == "" || strings.TrimSpace(entry.NodeID) == "" ||
-		strings.TrimSpace(entry.GroupID) == "" || strings.TrimSpace(entry.EndpointID) == "" || strings.TrimSpace(entry.SessionToken) == "" {
+		strings.TrimSpace(entry.GroupID) == "" && entry.EndpointGroupsVersion == 0 || strings.TrimSpace(entry.EndpointID) == "" || strings.TrimSpace(entry.SessionToken) == "" {
 		return errors.New("incomplete Cicada session state")
 	}
-	if entry.codexDomainBinding.validate() != nil {
+	if entry.validateManagedAuthority() != nil {
 		return errCodexMCPContext
 	}
 	if entry.Workspace != "" {
@@ -249,7 +283,11 @@ func (s *mcpSessionStateStore) save(entry mcpCachedSession) error {
 	}
 	for _, previous := range disk.Sessions {
 		if previous.codexDomainBinding != entry.codexDomainBinding {
-			return errCodexMCPContext
+			if !authenticatedRegistration || previous.LocalDomainVersion != 1 || previous.EndpointGroupsVersion != 0 ||
+				!previous.matches(entry.APIOrigin, entry.Scope, entry.trustedContext()) || previous.EndpointID != entry.EndpointID || previous.OwnerID != entry.OwnerID ||
+				previous.BindingID != entry.BindingID || previous.BindingEpoch != entry.BindingEpoch || previous.SessionToken != entry.SessionToken {
+				return errCodexMCPContext
+			}
 		}
 		if (entry.ConnectionPin == nil) != (previous.ConnectionPin == nil) {
 			return ErrLocalNodeConfigRequired
@@ -265,6 +303,9 @@ func (s *mcpSessionStateStore) save(entry mcpCachedSession) error {
 	disk.Version = mcpSessionStateVersion
 	if entry.LocalDomainVersion != 0 {
 		disk.Version = mcpDomainSessionStateVersion
+	}
+	if entry.EndpointGroupsVersion != 0 {
+		disk.Version = mcpEndpointGroupsSessionStateVersion
 	}
 	return s.writeScopeLocked(entry.Scope, disk)
 }
@@ -326,14 +367,14 @@ func (s *mcpSessionStateStore) readScopeLocked(scope string) (mcpSessionStateDis
 	if err := json.Unmarshal(data, &disk); err != nil {
 		return disk, false, fmt.Errorf("decode Cicada MCP session state: %w", err)
 	}
-	if disk.Version != mcpSessionStateVersion && disk.Version != mcpDomainSessionStateVersion {
+	if disk.Version != mcpSessionStateVersion && disk.Version != mcpDomainSessionStateVersion && disk.Version != mcpEndpointGroupsSessionStateVersion {
 		return disk, false, fmt.Errorf("unsupported Cicada MCP session state version %d", disk.Version)
 	}
-	if disk.Version == mcpDomainSessionStateVersion && len(disk.Sessions) != 1 {
+	if (disk.Version == mcpDomainSessionStateVersion || disk.Version == mcpEndpointGroupsSessionStateVersion) && len(disk.Sessions) != 1 {
 		return disk, false, errCodexMCPContext
 	}
 	for _, entry := range disk.Sessions {
-		if entry.codexDomainBinding.validate() != nil || (disk.Version == mcpDomainSessionStateVersion) != (entry.LocalDomainVersion == 1) {
+		if entry.validateManagedAuthority() != nil || (disk.Version == mcpDomainSessionStateVersion) != (entry.LocalDomainVersion == 1) || (disk.Version == mcpEndpointGroupsSessionStateVersion) != (entry.EndpointGroupsVersion == 1) {
 			return disk, false, errCodexMCPContext
 		}
 	}

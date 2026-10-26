@@ -397,6 +397,7 @@ func (b *machineAgentJoinBridge) runManagedPairLeaseWorker() {
 			b.refreshLocalDomainReport(b.ctx, time.Now)
 		}
 		b.renewManagedPairLeaseBatch(b.ctx, time.Now)
+		b.renewEndpointGroupsRegistrationBatch(b.ctx)
 		b.renewLocalDomainLeaseBatch(b.ctx)
 		select {
 		case <-b.ctx.Done():

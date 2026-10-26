@@ -48,6 +48,9 @@ func nativePairNodeBusinessOperation(operation string) bool {
 }
 
 func machineNodeControlResponseCodeAllowedFor(operation, code string) bool {
+	if endpointGroupsNodeBusinessOperation(operation) && endpointGroupsNodeCode(code) {
+		return true
+	}
 	if localDomainNodeBusinessOperation(operation) && (code == "LOCAL_DOMAIN_REJECTED" || code == "READ_EXPIRED" || code == "REJECTED_UNADMITTED") {
 		return true
 	}

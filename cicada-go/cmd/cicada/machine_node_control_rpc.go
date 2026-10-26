@@ -102,54 +102,57 @@ type machineNodeControlPairingInput struct {
 }
 
 type machineNodeControlState struct {
-	ManagedLocalDomainLeases      map[string]machineManagedLocalDomainLease `json:"managed_local_domain_leases,omitempty"`
-	LocalDomainReport             *machineLocalDomainReportState            `json:"local_domain_report,omitempty"`
-	ManagedPairLeases             map[string]machineManagedPairLease        `json:"managed_pair_leases,omitempty"`
-	LocalEndpointAdmissionFloorMS int64                                     `json:"local_endpoint_admission_floor_ms,omitempty"`
-	LocalEndpointIntents          map[string]machineLocalEndpointIntent     `json:"local_endpoint_intents,omitempty"`
-	PendingLocalEndpointIntentID  string                                    `json:"pending_local_endpoint_intent_id,omitempty"`
-	Version                       int                                       `json:"version"`
-	NodeID                        string                                    `json:"node_id"`
-	NodePairTrustAttemptID        string                                    `json:"node_pair_trust_attempt_id,omitempty"`
-	HubOrigin                     string                                    `json:"hub_origin"`
-	HubCandidateID                string                                    `json:"hub_candidate_id,omitempty"`
-	HubCandidateFingerprint       string                                    `json:"hub_candidate_fingerprint,omitempty"`
-	HubCandidateVersion           uint64                                    `json:"hub_candidate_version,omitempty"`
-	HubCandidateIdentity          e2ee.PublicIdentity                       `json:"hub_candidate_identity,omitempty"`
-	PendingPairingUserCode        string                                    `json:"pending_pairing_user_code,omitempty"`
-	PendingPairingURI             string                                    `json:"pending_pairing_uri,omitempty"`
-	HubID                         string                                    `json:"hub_id,omitempty"`
-	HubKeyID                      string                                    `json:"hub_key_id,omitempty"`
-	HubFingerprint                string                                    `json:"hub_fingerprint,omitempty"`
-	HubKeyVersion                 uint64                                    `json:"hub_key_version,omitempty"`
-	HubPublicIdentity             e2ee.PublicIdentity                       `json:"hub_public_identity,omitempty"`
-	NodeKeyID                     string                                    `json:"node_key_id,omitempty"`
-	NodeKeyFingerprint            string                                    `json:"node_key_fingerprint,omitempty"`
-	NodeKeyVersion                uint64                                    `json:"node_key_version,omitempty"`
-	BindingID                     string                                    `json:"binding_id,omitempty"`
-	BindingVersion                uint64                                    `json:"binding_version,omitempty"`
-	NodeKeyEpoch                  uint64                                    `json:"node_key_epoch,omitempty"`
-	ApprovedRequestID             string                                    `json:"approved_request_id,omitempty"`
-	ApprovedRequestVersion        int64                                     `json:"approved_request_version,omitempty"`
-	ApprovedCandidateDigest       string                                    `json:"approved_candidate_digest,omitempty"`
-	PendingPairing                *machineNodeControlCandidate              `json:"pending_pairing,omitempty"`
-	Sequence                      uint64                                    `json:"sequence"`
-	PendingOperationID            string                                    `json:"pending_operation_id,omitempty"`
-	PendingOperation              string                                    `json:"pending_operation,omitempty"`
-	PendingSequence               uint64                                    `json:"pending_sequence,omitempty"`
-	PendingPlaintextDigest        string                                    `json:"pending_plaintext_digest,omitempty"`
-	PendingPacket                 []byte                                    `json:"pending_packet,omitempty"`
-	PendingResponsePacket         []byte                                    `json:"pending_response_packet,omitempty"`
-	PendingNativePairBody         []byte                                    `json:"pending_native_pair_body,omitempty"`
-	NativePairReceipts            map[string]machineNativePairReceipt       `json:"native_pair_receipts,omitempty"`
-	NativePairDiagnostic          *machineNativePairDiagnostic              `json:"native_pair_diagnostic,omitempty"`
-	PendingWorkerID               string                                    `json:"pending_worker_id,omitempty"`
-	PendingWorkerAttempt          int                                       `json:"pending_worker_attempt,omitempty"`
-	PendingSnapshotPath           string                                    `json:"pending_snapshot_path,omitempty"`
-	PendingSnapshotManifest       *nodewire.SnapshotManifest                `json:"pending_snapshot_manifest,omitempty"`
-	ClaimTicket                   *machineNodeControlClaimTicket            `json:"claim_ticket,omitempty"`
-	HubTransportDescriptor        string                                    `json:"hub_transport_descriptor,omitempty"`
-	HubDialAddress                string                                    `json:"hub_dial_address,omitempty"`
+	EndpointGroupsRegistrations   map[string]machineEndpointGroupsRegistration `json:"endpoint_groups_registrations,omitempty"`
+	EndpointGroupsDiagnostic      *machineEndpointGroupsDiagnostic             `json:"endpoint_groups_diagnostic,omitempty"`
+	EndpointGroupsLastReadFence *machineEndpointGroupsDiagnostic `json:"endpoint_groups_last_read_fence,omitempty"`
+	ManagedLocalDomainLeases      map[string]machineManagedLocalDomainLease    `json:"managed_local_domain_leases,omitempty"`
+	LocalDomainReport             *machineLocalDomainReportState               `json:"local_domain_report,omitempty"`
+	ManagedPairLeases             map[string]machineManagedPairLease           `json:"managed_pair_leases,omitempty"`
+	LocalEndpointAdmissionFloorMS int64                                        `json:"local_endpoint_admission_floor_ms,omitempty"`
+	LocalEndpointIntents          map[string]machineLocalEndpointIntent        `json:"local_endpoint_intents,omitempty"`
+	PendingLocalEndpointIntentID  string                                       `json:"pending_local_endpoint_intent_id,omitempty"`
+	Version                       int                                          `json:"version"`
+	NodeID                        string                                       `json:"node_id"`
+	NodePairTrustAttemptID        string                                       `json:"node_pair_trust_attempt_id,omitempty"`
+	HubOrigin                     string                                       `json:"hub_origin"`
+	HubCandidateID                string                                       `json:"hub_candidate_id,omitempty"`
+	HubCandidateFingerprint       string                                       `json:"hub_candidate_fingerprint,omitempty"`
+	HubCandidateVersion           uint64                                       `json:"hub_candidate_version,omitempty"`
+	HubCandidateIdentity          e2ee.PublicIdentity                          `json:"hub_candidate_identity,omitempty"`
+	PendingPairingUserCode        string                                       `json:"pending_pairing_user_code,omitempty"`
+	PendingPairingURI             string                                       `json:"pending_pairing_uri,omitempty"`
+	HubID                         string                                       `json:"hub_id,omitempty"`
+	HubKeyID                      string                                       `json:"hub_key_id,omitempty"`
+	HubFingerprint                string                                       `json:"hub_fingerprint,omitempty"`
+	HubKeyVersion                 uint64                                       `json:"hub_key_version,omitempty"`
+	HubPublicIdentity             e2ee.PublicIdentity                          `json:"hub_public_identity,omitempty"`
+	NodeKeyID                     string                                       `json:"node_key_id,omitempty"`
+	NodeKeyFingerprint            string                                       `json:"node_key_fingerprint,omitempty"`
+	NodeKeyVersion                uint64                                       `json:"node_key_version,omitempty"`
+	BindingID                     string                                       `json:"binding_id,omitempty"`
+	BindingVersion                uint64                                       `json:"binding_version,omitempty"`
+	NodeKeyEpoch                  uint64                                       `json:"node_key_epoch,omitempty"`
+	ApprovedRequestID             string                                       `json:"approved_request_id,omitempty"`
+	ApprovedRequestVersion        int64                                        `json:"approved_request_version,omitempty"`
+	ApprovedCandidateDigest       string                                       `json:"approved_candidate_digest,omitempty"`
+	PendingPairing                *machineNodeControlCandidate                 `json:"pending_pairing,omitempty"`
+	Sequence                      uint64                                       `json:"sequence"`
+	PendingOperationID            string                                       `json:"pending_operation_id,omitempty"`
+	PendingOperation              string                                       `json:"pending_operation,omitempty"`
+	PendingSequence               uint64                                       `json:"pending_sequence,omitempty"`
+	PendingPlaintextDigest        string                                       `json:"pending_plaintext_digest,omitempty"`
+	PendingPacket                 []byte                                       `json:"pending_packet,omitempty"`
+	PendingResponsePacket         []byte                                       `json:"pending_response_packet,omitempty"`
+	PendingNativePairBody         []byte                                       `json:"pending_native_pair_body,omitempty"`
+	NativePairReceipts            map[string]machineNativePairReceipt          `json:"native_pair_receipts,omitempty"`
+	NativePairDiagnostic          *machineNativePairDiagnostic                 `json:"native_pair_diagnostic,omitempty"`
+	PendingWorkerID               string                                       `json:"pending_worker_id,omitempty"`
+	PendingWorkerAttempt          int                                          `json:"pending_worker_attempt,omitempty"`
+	PendingSnapshotPath           string                                       `json:"pending_snapshot_path,omitempty"`
+	PendingSnapshotManifest       *nodewire.SnapshotManifest                   `json:"pending_snapshot_manifest,omitempty"`
+	ClaimTicket                   *machineNodeControlClaimTicket               `json:"claim_ticket,omitempty"`
+	HubTransportDescriptor        string                                       `json:"hub_transport_descriptor,omitempty"`
+	HubDialAddress                string                                       `json:"hub_dial_address,omitempty"`
 }
 
 // ClaimTicket retains only the Hub's sealed response. The plaintext job is
@@ -399,6 +402,7 @@ func cloneMachineNodeControlState(state machineNodeControlState) machineNodeCont
 	state = cloneMachineLocalEndpointState(state)
 	state = cloneManagedPairLeaseState(state)
 	state = cloneMachineLocalDomainState(state)
+	state = cloneMachineEndpointGroupsState(state)
 	if state.PendingSnapshotManifest != nil {
 		manifest := *state.PendingSnapshotManifest
 		state.PendingSnapshotManifest = &manifest
@@ -480,6 +484,9 @@ func (client *machineNodeControlClient) call(ctx context.Context, token, operati
 	if operation == wire.OperationLocalDomainNodeReconcile {
 		maxRequestPlaintext = wire.MaxLocalDomainNodeReconcileBodyBytes
 	}
+	if operation == wire.OperationEndpointGroupsNodeReconcile {
+		maxRequestPlaintext = wire.MaxEndpointGroupsNodeReconcileBodyBytes
+	}
 	if len(plain) == 0 || len(plain) > maxRequestPlaintext {
 		return errors.New("Node-Control request exceeds the 64KiB management limit")
 	}
@@ -490,6 +497,11 @@ func (client *machineNodeControlClient) call(ctx context.Context, token, operati
 	}
 	if localDomainNodeBusinessOperation(operation) {
 		if _, err := wire.DecodeLocalDomainNodeRequest(operation, plain); err != nil {
+			return err
+		}
+	}
+	if endpointGroupsNodeBusinessOperation(operation) {
+		if _, err := wire.DecodeEndpointGroupsNodeRequest(operation, plain); err != nil {
 			return err
 		}
 	}
@@ -539,6 +551,11 @@ func (client *machineNodeControlClient) call(ctx context.Context, token, operati
 		if len(packet) > nodewire.MaxRequestPacketBytes {
 			return errors.New("Node-Control request packet exceeds the 256KiB transport limit")
 		}
+		if endpointGroupsNodeBusinessOperation(operation) {
+			if _, err := wire.DecodeEndpointGroupsNodePacket(packet); err != nil {
+				return err
+			}
+		}
 		previous := cloneMachineNodeControlState(client.state)
 		client.state.Sequence, client.state.PendingOperationID = sequence, operationID
 		client.state.PendingOperation, client.state.PendingSequence = operation, sequence
@@ -556,6 +573,10 @@ func (client *machineNodeControlClient) call(ctx context.Context, token, operati
 			}
 		}
 		client.state.PendingWorkerID, client.state.PendingWorkerAttempt = machineNodeControlPendingWorker(operation, requestBody)
+		if endpointGroupsNodeBusinessOperation(operation){
+			stateRaw,err:=json.Marshal(client.state)
+			if err!=nil || len(stateRaw)+(2<<20)+managedPairStateReserve(client.state)>=maxMachineNodeControlStateBytes{client.state=previous;return errLocalEndpointHistoryFull}
+		}
 		if err := client.persistLocked(); err != nil {
 			client.state = previous
 			return err
@@ -703,6 +724,9 @@ func (client *machineNodeControlClient) call(ctx context.Context, token, operati
 		return err
 	}
 	if !envelope.OK {
+		if endpointGroupsNodeBusinessOperation(completedOperation) {
+			return endpointGroupsNodeRefusal(envelope.ErrorCode)
+		}
 		if localDomainNodeBusinessOperation(completedOperation) {
 			return localEndpointTerminalError(envelope.ErrorCode)
 		}
@@ -896,6 +920,9 @@ func (client *machineNodeControlClient) recoverPending(ctx context.Context, toke
 		return err
 	}
 	if !envelope.OK {
+		if endpointGroupsNodeBusinessOperation(operation) {
+			return endpointGroupsNodeRefusal(envelope.ErrorCode)
+		}
 		if localDomainNodeBusinessOperation(operation) {
 			return localEndpointTerminalError(envelope.ErrorCode)
 		}
@@ -1063,8 +1090,14 @@ func (client *machineNodeControlClient) postPacket(ctx context.Context, token st
 	limit := nodewire.MaxPacketBytes
 	pairResponse := false
 	domainResponse := false
+	groupsResponse := false
 	if original, decodeErr := nodewire.DecodePacket(packet); decodeErr == nil {
 		switch {
+		case endpointGroupsNodeBusinessOperation(original.Route.Operation):
+			limit, groupsResponse = wire.MaxEndpointGroupsNodeReceiptBytes, true
+			if original.Route.Operation == wire.OperationEndpointGroupsNodeReconcile {
+				limit = wire.MaxEndpointGroupsNodeReconcilePacketBytes
+			}
 		case localDomainNodeBusinessOperation(original.Route.Operation):
 			limit, domainResponse = wire.MaxLocalDomainNodeReceiptBytes, true
 			if original.Route.Operation == wire.OperationLocalDomainNodeReconcile {
@@ -1089,7 +1122,11 @@ func (client *machineNodeControlClient) postPacket(ctx context.Context, token st
 	if len(data) == 0 || len(data) > limit {
 		return nil, errors.New("Hub returned an invalid Node-Control response packet size")
 	}
-	if domainResponse {
+	if groupsResponse {
+		if _, err := wire.DecodeEndpointGroupsNodePacket(data); err != nil {
+			return nil, errors.New("Hub returned an invalid registered-Thread Group Node response")
+		}
+	} else if domainResponse {
 		if _, err := wire.DecodeLocalDomainNodePacket(data); err != nil {
 			return nil, errors.New("Hub returned an invalid bounded local-domain Node response")
 		}
@@ -1120,6 +1157,7 @@ func (client *machineNodeControlClient) clearPendingLocked() {
 	client.state.PendingResponsePacket = nil
 	client.state.PendingNativePairBody = nil
 	client.state.NativePairDiagnostic = nil
+	client.state.EndpointGroupsDiagnostic = nil
 	client.state.PendingWorkerID = ""
 	client.state.PendingWorkerAttempt = 0
 	client.state.PendingSnapshotPath = ""

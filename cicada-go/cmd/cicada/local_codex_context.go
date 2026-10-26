@@ -26,6 +26,7 @@ const maxLocalCodexContexts = 512
 
 const LocalCodexContextProfileLegacy = "LEGACY_STRICT"
 const LocalCodexContextProfileDomain = "LOCAL_DOMAIN"
+const LocalCodexContextProfileEndpointGroups = "OWNER_ENDPOINT_GROUPS_V1"
 
 var errLocalCodexContext = errors.New("CODEX_CONTEXT_UNSUPPORTED: current local Codex context could not be verified")
 
@@ -73,14 +74,20 @@ type localCodexContextConsume struct {
 }
 
 type localCodexContext struct {
-	Harness             string                    `json:"harness"`
-	NativeSessionID     string                    `json:"native_session_id"`
-	Workspace           string                    `json:"workspace"`
-	TurnID              string                    `json:"turn_id"`
-	ToolUseID           string                    `json:"tool_use_id"`
-	VerificationProfile string                    `json:"verification_profile,omitempty"`
-	LocalDomainVersion  int                       `json:"local_domain_version,omitempty"`
-	LocalDomain         wire.LocalDomainSelection `json:"local_domain,omitzero"`
+	Harness               string                    `json:"harness"`
+	NativeSessionID       string                    `json:"native_session_id"`
+	Workspace             string                    `json:"workspace"`
+	TurnID                string                    `json:"turn_id"`
+	ToolUseID             string                    `json:"tool_use_id"`
+	VerificationProfile   string                    `json:"verification_profile,omitempty"`
+	LocalDomainVersion    int                       `json:"local_domain_version,omitempty"`
+	LocalDomain           wire.LocalDomainSelection `json:"local_domain,omitzero"`
+	EndpointGroupsVersion int                       `json:"endpoint_groups_version,omitempty"`
+	RegistrationDigest    string                    `json:"registration_digest,omitempty"`
+	RegistrationRevision  uint64                    `json:"registration_revision,omitempty"`
+	BindingID             string                    `json:"binding_id,omitempty"`
+	BindingEpoch          uint64                    `json:"binding_epoch,omitempty"`
+	NodeKeyEpoch          uint64                    `json:"node_key_epoch,omitempty"`
 }
 
 type localCodexContextConsumeResult struct {
@@ -91,10 +98,12 @@ type localCodexContextConsumeResult struct {
 // This key and its bounded live set belong to one Node process. Tickets carry
 // no readable SID/path and never grant Hub rights or prove human intent.
 type localCodexContextAuthority struct {
-	mu     sync.Mutex
-	key    []byte
-	live   map[string]localCodexContextRecord
-	native map[string]localCodexContextRecord
+	mu              sync.Mutex
+	key             []byte
+	live            map[string]localCodexContextRecord
+	native          map[string]localCodexContextRecord
+	consumed        map[string]localCodexContextRecord
+	operatorIntents map[string]string
 }
 
 type localCodexContextRecord struct {
@@ -185,8 +194,32 @@ func (a *localCodexContextAuthority) consume(q localCodexContextConsume, binding
 	if r.Origin != q.APIOrigin || r.Binding != binding || r.Nonce != q.ConnectionNonce || r.Tool != q.ToolName || r.Arguments != q.ArgumentsDigest || !hmac.Equal([]byte(parts[1]), []byte(a.sign(parts[0], r))) {
 		return nil, errLocalCodexContext
 	}
+	if r.Context.VerificationProfile == LocalCodexContextProfileEndpointGroups {
+		if a.consumed == nil {
+			a.consumed = make(map[string]localCodexContextRecord)
+		}
+		for id, old := range a.consumed {
+			if !now.Before(old.Expires) {
+				delete(a.consumed, id)
+			}
+		}
+		if len(a.consumed) >= maxLocalCodexContexts {
+			return nil, errLocalCodexContext
+		}
+		a.consumed[parts[0]] = r
+	}
 	delete(a.live, parts[0]) // Check and consume happen under the same lock.
 	return &localCodexContextConsumeResult{Context: r.Context, ExpiresAt: r.Expires.UTC().Format(time.RFC3339Nano)}, nil
+}
+
+func (a *localCodexContextAuthority) consumedEndpointGroups(id, origin, sid, cwd string, now time.Time) (localCodexContextRecord, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	r, ok := a.consumed[id]
+	if !localContextHex(id, 64) || !ok || !now.Before(r.Expires) || r.Origin != origin || r.Context.NativeSessionID != sid || r.Context.Workspace != cwd || r.Context.VerificationProfile != LocalCodexContextProfileEndpointGroups {
+		return localCodexContextRecord{}, errLocalCodexContext
+	}
+	return r, nil
 }
 
 func (b *machineAgentJoinBridge) localContextBinding(origin string) (string, error) {
@@ -221,7 +254,7 @@ func (b *machineAgentJoinBridge) codexContextIssue(q localCodexContextIssue) (*l
 	if err != nil {
 		return nil, err
 	}
-	if err := verifyCodexContextTranscriptProfile(q.TranscriptPath, q.NativeSessionID, q.Workspace, verified.VerificationProfile == LocalCodexContextProfileDomain); err != nil {
+	if err := verifyCodexContextTranscriptProfile(q.TranscriptPath, q.NativeSessionID, q.Workspace, verified.VerificationProfile == LocalCodexContextProfileDomain || verified.VerificationProfile == LocalCodexContextProfileEndpointGroups); err != nil {
 		return nil, err
 	}
 	return b.codexContexts.issueVerified(q, binding, time.Now(), verified)

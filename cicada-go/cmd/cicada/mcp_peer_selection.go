@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"reflect"
 	"strings"
 	"time"
 
@@ -469,12 +468,12 @@ func (m *mcpServer) recoverPeerOutbox(id, intent, key string) (any, bool, error)
 			return nil, true, errMCPOutboxConflict
 		}
 		m.sessionMu.RLock()
-		endpoint, group, domain, binding := m.endpointID, m.sessionGroupID, m.sessionDomain, m.sessionPublic
+		endpoint, group, domain, binding, authority := m.endpointID, m.sessionGroupID, m.sessionDomain, m.sessionPublic, m.sessionEndpointGroupAuthority
 		m.sessionMu.RUnlock()
 		if op.GroupID != "" && (op.GroupID != group || op.EndpointID != endpoint) {
 			return nil, true, errMCPOutboxContext
 		}
-		if op.LocalDomainVersion != 0 && (!reflect.DeepEqual(op.codexDomainBinding, domain) || op.NativeBindingID != binding.BindingID || op.NativeBindingEpoch != binding.BindingEpoch) {
+		if op.codexDomainBinding != domain || op.codexDomainBinding != (codexDomainBinding{}) && (op.NativeBindingID != binding.BindingID || op.NativeBindingEpoch != binding.BindingEpoch || op.EndpointGroupAuthority != authority) {
 			return nil, true, errMCPOutboxContext
 		}
 		return mcpOutboxPublicResult(op), true, nil

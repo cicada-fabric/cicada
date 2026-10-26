@@ -24,6 +24,9 @@ type networkDirectCurrentActor struct {
 }
 
 func (b *machineAgentJoinBridge) networkDirect(request localNetworkDirectRequest) (*localNetworkDirectResult, error) {
+	if err := b.rejectEndpointGroupsLegacySource(request.NativeSessionID, request.Workspace); err != nil {
+		return nil, err
+	}
 	if request.Version != localJoinProtocolVersion || request.NetworkID == "" || request.EndpointID == "" ||
 		request.SessionToken == "" || request.NativeSessionID == "" || request.NodeID != b.nodeID ||
 		request.Harness != "codex" || harness.Canonical(request.Harness) != "codex" ||

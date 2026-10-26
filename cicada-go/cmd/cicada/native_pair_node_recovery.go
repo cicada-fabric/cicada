@@ -25,7 +25,11 @@ type machineNativePairEnvelope struct {
 func (client *machineNodeControlClient) recoverNodeControlPending(ctx context.Context, token string) error {
 	client.mu.Lock()
 	pair := nativePairNodeBusinessOperation(client.state.PendingOperation)
+	groups := endpointGroupsNodeBusinessOperation(client.state.PendingOperation)
 	client.mu.Unlock()
+	if groups {
+		return client.recoverEndpointGroupsOriginal(ctx, token)
+	}
 	if pair {
 		return client.recoverNativePairOriginal(ctx, token)
 	}

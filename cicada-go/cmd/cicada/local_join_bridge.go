@@ -68,6 +68,7 @@ type localNetworkRenewRequest struct {
 }
 
 type localJoinResponse struct {
+	EndpointGroups      *localEndpointGroupsResult            `json:"endpoint_groups,omitempty"`
 	EndpointOperation   *localEndpointResult                  `json:"endpoint_operation,omitempty"`
 	CodexContextIssue   *localCodexContextIssueResult         `json:"codex_context_issue,omitempty"`
 	CodexContextConsume *localCodexContextConsumeResult       `json:"codex_context_consume,omitempty"`
@@ -135,6 +136,8 @@ func localJoinRecoveryFromError(err error) (*localJoinRecoveryStatus, bool) {
 }
 
 type machineAgentJoinBridge struct {
+	endpointGroupsMu          sync.Mutex
+	endpointGroupsNext        int
 	managedDomainNext         int
 	localDomainMu             sync.Mutex
 	localDomainReportsEnabled atomic.Bool
@@ -468,6 +471,21 @@ func (b *machineAgentJoinBridge) serveConnection(connection net.Conn) {
 		b.serveLocalNodeDescribe(requestBytes, connection)
 		return
 	}
+	if header.Operation == "endpoint_groups_self" || header.Operation == "endpoint_groups_select" {
+		var q localEndpointGroupsRequest
+		if decodeLocalBridgeRequest(requestBytes, &q) != nil {
+			_ = json.NewEncoder(connection).Encode(localJoinErrorResponse(errCodexMCPContext))
+			return
+		}
+		result, err := b.endpointGroupsSelf(q)
+		response := localJoinResponse{Version: localJoinProtocolVersion, EndpointGroups: result}
+		if err != nil {
+			response.Error = safeLocalJoinError(err)
+			response.Retryable = errors.Is(err, errMachineNodeControlOutcomeUncertain)
+		}
+		_ = json.NewEncoder(connection).Encode(response)
+		return
+	}
 	if localEndpointOperation(header.Operation) {
 		var q localEndpointRequest
 		if decodeLocalBridgeRequest(requestBytes, &q) != nil {
@@ -746,6 +764,9 @@ func (b *machineAgentJoinBridge) join(request localJoinRequest) (*fabricpkg.Join
 }
 
 func (b *machineAgentJoinBridge) joinWithScope(request localJoinRequest) (*fabricpkg.JoinResult, *nodeinbox.NativeContextScopeDecision, error) {
+	if err := b.rejectEndpointGroupsLegacySource(request.NativeSessionID, request.Workspace); err != nil {
+		return nil, nil, err
+	}
 	if request.Version != localJoinProtocolVersion || strings.TrimSpace(request.GroupID) == "" {
 		return nil, nil, errors.New("invalid local Join request")
 	}

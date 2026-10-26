@@ -31,7 +31,12 @@ type codexMCPContextState struct {
 	heartbeatMu sync.Mutex
 	heartbeat   *codexFrozenHeartbeat
 
-	activeVerification *localCodexContext
+	activeVerification           *localCodexContext
+	activeEndpointGroupsTicketID string
+	activeToolName               string
+	activeArgumentsDigest        string
+	activeArguments              json.RawMessage
+	activeEndpointGroups         *localEndpointGroupsResult
 }
 
 func configuredCodexNodeID() (string, error) {
@@ -160,16 +165,12 @@ func (m *mcpServer) callContextualTool(name string, arguments map[string]any) (a
 	if err != nil || consumed == nil {
 		return nil, errCodexMCPContext
 	}
-	selection, domain, err := codexContextDomain(consumed.Context)
+	verifiedDomain, err := codexContextBinding(consumed.Context)
 	if err != nil {
 		return nil, err
 	}
-	if _, pair, _ := parseNativePairJoinSelection(business); pair && domain {
+	if _, pair, _ := parseNativePairJoinSelection(business); pair && verifiedDomain != (codexDomainBinding{}) {
 		return nil, errCodexMCPContext
-	}
-	verifiedDomain := codexDomainBinding{}
-	if domain {
-		verifiedDomain = codexDomainBinding{LocalDomainVersion: 1, LocalDomain: selection}
 	}
 	context := harness.SessionContext{Harness: consumed.Context.Harness, NativeSessionID: consumed.Context.NativeSessionID,
 		MachineID: state.nodeID, Workspace: consumed.Context.Workspace, Capabilities: map[string]any{"fabric_tools": true, "wake": "codex_queue"}}
@@ -190,10 +191,35 @@ func (m *mcpServer) callContextualTool(name string, arguments map[string]any) (a
 	state.mu.Lock()
 	state.active = &context
 	state.activeVerification = &consumed.Context
+	state.activeToolName = name
+	state.activeArgumentsDigest = digest
+	state.activeArguments, _ = json.Marshal(business)
+	state.activeEndpointGroupsTicketID = ""
+	if verifiedDomain.EndpointGroupsVersion != 0 {
+		state.activeEndpointGroupsTicketID = strings.Split(ticket, ".")[0]
+	}
 	state.mu.Unlock()
-	defer func() { state.mu.Lock(); state.active = nil; state.activeVerification = nil; state.mu.Unlock() }()
+	defer func() {
+		state.mu.Lock()
+		state.active = nil
+		state.activeVerification = nil
+		state.activeEndpointGroupsTicketID = ""
+		state.activeToolName = ""
+		state.activeArgumentsDigest = ""
+		state.activeArguments = nil
+		state.activeEndpointGroups = nil
+		state.mu.Unlock()
+	}()
 	defer m.reconcileCodexHeartbeat()
-	if !m.isJoined() {
+	if verifiedDomain.EndpointGroupsVersion == 1 {
+		fresh, err := m.refreshEndpointGroupsSession(context)
+		if err != nil {
+			return nil, err
+		}
+		state.mu.Lock()
+		state.activeEndpointGroups = fresh
+		state.mu.Unlock()
+	} else if !m.isJoined() {
 		if err := m.restoreSession(context); err != nil {
 			return nil, err
 		}

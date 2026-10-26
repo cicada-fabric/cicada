@@ -120,11 +120,24 @@ func reserveNativePairQueueAdmission(ctx context.Context, stateDir, nodeID strin
 }
 
 func verifyNativePairDeliveryTarget(ctx context.Context, stateDir, nodeID string, authorization crossNodeGroupDeliveryAuthorization) (bool, error) {
+	if err := endpointGroupsLocalNativeOnline(ctx, stateDir, nodeID, authorization.Receiver.EndpointID, authorization.Receiver.BindingID, authorization.Receiver.BindingEpoch, authorization.EndpointGroupCurrent); err != nil {
+		return false, err
+	}
 	state, err := nodekeys.OpenCryptoState(machineNodeStateDir(stateDir, nodeID))
 	if err != nil {
 		return false, err
 	}
 	defer state.Close()
+	managed, err := verifyEndpointGroupsPeerTarget(ctx, state, authorization.Receiver.EndpointID, machinePinnedHubID(ctx), authorization.Receiver.GroupID, authorization.Sender, authorization.Receiver, authorization.EndpointGroupCurrent, "native_delivery", authorization.AttemptID)
+	if err != nil {
+		return false, err
+	}
+	if managed {
+		if authorization.NativePairEvidence != nil || authorization.NativePairCurrent != nil || authorization.LocalDomainCurrent != nil {
+			return false, errEndpointGroupsRegistration
+		}
+		return false, nil
+	}
 	domain, err := verifyLocalDomainPeerTarget(ctx, state, machinePinnedHubID(ctx), authorization.Receiver.GroupID, authorization.Sender, authorization.Receiver, authorization.LocalDomainCurrent, "native_delivery", authorization.AttemptID)
 	if err != nil {
 		return false, err
@@ -138,6 +151,18 @@ func verifyNativePairDeliveryTarget(ctx context.Context, stateDir, nodeID string
 // A fresh live observation has a new timestamp. All authority coordinates still
 // match exactly; each observation is independently verified before comparison.
 func sameNativePairDeliveryAuthority(a, b crossNodeGroupDeliveryAuthorization) bool {
+	if a.EndpointGroupCurrent != nil {
+		c := *a.EndpointGroupCurrent
+		c.ObservedAt = ""
+		c.ExpiresAt = ""
+		a.EndpointGroupCurrent = &c
+	}
+	if b.EndpointGroupCurrent != nil {
+		c := *b.EndpointGroupCurrent
+		c.ObservedAt = ""
+		c.ExpiresAt = ""
+		b.EndpointGroupCurrent = &c
+	}
 	if a.LocalDomainCurrent != nil {
 		c := *a.LocalDomainCurrent
 		c.ObservedAt = ""

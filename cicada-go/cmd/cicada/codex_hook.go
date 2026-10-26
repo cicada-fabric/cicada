@@ -345,8 +345,9 @@ func codexUserPromptWithSelection(event codexHookInput, output io.Writer, select
 		}
 	}
 	var verifiedDomain codexDomainBinding
+	var operatorProof endpointGroupsOperatorContextProof
 	if !recoveringDomain {
-		verifiedDomain, err = verifyCodexOperatorContext(event, coordinates, origin, connection, command)
+		verifiedDomain, err = verifyCodexOperatorContextProof(event, coordinates, origin, connection, command, &operatorProof)
 		if err != nil {
 			return codexHookBlock(output, codexHookFailureText(codexHookTicketUnavailable))
 		}
@@ -359,8 +360,10 @@ func codexUserPromptWithSelection(event codexHookInput, output io.Writer, select
 				return codexHookBlock(output, err.Error())
 			}
 		}
-		if command.operation == "endpoint_register" {
+		if command.operation == "endpoint_register" || command.operation == "endpoint_leave" && verifiedDomain.EndpointGroupsVersion == 1 {
 			q.LocalDomainVersion, q.LocalDomain = verifiedDomain.LocalDomainVersion, verifiedDomain.LocalDomain
+			q.codexEndpointGroupsBinding = verifiedDomain.codexEndpointGroupsBinding
+			q.endpointGroupsOperatorContextProof = operatorProof
 		}
 	}
 	if client == nil {
@@ -381,12 +384,21 @@ func codexUserPromptWithSelection(event codexHookInput, output io.Writer, select
 			callErr = revalidateCodexLocalNode(context.Background(), connection)
 		}
 		if callErr == nil {
+			if q.EndpointGroupsVersion == 1 {
+				q.InvocationProof, _ = endpointGroupsFreshOperatorProof(event.TranscriptPath, event.TurnID, event.ToolUseID, coordinates, connection, q)
+			}
 			result, callErr = client.callForConnection(q, *connection)
 		}
 		if callErr != nil && (errors.Is(callErr, ErrLocalNodeConfigRequired) || errors.Is(callErr, ErrLocalNodeBindingChanged)) {
 			return codexHookBlock(output, codexLocalNodeError(callErr).Error())
 		}
 	} else {
+		if q.EndpointGroupsVersion == 1 {
+			q, callErr = client.prepare(q, trusted.NodeID)
+			if callErr == nil {
+				q.InvocationProof, _ = endpointGroupsFreshOperatorProof(event.TranscriptPath, event.TurnID, event.ToolUseID, coordinates, nil, q)
+			}
+		}
 		result, callErr = client.call(defaultMCPJoinSocketPath(coordinates), q, trusted.NodeID)
 	}
 	if result == nil || result.State != "COMPLETED" {
@@ -447,6 +459,12 @@ func codexUserPromptWithSelection(event codexHookInput, output io.Writer, select
 func formatCodexOperatorResult(command codexOperatorCommand, result *localEndpointResult) string {
 	var b strings.Builder
 	switch {
+	case result.EndpointGroups != nil:
+		if result.EndpointGroupsLocalOffline {
+			b.WriteString("This Thread stopped local Cicada access\nHub presence follows its existing lease; the native Thread and Owner Group configuration are retained.")
+		} else {
+			b.WriteString("This Thread's original Cicada registration is ready\nChoose a current Group using cicada_groups and cicada_use_group. No Group was selected automatically.")
+		}
 	case result.LocalDomain != nil && result.Join != nil:
 		b.WriteString("Local collaboration joined\n")
 		b.WriteString(result.Join.Endpoint.Name + "\n" + result.Join.Endpoint.Workspace)

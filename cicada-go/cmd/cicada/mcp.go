@@ -20,6 +20,7 @@ import (
 	"github.com/cicada-ai/cicada/internal/buildinfo"
 	fabricpkg "github.com/cicada-ai/cicada/internal/fabric"
 	"github.com/cicada-ai/cicada/internal/harness"
+	wire "github.com/cicada-ai/cicada/internal/hubaccountwire"
 	"github.com/cicada-ai/cicada/internal/nodeinbox"
 	"github.com/cicada-ai/cicada/internal/store"
 )
@@ -52,7 +53,9 @@ type mcpServer struct {
 	peerMu            sync.Mutex
 	peerSelections    map[string]mcpPeerSelection
 
-	sessionDomain codexDomainBinding
+	sessionDomain                            codexDomainBinding
+	sessionEndpointGroupAuthority            wire.EndpointGroupCurrentEndpoint
+	sessionEndpointGroupsLocalAccessRevision uint64
 }
 
 var errPeerTaskHandoffRetired = errors.New("Thread-to-Thread plaintext Task handoffs are retired; use sealed cicada_send and explicitly authorized Artifact references. This does not transfer Task responsibility or stop resources.")
@@ -322,6 +325,7 @@ func cicadaMCPTools() []map[string]any {
 		return map[string]any{"type": "string", "description": description}
 	}
 	return []map[string]any{
+		{"name": "cicada_groups", "description": "List only this registered Thread's currently usable Groups. No Group is selected automatically. Requires a fresh verified OWNER_ENDPOINT_GROUPS_V1 context.", "inputSchema": object(map[string]any{"cursor": stringField("Opaque self-scope page cursor"), "limit": map[string]any{"type": "integer", "minimum": 1, "maximum": 64, "default": 64}}), "annotations": map[string]any{"readOnlyHint": true, "idempotentHint": true, "destructiveHint": false, "openWorldHint": false}},
 		{"name": "cicada_select_peer", "description": "Ask the human to select one exact authorized peer in the current Group or an explicitly joined Network. Requires Host form elicitation. The short-lived selection is a reference, not a grant; pass peer_selection_id to a later send or ask with a fresh tool context.", "inputSchema": object(map[string]any{"scope": map[string]any{"type": "string", "enum": []string{"group", "network"}}, "network_id": stringField("Explicitly joined Network ID; only with network scope"), "query": stringField("Optional bounded name/Endpoint filter within the authorized directory")}, "scope")},
 		{"name": "cicada_network_join", "description": "Explicitly join this verified native Session to an invited Network. Invitation and Owner-signed consent are read from private local files configured outside model input; the Node and Hub independently verify them.", "inputSchema": object(map[string]any{"network_id": stringField("Invited Network ID")}, "network_id")},
 		{"name": "cicada_network_renew", "description": "Renew this native Session's existing Network access through the trusted local Node, rechecking current membership and Owner authority.", "inputSchema": object(map[string]any{"network_id": stringField("Joined Network ID")}, "network_id")},
@@ -414,6 +418,24 @@ func (m *mcpServer) callToolWithContext(name string, arguments map[string]any) (
 	}
 	if err := validateMCPArguments(name, arguments); err != nil {
 		return nil, err
+	}
+	domain, err := m.currentCodexDomainBinding()
+	if err != nil {
+		return nil, err
+	}
+	if name == "cicada_groups" {
+		return m.endpointGroupsList(arguments)
+	}
+	if domain.EndpointGroupsVersion == 1 {
+		if !endpointGroupsMCPToolAllowed(name, arguments) {
+			return nil, errors.New("TARGET_NOT_AUTHORIZED: this Group source grants only directory and communication rights")
+		}
+		m.sessionMu.RLock()
+		selected := m.sessionGroupID
+		m.sessionMu.RUnlock()
+		if name != "cicada_use_group" && selected == "" {
+			return nil, errEndpointGroupsSelection
+		}
 	}
 	if name == "cicada_select_peer" {
 		return m.selectPeer(arguments)
@@ -718,6 +740,13 @@ func (m *mcpServer) callToolWithContext(name string, arguments map[string]any) (
 }
 
 func validateMCPArguments(name string, arguments map[string]any) error {
+	if name == "cicada_groups" {
+		_, _, err := parseEndpointGroupsMCPArguments(arguments)
+		return err
+	}
+	if name == "cicada_use_group" && (len(arguments) != 1 || stringArgument(arguments, "group_id") == "") {
+		return errors.New("cicada_use_group accepts only group_id")
+	}
 	if handled, err := validateMCPPeerArguments(name, arguments); handled {
 		return err
 	}
@@ -986,6 +1015,8 @@ func (m *mcpServer) clearSessionMemory() {
 	m.sessionScope = ""
 	m.sessionPublic = mcpPublicJoinResult{}
 	m.sessionDomain = codexDomainBinding{}
+	m.sessionEndpointGroupAuthority = wire.EndpointGroupCurrentEndpoint{}
+	m.sessionEndpointGroupsLocalAccessRevision = 0
 	m.sessionMu.Unlock()
 }
 
@@ -1020,6 +1051,13 @@ func (m *mcpServer) api(method, path string, body any) (any, error) {
 }
 
 func (m *mcpServer) apiForGroup(method, path string, body any, groupID string) (any, error) {
+	m.sessionMu.RLock()
+	managed := m.sessionDomain.EndpointGroupsVersion == 1
+	selected := m.sessionGroupID
+	m.sessionMu.RUnlock()
+	if managed && (groupID == "" || selected != groupID) {
+		return nil, errEndpointGroupsSelection
+	}
 	token := m.currentSessionToken()
 	if token == "" {
 		return nil, errors.New("Cicada session is not joined; call cicada_join first")
@@ -1030,7 +1068,11 @@ func (m *mcpServer) apiForGroup(method, path string, body any, groupID string) (
 		if errors.As(err, &responseErr) && responseErr.statusCode == http.StatusUnauthorized {
 			// A stale or revoked session is terminal for this process. It must
 			// never fall back to the management bearer or silently rejoin.
-			m.clearSession()
+			if managed {
+				m.clearEndpointGroupsSelection()
+			} else {
+				m.clearSession()
+			}
 		}
 	}
 	return result, err
@@ -1269,6 +1311,11 @@ func (m *mcpServer) useGroup(groupID string) (any, error) {
 	groupID = strings.TrimSpace(groupID)
 	if groupID == "" {
 		return nil, errors.New("group_id is required")
+	}
+	if binding, err := m.currentCodexDomainBinding(); err != nil {
+		return nil, err
+	} else if binding.EndpointGroupsVersion == 1 {
+		return m.useEndpointGroup(groupID)
 	}
 	m.joinMu.Lock()
 	defer m.joinMu.Unlock()
@@ -1522,7 +1569,7 @@ func sanitizeMCPToolResult(value any) any {
 }
 
 func isCicadaMCPTool(name string) bool {
-	if name == "cicada_select_peer" {
+	if name == "cicada_select_peer" || name == "cicada_groups" {
 		return true
 	}
 	if isMCPNetworkTaskTool(name) {

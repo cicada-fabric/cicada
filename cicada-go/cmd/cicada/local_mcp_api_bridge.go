@@ -25,26 +25,28 @@ const localMCPMetadataMaxBody = 32 * 1024
 // current session Guard, Hub origin, and binding before using its checked HTTP
 // transport. There is deliberately no caller-supplied path or header map.
 type localMCPMetadataRequest struct {
-	Version         int    `json:"version"`
-	Operation       string `json:"operation"`
-	Harness         string `json:"harness"`
-	NativeSessionID string `json:"native_session_id"`
-	NodeID          string `json:"node_id"`
-	Workspace       string `json:"workspace"`
-	APIOrigin       string `json:"api_origin"`
-	SessionToken    string `json:"session_token"`
-	EndpointID      string `json:"endpoint_id"`
-	PrincipalID     string `json:"principal_id"`
-	GroupID         string `json:"group_id"`
-	BindingID       string `json:"binding_id"`
-	BindingEpoch    uint64 `json:"binding_epoch"`
-	Query           string `json:"query,omitempty"`
-	NodeFilter      string `json:"node_filter,omitempty"`
-	WorkspaceFilter string `json:"workspace_filter,omitempty"`
-	StatusFilter    string `json:"status_filter,omitempty"`
-	HarnessFilter   string `json:"harness_filter,omitempty"`
-	Limit           int    `json:"limit,omitempty"`
-	Reason          string `json:"reason,omitempty"`
+	codexOutboxBinding
+	LocalAccessRevision uint64 `json:"local_access_revision,omitempty"`
+	Version             int    `json:"version"`
+	Operation           string `json:"operation"`
+	Harness             string `json:"harness"`
+	NativeSessionID     string `json:"native_session_id"`
+	NodeID              string `json:"node_id"`
+	Workspace           string `json:"workspace"`
+	APIOrigin           string `json:"api_origin"`
+	SessionToken        string `json:"session_token"`
+	EndpointID          string `json:"endpoint_id"`
+	PrincipalID         string `json:"principal_id"`
+	GroupID             string `json:"group_id"`
+	BindingID           string `json:"binding_id"`
+	BindingEpoch        uint64 `json:"binding_epoch"`
+	Query               string `json:"query,omitempty"`
+	NodeFilter          string `json:"node_filter,omitempty"`
+	WorkspaceFilter     string `json:"workspace_filter,omitempty"`
+	StatusFilter        string `json:"status_filter,omitempty"`
+	HarnessFilter       string `json:"harness_filter,omitempty"`
+	Limit               int    `json:"limit,omitempty"`
+	Reason              string `json:"reason,omitempty"`
 }
 
 type localMCPMetadataResult struct {
@@ -104,6 +106,8 @@ func (m *mcpServer) requestPQMetadata(method, path string, encodedBody []byte, a
 	m.sessionMu.RLock()
 	token, endpointID := strings.TrimSpace(m.sessionToken), strings.TrimSpace(m.endpointID)
 	trusted, trustedSet, public := m.sessionContext, m.sessionContextSet, m.sessionPublic
+	domain := m.sessionDomain
+	authority := m.sessionEndpointGroupAuthority
 	m.sessionMu.RUnlock()
 	if !trustedSet || token == "" || authorization != "CicadaSession "+token ||
 		strings.TrimSpace(groupID) == "" || strings.TrimSpace(public.BindingID) == "" || public.BindingEpoch == 0 {
@@ -118,6 +122,9 @@ func (m *mcpServer) requestPQMetadata(method, path string, encodedBody []byte, a
 		Workspace: trusted.Workspace, APIOrigin: origin, SessionToken: token,
 		EndpointID: endpointID, PrincipalID: public.NetworkCard.PrincipalID,
 		GroupID: strings.TrimSpace(groupID), BindingID: public.BindingID, BindingEpoch: public.BindingEpoch,
+	}
+	if domain.EndpointGroupsVersion == 1 {
+		request.codexOutboxBinding = codexOutboxBinding{codexDomainBinding: domain, NativeBindingID: public.BindingID, NativeBindingEpoch: public.BindingEpoch, EndpointGroupAuthority: authority}
 	}
 	switch {
 	case method == http.MethodGet && path == "/v2/fabric/whoami" && len(encodedBody) == 0:
@@ -177,6 +184,9 @@ func (m *mcpServer) requestPQMetadata(method, path string, encodedBody []byte, a
 }
 
 func (b *machineAgentJoinBridge) mcpMetadata(request localMCPMetadataRequest) (*localMCPMetadataResult, error) {
+	if request.EndpointGroupsVersion != 0 && request.Operation == "mcp_metadata_heartbeat" && request.GroupID == "" {
+		return b.endpointGroupsRegistrationHeartbeat(request)
+	}
 	if request.Version != localJoinProtocolVersion || request.OperationName() == "invalid" {
 		return nil, errors.New("invalid protected MCP metadata operation")
 	}
@@ -202,11 +212,21 @@ func (b *machineAgentJoinBridge) mcpMetadata(request localMCPMetadataRequest) (*
 	if err != nil {
 		return nil, err
 	}
-	if err := verifyCodexSessionRecord(request.NativeSessionID, request.Workspace); err != nil {
-		return nil, err
-	}
 	ctx, cancel := context.WithTimeout(b.ctx, 30*time.Second)
 	defer cancel()
+	managed, err := b.verifyEndpointGroupsSource(ctx, request.SessionToken, request.EndpointID, request.PrincipalID, request.NativeSessionID, request.Workspace, request.GroupID, request.BindingID, request.BindingEpoch, request.codexOutboxBinding)
+	if err != nil {
+		return nil, err
+	}
+	if managed {
+		switch request.Operation {
+		case "mcp_metadata_whoami", "mcp_metadata_find", "mcp_metadata_resolve", "mcp_metadata_inspect", "mcp_metadata_members", "mcp_metadata_heartbeat":
+		default:
+			return nil, errEndpointGroupsRegistration
+		}
+	} else if err := verifyCodexSessionRecord(request.NativeSessionID, request.Workspace); err != nil {
+		return nil, err
+	}
 	perform := func(method, path string, payload []byte) (*localMCPMetadataResult, error) {
 		endpoint := strings.TrimRight(b.baseURL, "/") + path
 		var reader io.Reader

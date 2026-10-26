@@ -37,12 +37,14 @@ type machineLocalEndpointIntent struct {
 }
 
 type machineLocalEndpointStep struct {
-	Operation      string          `json:"operation"`
-	Body           json.RawMessage `json:"body"`
-	RequestPacket  []byte          `json:"request_packet,omitempty"`
-	ResponsePacket []byte          `json:"response_packet,omitempty"`
-	Settled        bool            `json:"settled,omitempty"`
-	CompletedAt    string          `json:"completed_at,omitempty"`
+	Operation          string          `json:"operation"`
+	Body               json.RawMessage `json:"body"`
+	RequestPacket      []byte          `json:"request_packet,omitempty"`
+	ResponsePacket     []byte          `json:"response_packet,omitempty"`
+	Settled            bool            `json:"settled,omitempty"`
+	CompletedAt        string          `json:"completed_at,omitempty"`
+	DiagnosticPacket   []byte          `json:"diagnostic_packet,omitempty"`
+	DiagnosticResponse []byte          `json:"diagnostic_response,omitempty"`
 }
 
 type localEndpointCallKey struct{}
@@ -90,6 +92,8 @@ func cloneMachineLocalEndpointState(state machineNodeControlState) machineNodeCo
 			s.Body = bytes.Clone(s.Body)
 			s.RequestPacket = bytes.Clone(s.RequestPacket)
 			s.ResponsePacket = bytes.Clone(s.ResponsePacket)
+			s.DiagnosticPacket = bytes.Clone(s.DiagnosticPacket)
+			s.DiagnosticResponse = bytes.Clone(s.DiagnosticResponse)
 			intent.Steps[k] = s
 		}
 		state.LocalEndpointIntents[id] = intent
@@ -106,6 +110,17 @@ func endpointNodeBusinessOperation(operation string) bool {
 }
 
 func (client *machineNodeControlClient) retainLocalEndpointIntent(q localEndpointRequest, now time.Time) (string, error) {
+	return client.retainLocalEndpointIntentAuthenticated(q, now, false)
+}
+
+// Only an independently consumed, current invocation bound to this exact
+// original may admit an aged, never-admitted local operator intent. Permanent
+// request floors and the original timestamp/ID/digest remain unchanged.
+func (client *machineNodeControlClient) retainLocalEndpointIntentAuthenticated(q localEndpointRequest, now time.Time, freshOriginal bool) (string, error) {
+	if freshOriginal && (q.EndpointGroupsVersion != 1 || q.Operation != "endpoint_register" && q.Operation != "endpoint_leave") {
+		return "", errLocalEndpointIntentConflict
+	}
+	q.InvocationProof = nil
 	issued, err := localEndpointIssuedAt(q)
 	if err != nil {
 		return "", err
@@ -124,7 +139,7 @@ func (client *machineNodeControlClient) retainLocalEndpointIntent(q localEndpoin
 		}
 		return digest, nil
 	}
-	if issued.UnixMilli() <= client.state.LocalEndpointAdmissionFloorMS || issued.After(now.Add(30*time.Second)) || !now.Before(issued.Add(localEndpointIntentTTL)) {
+	if issued.UnixMilli() <= client.state.LocalEndpointAdmissionFloorMS || issued.After(now.Add(30*time.Second)) || !now.Before(issued.Add(localEndpointIntentTTL)) && !freshOriginal {
 		return "", errors.New("ENDPOINT_LOCAL_INTENT_EXPIRED: no new operation issued")
 	}
 	previous := cloneMachineNodeControlState(client.state)
@@ -210,7 +225,7 @@ func (client *machineNodeControlClient) prepareLocalEndpointStep(id, digest, ste
 		return scope, nil
 	}
 	issued, err := time.Parse(time.RFC3339Nano, intent.IssuedAt)
-	if err != nil || !time.Now().UTC().Before(issued.Add(localEndpointIntentTTL)) {
+	if err != nil || !time.Now().UTC().Before(issued.Add(localEndpointIntentTTL)) && !(endpointGroupsNodeBusinessOperation(operation) && client.endpointGroupsIntentRetainedLocked(id)) && !(operation == "local.endpoint_groups.operator_result" && client.endpointGroupsLocalOperatorRetainedLocked(id)) {
 		return scope, errLocalEndpointReceiptExpired
 	}
 	previous := cloneMachineNodeControlState(client.state)
@@ -262,7 +277,7 @@ func (client *machineNodeControlClient) replayLocalEndpointLocked(scope localEnd
 	if !s.Settled {
 		if len(client.state.PendingPacket) == 0 {
 			issued, err := time.Parse(time.RFC3339Nano, intent.IssuedAt)
-			if err != nil || !time.Now().UTC().Before(issued.Add(localEndpointIntentTTL)) {
+			if err != nil || !time.Now().UTC().Before(issued.Add(localEndpointIntentTTL)) && !(endpointGroupsNodeBusinessOperation(operation) && client.endpointGroupsIntentRetainedLocked(scope.IntentID)) {
 				return true, errLocalEndpointReceiptExpired
 			}
 		}
@@ -291,6 +306,9 @@ func (client *machineNodeControlClient) replayLocalEndpointLocked(scope localEnd
 		return true, errLocalEndpointIntentConflict
 	}
 	if !env.OK {
+		if endpointGroupsNodeBusinessOperation(operation) {
+			return true, endpointGroupsNodeRefusal(env.ErrorCode)
+		}
 		return true, localEndpointTerminalError(env.ErrorCode)
 	}
 	if target != nil {

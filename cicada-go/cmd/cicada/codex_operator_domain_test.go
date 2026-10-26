@@ -181,7 +181,7 @@ func TestCodexDomainLiteralJoinUsesNodeTicketAndRetainsLostOriginal(t *testing.T
 	if err := codexUserPrompt(event, io.Writer(writer)); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(output.String(), "admission is saved") || strings.Contains(output.String(), result.Join.SessionToken) || calls.Load() != 2 {
+	if !strings.Contains(output.String(), "Local collaboration joined") || strings.Contains(output.String(), result.Join.SessionToken) || calls.Load() != 2 {
 		t.Fatal("admission output or retry count invalid")
 	}
 	saved, err := os.ReadFile(intentPath)

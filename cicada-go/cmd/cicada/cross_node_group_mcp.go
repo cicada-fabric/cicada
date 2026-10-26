@@ -22,6 +22,7 @@ const crossNodeGroupProtocolVersion = 1
 // repeated only so the Node can compare it with the live Session binding; the
 // Hub derives the actual route from its Node credential and current records.
 type crossNodeGroupRequest struct {
+	codexOutboxBinding
 	Version                    int                                  `json:"version"`
 	Operation                  string                               `json:"operation"`
 	Harness                    string                               `json:"harness"`
@@ -211,7 +212,8 @@ func (m *mcpServer) dispatchCrossNodeGroupMCPOutbox(outbox *mcpOutboxStore,
 		return m.recordSealedRPCError(outbox, scope, operation, err)
 	}
 	request := crossNodeGroupRequest{
-		Harness: trusted.Harness, NativeSessionID: trusted.NativeSessionID,
+		codexOutboxBinding: operation.codexOutboxBinding,
+		Harness:            trusted.Harness, NativeSessionID: trusted.NativeSessionID,
 		NodeID: trusted.NodeID, Workspace: trusted.Workspace, SessionToken: trusted.SessionToken,
 		EndpointID: trusted.EndpointID, PrincipalID: trusted.PrincipalID, OwnerID: trusted.OwnerID,
 		GroupID: trusted.GroupID, BindingID: trusted.BindingID, BindingEpoch: trusted.BindingEpoch,

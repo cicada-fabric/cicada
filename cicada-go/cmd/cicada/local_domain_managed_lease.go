@@ -44,6 +44,9 @@ func localDomainStateReserve(s machineNodeControlState) int {
 }
 
 func (client *machineNodeControlClient) localDomainIntentRetainedLocked(id string) bool {
+	if client.endpointGroupsIntentRetainedLocked(id) {
+		return true
+	}
 	for _, m := range client.state.ManagedLocalDomainLeases {
 		if m.IntentID == id && m.State != "STOPPED" {
 			return true
@@ -67,6 +70,9 @@ func (client *machineNodeControlClient) reserveLocalDomainLease(q localEndpointR
 	var reuses localDomainOriginalRef
 	for key, m := range client.state.ManagedLocalDomainLeases {
 		if m.State == "STOPPED" {
+			if client.endpointGroupsLeaseRetainedLocked(key) {
+				continue
+			}
 			end := parseMachineNativePairTime(m.KnownLeaseExpiresAt)
 			if !end.IsZero() && !time.Now().Before(end.Add(localEndpointIntentTTL)) {
 				delete(client.state.ManagedLocalDomainLeases, key)
@@ -247,6 +253,10 @@ func (b *machineAgentJoinBridge) renewLocalDomainLeaseBatch(ctx context.Context)
 
 func (b *machineAgentJoinBridge) renewLocalDomainLease(ctx context.Context, client *machineNodeControlClient, id string) {
 	client.mu.Lock()
+	if client.endpointGroupsLeaseRetainedLocked(id) {
+		client.mu.Unlock()
+		return
+	}
 	m, ok := client.state.ManagedLocalDomainLeases[id]
 	var original wire.LocalDomainNodeJoinResult
 	var completed wire.LocalDomainNodeKeyResult

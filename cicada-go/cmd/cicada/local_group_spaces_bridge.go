@@ -153,6 +153,9 @@ func (b *machineAgentJoinBridge) groupSpaceHTTPWithContext(parent context.Contex
 }
 
 func (b *machineAgentJoinBridge) verifyGroupSpaceSource(request groupSpaceLocalRequest) (store.GroupSpaceEndpointEvidence, error) {
+	if err := b.rejectEndpointGroupsLegacySource(request.NativeSessionID, request.Workspace); err != nil {
+		return store.GroupSpaceEndpointEvidence{}, err
+	}
 	if request.Version != groupSpaceLocalProtocolVersion || request.SessionToken == "" ||
 		request.GroupID == "" || request.EndpointID == "" || request.NodeID != b.nodeID ||
 		request.BindingID == "" || request.BindingEpoch == 0 ||

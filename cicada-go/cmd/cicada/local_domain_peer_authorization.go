@@ -14,15 +14,28 @@ import (
 )
 
 func crossNodeGroupHasGrant(e crossNodeGroupEndpointEvidence) bool {
-	return (e.Grant != nil) != (e.LocalDomainGrant != nil)
+	n := 0
+	if e.Grant != nil {
+		n++
+	}
+	if e.LocalDomainGrant != nil {
+		n++
+	}
+	if e.EndpointGroupGrant != nil {
+		n++
+	}
+	return n == 1
 }
 func crossNodeGroupManifest(e crossNodeGroupEndpointEvidence) store.GroupEndpointKeyGrantManifest {
-	if e.Grant != nil && e.LocalDomainGrant == nil {
+	if e.Grant != nil && crossNodeGroupHasGrant(e) {
 		return e.Grant.Manifest
 	}
 	var m store.GroupEndpointKeyGrantManifest
-	if e.LocalDomainGrant != nil && e.Grant == nil {
+	if e.LocalDomainGrant != nil && crossNodeGroupHasGrant(e) {
 		raw, _ := json.Marshal(e.LocalDomainGrant.Manifest)
+		_ = json.Unmarshal(raw, &m)
+	} else if e.EndpointGroupGrant != nil && crossNodeGroupHasGrant(e) {
+		raw, _ := json.Marshal(e.EndpointGroupGrant.Manifest)
 		_ = json.Unmarshal(raw, &m)
 	}
 	return m
@@ -93,6 +106,22 @@ func pinCurrentSameGroupPeer(ctx context.Context, s *nodekeys.CryptoState, peerK
 	operation, attempt := "peer_key", peerKey.Sender.EndpointID+":"+peerKey.Receiver.EndpointID
 	if peerKey.LocalDomainCurrent != nil && peerKey.LocalDomainCurrent.Operation == "native_delivery" {
 		operation, attempt = "native_delivery", peerKey.LocalDomainCurrent.AttemptID
+	}
+	if peerKey.EndpointGroupCurrent != nil {
+		operation, attempt = peerKey.EndpointGroupCurrent.Operation, peerKey.EndpointGroupCurrent.AttemptID
+		if operation != "peer_key" && operation != "native_delivery" {
+			return nil, errEndpointGroupsRegistration
+		}
+	}
+	managed, err := verifyEndpointGroupsPeerTarget(ctx, s, local.EndpointID, peerKey.HubID, peerKey.GroupID, peerKey.Sender, peerKey.Receiver, peerKey.EndpointGroupCurrent, operation, attempt)
+	if err != nil {
+		return nil, err
+	}
+	if managed {
+		if peerKey.NativePairEvidence != nil || peerKey.NativePairCurrent != nil || peerKey.LocalDomainCurrent != nil || !machineSamePublicIdentity(endpointGroupsPeerPublic(local), identity.Public()) {
+			return nil, errEndpointGroupsRegistration
+		}
+		return s.PinEndpointGroupsPeer(ctx, local.EndpointID, endpointGroupsPeerSource(peerKey.Sender), endpointGroupsPeerSource(peerKey.Receiver), *peerKey.EndpointGroupCurrent, operation, attempt, time.Now().UTC())
 	}
 	domain, err := verifyLocalDomainPeerTarget(ctx, s, peerKey.HubID, peerKey.GroupID, peerKey.Sender, peerKey.Receiver, peerKey.LocalDomainCurrent, operation, attempt)
 	if err != nil {

@@ -133,9 +133,11 @@ func (c *codexOperatorIntentClient) withLocked(fn func(*codexOperatorIntentDisk)
 }
 
 func codexOperatorDigest(q localEndpointRequest, semantic bool) string {
+	q.InvocationProof = nil
 	if semantic {
 		q.RequestID = ""
 		q.IssuedAt = ""
+		q.endpointGroupsOperatorContextProof = endpointGroupsOperatorContextProof{}
 	}
 	data, _ := json.Marshal(q)
 	sum := sha256.Sum256(data)
@@ -162,6 +164,9 @@ func (c *codexOperatorIntentClient) readLocked() (codexOperatorIntentDisk, error
 		return disk, errCodexOperatorIntentPersistence
 	}
 	if p := disk.Pending; p != nil {
+		if p.Request.InvocationProof != nil {
+			return disk, errCodexOperatorIntentPersistence
+		}
 		if p.Request.validate() != nil || !localContextText(p.NodeID, 256) || p.SemanticDigest != codexOperatorDigest(p.Request, true) || p.IntentDigest != codexOperatorDigest(p.Request, false) {
 			return disk, errCodexOperatorIntentPersistence
 		}
@@ -224,6 +229,7 @@ func (c *codexOperatorIntentClient) originalVerifiedCommand(q localEndpointReque
 		old, current := p.Request, q
 		old.LocalDomainVersion, current.LocalDomainVersion = 0, 0
 		old.LocalDomain, current.LocalDomain = wire.LocalDomainSelection{}, wire.LocalDomainSelection{}
+		old.codexEndpointGroupsBinding, current.codexEndpointGroupsBinding = codexEndpointGroupsBinding{}, codexEndpointGroupsBinding{}
 		if codexOperatorDigest(old, true) != codexOperatorDigest(current, true) {
 			return errCodexOperatorIntentConflict
 		}
@@ -246,7 +252,7 @@ func (c *codexOperatorIntentClient) pendingDomainJoin(q localEndpointRequest, no
 	}
 	err := c.withLocked(func(disk *codexOperatorIntentDisk) error {
 		p := disk.Pending
-		if p == nil || p.Request.LocalDomainVersion != 1 || p.Request.Operation != "endpoint_register" {
+		if p == nil || (p.Request.LocalDomainVersion != 1 && p.Request.EndpointGroupsVersion != 1) || p.Request.Operation != "endpoint_register" {
 			return nil
 		}
 		if p.NodeID != nodeID || !sameCodexOperatorConnectionPin(pin, p.ConnectionPin) {
@@ -255,6 +261,7 @@ func (c *codexOperatorIntentClient) pendingDomainJoin(q localEndpointRequest, no
 		old, current := p.Request, q
 		old.LocalDomainVersion, current.LocalDomainVersion = 0, 0
 		old.LocalDomain, current.LocalDomain = wire.LocalDomainSelection{}, wire.LocalDomainSelection{}
+		old.codexEndpointGroupsBinding, current.codexEndpointGroupsBinding = codexEndpointGroupsBinding{}, codexEndpointGroupsBinding{}
 		if codexOperatorDigest(old, true) != codexOperatorDigest(current, true) {
 			return errCodexOperatorIntentConflict
 		}
@@ -275,6 +282,7 @@ func (c *codexOperatorIntentClient) validateConnectionPath(connection LocalNodeC
 	return nil
 }
 func (c *codexOperatorIntentClient) prepareWithConnectionPin(q localEndpointRequest, nodeID string, pin *LocalNodeConnectionPin) (localEndpointRequest, error) {
+	q.InvocationProof = nil
 	var original localEndpointRequest
 	if q.Version == 0 {
 		q.Version = localJoinProtocolVersion
@@ -345,6 +353,12 @@ func validateCodexOperatorResult(p codexOperatorPending, r *localEndpointResult,
 		return errCodexOperatorIntentResponse
 	}
 	if p.ConnectionPin != nil && r.HubID != p.ConnectionPin.HubID {
+		return errCodexOperatorIntentResponse
+	}
+	if q.EndpointGroupsVersion == 1 {
+		return validateEndpointGroupsOperatorResult(p, r, responseErr)
+	}
+	if r.EndpointGroups != nil {
 		return errCodexOperatorIntentResponse
 	}
 	if q.LocalDomainVersion != 0 && r.State == "COMPLETED" {
@@ -422,6 +436,8 @@ func (c *codexOperatorIntentClient) callForConnection(q localEndpointRequest, co
 	return c.callWithConnectionPin(connection.Pin.SocketPath, q, connection.Pin.NodeID, &connection.Pin)
 }
 func (c *codexOperatorIntentClient) callWithConnectionPin(socketPath string, q localEndpointRequest, nodeID string, pin *LocalNodeConnectionPin) (*localEndpointResult, error) {
+	invocation := q.InvocationProof
+	q.InvocationProof = nil
 	original, err := c.prepareWithConnectionPin(q, nodeID, pin)
 	if err != nil {
 		return nil, err
@@ -442,7 +458,9 @@ func (c *codexOperatorIntentClient) callWithConnectionPin(socketPath string, q l
 	if cached != nil {
 		return cached, cachedErr
 	}
-	result, callErr := c.exchange(socketPath, original)
+	request := original
+	request.InvocationProof = invocation
+	result, callErr := c.exchange(socketPath, request)
 	p := codexOperatorPending{ConnectionPin: pin, NodeID: nodeID, Request: original, IntentDigest: codexOperatorDigest(original, false)}
 	if validateCodexOperatorResult(p, result, callErr) != nil {
 		if result != nil && result.RequestID == original.RequestID && result.IntentDigest == p.IntentDigest && result.Operation == original.Operation && result.NodeID == nodeID && result.HubID != "" && (pin == nil || result.HubID == pin.HubID) && result.State == "UNKNOWN" && callErr != nil {

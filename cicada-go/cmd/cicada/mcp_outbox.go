@@ -686,8 +686,8 @@ func (m *mcpServer) currentMCPOutboxScope() (mcpOutboxScope, error) {
 	groupID := strings.TrimSpace(m.sessionGroupID)
 	storedScope := strings.TrimSpace(m.sessionScope)
 	domain := codexOutboxBinding{}
-	if m.sessionDomain.LocalDomainVersion != 0 {
-		domain = codexOutboxBinding{codexDomainBinding: m.sessionDomain, NativeBindingID: m.sessionPublic.BindingID, NativeBindingEpoch: m.sessionPublic.BindingEpoch}
+	if m.sessionDomain != (codexDomainBinding{}) {
+		domain = codexOutboxBinding{codexDomainBinding: m.sessionDomain, NativeBindingID: m.sessionPublic.BindingID, NativeBindingEpoch: m.sessionPublic.BindingEpoch, EndpointGroupAuthority: m.sessionEndpointGroupAuthority}
 	}
 	originRaw := m.baseURL
 	m.sessionMu.RUnlock()
