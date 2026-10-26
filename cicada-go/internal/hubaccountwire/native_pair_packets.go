@@ -270,6 +270,9 @@ func DecodeNativePairPacket(raw []byte) (Packet, error) {
 }
 
 func decodePacketForOperation(raw []byte, expected string) (Packet, error) {
+	if ownerEndpointGroupsOperation(expected) {
+		return DecodeOwnerEndpointGroupsPacket(raw)
+	}
 	if localDomainOperation(expected) {
 		return DecodeLocalDomainPacket(raw)
 	}
@@ -280,6 +283,15 @@ func decodePacketForOperation(raw []byte, expected string) (Packet, error) {
 }
 
 func outerLimitForRoute(r clientwire.Route) int {
+	if ownerEndpointGroupsOperation(r.Operation) {
+		if r.Operation == OperationOwnerEndpointGroupsReconcile {
+			return MaxOwnerEndpointGroupsReconcilePacketBytes
+		}
+		if r.Direction == clientwire.DirectionRequest {
+			return MaxOwnerEndpointGroupsOriginalBytes
+		}
+		return MaxOwnerEndpointGroupsPacketBytes
+	}
 	if localDomainOperation(r.Operation) {
 		if r.Operation == OperationLocalDomainReconcile {
 			return MaxLocalDomainReconcilePacketBytes

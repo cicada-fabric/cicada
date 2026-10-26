@@ -10,6 +10,9 @@ import (
 )
 
 func extensionMetadata(body any) (operation, id, owner, device string, epoch uint64, err error) {
+	if op, id, owner, device, epoch, err := ownerEndpointGroupsMetadata(body); err == nil {
+		return op, id, owner, device, epoch, nil
+	}
 	if op, id, owner, device, epoch, err := localDomainMetadata(body); err == nil {
 		return op, id, owner, device, epoch, nil
 	}
@@ -31,6 +34,9 @@ func extensionMetadata(body any) (operation, id, owner, device string, epoch uin
 	return appNodeMetadata(body)
 }
 func extensionOperation(op string) bool {
+	if ownerEndpointGroupsOperation(op) {
+		return true
+	}
 	return op == OperationOwnerEndpointRead || op == OperationActivationPrepare || op == OperationActivationComplete || op == OperationActivationStatus || op == OperationAccountReconcile || appNodeOperation(op) || nativePairOperation(op) || localDomainOperation(op)
 }
 func validateActivationBinding(b ActivationBinding) error {
@@ -40,6 +46,9 @@ func validateActivationBinding(b ActivationBinding) error {
 	return nil
 }
 func validateExtensionRequest(body any, hub HubIdentity, now time.Time) error {
+	if op, _, _, _, _, err := ownerEndpointGroupsMetadata(body); err == nil && ownerEndpointGroupsOperation(op) {
+		return ValidateOwnerEndpointGroupsRequest(body, hub, now)
+	}
 	if op, _, _, _, _, err := localDomainMetadata(body); err == nil && localDomainOperation(op) {
 		return validateLocalDomainRequest(body, hub, now)
 	}
@@ -87,6 +96,9 @@ func validateExtensionRequest(body any, hub HubIdentity, now time.Time) error {
 	return nil
 }
 func validateExtensionResponse(body any, r clientwire.Route) error {
+	if ownerEndpointGroupsOperation(r.Operation) {
+		return validateOwnerEndpointGroupsResponse(body, r)
+	}
 	if localDomainOperation(r.Operation) {
 		return validateLocalDomainResponse(body, r)
 	}

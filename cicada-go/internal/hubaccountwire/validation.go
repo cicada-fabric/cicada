@@ -315,6 +315,12 @@ func knownOperation(operation string) bool {
 }
 
 func maxBodyForOperation(operation string) int {
+	if operation == OperationOwnerEndpointGroupsReconcile {
+		return MaxOwnerEndpointGroupsReconcileBodyBytes
+	}
+	if ownerEndpointGroupsOperation(operation) {
+		return MaxOwnerEndpointGroupsBodyBytes
+	}
 	if operation == OperationLocalDomainReconcile {
 		return MaxLocalDomainReconcileBodyBytes
 	}

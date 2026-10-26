@@ -18,7 +18,7 @@ class EndpointGroupContractTests(unittest.TestCase):
     def setUp(self):
         self.group = json.loads(INVENTORY.read_text())["proposed_owner_endpoint_groups"]
 
-    def test_contract_only_baseline(self):
+    def test_shared_crypto_metadata_baseline(self):
         CONTRACT.check_owner_endpoint_groups(self.group, PROSE)
 
     def test_reject_unsafe_mutations(self):
@@ -95,7 +95,7 @@ class EndpointGroupContractTests(unittest.TestCase):
 
     def test_implemented_claim_in_prose_is_not_a_pass(self):
         with self.assertRaises(AssertionError):
-            CONTRACT.check_owner_endpoint_groups(self.group, PROSE.replace("CONTRACT DRAFT / CONTRACT ONLY", "IMPLEMENTED"))
+            CONTRACT.check_owner_endpoint_groups(self.group, PROSE.replace("SHARED DTO + CRYPTO ONLY", "IMPLEMENTED"))
 
     def test_reject_missing_actual_guard_boundary(self):
         for marker in ("Every actual Actor Guard must enforce",

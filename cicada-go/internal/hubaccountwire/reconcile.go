@@ -77,6 +77,14 @@ func ValidateAccountReconcileTarget(result AccountReconcileResult, original []by
 }
 
 func validateExtensionDevice(body any, device e2ee.PublicIdentity) error {
+	if op, _, _, _, _, err := ownerEndpointGroupsMetadata(body); err == nil && ownerEndpointGroupsOperation(op) {
+		_, _, _, _, raw, _ := ownerEndpointGroupsParts(body)
+		var proof e2ee.OwnerEndpointGroupsRequestProof
+		if decodeCanonical(raw, e2ee.MaxEndpointGroupProofBytes, &proof) != nil || !reflect.DeepEqual(proof.Claims.Scope.DevicePublic, device) {
+			return ErrInvalid
+		}
+		return nil
+	}
 	if op, _, _, _, _, err := localDomainMetadata(body); err == nil && localDomainOperation(op) {
 		if q, ok := dereference(body).(LocalDomainReconcileRequest); ok {
 			p, err := DecodeLocalDomainPacket(q.OriginalPacket)

@@ -745,3 +745,45 @@ they are not claimed by these producer gates. Fresh-install automatic Owner
 pin establishment (FB-03), Windows, Android, public HTTPS, cleanup/install and
 deployment are outside this patch's executed acceptance. Existing scoped Native
 and login-expiry successes retain their own historical sources.
+# Owner-managed Groups: shared DTO and crypto source phase, 2026-10-26
+
+Root approved the contract at `e3544d96118dfaa284f39c6d0f6fa787b228a4e5`.
+This producer checkpoint implements only shared Go DTOs, strict request/review/
+result validation, separate Owner request/persistent policy/Node-key proofs,
+private native deny and registration commitments, and the existing PQ carrier
+with exact profile-specific recovery limits. It does not install HTTP routes,
+change Store schema/state, supply a Node/native-context/Guard/MCP/App consumer or
+enable availability. Account authentication remains independent of Owner proof.
+
+The evidence directory is
+`/home/zyf/Cicada/.local/evidence/owner-groups-shared-20261026T114110Z/`.
+Runs used Go 1.27.3, offline modules, synthetic identities and a dirty source
+based on `e3544d9`; `source-before.json` and `source-after.json` fingerprint every
+file in the three tested packages, module files and contract/check inputs.
+The fingerprints match across the runs and are checked against the final
+checkpoint. Logs and full commands are retained in `validation.json`.
+
+| Gate | Result | Scope |
+| --- | --- | --- |
+| Focused normal | 36 pass / 0 fail / 0 skip; 21 top-level tests | New Owner/Node crypto, all three action reviews, actual five-request PQ roundtrips, original status/reconcile/nested receipt, uncertain outcome, canonical/authority/source negatives; selected existing Link/wire/activation/local-domain compatibility |
+| Focused race | 15 pass / 0 fail / 0 skip; 12 top-level tests | New shared DTO/crypto/PQ codec tests only |
+| Endpoint metadata + oracle | PASS; 5 tests / 60 rejected synthetic mutations | Compiled shared field order/phase is also checked in the Go suite; availability remains false |
+| Activation / App-Node / Pair metadata | PASS | Existing scope/catalog compatibility only |
+
+Initial failed scoped runs remain described in `initial-attempts.json`: the
+generic large-frame opener lacked a trusted expected route, and one carrier
+fixture incorrectly assumed that the maximum plaintext must fit the packet cap
+after nested base64. Both were corrected before these final gates. Those early
+dirty inputs lacked full source fingerprints and are not assigned the final
+source or reported as passes.
+
+Historical zero-time signature verification authenticates retained evidence
+only. Actual Store/Node authority, atomic CAS/nonce/receipt persistence, Owner
+control transitions, per-source five-right Actor Guards, independent renewal,
+fresh Hook context, current peer evidence and self-groups MCP remain unimplemented
+by this phase. Their tests, disposable Docker interop, maximum legal product DTO
+carriers, App integration, actual Runtime and M1–M8 remain **NOT_RUN**. The generic
+carrier test is not a maximum legal product DTO measurement. Windows/physical
+device/public HTTPS retain separate acceptance. No real state, credentials or
+resident deployment was used.
+

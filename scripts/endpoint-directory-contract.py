@@ -14,10 +14,10 @@ def fields(source, name):
 
 
 def check_owner_endpoint_groups(g, prose):
-    """Contract-only oracle: reject widening or an implied implementation pass."""
+    """Shared-profile oracle: reject widening or an implied service/runtime pass."""
     assert g["contract_revision"] == "owner-endpoint-groups-v1"
     assert g["status"] == "CONTRACT_DRAFT"
-    assert g["implementation_phase"] == "CONTRACT_ONLY"
+    assert g["implementation_phase"] == "SHARED_DTO_CRYPTO"
     for key in ("default_available", "new_identity_tables",
                 "legacy_finite_key_grant_allows_empty_expiry",
                 "app_session_required_for_active_data_plane",
@@ -175,7 +175,7 @@ def check_owner_endpoint_groups(g, prose):
     for value in [g["contract_revision"], g["capabilities_path"], g["policy_purpose"],
                   g["node_key_purpose"], *g["http_operations"], *g["owner_request_purposes"].values()]:
         assert value in prose, value
-    for marker in ("CONTRACT DRAFT / CONTRACT ONLY", "permanent manual deny",
+    for marker in ("SHARED DTO + CRYPTO ONLY", "permanent manual deny",
                    "until_revoked", "Node/MCP restart", "NOT_RUN",
                    "App closure", "legacy", "past the actual lease-renewal"):
         assert marker in prose, marker
@@ -236,7 +236,7 @@ def check():
     assert not set(manifest["proposed_owner_endpoint_groups"]["http_operations"]) & {
         row["id"] for row in catalog["operations"]}
     assert "parseCanonicalUTC(grant.ExpiresAt)" in (ROOT / "cicada-go/internal/e2ee/owner_link_key_grant.go").read_text()
-    print("owner-endpoint-groups-v1: CONTRACT ONLY PASS (availability false; product gates NOT_RUN)")
+    print("owner-endpoint-groups-v1: SHARED_DTO_CRYPTO metadata PASS (availability false; product gates NOT_RUN)")
     print("native-endpoint-directory-v1: PASS (wire 1, catalog 55, old activation scope unchanged)")
 
 

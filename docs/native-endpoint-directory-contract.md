@@ -787,10 +787,13 @@ explicitly new managed scopes; this is not evidence of migration of older scopes
 
 ## Proposed Owner-managed Endpoint Groups v1
 
-**CONTRACT DRAFT / CONTRACT ONLY, 2026-10-26.** The proposed profile is
+**SOURCE PHASE: SHARED DTO + CRYPTO ONLY, 2026-10-26.** Root approved the contract
+at `e3544d9`. The shared Go DTOs, Owner request/policy and Node-key signing
+primitives, strict request/review/result checks and existing PQ packet codecs
+are implemented in this source phase. The profile is
 `owner-endpoint-groups-v1`; its public availability is **false**. No production
-handler, Node consumer, App action, schema migration or Runtime gate is supplied
-by this checkpoint. The machine inventory is the separate
+handler, Store state machine, Node consumer, App action, schema migration or
+Runtime gate is supplied by this checkpoint. The machine inventory is the separate
 `proposed_owner_endpoint_groups` object in `owner-endpoint-contract.json`.
 It does not revise `native-endpoint-directory-v1`, the existing directory cards,
 wire 1, the 55-operation Client catalog, Pair or literal `cicada join` semantics.
@@ -908,8 +911,9 @@ through backup/restore; no cache eviction can turn an old removal into absence.
 
 ### Capability, operations and closed DTOs
 
-The following identifiers are proposed for Root review, not an enabled API.
-Only exact listed paths/methods may later be composed into Hub Nodes.
+The following identifiers are Root-reviewed; they are not an enabled API.
+Only exact listed paths/methods may later be composed into Hub Nodes. Shared Go
+constructors/codecs do not install HTTP handlers or authorize callers.
 
 | Carrier | Operation | Path / purpose |
 | --- | --- | --- |
@@ -1386,11 +1390,11 @@ and legacy/global-mutation bypass negatives, exact old packet
 recovery after expiry/revoke, maximum crypto carriers, restore and old-profile
 negatives. Deterministic and disposable real TCP/Docker gates precede an actual
 App/Hub/Node/four-Thread Runtime scene. Codex TUI cross-thread scheduling is not
-Cicada communication. Every gate is **NOT_RUN** at this contract checkpoint;
+Cicada communication. Every product gate is **NOT_RUN** at this shared-code checkpoint;
 Windows DPAPI/ACL/physical UI, physical devices and public HTTPS remain separately
 attributed. Contract-oracle mutation checks prove only document/inventory safety.
 
-Contract checkpoint validation, 2026-10-26: the Endpoint inventory/prose checker,
+Historical contract-only validation at `e3544d9`, 2026-10-26: the Endpoint inventory/prose checker,
 five pure oracle tests (60 rejected synthetic mutations), and the existing
 Owner-activation/App-Node/Pair metadata checks pass. Three targeted compiled
 legacy wire checks pass with no skips; they check old activation/capability and
@@ -1402,4 +1406,45 @@ checks retain their original source under
 `~/Cicada/.local/evidence/owner-groups-contract-20261026T094548Z/`;
 the clarification changes no production or legacy-wire input.
 No new-profile signature/packet, Store, Docker, App, Node or Runtime execution
-is claimed. Availability stays false pending Root review and implementation.
+is claimed by that historical receipt. Availability stays false pending complete
+implementation and same-source security gates.
+
+### Shared Go source phase
+
+`hubaccountwire` exports `OwnerEndpointGroupsReadRequest`, `PrepareRequest`,
+`ApplyRequest`, `StatusRequest` and `ReconcileRequest` (each with the
+`OwnerEndpointGroups` prefix), their typed bodies, `OwnerEndpointGroupsReview`,
+`OwnerEndpointGroupsCAS`, `OwnerEndpointGroupsResult` and the Thread/relation/
+Group/scope-action cards. `e2ee.EndpointGroupPolicy` and its `Core()` projection
+keep request proofs, persistent Owner policy and delegated Node-key proof in
+separate purposes and domains. No legacy verifier accepts their new optional
+expiry. New capabilities constructed by this source have both availability
+flags false.
+
+The App uses `NewOwnerEndpointGroupsRead/Prepare` with its existing
+`AppNodeSession`, `OwnerAppNodeScope`, independent Owner key and trusted time.
+`ValidateOwnerEndpointGroupsReview` compares the authenticated review against
+the retained typed prepare and exact prepare ciphertext. `NewOwnerEndpointGroupsApply`
+takes that same tuple and signs the exact ADD policy only after comparison;
+CREATE/REMOVE carry no policy proof. All use existing `SealClientRequest`.
+The existing one-packet PQ carrier/wire version stays unchanged. Only this
+profile's exact reconcile operation admits its 640/896 KiB bounds; unknown
+operations and old routes retain their old bounds.
+
+`NewOwnerEndpointGroupsStatus` derives the operation ID and digest from the
+retained encrypted apply request, before any response exists.
+`NewOwnerEndpointGroupsReconcile` embeds a bounded exact original and refuses
+recursive/different-device originals. Its fresh outer request uses the original
+device's current authenticated session/Owner scope; later login does not extend
+the old review or reauthorize a mutation. `OpenOwnerEndpointGroupsResponse`
+authenticates the Hub and original route; the App then calls
+`VerifyOwnerEndpointGroupsResult`, and for an apply receipt also
+`VerifyOwnerEndpointGroupsOperation` with its locally approved review. Original
+receipts and freshly guarded snapshots stay distinct. An absent operation or
+OUTCOME_UNCERTAIN never settles pending intent; only a verified terminal original
+receipt/no-effect fence does.
+
+This source phase does not provide Store transactions/migrations, durable
+anti-replay/receipt storage, a current-authority service, private native Hook
+profile, Node renewal/current-evidence verification, self-groups MCP or an App
+consumer. Shared crypto and DTO tests cannot establish those behaviors or M1–M8.
