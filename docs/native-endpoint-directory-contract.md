@@ -784,3 +784,622 @@ fences: opening new pinned state with such a binary is an unsupported downgrade.
 No automatic migration, grant, Owner/Node key replacement or public wire change
 is part of this local consumer schema extension. New acceptance Threads use
 explicitly new managed scopes; this is not evidence of migration of older scopes.
+
+## Proposed Owner-managed Endpoint Groups v1
+
+**CONTRACT DRAFT / CONTRACT ONLY, 2026-10-26.** The proposed profile is
+`owner-endpoint-groups-v1`; its public availability is **false**. No production
+handler, Node consumer, App action, schema migration or Runtime gate is supplied
+by this checkpoint. The machine inventory is the separate
+`proposed_owner_endpoint_groups` object in `owner-endpoint-contract.json`.
+It does not revise `native-endpoint-directory-v1`, the existing directory cards,
+wire 1, the 55-operation Client catalog, Pair or literal `cicada join` semantics.
+
+### Scope and objects
+
+The Owner may create one named Group in the selected, already authorized
+Network, or add/remove one **already explicitly registered** native Endpoint in
+one Group. The first profile requires the same Owner, Hub, Network, approved
+Node and actual local OS-user scope. An existing registered Thread retains its
+SID, Endpoint, principal, workspace, original private key and native history.
+No new identity is synthesized to make an admission succeed. Group creation
+uses `group_scoped` and creates no Agent membership or communication grant.
+The App can create G2 from its candidate list and subsequently review adding D;
+the user never needs to transfer JSON or an opaque ID. Reserved Pair Groups are
+ineligible. Parent changes, deletion, roles, bulk actions, foreign Owners,
+cross-Network admission, Task, broadcast, Journal, Discussion and history sharing
+are outside this profile.
+
+The only Agent rights are the exact sorted set `directory.read,message.ask,
+message.receive,message.reply,message.send`. Every actual Actor Guard must enforce
+this source-specific five-right ceiling and current Owner-control, including
+legacy paths and global mutations; a closed Hub Nodes route alone is insufficient.
+Broader task/space or other grants on a shared Principal never enlarge this
+managed Endpoint's authority. Unknown legacy sources reject, with no prefix
+allowlist or fallback. Registration, a candidate card,
+public capability and selecting a Group are not grants. A single native Thread
+can retain plaintext memory from several Groups; `group_scoped` does not claim
+Runtime memory isolation. Existing dedicated-context history Guards still deny
+incompatible admission. The initial bound is 32 active Group relations per
+Endpoint; reaching it refuses a new add without dropping history or receipts.
+
+The new profile distinguishes three objects:
+
+* **Registration/writer anchor:** the original registered native tuple and key
+  custody, independent of any Group permission. Registration-only liveness has
+  zero discovery, message, execution or membership rights.
+* **Endpoint/Group relation:** `NONE -> PENDING_KEY -> ACTIVE -> REMOVED|EXPIRED`,
+  with a monotonic aggregate `relation_revision`, a separate monotonic
+  Owner-decision revision, and independent source contributions. Both
+  DEFAULT_POLICY and OWNER_EXPLICIT may contribute to the same relation.
+  Each retains its own authority ID/epoch, contribution revision, state,
+  deadline and key readiness; they are not merged into a synthetic grant.
+* **Manual delegation:** `PENDING_KEY -> ACTIVE -> REVOKED|EXPIRED`, with an
+  immutable policy ID/epoch, exact scope and Owner proof. A new explicit add
+  after removal creates a higher policy epoch; it never revives a terminal one.
+
+Every stable native-identity/Group pair also has a durable Owner-control head:
+`mode,revision,deny_reason,policy_id,policy_epoch`. Mode is DEFAULT or OWNER;
+deny reason is NONE, REMOVED or EXPIRED, and revision equals decision_revision.
+Policy reference denotes the last activated manual policy, possibly terminal.
+An untouched relation starts DEFAULT/revision 0/NONE. A successful manual
+key_complete atomically switches it to OWNER and the new policy; REMOVE switches
+it to OWNER/REMOVED. OWNER mode is permanent: no expiry, default-policy refresh,
+new Endpoint/token/epoch, literal Join or new operation can switch it back.
+There is no return-to-default action in v1.
+
+OwnerControlDigest is SHA-256 of
+`cicada/owner/endpoint-groups/owner-control/v1\0` and typed JSON
+`native_identity_digest,group_id,head`, where head has the exact five fields above.
+The private native key is not disclosed; the digest commits that stable key and
+Group together. It is carried in review CAS, the policy's expected head,
+projected Node grant and fresh sender/receiver current evidence.
+
+In DEFAULT mode with no deny, only independently current DEFAULT_POLICY authority
+is effective. A pending manual contribution grants nothing and does not lower an
+already ACTIVE, never-denied default relation. Once manual completion commits
+OWNER mode, only the exact activated manual policy can supply rights; the stored
+default contribution becomes ineffective even if its own policy is still valid.
+Manual expiry keeps OWNER control and produces EXPIRED/deny, never fallback to a
+permanent default grant. A prior REMOVED/EXPIRED deny remains in force throughout
+new manual PENDING_KEY. Only a newly Owner-authorized, exactly projected Complete
+at the expected head can clear it. Apply alone never clears deny or takes over.
+
+Effective state is ACTIVE only with the source permitted by that head and its
+current key/five rights. It is REMOVED or EXPIRED while the corresponding deny
+applies, even if a replacement manual contribution is pending; otherwise an
+unauthorized pending edge is PENDING_KEY, revoked edges are REMOVED and absence
+is NONE. Effective expiry comes from that one controlling source, not the maximum
+of source deadlines. Expiry is checked against trusted time at every Guard,
+independent of lazy materialization; recording an Owner-approved expiry advances
+the head/listing revision and never grants permission. Cards/receipts retain both
+contribution provenance and the head/effective state. Each contribution reports
+effective and unavailable_reason, so a stored ACTIVE default cannot masquerade
+as effective after Owner takeover.
+
+Every peer proof chooses the one controlling source explicitly. Neither an old
+operation nor a new one may bypass OWNER mode with default proof. Different
+Endpoints in the same Group may still use different independently verified
+default/manual sources. A contribution update advances aggregate relation CAS
+without invalidating an unchanged controlling contribution's key evidence.
+Key-grant relation digests bind contribution_revision, decision_revision and
+Owner-control digest rather than an unrelated source's aggregate update.
+
+An Owner removal persists a deny for the exact stable native identity/Group.
+The private native-identity digest is SHA-256 of UTF-8
+`cicada/owner/endpoint-groups/native-identity/v1\0` and canonical typed JSON
+`hub_id,owner_id,node_id,local_user_scope,harness,native_session_id,workspace`.
+It excludes Endpoint/principal IDs, tokens, binding/policy epochs and keys;
+the deny key is `(native_identity_digest,group_id)`. Only server/Node derive it
+from actual original coordinates. It is not a caller input or an Owner/public
+card field and exposes no SID. The separate registration_digest below includes
+Endpoint identity and cannot serve as the anti-replacement deny key.
+The deny overrides default admission across
+warm/cold renewal, new Attempts, token changes, Node/MCP restart and exact old
+receipt recovery. Changing Endpoint IDs or policy epochs cannot erase that
+identity's deny. Only a new Owner-signed add for that exact relation, using the
+current decision revision, followed by exact successful key_complete can clear
+it. The stable key also stores permanent OWNER control after a manual grant
+expires, regardless of an old default source. Ordinary Thread registration/Join is
+unchanged and must not silently clear it. A denied default-Group admission
+returns OWNER_READD_REQUIRED; it must not report a successful Group Join merely
+because the native registration still exists. Deny history is durable, including
+through backup/restore; no cache eviction can turn an old removal into absence.
+
+### Capability, operations and closed DTOs
+
+The following identifiers are proposed for Root review, not an enabled API.
+Only exact listed paths/methods may later be composed into Hub Nodes.
+
+| Carrier | Operation | Path / purpose |
+| --- | --- | --- |
+| GET | capability, no actor authority | `/v2/owner/endpoint-groups/capabilities` |
+| POST | `owner.endpoint_groups.read` | `/v2/owner/endpoint-groups/read`; `owner-endpoint-groups-read:v1` |
+| POST | `owner.endpoint_groups.prepare` | `/v2/owner/endpoint-groups/prepare`; `owner-endpoint-groups-prepare:v1` |
+| POST | `owner.endpoint_groups.apply` | `/v2/owner/endpoint-groups/apply`; `owner-endpoint-groups-apply:v1` |
+| POST | `owner.endpoint_groups.status` | `/v2/owner/endpoint-groups/status`; `owner-endpoint-groups-status:v1` |
+| POST | `owner.endpoint_groups.reconcile` | `/v2/owner/endpoint-groups/reconcile`; `owner-endpoint-groups-reconcile:v1` |
+
+All five requests have the closed envelope
+`format,context,session_token,owner_proof,body`; `format` is
+`cicada.owner-endpoint-groups.v1`. `context` retains the existing typed App
+account/device/Hub/origin/epoch/request coordinates. A fresh independent Owner
+request proof covers its exact purpose, context and canonical body digest;
+account login/device authentication alone grants nothing. Request claims are
+`version,purpose,scope,request_id,nonce,issued_at,expires_at,body_digest`, using
+the existing `OwnerAppNodeScope`. Canonical request signatures use UTF-8
+`cicada/owner/endpoint-groups/request/v1\0` followed by typed claims JSON.
+The maximum request/review lifetime is 300 seconds with at most 30 seconds future
+skew, bounded further by the original account/device/Owner authority. A new
+login or Node report never extends an original review.
+
+BodyDigest and PacketDigest are lowercase SHA-256 of, respectively,
+`cicada/owner/endpoint-groups/body/v1\0` plus canonical typed body JSON and
+`cicada/owner/endpoint-groups/packet/v1\0` plus the exact original encrypted
+Owner packet bytes. Canonical typed JSON uses declared field order, ordinary
+Go JSON escaping and no whitespace. PolicyDigest is SHA-256 of the policy
+signature input described below, without the signature. Node RPC originals
+retain their existing Node carrier packet-digest algorithm and replay ledger.
+
+The machine inventory lists every closed field set in canonical DTO order;
+unknown fields, duplicate JSON keys, invalid UTF-8, noncanonical UTC times,
+fractional/overflowing versions and unknown enum values reject. Target IDs are
+selections from authorized cards, not asserted caller identity. Neither Owner
+requests nor cards accept a caller-supplied SID, token, credential path, key
+substitution or free-form grants.
+
+* `read.body = {view,node_id,network_id,endpoint_id,cursor,limit}`. `view` is
+  THREADS, CANDIDATE_GROUPS or RELATIONS. THREADS permits an empty Endpoint
+  selector; the other views require the exact registered Endpoint. Omitted cursor is
+  empty and omitted limit is 64; range is 1..64. All results are private Owner
+  snapshots, paginated by opaque scope-bound cursor, at most 128 KiB canonical
+  plaintext per page. Presence does not establish live Runtime consumption.
+* `prepare.body` is a strict action union. CREATE_GROUP has
+  `action,node_id,network_id,name`; ADD_ENDPOINT has
+  `action,node_id,network_id,group_id,endpoint_id,duration`; REMOVE_ENDPOINT has
+  `action,node_id,network_id,group_id,endpoint_id`. Names are nonempty, trimmed,
+  valid UTF-8, at most 128 bytes and contain no control characters. The selected
+  Node/Network must already belong to the authenticated Owner. No agent is
+  auto-enrolled by CREATE_GROUP.
+* `apply.body = {review_id,review_digest,prepare_packet_digest,policy_proof}`.
+  Policy proof is mandatory only for ADD_ENDPOINT and absent for the other
+  actions. The fresh apply request proof authorizes the exact reviewed effect.
+* `status.body = {operation_id,original_packet_digest}` queries the original
+  device's apply operation and a separate current-state snapshot, without redispatch.
+  Operation ID is the original apply `context.request_id`, known and persisted
+  by the App before sending, even when every response is lost. Its digest is
+  PacketDigest of that exact original encrypted **apply request**, never the
+  prepare, status, response or a newly encrypted equivalent. No new operation-ID
+  allocation or returned-ID dependency is introduced.
+* `reconcile.body = {original_packet}` embeds the exact encrypted original
+  read/prepare/apply/status request, never another reconcile. The same currently
+  authenticated original device and retained cryptographic scope are required.
+  A different enrolled App can read authorized current Group state, but cannot
+  borrow another device's encrypted receipts or private pending state.
+
+Capability format is `cicada.owner-endpoint-groups-capabilities.v1`. Its closed
+fields are `format,contract_revision,available,hub_id,hub_fingerprint,
+max_page_rows,max_page_canonical_bytes,max_active_groups_per_endpoint,
+duration_values,native_self_groups`. Hub fingerprint must independently match the selected Hub.
+Public availability remains false until the complete bounded implementation
+and required same-source gates pass; a true flag never supplies Owner authority.
+native_self_groups is also false in this contract-only checkpoint.
+
+The new private Thread card has
+`endpoint_id,principal_id,node_id,network_id,name,workspace,harness,registration_digest,
+registration_revision,presence,relations,relation_states,relations_revision,
+relations_complete,relations_next_cursor`. A relation card has
+`group_id,group_name,network_id,state,relation_revision,decision_revision,manual_deny,owner_control,
+contributions,selected_source,expires_at,key_state,allowed_actions,unavailable_reason`.
+A contribution has `source,authority_id,authority_epoch,contribution_revision,
+state,expires_at,key_state,effective,unavailable_reason`; selected_source is the exact source/authority/epoch
+reference (`source,authority_id,authority_epoch,contribution_revision`) in a
+current observation, not authority inferred from the list. It is null when no
+current proof source was selected; a private read does not create a peer proof.
+A candidate Group card has `group_id,name,network_id,group_version,
+context_policy,allowed_actions,unavailable_reason`. Key states are
+`NOT_READY,PENDING,CURRENT,STALE,REVOKED,EXPIRED`. Allowed actions are bounded
+server-derived CREATE_GROUP/ADD_ENDPOINT/REMOVE_ENDPOINT choices; disabled or
+absent choices cannot be inferred from display names. The old Owner directory
+card remains exactly `endpoint_id,name,workspace,harness,presence`.
+
+Every successful read returns independent scope_actions with
+`node_id,network_id,allowed_actions,unavailable_reason`. CREATE_GROUP is decided
+by the current authenticated Owner's exact Node/Network management authority,
+even when `groups=[]`; it is never inferred from public capability or a fake
+Group card. Prepare/apply still repeat the current Owner proof and Guards.
+
+Thread.relations is the first **at most eight** current relation projections
+for that exact Endpoint/current Network, ordered by Group ID. It includes every
+stored relation state (PENDING_KEY, ACTIVE, REMOVED, EXPIRED), not unbounded
+operation history; NONE means no stored relation. relation_states explicitly
+records this filter. The 32-active limit is not a terminal-history limit.
+relations_complete is true only when the whole matching relation set was
+observed; otherwise relations_next_cursor is nonempty. Absence on an incomplete
+page proves nothing. App fetches RELATIONS pages with that exact cursor/Endpoint/
+Network; results use `relations` plus relation_page fields
+`endpoint_id,network_id,states,relations_revision,complete,next_cursor`.
+Each page is at most 64 relations and 128 KiB; THREADS pages also stop at the
+same aggregate byte bound rather than promising 64 fully populated cards.
+
+relations_revision is an Endpoint/Network listing revision advanced by relation
+authority/source/state changes, never heartbeat. Cursors bind the authenticated
+Owner, Node, Endpoint, Network, state filter and this revision. A changed set
+returns CURSOR_STALE; App restarts a complete read while retaining its known
+state and pending operations. Only a complete same-revision traversal may show
+that a relation is absent. Each relation's contributions has at most two current
+source slots, one DEFAULT_POLICY and one OWNER_EXPLICIT, including a slot's
+latest terminal state. Older policy epochs and operation history remain durable
+and are recovered by their exact operations, not embedded in these cards.
+
+The new result format is `cicada.owner-endpoint-groups-result.v1`, with ordered
+fields `format,contract_revision,request_id,request_packet_digest,hub_id,owner_id,
+device_id,node_id,state,error_code,captured_at,freshness,threads,groups,relations,
+scope_actions,relation_page,next_cursor,review,operation,current_relation,
+current_group,receipt_packet`. Only action-applicable payloads are present;
+snapshots say `freshness=SNAPSHOT_ONLY`. A reconcile response contains the exact
+original encrypted receipt, without rewriting it to current authority.
+Target/projection, policy/proof, current-relation and Node request field sets
+are closed and ordered by the inventory's corresponding `*_fields` and
+`node_request_bodies` entries. The ADD projection's `policy_core` is the entire
+typed policy except `review_id,review_digest`; its initial grants are empty
+and its projected rights are the exact five-item set. ADD projection explicitly
+separates contribution_state=PENDING_KEY from effective_relation_state, which
+can remain ACTIVE through an existing default contribution but remains blocked
+while an existing Owner deny applies. expected_owner_control is the unchanged
+apply-time head; completion_owner_control is the precise future OWNER/NONE head
+with revision +1 and the new policy reference, committed only at Complete.
+REMOVE projects
+`manual_deny=true,withdraw_scope=EXACT_ENDPOINT_GROUP`; CREATE projects
+`owner_management_only=true` and no Agent grant.
+
+The original registration commitment is SHA-256 of UTF-8
+`cicada/owner/endpoint-groups/registration/v1\0` followed by canonical typed JSON
+`hub_id,owner_id,node_id,harness,native_session_id,workspace,endpoint_id,
+principal_id`. The Node recomputes it from its exact original record and Hub
+registration. SID is not exposed in the Owner card. Registration revision tracks
+authority coordinates, not heartbeat timestamps or display-name edits.
+
+### Review, CAS and persistent manual delegation
+
+Preview fields are `review_id,request_id,request_packet_digest,action,target,
+expected,projection,policy,key_manifest,observed_at,expires_at,review_digest`.
+Unused action fields are absent. CREATE_GROUP target contains the selected
+Owner/Node/Network, server-reserved Group ID, name and `group_scoped`; add/remove
+target additionally fixes the exact Endpoint/principal/registration and Group.
+The projection records the complete resulting action, rights, source, expiry
+and unsigned policy core, without granting access. It never reserves a Pair.
+
+ReviewDigest is SHA-256 of UTF-8 `cicada/owner/endpoint-groups/review/v1\0` and
+canonical typed JSON of `review_id,request_id,request_packet_digest,action,
+target,expected,projection,key_manifest,observed_at,expires_at`. `policy` and
+`review_digest` are excluded to avoid self-reference: the Owner must compare
+every unsigned policy core field to the projection, then add this review ID and
+digest before signing. Key-manifest claims and candidate self-attestation are
+independently verified before approval; a Hub label is insufficient.
+
+Expected coordinates are `owner_key_version,node_owner_binding_id,
+node_owner_binding_version,node_key_epoch,network_version,group_version,
+registration_digest,registration_revision,binding_id,binding_epoch,
+candidate_version,candidate_proof_digest,candidate_fingerprint,
+membership_revision,endpoint_join_revision,relation_revision,decision_revision,
+owner_control_digest,policy_epoch`.
+CREATE_GROUP uses only its applicable Owner/Node/Network coordinates and absence
+of the reserved ID. Add/remove use the complete applicable current snapshot;
+an absent prior relation has explicit zero revisions. Heartbeat row version,
+lease expiry and observation timestamps are not authority CAS coordinates.
+Taking the SQLite writer precedes trusted-time sampling and current checks.
+The same transaction commits precise effects, nonce/sequence consumption and
+the exact encrypted response; concurrent changes return CAS_CONFLICT rather
+than editing or silently restoring a snapshot.
+
+The target must be the registered Agent principal, never the human Owner.
+Reuse an existing principal/Group Membership only when it already authorizes
+the five rights; the Endpoint's exact manual relation still limits its effective
+rights to that set. Do not bump a shared Membership or widen/revoke its grants
+to operate on D. If creating or changing that row would alter another Endpoint's
+authority/key snapshot, return SHARED_MEMBERSHIP_CONFLICT without effects; general
+principal-role repair is outside v1. If reuse cannot preserve other Endpoints
+while enforcing this Endpoint's five-right ceiling at every actual Guard,
+return SHARED_MEMBERSHIP_CONFLICT or UNSUPPORTED_PROFILE without effects.
+An absent, unshared Membership may be created
+zero-right and activated atomically with D's exact relation/grant. All peer
+Guards continue checking both principal membership and the active Endpoint edge.
+
+ADD_ENDPOINT uses a new exact persistent policy with purpose
+`endpoint-group-policy:v1`, signed through the existing ML-DSA primitive over
+`cicada/owner/endpoint-groups/policy/v1\0` and canonical typed policy JSON.
+Its complete field order is defined by `policy_fields` in the inventory. It
+includes the actual Owner identity/version, complete approved Node binding and
+Control key, actual local-user scope, exact Hub/origin/Network/Group/Endpoint/
+principal, original registration commitment, binding ID/epoch, original Endpoint
+public key/fingerprint/candidate evidence, expected_owner_control_digest and
+expected_decision_revision from this exact Owner review, the five rights, review
+binding and server nonce. It delegates no registration of other Threads and no other Group.
+
+Duration is explicitly `until_revoked` (App default), `1d`, `7d` or `30d`.
+For until_revoked the policy's `expires_at` is empty; otherwise it is exactly
+the original review observation time plus 86400, 604800 or 2592000 seconds.
+Apply, traffic, login, heartbeat, retry and restart never extend it. The short
+request/review expiry does not expire this business policy. Only this typed
+persistent delegated verifier accepts empty expiry: existing finite
+`OwnerGroupEndpointKeyGrant`, Link and Pair verifiers remain unchanged.
+
+Apply durably commits the new OWNER_EXPLICIT contribution as PENDING_KEY with
+zero rights of its own. It never replaces an ACTIVE DEFAULT_POLICY contribution,
+zeros that effective edge or resets its Membership/grants/key snapshot. Effective
+state may remain ACTIVE through the default source while the manual source is
+pending if the head is DEFAULT with no deny. Existing REMOVED/EXPIRED Owner
+deny stays effective during pending, with the head/revision unchanged. Apply
+only adds the pending contribution and advances aggregate relation/listing CAS;
+it never clears deny. A second fresh add while the manual source
+is ACTIVE or PENDING_KEY returns MANUAL_SOURCE_ALREADY_ACTIVE or RELATION_PENDING
+without allocating another slot; exact retries recover only their original.
+A missing/changed original private key, stale candidate or failed Node proof
+cannot be replaced. App closure is allowed after durable submission, but UI
+must distinguish the pending manual contribution from any existing active source.
+
+Node operations use the existing signed/encrypted `/v2/node/control/rpc` carrier:
+`node.endpoint_groups.describe,key_prepare,key_complete,renew,reconcile`.
+Describe is restricted to the authenticated Node's original registered
+Endpoint/user; it is not an Owner inventory. Key prepare freezes the old CAS
+snapshot and the complete projected ACTIVE source relation and Group manifest,
+including post-completion contribution, Membership and Endpoint-join revisions.
+Its closed result is `challenge_id,policy_id,policy_epoch,expected,
+projected_owner_control,projected_relation,projected_key_manifest,observed_at,
+expires_at,challenge_digest`. The old Owner-control head must still match the
+Owner policy's expected digest/revision. The projected head is exactly the
+reviewed completion_owner_control: OWNER/NONE, revision +1, this policy ID/epoch.
+Node signs that same projected head and ACTIVE relation/manifest together.
+ChallengeDigest is SHA-256 of
+`cicada/owner/endpoint-groups/key-challenge/v1\0` plus those canonical fields
+except challenge_digest. Existing active default/shared rows are unchanged in
+the projection; only an absent unshared zero-right Membership may advance.
+The Node signs projected ACTIVE state, never pre-state with ignored revisions.
+Stale old CAS or changed projected bytes/digests reject completion. A fresh
+prepare under the same still-valid exact policy may observe unrelated source
+updates only while the original Owner-control head is unchanged. It cannot
+rebase consent over a later removal/expiry/Owner decision, or change key/binding;
+those require a new Owner review.
+Before signing, the Node compares the independently pinned original Owner,
+policy/Node chain, registration commitment, binding and candidate with its
+actual retained record/key. Key complete signs purpose
+`endpoint-group-key-grant:v1` using `cicada/node/endpoint-groups/key-grant/v1\0`.
+The signed claims bind policy digest, projected relation/manifest digest,
+candidate binding digest, projected Owner-control digest, challenge ID/digest
+and validity. Relation
+digest uses `cicada/owner/endpoint-groups/relation/v1\0` and the complete typed
+current relation, including registration, decision, source, membership/join
+revisions and key/binding coordinates. Completion rechecks all current authority
+and commits only that same projected head/relation/manifest. In one transaction
+it switches control to OWNER, clears the old deny, installs the exact policy
+reference and manual ACTIVE evidence/rights, and makes default ineffective
+without deleting its provenance. Recalculating
+different revisions and ignoring a mismatch is forbidden.
+Pure describe never signs, creates membership or advances an authorization epoch.
+
+The enrolled native context profile for this initial extension is
+**OWNER_ENDPOINT_GROUPS_V1**, limited to already registered Codex/LocalDomain
+origins. Other registration origins are explicitly unsupported for this new
+management profile; their established old capabilities remain unchanged.
+The private Node issuer chooses this profile from its protected registration
+anchor, never model input or a current default-policy selector. It verifies the
+original exact transcript path/SID/canonical cwd, actual OS user, current approved
+Node/Owner key chain, original Endpoint key/candidate and binding ID/epoch.
+Once enrolled, these identity checks do not require the default policy to remain
+active. No record scan, startup SID or legacy fallback establishes identity.
+
+The consumed context retains the existing harness/SID/workspace/actual event IDs
+and adds `verification_profile=OWNER_ENDPOINT_GROUPS_V1,endpoint_groups_version=1,
+registration_digest,registration_revision,binding_id,binding_epoch,node_key_epoch`.
+LocalDomain and Pair selectors are absent in this variant. Unknown, partial or
+mixed profiles refuse. Issue/consume still bind the actual original selected
+Node pin/origin, one-use ticket, connection nonce, exact tool/business-argument
+digest and event IDs, with the existing 30-second ticket limit. This is identity
+proof only; subsequent scope/business calls separately require their exact
+active Group/source and deny Guards. Restoring this profile/cache or renewing
+its frozen heartbeat must not require a live default policy, silently downgrade
+to LEGACY_STRICT, reuse a consumed ticket or skip the Hook. A revoked Owner/Node
+or changed key/epoch cannot be repaired with another profile. M5 requires fresh
+post-revoke Hook issue/consume and new MCP processes, not just saved leases.
+
+The `endpoint_group_grant` peer carrier contains the complete existing Group manifest, original
+candidate attestation, exact Owner policy proof, Node delegated proof and fresh
+Hub-authenticated current relation/operation/attempt. Manifest optional expiry
+equals policy expiry. This is a distinct delegated variant with exactly one
+verified authority source **per Endpoint**; it is not a forged legacy Owner
+grant. The new `endpoint_group_current` format is
+`cicada.endpoint-group-current.v1`, with exact sender and receiver relation
+snapshots and operation/attempt/deadline. Each sender/receiver snapshot has
+`owner_control,relation`; the selected relation's owner_control_digest must
+match that head and stable native/Group key. An active default-policy Endpoint and
+an independently manual-authorized Endpoint may communicate in their exact
+shared Group only through this checked per-Endpoint source union. Both original
+chains must be current; a default grant is never converted into manual authority.
+Multiple evidence variants for one Endpoint, unknown variants and fallback from
+a stale verifier reject. Existing Pair evidence is not admitted by this profile.
+Both source and target Nodes independently check
+Owner trust and the exact same Group/current key evidence before sealing or
+opening. No Hub-supplied public key replaces the independent Owner pin.
+
+### Removal, independent renewal and original-packet recovery
+
+REMOVE_ENDPOINT withdraws all contributions to only the exact Endpoint/Group edge,
+advances the decision/relation revision and installs the permanent manual deny.
+It invalidates that edge's prior key evidence, selections and new work at the
+existing current Guards. Do not revoke the shared Owner/principal, whole
+Network, Node, other Endpoints or other Groups. If a principal has multiple
+Endpoints, its other relations/grants remain intact; membership changes must not
+invalidate their key snapshots. Removal works while the target Node is offline.
+The receipt lists every withdrawn contribution and the resulting deny/decision
+revision and resulting OWNER/REMOVED head. Default-policy revoke instead
+withdraws only its own contribution,
+leaving an active manual contribution even in that same Group intact.
+Owner/Node root revocation remains broader and fences every dependent Group.
+
+Default policy expiry/revocation withdraws only that policy's contribution.
+It must not revoke Network enrollment/access, registration/writer liveness or
+another Group supported by an independent manual policy. Explicit manual
+authorization in the default Group is also separate from its default source.
+Policy provenance and deny precedence must be stored and checked transactionally;
+the current unconditional LocalDomain termination and primary-Group lease paths
+cannot merely be forwarded unchanged. This exception belongs only to the new
+reviewed profile; it is not a global relaxation of legacy enrollment/key guards.
+
+Renewal sources are REGISTRATION_ONLY, DEFAULT_POLICY and OWNER_EXPLICIT.
+Registration-only renewal verifies original explicit registration, current
+Owner-approved Node/writer, actual original record and exact retained key;
+it grants zero Group or Network business rights. Independent Group renewal
+additionally checks that Group's actual source, current Owner policy, relation,
+deny generation, membership, key and policy expiry. Node/control expiry or
+revocation still refuses. A default-policy grant can never lend G1 authority to
+G2. Warm heartbeat uses the existing bounded heartbeat mechanism without a
+per-tick permanent mutation receipt; cold renewal uses its exact Node original
+and replay ledger, preserving original credentials/access IDs and binding ID/epoch
+in every normal warm/cold recovery. A real binding epoch, Endpoint key or Node
+authority change requires a new exact Owner authorization; it cannot be absorbed
+by renewal or an unreviewed current-authority transition. No unknown renewal
+rotates a substitute token. An App session, read cache
+or process presence is not a renewal source.
+
+Removing the final Group leaves an explicitly registered, zero-business-rights
+Thread and its original key/history; it does not call global Endpoint Leave,
+delete a Thread, stop the Node or erase registration. Native injection still
+requires an exact active relation and fresh final authorization. Selecting a
+scope (`cicada_use_group`) only chooses an already active authorized Group and
+creates no admission or key grant. A removed saved selection on restart must
+not delete still-valid registration credentials for another Group. Restore the
+exact sender from original private enrollment/receipts and return a typed
+selection-required state when needed; never auto-Join, choose a replacement
+Group or borrow another Thread's context. Verification of the original native
+record is based on its enrolled context/profile and current exact manual proof,
+not permission borrowed from a now-revoked default Group. The existing fresh
+one-use Hook context and dedicated-context history fences remain mandatory.
+
+The proposed read-only MCP tool **cicada_groups** supplies the missing self-scope
+list. Business parameters are the closed `{cursor?,limit?}` (default 64, integer
+1..64), with no model identity, Endpoint, Node, Network or Group selector. It
+requires a fresh one-use OWNER_ENDPOINT_GROUPS_V1 context and original enrolled
+sender, but **no selected Group**. It derives exact Endpoint/Network from that
+private registration and uses authenticated Node `node.endpoint_groups.describe`
+plus the existing Endpoint-group relation query. It exposes only this caller's
+currently usable ACTIVE, key-ready, unexpired relations, never Owner inventory,
+pending/removed peers, global directories or another Thread's memberships.
+
+Result fields are `groups,current_group_id,selection_required,complete,
+next_cursor,freshness`; cards are `group_id,name,network_id,current,
+relation_revision,source,expires_at,freshness`, with SNAPSHOT_ONLY freshness.
+Pages are bounded to 64 rows/128 KiB and exact self-scope cursors; stale cursors
+refuse and restart rather than proving absence. The internal IDs let the AI
+uniquely match the returned Group name and call existing cicada_use_group;
+the user need not copy IDs from the App. Same-name ambiguity requires explicit
+user choice, never first-match selection. If the prior selection was removed or
+no Group is selected, current_group_id is empty and selection_required is true;
+even a single surviving Group is not auto-selected. Empty results are valid for
+a registered zero-right caller and never trigger Join.
+
+An explicit cicada_use_group after this list still performs its fresh context
+and exact current Group Guard, and must be callable from registered-but-unselected
+state without requiring re-Join. Neither tool creates relation/key authority.
+Old/unknown profiles return UNSUPPORTED_PROFILE for this new list, preserving
+their old behavior. The tool is reserved by this contract only: current binaries
+do not advertise it and no new production MCP tool is added by this checkpoint.
+
+The encrypted operation ledger states are PREPARED, COMPLETED,
+REJECTED_FENCED and READ_EXPIRED. A completed apply may have a PENDING_KEY
+manual contribution; its receipt must not claim that contribution is active. Exact request ID and
+packet digest recover only the original outcome, including after restart,
+timeout, App login expiry or later revocation. Same ID/different packet is
+ORIGINAL_PACKET_CONFLICT. Reconcile authenticates the original device/packet
+and returns its durable receipt or a permanent no-effect fence; it cannot extend
+a review, clear deny or redispatch a replacement operation. Unsettled results
+remain OUTCOME_UNCERTAIN, never success inferred from a similarly named Group.
+Current state is a separately labelled snapshot, not rewritten historical proof.
+
+The immutable operation DTO is `operation_id,original_packet_digest,action,state,
+error_code,review_id,target,committed_at,effect`. For an apply result and all its
+status/reconcile results, operation_id is the original apply request ID and
+original_packet_digest hashes that apply ciphertext. Its terminal state is
+COMPLETED or REJECTED_FENCED; a rejected operation has no effect. CREATE effect
+is `{group_id,created:true}`. ADD effect records exact Group/Endpoint, committed
+relation/decision revisions, policy ID/epoch, contribution revision,
+`contribution_state=PENDING_KEY`, the unchanged apply-time owner_control and
+actual effective relation state (including an existing deny).
+REMOVE effect records exact Group/Endpoint, new relation/decision revisions,
+all withdrawn source references, `manual_deny:true,relation_state:REMOVED`,
+and the resulting OWNER/REMOVED owner_control head.
+Closed effect field sets are in the machine inventory. Historical metadata is
+never rewritten when Node later activates or a policy is revoked.
+
+The original apply response has no recursive embedded copy of itself. Fresh
+status/reconcile can return that exact encrypted response in top-level
+receipt_packet, separate from freshly guarded current_relation/current_group
+snapshots. A successful status read is not an applied mutation. An absent operation row,
+timeout or incomplete reconciliation leaves OUTCOME_UNCERTAIN; App retains its
+original ciphertext/pending intent and never clears it, allocates another ID,
+or infers success from a directory/card. Only authenticated terminal original
+receipt or permanent no-effect fence settles that pending mutation.
+
+SQLite writer commit of fresh final authorization for the exact native attempt
+remains the in-flight boundary. A remove committed before it denies queued,
+claimed and new work; an already authorized attempt can remain in flight only
+within its original at-most-30-second validity. This is not an atomic Hub/OS
+operation or rollback of native side effects. Old requests, replies, selections
+and outboxes retain their original Group/Network/Link; no surviving G2 authority
+can redispatch a G1 operation.
+
+### Bounds, compatibility and required validation
+
+Bounds reuse the delegated-domain envelopes without enlarging legacy routes:
+Owner proof 32 KiB, body 192 KiB, original 256 KiB, packet 384 KiB; reconcile
+body 640 KiB and packet 896 KiB. Node original 64 KiB, receipt 224 KiB,
+reconcile body 128 KiB and packet 560 KiB; complete peer carrier 320 KiB.
+Actual maximum legal fields, PQ encryption and nested exact recovery must be
+measured before availability. Unknown padding is not a size fixture.
+
+Each Owner/device authority epoch has at most 64 live reviews, 128 cached reads
+with a 300-second lifetime and 128 profile requests per minute. Saturation
+refuses new work while preserving exact unknown mutations, permanent removal
+history and replay floors. No expired read cache or eviction is a fresh action.
+
+Old Hub 404, absent/false capability or unknown revision means unsupported;
+new App shows unavailable actions and never falls back to legacy topology,
+raw writes, copied identities or a different deployment. Old App keeps its
+existing Join/directory behavior; old directory/wire fields are unchanged.
+Old Node cannot consume a new manual delegation: new Hub requires that exact
+Node profile before completing it, and cannot downgrade its evidence. Future
+migration must preserve identities, keys, epochs, deny/provenance and original
+receipts, and refuse an old writer opening unsupported managed state.
+No schema number or software release is allocated by this draft.
+
+Required gates are M1 fresh G1 -> named G2 creation + exact D add and lost-response
+retry; M2 one original SID/Endpoint/key in two selected scopes; M3 D-G1 removal
+without changing A/B/C or D-G2; M4 deny across literal Join/new Attempt/restart;
+M4 additionally proves manual activation takes OWNER control, finite manual
+expiry cannot fall back to permanent default, and pending re-add cannot clear
+an old deny before exact Complete. M5 default-policy revoke with G2 continuing **past the actual lease-renewal
+boundary and Node/MCP restart**; M6 last-group removal retaining identity/key/
+Thread/history; M7 real Owner/Node revoke fencing all dependent Groups; M8 old
+request/reply/selection/outbox never borrowing another Group/Network/Link.
+Include concurrent add/remove CAS, shared-principal Endpoints with broader grants
+and legacy/global-mutation bypass negatives, exact old packet
+recovery after expiry/revoke, maximum crypto carriers, restore and old-profile
+negatives. Deterministic and disposable real TCP/Docker gates precede an actual
+App/Hub/Node/four-Thread Runtime scene. Codex TUI cross-thread scheduling is not
+Cicada communication. Every gate is **NOT_RUN** at this contract checkpoint;
+Windows DPAPI/ACL/physical UI, physical devices and public HTTPS remain separately
+attributed. Contract-oracle mutation checks prove only document/inventory safety.
+
+Contract checkpoint validation, 2026-10-26: the Endpoint inventory/prose checker,
+five pure oracle tests (60 rejected synthetic mutations), and the existing
+Owner-activation/App-Node/Pair metadata checks pass. Three targeted compiled
+legacy wire checks pass with no skips; they check old activation/capability and
+local-domain inventory compatibility, not the proposed Group implementation.
+Source-specific logs and hashes are retained under
+`~/Cicada/.local/evidence/owner-groups-guard-clarification-20261026/`.
+The earlier four-test/55-control Owner-control receipt and three legacy wire
+checks retain their original source under
+`~/Cicada/.local/evidence/owner-groups-contract-20261026T094548Z/`;
+the clarification changes no production or legacy-wire input.
+No new-profile signature/packet, Store, Docker, App, Node or Runtime execution
+is claimed. Availability stays false pending Root review and implementation.

@@ -93,5 +93,794 @@
       "state_digest"
     ],
     "caller": "LOCAL_NODE_OPERATOR_NOT_ENDPOINT_MCP"
+  },
+  "proposed_owner_endpoint_groups": {
+    "contract_revision": "owner-endpoint-groups-v1",
+    "status": "CONTRACT_DRAFT",
+    "implementation_phase": "CONTRACT_ONLY",
+    "default_available": false,
+    "wire_version": 1,
+    "legacy_contract_unchanged": true,
+    "schema_migration": "REQUIRED_NOT_ASSIGNED",
+    "new_identity_tables": false,
+    "capabilities_path": "/v2/owner/endpoint-groups/capabilities",
+    "capabilities_format": "cicada.owner-endpoint-groups-capabilities.v1",
+    "format": "cicada.owner-endpoint-groups.v1",
+    "required_participants": [
+      "HUB",
+      "NODE",
+      "APP"
+    ],
+    "http_operations": {
+      "owner.endpoint_groups.read": "/v2/owner/endpoint-groups/read",
+      "owner.endpoint_groups.prepare": "/v2/owner/endpoint-groups/prepare",
+      "owner.endpoint_groups.apply": "/v2/owner/endpoint-groups/apply",
+      "owner.endpoint_groups.status": "/v2/owner/endpoint-groups/status",
+      "owner.endpoint_groups.reconcile": "/v2/owner/endpoint-groups/reconcile"
+    },
+    "owner_request_purposes": {
+      "owner.endpoint_groups.read": "owner-endpoint-groups-read:v1",
+      "owner.endpoint_groups.prepare": "owner-endpoint-groups-prepare:v1",
+      "owner.endpoint_groups.apply": "owner-endpoint-groups-apply:v1",
+      "owner.endpoint_groups.status": "owner-endpoint-groups-status:v1",
+      "owner.endpoint_groups.reconcile": "owner-endpoint-groups-reconcile:v1"
+    },
+    "owner_request_domain": "cicada/owner/endpoint-groups/request/v1\u0000",
+    "policy_purpose": "endpoint-group-policy:v1",
+    "policy_domain": "cicada/owner/endpoint-groups/policy/v1\u0000",
+    "node_key_purpose": "endpoint-group-key-grant:v1",
+    "node_key_domain": "cicada/node/endpoint-groups/key-grant/v1\u0000",
+    "registration_digest_domain": "cicada/owner/endpoint-groups/registration/v1\u0000",
+    "relation_digest_domain": "cicada/owner/endpoint-groups/relation/v1\u0000",
+    "review_digest_domain": "cicada/owner/endpoint-groups/review/v1\u0000",
+    "node_rpc_path": "/v2/node/control/rpc",
+    "node_operations": [
+      "node.endpoint_groups.describe",
+      "node.endpoint_groups.key_prepare",
+      "node.endpoint_groups.key_complete",
+      "node.endpoint_groups.renew",
+      "node.endpoint_groups.reconcile"
+    ],
+    "actions": [
+      "CREATE_GROUP",
+      "ADD_ENDPOINT",
+      "REMOVE_ENDPOINT"
+    ],
+    "scope": "EXACT_REGISTERED_CODEX_LOCAL_DOMAIN_ENDPOINT_SAME_OWNER_NODE_USER_HUB_NETWORK",
+    "group_context_policy": "group_scoped",
+    "group_creation_auto_enrolls_endpoint": false,
+    "rights": [
+      "directory.read",
+      "message.ask",
+      "message.receive",
+      "message.reply",
+      "message.send"
+    ],
+    "default_duration": "until_revoked",
+    "duration_values": [
+      "until_revoked",
+      "1d",
+      "7d",
+      "30d"
+    ],
+    "fixed_duration_seconds": {
+      "1d": 86400,
+      "7d": 604800,
+      "30d": 2592000
+    },
+    "request_lifetime_seconds": 300,
+    "peer_current_lifetime_seconds": 30,
+    "max_future_skew_seconds": 30,
+    "max_page_rows": 64,
+    "max_page_canonical_bytes": 131072,
+    "max_active_groups_per_endpoint": 32,
+    "max_proof_bytes": 32768,
+    "max_body_bytes": 196608,
+    "max_original_bytes": 262144,
+    "max_packet_bytes": 393216,
+    "max_reconcile_body_bytes": 655360,
+    "max_reconcile_packet_bytes": 917504,
+    "max_node_original_bytes": 65536,
+    "max_node_receipt_bytes": 229376,
+    "max_node_reconcile_body_bytes": 131072,
+    "max_node_reconcile_packet_bytes": 573440,
+    "max_peer_carrier_bytes": 327680,
+    "owner_request_fields": [
+      "format",
+      "context",
+      "session_token",
+      "owner_proof",
+      "body"
+    ],
+    "capability_fields": [
+      "format",
+      "contract_revision",
+      "available",
+      "hub_id",
+      "hub_fingerprint",
+      "max_page_rows",
+      "max_page_canonical_bytes",
+      "max_active_groups_per_endpoint",
+      "duration_values",
+      "native_self_groups"
+    ],
+    "owner_thread_card_fields": [
+      "endpoint_id",
+      "principal_id",
+      "node_id",
+      "network_id",
+      "name",
+      "workspace",
+      "harness",
+      "registration_digest",
+      "registration_revision",
+      "presence",
+      "relations",
+      "relation_states",
+      "relations_revision",
+      "relations_complete",
+      "relations_next_cursor"
+    ],
+    "owner_relation_card_fields": [
+      "group_id",
+      "group_name",
+      "network_id",
+      "state",
+      "relation_revision",
+      "decision_revision",
+      "manual_deny",
+      "owner_control",
+      "contributions",
+      "selected_source",
+      "expires_at",
+      "key_state",
+      "allowed_actions",
+      "unavailable_reason"
+    ],
+    "owner_group_card_fields": [
+      "group_id",
+      "name",
+      "network_id",
+      "group_version",
+      "context_policy",
+      "allowed_actions",
+      "unavailable_reason"
+    ],
+    "review_fields": [
+      "review_id",
+      "request_id",
+      "request_packet_digest",
+      "action",
+      "target",
+      "expected",
+      "projection",
+      "policy",
+      "key_manifest",
+      "observed_at",
+      "expires_at",
+      "review_digest"
+    ],
+    "cas_fields": [
+      "owner_key_version",
+      "node_owner_binding_id",
+      "node_owner_binding_version",
+      "node_key_epoch",
+      "network_version",
+      "group_version",
+      "registration_digest",
+      "registration_revision",
+      "binding_id",
+      "binding_epoch",
+      "candidate_version",
+      "candidate_proof_digest",
+      "candidate_fingerprint",
+      "membership_revision",
+      "endpoint_join_revision",
+      "relation_revision",
+      "decision_revision",
+      "owner_control_digest",
+      "policy_epoch"
+    ],
+    "policy_fields": [
+      "version",
+      "purpose",
+      "policy_id",
+      "epoch",
+      "origin",
+      "hub_id",
+      "hub_fingerprint",
+      "owner_id",
+      "owner_public_identity",
+      "owner_key_version",
+      "node",
+      "local_user_scope",
+      "network_id",
+      "group_id",
+      "endpoint_id",
+      "principal_id",
+      "registration_digest",
+      "registration_revision",
+      "binding_id",
+      "binding_epoch",
+      "endpoint_key_id",
+      "endpoint_public_identity",
+      "endpoint_fingerprint",
+      "candidate_version",
+      "candidate_proof_digest",
+      "expected_owner_control_digest",
+      "expected_decision_revision",
+      "rights",
+      "issued_at",
+      "expires_at",
+      "review_id",
+      "review_digest",
+      "server_nonce"
+    ],
+    "policy_states": [
+      "PENDING_KEY",
+      "ACTIVE",
+      "REVOKED",
+      "EXPIRED"
+    ],
+    "relation_states": [
+      "NONE",
+      "PENDING_KEY",
+      "ACTIVE",
+      "REMOVED",
+      "EXPIRED"
+    ],
+    "key_states": [
+      "NOT_READY",
+      "PENDING",
+      "CURRENT",
+      "STALE",
+      "REVOKED",
+      "EXPIRED"
+    ],
+    "sources": [
+      "DEFAULT_POLICY",
+      "OWNER_EXPLICIT"
+    ],
+    "registration_states": [
+      "REGISTERED",
+      "OFFLINE",
+      "REVOKED"
+    ],
+    "operation_states": [
+      "PREPARED",
+      "COMPLETED",
+      "REJECTED_FENCED",
+      "READ_EXPIRED"
+    ],
+    "terminal_errors": [
+      "UNSUPPORTED_PROFILE",
+      "OWNER_AUTHORITY_REQUIRED",
+      "TARGET_NOT_AUTHORIZED",
+      "REVIEW_EXPIRED",
+      "CAS_CONFLICT",
+      "KEY_NOT_READY",
+      "OWNER_READD_REQUIRED",
+      "ORIGINAL_PACKET_CONFLICT",
+      "OUTCOME_UNCERTAIN",
+      "GROUP_RELATION_LIMIT",
+      "SHARED_MEMBERSHIP_CONFLICT",
+      "CURSOR_STALE",
+      "MANUAL_SOURCE_ALREADY_ACTIVE",
+      "RELATION_PENDING"
+    ],
+    "manual_deny_precedence": "OWNER_EXPLICIT_REMOVE_OVERRIDES_DEFAULT_ADMISSION",
+    "deny_cleared_only_by": "NEW_OWNER_SIGNED_ADD_FOR_EXACT_RELATION",
+    "registration_identity_preserved_on_last_group_remove": true,
+    "registration_renewal_sources": [
+      "REGISTRATION_ONLY",
+      "DEFAULT_POLICY",
+      "OWNER_EXPLICIT"
+    ],
+    "policy_revoke_withdraws_only_its_source": true,
+    "legacy_finite_key_grant_allows_empty_expiry": false,
+    "app_session_required_for_active_data_plane": false,
+    "automatic_owner_key_signing": false,
+    "mcp_join_changed": false,
+    "control_inference_required": false,
+    "final_authorization_linearization": "HUB_WRITER_TX_COMMIT_FOR_EXACT_NATIVE_ATTEMPT",
+    "owner_request_claim_fields": [
+      "version",
+      "purpose",
+      "scope",
+      "request_id",
+      "nonce",
+      "issued_at",
+      "expires_at",
+      "body_digest"
+    ],
+    "request_bodies": {
+      "read": {
+        "required": [
+          "view",
+          "node_id",
+          "network_id"
+        ],
+        "optional": [
+          "endpoint_id",
+          "cursor",
+          "limit"
+        ],
+        "views": [
+          "THREADS",
+          "CANDIDATE_GROUPS",
+          "RELATIONS"
+        ]
+      },
+      "prepare": {
+        "CREATE_GROUP": [
+          "action",
+          "node_id",
+          "network_id",
+          "name"
+        ],
+        "ADD_ENDPOINT": [
+          "action",
+          "node_id",
+          "network_id",
+          "group_id",
+          "endpoint_id",
+          "duration"
+        ],
+        "REMOVE_ENDPOINT": [
+          "action",
+          "node_id",
+          "network_id",
+          "group_id",
+          "endpoint_id"
+        ]
+      },
+      "apply": {
+        "required": [
+          "review_id",
+          "review_digest",
+          "prepare_packet_digest"
+        ],
+        "optional": [
+          "policy_proof"
+        ]
+      },
+      "status": {
+        "required": [
+          "operation_id",
+          "original_packet_digest"
+        ],
+        "optional": []
+      },
+      "reconcile": {
+        "required": [
+          "original_packet"
+        ],
+        "optional": []
+      }
+    },
+    "result_fields": [
+      "format",
+      "contract_revision",
+      "request_id",
+      "request_packet_digest",
+      "hub_id",
+      "owner_id",
+      "device_id",
+      "node_id",
+      "state",
+      "error_code",
+      "captured_at",
+      "freshness",
+      "threads",
+      "groups",
+      "relations",
+      "scope_actions",
+      "relation_page",
+      "next_cursor",
+      "review",
+      "operation",
+      "current_relation",
+      "current_group",
+      "receipt_packet"
+    ],
+    "target_fields": {
+      "CREATE_GROUP": [
+        "hub_id",
+        "owner_id",
+        "node_id",
+        "network_id",
+        "group_id",
+        "name",
+        "context_policy"
+      ],
+      "ADD_ENDPOINT": [
+        "hub_id",
+        "owner_id",
+        "node_id",
+        "local_user_scope",
+        "network_id",
+        "group_id",
+        "endpoint_id",
+        "principal_id",
+        "registration_digest"
+      ],
+      "REMOVE_ENDPOINT": [
+        "hub_id",
+        "owner_id",
+        "node_id",
+        "local_user_scope",
+        "network_id",
+        "group_id",
+        "endpoint_id",
+        "principal_id",
+        "registration_digest"
+      ]
+    },
+    "projection_fields": {
+      "CREATE_GROUP": [
+        "group_id",
+        "name",
+        "context_policy",
+        "owner_management_only"
+      ],
+      "ADD_ENDPOINT": [
+        "source",
+        "contribution_state",
+        "effective_relation_state",
+        "grants",
+        "projected_rights",
+        "duration",
+        "expected_owner_control",
+        "completion_owner_control",
+        "policy_core"
+      ],
+      "REMOVE_ENDPOINT": [
+        "source",
+        "relation_state",
+        "manual_deny",
+        "withdraw_scope"
+      ]
+    },
+    "policy_core_excludes": [
+      "review_id",
+      "review_digest"
+    ],
+    "policy_proof_fields": [
+      "purpose",
+      "policy",
+      "signature"
+    ],
+    "node_key_claim_fields": [
+      "version",
+      "purpose",
+      "hub_id",
+      "node_id",
+      "node_key_epoch",
+      "policy_id",
+      "policy_epoch",
+      "policy_digest",
+      "registration_digest",
+      "owner_control_digest",
+      "relation_digest",
+      "manifest_digest",
+      "candidate_binding_digest",
+      "challenge_id",
+      "challenge_digest",
+      "issued_at",
+      "expires_at"
+    ],
+    "node_proof_fields": [
+      "claims",
+      "signature"
+    ],
+    "relation_fields": [
+      "hub_id",
+      "owner_id",
+      "node_id",
+      "local_user_scope",
+      "network_id",
+      "group_id",
+      "endpoint_id",
+      "principal_id",
+      "registration_digest",
+      "registration_revision",
+      "source",
+      "authority_id",
+      "authority_epoch",
+      "contribution_revision",
+      "state",
+      "decision_revision",
+      "owner_control_digest",
+      "policy_id",
+      "policy_epoch",
+      "binding_id",
+      "binding_epoch",
+      "membership_revision",
+      "endpoint_join_revision",
+      "candidate_version",
+      "candidate_key_id",
+      "candidate_fingerprint",
+      "candidate_proof_digest",
+      "expires_at"
+    ],
+    "delegated_grant_fields": [
+      "manifest",
+      "relation",
+      "policy_proof",
+      "node_proof"
+    ],
+    "current_fields": [
+      "format",
+      "hub_id",
+      "group_id",
+      "sender",
+      "receiver",
+      "operation",
+      "attempt_id",
+      "observed_at",
+      "expires_at"
+    ],
+    "node_request_bodies": {
+      "describe": {
+        "required": [
+          "endpoint_id",
+          "network_id"
+        ],
+        "optional": [
+          "cursor",
+          "limit"
+        ]
+      },
+      "key_prepare": {
+        "required": [
+          "policy_id",
+          "policy_epoch",
+          "endpoint_id",
+          "group_id",
+          "expected_relation_revision"
+        ],
+        "optional": []
+      },
+      "key_complete": {
+        "required": [
+          "policy_id",
+          "policy_epoch",
+          "endpoint_id",
+          "group_id",
+          "expected_relation_revision",
+          "challenge_id",
+          "node_proof"
+        ],
+        "optional": []
+      },
+      "renew": {
+        "required": [
+          "endpoint_id",
+          "registration_digest",
+          "expected_binding_id",
+          "expected_binding_epoch"
+        ],
+        "optional": []
+      },
+      "reconcile": {
+        "required": [
+          "original_packet"
+        ],
+        "optional": []
+      }
+    },
+    "warm_renewal": "EXISTING_HEARTBEAT_NO_PER_TICK_PERMANENT_RECEIPT",
+    "result_format": "cicada.owner-endpoint-groups-result.v1",
+    "current_format": "cicada.endpoint-group-current.v1",
+    "body_digest_domain": "cicada/owner/endpoint-groups/body/v1\u0000",
+    "packet_digest_domain": "cicada/owner/endpoint-groups/packet/v1\u0000",
+    "max_live_reviews_per_actor_epoch": 64,
+    "read_cache_lifetime_seconds": 300,
+    "max_cached_reads_per_actor_epoch": 128,
+    "max_requests_per_actor_epoch_minute": 128,
+    "peer_grant_variant": "endpoint_group_grant",
+    "peer_current_variant": "endpoint_group_current",
+    "mixed_default_manual_peers": "EXACT_SAME_GROUP_EACH_ENDPOINT_ONE_VERIFIED_SOURCE",
+    "contribution_card_fields": [
+      "source",
+      "authority_id",
+      "authority_epoch",
+      "contribution_revision",
+      "state",
+      "expires_at",
+      "key_state",
+      "effective",
+      "unavailable_reason"
+    ],
+    "native_identity_digest_domain": "cicada/owner/endpoint-groups/native-identity/v1\u0000",
+    "native_identity_fields": [
+      "hub_id",
+      "owner_id",
+      "node_id",
+      "local_user_scope",
+      "harness",
+      "native_session_id",
+      "workspace"
+    ],
+    "deny_key": "PRIVATE_NATIVE_IDENTITY_DIGEST_AND_GROUP_ID",
+    "normal_cold_renewal_preserves_binding_epoch": true,
+    "remove_withdraws_all_relation_contributions": true,
+    "source_reference_fields": [
+      "source",
+      "authority_id",
+      "authority_epoch",
+      "contribution_revision"
+    ],
+    "scope_action_fields": [
+      "node_id",
+      "network_id",
+      "allowed_actions",
+      "unavailable_reason"
+    ],
+    "relation_page_fields": [
+      "endpoint_id",
+      "network_id",
+      "states",
+      "relations_revision",
+      "complete",
+      "next_cursor"
+    ],
+    "operation_fields": [
+      "operation_id",
+      "original_packet_digest",
+      "action",
+      "state",
+      "error_code",
+      "review_id",
+      "target",
+      "committed_at",
+      "effect"
+    ],
+    "effect_fields": {
+      "CREATE_GROUP": [
+        "group_id",
+        "created"
+      ],
+      "ADD_ENDPOINT": [
+        "group_id",
+        "endpoint_id",
+        "relation_revision",
+        "decision_revision",
+        "policy_id",
+        "policy_epoch",
+        "contribution_revision",
+        "contribution_state",
+        "effective_relation_state",
+        "owner_control"
+      ],
+      "REMOVE_ENDPOINT": [
+        "group_id",
+        "endpoint_id",
+        "relation_revision",
+        "decision_revision",
+        "withdrawn_contributions",
+        "manual_deny",
+        "relation_state",
+        "owner_control"
+      ]
+    },
+    "group_creation_authorized_by": "SIGNED_OWNER_SCOPE_ACTION_NOT_GROUP_CARD_OR_PUBLIC_CAPABILITY",
+    "operation_id_source": "ORIGINAL_APPLY_CONTEXT_REQUEST_ID",
+    "status_digest_source": "EXACT_ORIGINAL_ENCRYPTED_APPLY_PACKET",
+    "uncertain_clears_pending": false,
+    "inline_relation_limit": 8,
+    "max_current_contributions_per_relation": 2,
+    "relation_pagination_view": "RELATIONS",
+    "relation_history_scope": "EXACT_ENDPOINT_CURRENT_NETWORK_ALL_STORED_STATES",
+    "contribution_projection": "ONE_CURRENT_SLOT_PER_SOURCE_NOT_FULL_HISTORY",
+    "relation_cursor_change": "CURSOR_STALE_RESTART_KEEP_EXISTING_STATE",
+    "candidate_scope_actions_required": true,
+    "eligible_registration_sources": [
+      "CODEX_LOCAL_DOMAIN"
+    ],
+    "native_context_profile": "OWNER_ENDPOINT_GROUPS_V1",
+    "native_context_fields": [
+      "harness",
+      "native_session_id",
+      "workspace",
+      "turn_id",
+      "tool_use_id",
+      "verification_profile",
+      "endpoint_groups_version",
+      "registration_digest",
+      "registration_revision",
+      "binding_id",
+      "binding_epoch",
+      "node_key_epoch"
+    ],
+    "native_context_ticket_seconds": 30,
+    "native_context_requires_default_policy": false,
+    "native_context_fallback_to_legacy": false,
+    "native_context_one_use_required": true,
+    "key_prepare_result_fields": [
+      "challenge_id",
+      "policy_id",
+      "policy_epoch",
+      "expected",
+      "projected_owner_control",
+      "projected_relation",
+      "projected_key_manifest",
+      "observed_at",
+      "expires_at",
+      "challenge_digest"
+    ],
+    "key_challenge_digest_domain": "cicada/owner/endpoint-groups/key-challenge/v1\u0000",
+    "node_signs_projected_active_state": true,
+    "pending_manual_resets_existing_active_source": false,
+    "native_self_groups_default_available": false,
+    "self_groups": {
+      "tool": "cicada_groups",
+      "required": [],
+      "optional": [
+        "cursor",
+        "limit"
+      ],
+      "default_limit": 64,
+      "max_limit": 64,
+      "max_page_bytes": 131072,
+      "profile": "OWNER_ENDPOINT_GROUPS_V1",
+      "requires_selected_group": false,
+      "uses_owner_inventory": false,
+      "creates_authority": false,
+      "auto_selects_group": false,
+      "fresh_one_use_context_required": true,
+      "states": [
+        "ACTIVE"
+      ],
+      "node_source": "node.endpoint_groups.describe",
+      "result_fields": [
+        "groups",
+        "current_group_id",
+        "selection_required",
+        "complete",
+        "next_cursor",
+        "freshness"
+      ],
+      "card_fields": [
+        "group_id",
+        "name",
+        "network_id",
+        "current",
+        "relation_revision",
+        "source",
+        "expires_at",
+        "freshness"
+      ]
+    },
+    "owner_control_fields": [
+      "mode",
+      "revision",
+      "deny_reason",
+      "policy_id",
+      "policy_epoch"
+    ],
+    "owner_control_modes": [
+      "DEFAULT",
+      "OWNER"
+    ],
+    "owner_control_deny_reasons": [
+      "NONE",
+      "REMOVED",
+      "EXPIRED"
+    ],
+    "owner_control_digest_domain": "cicada/owner/endpoint-groups/owner-control/v1\u0000",
+    "owner_control_key": "PRIVATE_NATIVE_IDENTITY_DIGEST_AND_GROUP_ID",
+    "owner_control_owner_mode_persistent": true,
+    "manual_expiry_default_fallback": false,
+    "pending_manual_clears_deny": false,
+    "owner_control_mode_reverts_to_default": false,
+    "owner_control_takeover_stage": "EXACT_PROJECTED_KEY_COMPLETE",
+    "manual_deny_cleared_at": "EXACT_PROJECTED_KEY_COMPLETE_ONLY",
+    "effective_source_rule": "OWNER_MODE_MANUAL_ONLY_ELSE_BLOCKED_DEFAULT_MODE_DEFAULT_ONLY",
+    "pending_preserves_active_default_only_without_deny": true,
+    "current_endpoint_fields": [
+      "owner_control",
+      "relation"
+    ]
   }
 }

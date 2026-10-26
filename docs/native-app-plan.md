@@ -336,6 +336,103 @@ in another lane return 2 before resources start. Other-UID domain signing,
 cross-scope/epoch faults, original business-request recovery, policy pagination,
 legacy Pair and physical platforms retain separate NOT_RUN rows.
 
+## Owner-managed Group relations: contract preparation
+
+2026-10-26 Root-reviewed scope is the proposed
+[Owner-managed Endpoint Groups v1](native-endpoint-directory-contract.md#proposed-owner-managed-endpoint-groups-v1).
+This is **CONTRACT ONLY**; Hub/Node/App implementation and all new product gates
+are NOT_RUN. Public availability remains false. No task instruction file or new
+management service is introduced. The existing Session page may show registered
+Thread cards, their Group relations and authorized candidate Groups. It may
+offer one same-Owner/same-Network named Group creation followed by a separate
+exact Thread add; no opaque-ID/JSON transfer, canvas, general CRUD, roles or bulk
+workflow is required. Existing literal Join and Host presentation are unchanged.
+The first consumer is limited to already registered Codex/LocalDomain origins;
+other origins explicitly report unsupported while retaining their old behavior.
+The private OWNER_ENDPOINT_GROUPS_V1 Hook profile verifies the original registered
+record/key and one-use call context independently of the default policy.
+Unknown/partial/mixed profiles must not fall back to legacy identity.
+
+The Hub-derived private cards distinguish source/state/revisions, disabled
+actions, expiry and key readiness; an existing directory card is not a management
+grant. One Owner review submits exact scope/rights/original-key delegation. The
+App must persist its original encrypted request before dispatch, show PENDING_KEY
+until actual Node completion, and reconcile its original rather than replacing
+an uncertain add/remove/create. Default duration is until revoked, with explicit
+1/7/30-day choices. App logout/account/read expiry does not revoke an active
+business policy; Owner/Node revocation and actual business expiry still fence it.
+Independent App2 authorization must use its own enrolled key, never copied vaults.
+
+Implementation must first separate registration/native-writer liveness from
+each Group's permission. A permanent Owner removal overrides default auto-admission;
+only exact completion of a new Owner-signed re-add clears it. Default-policy termination cannot
+remove a separately authorized manual Group, its Network dependency or writer.
+Removing the final Group leaves the original Thread/Endpoint/key/history and
+Node intact with zero Group business rights. Group selection is not admission.
+Only exact required Hub Nodes routes may be added after protocol review.
+The proposed cicada_groups lists only the actual caller's currently usable
+Groups through its fresh registered-native profile, including when no Group is
+selected or its old Group was removed. AI uses returned names/internal IDs for
+explicit use_group; users do not copy IDs, and no scope is auto-selected/joined.
+THREADS cards carry current-Network relation completeness/cursors; terminal
+history is paginated, not truncated into a misleading "not joined" state.
+CREATE_GROUP has independent authenticated scope actions even with zero Group
+candidates. Mutation operation IDs are original apply request IDs and status
+hashes those exact original apply ciphertexts; uncertain originals stay pending.
+Key completion signs and commits the same projected ACTIVE relation/manifest,
+preserving any already ACTIVE default source while manual activation is pending.
+The relation lists independent default/manual contributions; removal withdraws
+all contributions and installs deny, whereas default-policy revoke withdraws
+only that source. Every peer proof selects one independently verified source.
+Deny uses a private stable native-identity key excluding Endpoint IDs/tokens/
+policy epochs. Normal cold renewal preserves the original binding ID/epoch;
+real key/epoch changes require new Owner authorization.
+Owner-control head becomes permanently OWNER only on exact manual key completion
+(or removal); then default proof cannot renew a finite manual authorization.
+Manual expiry blocks default, including literal Join. Pending preserves only a
+previously active never-denied default source; it cannot clear an old deny.
+The head/digest is included in Owner CAS/policy, projected Node signature,
+activation receipt and current peer proof, with no return-to-default action.
+The five rights and Owner-control must constrain every actual Actor Guard,
+including legacy/global mutation paths when a shared Principal has wider grants.
+If reuse cannot preserve other Endpoints while enforcing that ceiling, it returns
+conflict/unsupported without changing shared Membership; unknown sources reject.
+
+| Case | Required independent observation | Current status |
+| --- | --- | --- |
+| M1 — G2 exists | Fresh owned Hub with default G1 only; actual App creates named G2 and adds exact D after Owner review. Drop committed responses and restart App/Hub; exact originals yield one G2/relation, no extra identity/grants. | NOT_RUN |
+| M2 — one Thread, two Groups | Original SID/Endpoint/workspace/key remains identical in G1/G2. Explicit use_group changes current scope; real Cicada ASK/REPLY and receive stay within it, without a new Join or grant. | NOT_RUN |
+| M3 — remove only D-G1 | Actual App removes exact D-G1 with current CAS; A/B/C, shared-principal other Endpoints and D-G2 retain their original authority/key snapshots. Queued D-G1 work fails fresh final Guard. | NOT_RUN |
+| M4 — no automatic resurrection | After removal, literal Join, fresh Attempt, warm/cold recovery, old response replay and Node/MCP restart cannot clear deny. Only exact key completion of a new Owner add at the current head can do so. Manual finite expiry never falls back to default; pending re-add preserves old deny. | NOT_RUN |
+| M5 — independent lifetime | Revoke/expire default policy while D-G2 is manually authorized. Cross the actual lease-renewal boundary, restart Node/MCP and continue exact G2 ASK/REPLY with App closed. Immediate one-send success is insufficient. | NOT_RUN |
+| M6 — last Group | Remove D's final relation; preserve original key, native Thread/history, Endpoint/workspace and running Node, with zero Group rights. New explicit Owner add cannot substitute an identity/key. | NOT_RUN |
+| M7 — real authority revocation | Independently revoke actual Owner key and Node binding/key; all dependent sources/Groups deny new work, including cold recovery. App closure is not this revocation. | NOT_RUN |
+| M8 — retained operations | Old request/reply/selection/outbox cannot borrow surviving Group, Network or Link authority. Original exact read recovery remains distinct from authorized redispatch; same-ID changed bytes conflict. | NOT_RUN |
+| Contract/security negatives | Wrong Owner/Node/user/Network/Group/key, stale CAS, parallel add/remove, unsupported profile, expired review, oversized/unknown DTO and maximum actual PQ carriers; shared Principal wider grants cannot bypass the managed Endpoint's five-right ceiling or Owner-control through legacy/global mutation paths; backup/restore retains epochs/deny/original receipts. | NOT_RUN |
+
+Use deterministic Store/Node tests and a disposable Docker actual App/Hub/Node
+gate, then genuine four-Thread Runtime A/B/C/D. Codex TUI task dispatch does not
+prove Cicada communication. Windows DPAPI/ACL/physical UI, physical second Node
+and public HTTPS keep separate statuses. Pure contract checks establish only the
+inventory/document constraints, never successful cryptography or implementation.
+
+The contract branch preserves original header checkpoint `307836ab8bd416f4df81968e55f0b8946d18d6d6`
+at `refs/archive/group-management/hub-before-sync`. Root integrated that identical
+production change as `a1987d8e1576797bdd1c26ea1727bc1085724317`; the unpublished
+task branch was explicitly rebased to `f84d44f7e677b3a58cf82a22a77a3f19988673a8`
+before these edits. Historical header tests stay attributed to their original
+tested source, not this contract or the integration SHA.
+The unpublished pre-Owner-control draft `80f023be2a45abd95a219dceedae7ef78d9055e3`
+is preserved at `refs/archive/group-management/hub-contract-before-owner-control`.
+Root required the final Owner-control clarification within this same unpublished
+checkpoint; evidence records its old-to-final commit mapping. No published
+history is rewritten and old draft checks retain their original source.
+The subsequent draft `bf676f08ebda8dbe63785d71f9ffd6df5383732a` is retained at
+`refs/archive/group-management/hub-contract-before-guard-clarification`.
+Root's five-right Guard clarification remains within that unpublished checkpoint;
+its own validation and mapping are under
+`~/Cicada/.local/evidence/owner-groups-guard-clarification-20261026/`.
+
 ## Current feedback and acceptance ledger
 
 2026-10-20 consolidation on recording baseline

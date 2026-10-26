@@ -16,6 +16,15 @@ the frozen Client wire identifiers, or the installation-registration profile.
 
 ## Authority and trust boundary
 
+The separately proposed [Owner-managed Endpoint Groups v1](native-endpoint-directory-contract.md#proposed-owner-managed-endpoint-groups-v1)
+is CONTRACT ONLY with availability false. It specifies exact per-Endpoint/Group
+manual delegation, persistent removal precedence and registration/writer renewal
+independent of this default policy. It does not enable those behaviors in the
+current implementation, broaden this policy to other Groups/Threads, change
+literal Join or allow empty expiry in legacy finite Group key grants. Its new
+typed purposes, cards and source-aware termination require separate review and
+implementation before any App consumer may use them.
+
 One Owner explicitly delegates collaboration for one exact Hub, Node and local
 OS-user scope in one Network and one dedicated Group. That Node's private local
 IPC authenticates the local user; a Thread is an exact native address and context,
