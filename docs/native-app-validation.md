@@ -7719,6 +7719,63 @@ SHA-256 `80c6607c9ea833dc6dbba099230c3a52009e095f04f59ee9363fe26d7ca0258d`.
 No product test pass is inferred from compilation or synthetic privacy checks;
 a fresh clean full gate remains required.
 
+### 2026-10-26 account-session boundary in the complete gate
+
+The complete clean QA `c44621fb8c7700dd33b6debbe583fbc5fa39b647` run
+`run-20261026T192743Z-61sEQT` ended **FAIL / exit 1**. M1 passed in 135.08s,
+M2 passed in 483.46s, including all four original G1/G2 native roundtrips.
+M3 failed in 19.32s. Its first exact positive authorization was observed at
+19:43:04.253739892Z for request hash
+`d7133ac418e5597a7275b0ffd22f4ae7724ad733fcb139fccb777142ab34e044`
+and message hash `2c2fc48e7d7e3edc3113b12ed04ec5ba928c3a385cfc30bfcc5d5902030cc7db`.
+The timing precheck passed. At 19:43:11.082171767Z the existing App helper
+rejected an empty Node/Network private scope; there was no Owner APPLY HTTP
+exchange. No completed removal, writer-release or fresh-denial pass is inferred.
+
+The production account maximum is fifteen minutes. The actual original App
+was already Owner-ready by 19:28:03.397904410Z, with no subsequent login, so
+the APPLY attempt exceeded that original session's maximum lifetime. Readonly
+App-owner review confirms Snapshot marks the expired account LOGIN_REQUIRED,
+then expireThreadGroupsView hides private cards and clears their Node/Network
+projection. This is source/time-bound attribution; the exact failed Snapshot's
+account/error/deadline fields were not exported by that driver and cannot be
+reconstructed after owned-state cleanup. The empty-scope assertion stays FAIL.
+
+Root approved the existing real same-profile Logout/Login at fresh management
+read boundaries only, when the actual session has less than sixty seconds
+remaining and there is no pending request or review. Expired sessions log in
+directly; still-live sessions log out normally first. Fresh login/inspection
+must preserve the original Owner/device/key/Node binding and restore the same
+private scope/read action before new cards, gestures and review are obtained.
+The fixture rejects Root activation complete, App-Node approval complete or
+Group APPLY during this recovery. It changes no product deadline, clock,
+business grant or package. M5's closed-App business/real lease interval and
+M7's explicit logout/business checks do not invoke this management-read helper.
+Closed future diagnostics record state, checked time, real expiry, new login
+time, identity comparisons and safe error codes/digests without payloads.
+
+Source/harness were clean c44621f, manifest
+`c948b83fa93194913a5bc8fc7d6e61ff2a630262df2d3b30fe9d98c00055eb39`;
+source/executable hashes matched before/after and the owned container was
+absent. Version, both compilations and vet exited 0; harness exited 1.
+Receipt `~/Cicada/.local/evidence/native-pair-acceptance/run-20261026T192743Z-61sEQT/result.json`
+SHA-256 `bb2db7ed68d59191eb0a3935f3b035c686c98820b8ec000b50dbba6fe8231f4f`;
+closed artifact `owner-groups-protocol-audit/5379e21f0463f7e1.json` SHA-256
+`e7b91ea479134f9605126afc32cef26447104441dacbe9ba5e91ef332e08d7cc`.
+M3 and all M4–M8 remain unaccepted; final four-identity/real five-minute
+witnesses were not reached. Windows DPAPI/ACL/GUI, Android, physical second
+Node, public HTTPS and actual 24-hour expiry remain **NOT_RUN**.
+
+The session-boundary fixture compiled and both readonly privacy tests passed,
+exit 0, using the pinned disposable Docker/read-only modules/locked task cache.
+Dirty c44621f manifest
+`3a5a165f8f5b24454df56b275f0a5885b292cb0d995db12880d45af78f530ccd`
+matched before/after; this receipt paragraph was added afterward. Receipt
+`~/Cicada/.local/evidence/n2-acceptance/owner-groups-session-c44621f-01/result.json`
+SHA-256 `eb1e19cd37a565c42454901b89c2012971d1821a9eeaa74b5a3f1160a7c12684`.
+It proves compilation/privacy only. Original-profile login recovery and M3–M8
+still require the next complete real Runtime execution.
+
 ### 2026-10-26 user-reported four-Thread Group continuation
 
 Root relayed the user's report that four real native Threads on the same Node

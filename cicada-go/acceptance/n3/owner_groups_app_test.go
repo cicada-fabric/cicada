@@ -44,6 +44,7 @@ func ownerGroupsAppGesture(t *testing.T, v *codexProductFixture, kind appcore.Ac
 	}
 	panel := actualOwnerGroupsPanel(t, s)
 	if panel.NodeID != v.actualNode.id || panel.NetworkID == "" {
+		t.Logf("OWNER_GROUPS_APP_SCOPE action=%s action_failed=%t account_state=%s root_state=%s session_expires_at=%s node_matches=%t network_present=%t pending=%t review_present=%t app_error_code=%s group_error_code=%s action_error_sha256=%s", kind, reply.ActionFailed, s.Account.State, s.Account.RootState, s.Account.SessionExpiresAt, panel.NodeID == v.actualNode.id, panel.NetworkID != "", panel.Pending, panel.Review != nil, safeAppStartupDiagnostic(appStartupDiagnostic{ErrorCode: s.ErrorCode}).ErrorCode, safeAppStartupDiagnostic(appStartupDiagnostic{ErrorCode: panel.ErrorCode}).ErrorCode, hash([]byte(reply.ActionError)))
 		t.Fatal("actual Group action changed the original Node/Network scope")
 	}
 	return reply, panel, trace
@@ -62,7 +63,7 @@ func requireOwnerGroupsCurrent(t *testing.T, v *codexProductFixture, panel owner
 
 func refreshOwnerGroups(t *testing.T, v *codexProductFixture, network string) ownerGroupsPanel {
 	t.Helper()
-	panel := actualOwnerGroupsPanel(t, v.command(t, appActorCommand{}).Current)
+	panel := actualOwnerGroupsPanel(t, ownerGroupsFreshAppSession(t, v, network))
 	if panel.Pending || panel.Review != nil || panel.GestureID == "" {
 		t.Fatal("fresh Group read would displace an original request or an undismissed review")
 	}
