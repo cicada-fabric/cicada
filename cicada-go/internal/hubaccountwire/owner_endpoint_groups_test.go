@@ -1,6 +1,7 @@
 package hubaccountwire
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -311,6 +312,13 @@ func TestOwnerEndpointGroupsReadScopeActionsAndSnapshotRules(t *testing.T) {
 	if _, err := DecodeOwnerEndpointGroupsCapabilities(mustEndpointGroupsJSON(t, caps), f.hub); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := DecodeOwnerEndpointGroupsCapabilities(append(mustEndpointGroupsJSON(t, caps), '\n'), f.hub); err != nil {
+		t.Fatal("HTTP JSON encoder newline rejected", err)
+	}
+	if _, err := DecodeOwnerEndpointGroupsCapabilities(append(mustEndpointGroupsJSON(t, caps), bytes.Repeat([]byte(" "), 4096)...), f.hub); err == nil {
+		t.Fatal("oversized public metadata accepted")
+	}
+
 	caps.NativeSelfGroups = true
 	if _, err := DecodeOwnerEndpointGroupsCapabilities(mustEndpointGroupsJSON(t, caps), f.hub); err == nil {
 		t.Fatal("self capability exceeded overall availability")

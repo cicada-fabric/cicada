@@ -151,6 +151,9 @@ func (s *Store) AuthorizeLocalDeliveryForNodeCredential(nodeCredentialDigest, se
 	if err := validateLocalDeliveryEndpointSnapshot(source, input.GroupID, nowTime); err != nil {
 		return nil, ErrLocalDeliveryNotAuthorized
 	}
+	if _, e := endpointGroupsGuardTx(tx, source.EndpointID, input.GroupID, input.Action, nowTime); e != nil {
+		return nil, ErrLocalDeliveryNotAuthorized
+	}
 	allowed, err := localDeliveryMembershipAllows(tx, source.PrincipalID, input.GroupID, input.Action, nowText)
 	if err != nil || !allowed {
 		return nil, ErrLocalDeliveryNotAuthorized
@@ -271,6 +274,9 @@ func (s *Store) RevalidateLocalDeliveryForNodeCredential(nodeCredentialDigest st
 		return nil, ErrLocalDeliveryNotAuthorized
 	}
 	if err := networkGuardRelaySecurityTx(tx, &RelayMessageSecurity{SenderPrincipalID: source.PrincipalID, SenderEndpointID: source.EndpointID, SenderGroupID: input.GroupID, ReceiverPrincipalID: target.PrincipalID, ReceiverEndpointID: target.EndpointID, ReceiverGroupID: input.GroupID}, input.GroupID, nowTime); err != nil {
+		return nil, ErrLocalDeliveryNotAuthorized
+	}
+	if _, e := endpointGroupsGuardTx(tx, source.EndpointID, input.GroupID, input.Action, nowTime); e != nil {
 		return nil, ErrLocalDeliveryNotAuthorized
 	}
 	allowed, err := localDeliveryMembershipAllows(tx, source.PrincipalID, input.GroupID, input.Action, nowText)

@@ -116,6 +116,11 @@ func TestEndpointGroupsNodeProjectedGrantAndChallengeNegatives(t *testing.T) {
 	if _, err := VerifyEndpointGroupPeerSource(EndpointGroupPeerSource{EndpointGroupGrant: &grant}, snapshot, g.f.hub, p.OwnerID, node.Public(), now); err == nil {
 		t.Fatal("arriving grant replaced original Owner pin")
 	}
+	receiver:=snapshot;receiver.Relation.EndpointID="synthetic-peer"
+	current:=EndpointGroupCurrent{Format:EndpointGroupCurrentFormat,HubID:p.HubID,GroupID:p.GroupID,Sender:snapshot,Receiver:receiver,Operation:"peer_key",AttemptID:"synthetic-attempt",ObservedAt:formatUTC(now),ExpiresAt:formatUTC(now.Add(30*time.Second))}
+	if ValidateEndpointGroupCurrent(current,"peer_key","synthetic-attempt",now)!=nil{t.Fatal("same-Owner current scope rejected")}
+	current.Receiver.Relation.OwnerID="synthetic-other-owner"
+	if ValidateEndpointGroupCurrent(current,"peer_key","synthetic-attempt",now)==nil{t.Fatal("two individually valid Owner scopes combined into this same-Owner profile")}
 }
 
 func TestEndpointGroupsNodeDescribeAuthoritiesAreExactBijection(t *testing.T) {

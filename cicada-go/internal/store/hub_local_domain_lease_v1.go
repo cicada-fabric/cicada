@@ -8,6 +8,14 @@ import (
 )
 
 func renewLocalDomainAccessLeaseTx(tx *sql.Tx, binding *SessionBinding, wanted string, at time.Time) (string, error) {
+	if r, err := endpointGroupsBindingTx(tx, binding.ID); err != nil {
+		return "", err
+	} else if r != nil {
+		if r.anchor.BindingEpoch != binding.Epoch || r.anchor.LeaseOwner != binding.LeaseOwner || endpointGroupsRenewRegistrationTx(tx, r, at) != nil {
+			return "", ErrSessionBindingLeaseExpired
+		}
+		return r.anchor.LeaseExpiresAt, nil
+	}
 	yes, err := localDomainScopeExists(tx, "", binding.ID)
 	if err != nil || !yes {
 		return wanted, err

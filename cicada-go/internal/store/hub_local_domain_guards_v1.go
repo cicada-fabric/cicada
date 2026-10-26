@@ -93,6 +93,36 @@ func (s *Store) RequireHubLocalDomainRelay(credential, group string) error {
 	if err != nil {
 		return ErrNetworkPermission
 	}
+	if present, e := endpointGroupsSchemaPresent(tx); e != nil {
+		return e
+	} else if present {
+		rows, e := tx.Query(`SELECT r.endpoint_id FROM hub_endpoint_groups_registrations_v1 r JOIN hub_endpoint_groups_relations_v1 x ON x.endpoint_id=r.endpoint_id AND x.group_id=? WHERE r.owner_id=? AND r.node_id=? ORDER BY r.endpoint_id`, group, owner, node)
+		if e != nil {
+			return e
+		}
+		ids := []string{}
+		for rows.Next() {
+			var id string
+			if e = rows.Scan(&id); e != nil {
+				rows.Close()
+				return e
+			}
+			ids = append(ids, id)
+		}
+		e = rows.Err()
+		rows.Close()
+		if e != nil {
+			return e
+		}
+		for _, id := range ids {
+			r, e := endpointGroupsRegistrationTx(tx, id)
+			if e == nil && r != nil && r.anchor.Registration.HubID == hub {
+				if managed, e := endpointGroupsGuardTx(tx, id, group, "message.send", time.Now().UTC()); managed && e == nil {
+					return nil
+				}
+			}
+		}
+	}
 	p, err := localDomainForGroupTx(tx, group)
 	if err != nil || p == nil || p.policy.Node.NodeID != node || p.policy.OwnerID != owner || p.policy.HubID != hub {
 		return ErrNetworkPermission
@@ -123,6 +153,9 @@ func localDomainEndpointCurrentTx(tx *sql.Tx, p *hubLocalDomain, endpoint string
 }
 
 func localDomainSelfTx(tx *sql.Tx, scope NativeActorScope, at time.Time) error {
+	if managed, err := endpointGroupsGuardTx(tx, scope.EndpointID, scope.GroupID, "", at); err != nil || managed {
+		return err
+	}
 	p, err := localDomainForGroupTx(tx, scope.GroupID)
 	if err != nil || p == nil {
 		return err
@@ -140,6 +173,11 @@ func (s *Store) RequireHubNativeCollaborationSelf(scope NativeActorScope) error 
 		return err
 	}
 	defer tx.Rollback()
+	if managed, err := endpointGroupsGuardTx(tx, scope.EndpointID, scope.GroupID, "", time.Now().UTC()); err != nil {
+		return err
+	} else if managed {
+		return guardNativeSelfTx(tx, scope, time.Now().UTC())
+	}
 	domain, err := localDomainScopeExists(tx, scope.GroupID, "")
 	if err != nil {
 		return err
@@ -178,6 +216,9 @@ func localDomainLeaveEndpointTx(tx *sql.Tx, endpoint, stamp string) error {
 }
 
 func localDomainBindingLeaseCeilingTx(tx *sql.Tx, binding string, at time.Time) (string, error) {
+	if managed, err := endpointGroupsLeaseCeilingTx(tx, binding, at); err != nil || managed {
+		return "", err
+	}
 	yes, err := localDomainScopeExists(tx, "", binding)
 	if err != nil || !yes {
 		return "", err

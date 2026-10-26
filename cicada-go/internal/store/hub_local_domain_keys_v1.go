@@ -100,6 +100,13 @@ func localDomainKeyPrepareTx(tx *sql.Tx, in HubLocalDomainNodeInput, p *hubLocal
 }
 
 func localDomainKeyCompleteTx(tx *sql.Tx, in HubLocalDomainNodeInput, p *hubLocalDomain, q wire.LocalDomainNodeKeyComplete) (any, error) {
+	var endpoint string
+	if err := tx.QueryRow(`SELECT endpoint_id FROM hub_local_domain_members_v1 WHERE member_id=? AND policy_id=?`, q.MemberID, p.policy.PolicyID).Scan(&endpoint); err != nil {
+		return nil, ErrNetworkPermission
+	}
+	if err := endpointGroupsDefaultAdmissionTx(tx, endpoint, p.policy.GroupID); err != nil {
+		return nil, err
+	}
 	var raw, state, expires, policy, member string
 	var revision uint64
 	err := tx.QueryRow(`SELECT challenge_json,state,expires_at,policy_id,member_id,expected_revision FROM hub_local_domain_challenges_v1 WHERE challenge_id=?`, q.ChallengeID).Scan(&raw, &state, &expires, &policy, &member, &revision)

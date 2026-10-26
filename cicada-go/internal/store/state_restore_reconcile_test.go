@@ -19,10 +19,19 @@ func syntheticHubCheckpoint() *HubRestoreCheckpoint {
 }
 
 func TestHubRestoreSchema68OnlyAllowsEmptyNodePairState(t *testing.T) {
-	if CurrentV2SchemaVersion != 68 || hubRestoreReviewedSchemaVersion != 67 {
+	if CurrentV2SchemaVersion != 69 || hubRestoreReviewedSchemaVersion != 67 {
 		t.Fatal("change this explicit unsupported boundary only after a separate restore review")
 	}
 	db, root, _, _ := nativeTLSStoreFixture(t)
+	// Construct the actual historical v68 schema in this disposable fixture.
+	// Schema 69 remains outside the separately reviewed restore boundary.
+	objects := endpointGroupsSchemaObjects()
+	for i := len(objects) - 1; i >= 0; i-- {
+		dropSyntheticMigrationObject(t, db.db, objects[i])
+	}
+	if _, err := db.db.Exec(`DELETE FROM schema_migrations_v2 WHERE version=69`); err != nil {
+		t.Fatal(err)
+	}
 	cp, err := InspectHubRestoreCheckpointReadOnly(root)
 	if err != nil || cp.SchemaVersion != 68 || CompareHubRestoreCoverage(cp, cp) != nil {
 		t.Fatal("schema 68 without NPT state lost old restore behavior", err)
@@ -198,5 +207,12 @@ func TestHubForwardCoveragePreservesSQLiteStorageClass(t *testing.T) {
 				t.Fatalf("changed SQLite storage class passed: %v", e)
 			}
 		})
+	}
+}
+
+func TestHubRestoreSchema69RemainsExplicitlyUnreviewed(t *testing.T) {
+	_, root, _, _ := nativeTLSStoreFixture(t)
+	if _, err := InspectHubRestoreCheckpointReadOnly(root); !errors.Is(err, ErrHubRestoreCoverage) {
+		t.Fatal("new authority migration gained unreviewed backup/restore coverage", err)
 	}
 }

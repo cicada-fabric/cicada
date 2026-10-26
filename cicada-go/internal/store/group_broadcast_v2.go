@@ -168,6 +168,9 @@ func (s *Store) CreateSameGroupBroadcastV2Snapshot(input SameGroupBroadcastV2Sna
 	if err := networkGuardGroupEndpointTx(tx, source.PrincipalID, source.EndpointID, input.GroupID, nowTime); err != nil {
 		return nil, ErrSameGroupBroadcastV2Denied
 	}
+	if _, e := endpointGroupsGuardTx(tx, source.EndpointID, input.GroupID, "message.broadcast", nowTime); e != nil {
+		return nil, ErrSameGroupBroadcastV2Denied
+	}
 	allowed, err := localDeliveryMembershipAllows(tx, source.PrincipalID, input.GroupID, "message.broadcast", nowText)
 	if err != nil || !allowed {
 		return nil, ErrSameGroupBroadcastV2Denied
@@ -233,6 +236,9 @@ func buildSameGroupBroadcastV2SnapshotTx(tx *sql.Tx, broadcastID, groupID string
 		sourceEvidence.MembershipRevision != source.MembershipRevision ||
 		sourceEvidence.EndpointJoinRevision != source.GroupJoinRevision {
 		return nil, ErrSameGroupBroadcastV2NotReady
+	}
+	if _, e := endpointGroupsGuardTx(tx, sourceEvidence.EndpointID, groupID, "message.broadcast", nowTime); e != nil {
+		return nil, ErrSameGroupBroadcastV2Denied
 	}
 	if err := networkGuardGroupEndpointTx(tx, sourceEvidence.PrincipalID, sourceEvidence.EndpointID, groupID, nowTime); err != nil {
 		return nil, ErrSameGroupBroadcastV2NotReady

@@ -39,20 +39,22 @@ type SameGroupSealedV1EndpointEvidence struct {
 	Candidate            EndpointKeyCandidate              `json:"candidate"`
 	Grant                *OwnerGroupEndpointKeyGrant       `json:"grant"`
 	LocalDomainGrant     *wire.LocalDomainEndpointKeyGrant `json:"local_domain_grant,omitempty"`
+	EndpointGroupGrant   *wire.EndpointGroupDelegatedGrant `json:"endpoint_group_grant,omitempty"`
 }
 
 // SameGroupSealedV1PeerKey lets an authenticated source Node pin and encrypt
 // to the other current Endpoint. Both endpoint grants and the route snapshot
 // are checked together before this public evidence is returned.
 type SameGroupSealedV1PeerKey struct {
-	HubID              string                            `json:"hub_id"`
-	GroupID            string                            `json:"group_id"`
-	NativeContextScope NativeContextScopeMetadata        `json:"native_context_scope"`
-	Sender             SameGroupSealedV1EndpointEvidence `json:"sender"`
-	Receiver           SameGroupSealedV1EndpointEvidence `json:"receiver"`
-	NativePairEvidence *wire.NativePairPeerEvidence      `json:"native_pair_evidence,omitempty"`
-	NativePairCurrent  *wire.NativePairPeerCurrent       `json:"native_pair_current,omitempty"`
-	LocalDomainCurrent *wire.LocalDomainCurrent          `json:"local_domain_current,omitempty"`
+	HubID                string                            `json:"hub_id"`
+	GroupID              string                            `json:"group_id"`
+	NativeContextScope   NativeContextScopeMetadata        `json:"native_context_scope"`
+	Sender               SameGroupSealedV1EndpointEvidence `json:"sender"`
+	Receiver             SameGroupSealedV1EndpointEvidence `json:"receiver"`
+	NativePairEvidence   *wire.NativePairPeerEvidence      `json:"native_pair_evidence,omitempty"`
+	NativePairCurrent    *wire.NativePairPeerCurrent       `json:"native_pair_current,omitempty"`
+	LocalDomainCurrent   *wire.LocalDomainCurrent          `json:"local_domain_current,omitempty"`
+	EndpointGroupCurrent *wire.EndpointGroupCurrent        `json:"endpoint_group_current,omitempty"`
 }
 
 type SameGroupSealedV1Send struct {
@@ -92,31 +94,33 @@ type SameGroupSealedV1Reply struct {
 // exact claimed attempt. A Node must still verify the two public grants and
 // endpoint attestations locally before opening or injecting the ciphertext.
 type SameGroupSealedV1DeliveryAuthorization struct {
-	AttemptID          string                                  `json:"attempt_id"`
-	MessageID          string                                  `json:"message_id"`
-	Digest             string                                  `json:"digest"`
-	EndpointID         string                                  `json:"endpoint_id"`
-	NodeID             string                                  `json:"node_id"`
-	OwnerID            string                                  `json:"owner_id"`
-	BindingID          string                                  `json:"binding_id"`
-	BindingEpoch       uint64                                  `json:"binding_epoch"`
-	NativeSessionID    string                                  `json:"native_session_id"`
-	DataScope          string                                  `json:"data_scope"`
-	ParentRequestID    string                                  `json:"parent_request_id,omitempty"`
-	NativeContextScope NativeContextScopeMetadata              `json:"native_context_scope"`
-	Route              RelaySealedV1Route                      `json:"route"`
-	Sender             SameGroupSealedV1EndpointEvidence       `json:"sender"`
-	Receiver           SameGroupSealedV1EndpointEvidence       `json:"receiver"`
-	TaskHandoff        *SealedTaskHandoffDeliveryAuthorization `json:"task_handoff,omitempty"`
-	NativePairEvidence *wire.NativePairPeerEvidence            `json:"native_pair_evidence,omitempty"`
-	NativePairCurrent  *wire.NativePairPeerCurrent             `json:"native_pair_current,omitempty"`
-	LocalDomainCurrent *wire.LocalDomainCurrent                `json:"local_domain_current,omitempty"`
+	AttemptID            string                                  `json:"attempt_id"`
+	MessageID            string                                  `json:"message_id"`
+	Digest               string                                  `json:"digest"`
+	EndpointID           string                                  `json:"endpoint_id"`
+	NodeID               string                                  `json:"node_id"`
+	OwnerID              string                                  `json:"owner_id"`
+	BindingID            string                                  `json:"binding_id"`
+	BindingEpoch         uint64                                  `json:"binding_epoch"`
+	NativeSessionID      string                                  `json:"native_session_id"`
+	DataScope            string                                  `json:"data_scope"`
+	ParentRequestID      string                                  `json:"parent_request_id,omitempty"`
+	NativeContextScope   NativeContextScopeMetadata              `json:"native_context_scope"`
+	Route                RelaySealedV1Route                      `json:"route"`
+	Sender               SameGroupSealedV1EndpointEvidence       `json:"sender"`
+	Receiver             SameGroupSealedV1EndpointEvidence       `json:"receiver"`
+	TaskHandoff          *SealedTaskHandoffDeliveryAuthorization `json:"task_handoff,omitempty"`
+	NativePairEvidence   *wire.NativePairPeerEvidence            `json:"native_pair_evidence,omitempty"`
+	NativePairCurrent    *wire.NativePairPeerCurrent             `json:"native_pair_current,omitempty"`
+	LocalDomainCurrent   *wire.LocalDomainCurrent                `json:"local_domain_current,omitempty"`
+	EndpointGroupCurrent *wire.EndpointGroupCurrent              `json:"endpoint_group_current,omitempty"`
 }
 
 type sameGroupEndpointPair struct {
 	nativeEvidence *wire.NativePairPeerEvidence
 	nativeCurrent  *wire.NativePairPeerCurrent
 	domainCurrent  *wire.LocalDomainCurrent
+	groupCurrent   *wire.EndpointGroupCurrent
 	hubID          string
 	groupID        string
 	sender         SameGroupSealedV1EndpointEvidence
@@ -141,6 +145,11 @@ func validSameGroupSealedV1Input(inputCredential, groupID, sourceEndpointID,
 
 func readSameGroupSealedV1EndpointTx(tx *sql.Tx, groupID, endpointID string,
 	at time.Time) (SameGroupSealedV1EndpointEvidence, error) {
+	if r, err := endpointGroupsManagedTx(tx, endpointID); err != nil {
+		return SameGroupSealedV1EndpointEvidence{}, err
+	} else if r != nil {
+		return readEndpointGroupsPeerEndpointTx(tx, r, groupID, at)
+	}
 	if p, err := localDomainForGroupTx(tx, groupID); err != nil {
 		return SameGroupSealedV1EndpointEvidence{}, err
 	} else if p != nil {
@@ -242,13 +251,19 @@ func readSameGroupSealedV1PairTx(tx *sql.Tx, groupID, senderEndpointID,
 		return sameGroupEndpointPair{}, err
 	}
 	pair := sameGroupEndpointPair{hubID: hubID, groupID: groupID, sender: sender, receiver: receiver, nativeEvidence: evidence, nativeCurrent: current}
-	if pair.domainCurrent, err = localDomainPeerCurrentTx(tx, pair, at); err != nil {
+	if pair.groupCurrent, err = endpointGroupsPeerCurrentTx(tx, pair, at); err != nil {
 		return sameGroupEndpointPair{}, err
 	}
+	if pair.groupCurrent == nil {
+		if pair.domainCurrent, err = localDomainPeerCurrentTx(tx, pair, at); err != nil {
+			return sameGroupEndpointPair{}, err
+		}
+	}
+
 	if err = nativePairMatchEndpointEvidence(pair); err != nil {
 		return sameGroupEndpointPair{}, err
 	}
-	if pair.nativeEvidence != nil || pair.domainCurrent != nil {
+	if pair.nativeEvidence != nil || pair.domainCurrent != nil || pair.groupCurrent != nil {
 		if _, err = sameGroupSealedV1PeerCarrierTx(tx, pair); err != nil {
 			return sameGroupEndpointPair{}, err
 		}

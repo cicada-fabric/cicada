@@ -379,7 +379,7 @@ func (s *Service) AuthenticateForGroup(sessionToken, groupID string) (Actor, err
 		return Actor{}, ErrPermissionDenied
 	}
 	membership, err := s.store.GetMembershipByPrincipalGroup(binding.PrincipalID, groupID)
-	if err != nil || membership.Status != store.MembershipStatusActive || membershipExpired(*membership, s.now()) {
+	if err != nil || membership.Status != store.MembershipStatusActive {
 		return Actor{}, ErrPermissionDenied
 	}
 	actor := Actor{
@@ -389,6 +389,11 @@ func (s *Service) AuthenticateForGroup(sessionToken, groupID string) (Actor, err
 		MembershipRevision: membership.Revision, BindingID: binding.ID,
 		BindingEpoch: binding.Epoch, LeaseOwner: binding.LeaseOwner,
 		LeaseExpiresAt: binding.LeaseExpiresAt,
+	}
+	if managed, err := s.store.AuthorizeEndpointGroupSource(nativeActorScope(actor), "", s.now().UTC()); err != nil {
+		return Actor{}, ErrPermissionDenied
+	} else if !managed && membershipExpired(*membership, s.now()) {
+		return Actor{}, ErrPermissionDenied
 	}
 	if endpoint.Owner != s.ownerID {
 		if _, err := s.validateActorCurrent(actor); err != nil {
@@ -426,6 +431,14 @@ func (s *Service) RecordBoundNodeMachineHeartbeat(nodeToken, status string, capa
 }
 
 func (s *Service) Authorize(actor Actor, action string) error {
+	if managed, err := s.store.AuthorizeEndpointGroupSource(nativeActorScope(actor), action, s.now().UTC()); err != nil {
+		return ErrPermissionDenied
+	} else if managed {
+		if _, err = s.validateActorCurrent(actor); err != nil {
+			return err
+		}
+		return nil
+	}
 	if _, err := s.validateActorCurrent(actor); err != nil {
 		return err
 	}
@@ -469,6 +482,9 @@ func (s *Service) RenewForGroup(sessionToken, groupID string, leaseSeconds int) 
 }
 
 func (s *Service) Leave(actor Actor, reason string) error {
+	if _, err := s.store.AuthorizeEndpointGroupSource(nativeActorScope(actor), "endpoint.leave", s.now().UTC()); err != nil {
+		return ErrPermissionDenied
+	}
 	if _, err := s.validateActorCurrent(actor); err != nil {
 		return err
 	}
@@ -484,6 +500,9 @@ func (s *Service) Leave(actor Actor, reason string) error {
 // LeaveGroup withdraws the current Group scope while preserving the stable
 // Endpoint and native binding if another authorized Group remains.
 func (s *Service) LeaveGroup(actor Actor, reason string) (string, error) {
+	if _, err := s.store.AuthorizeEndpointGroupSource(nativeActorScope(actor), "membership.leave", s.now().UTC()); err != nil {
+		return "", ErrPermissionDenied
+	}
 	if _, err := s.validateActorCurrent(actor); err != nil {
 		return "", err
 	}
@@ -518,6 +537,10 @@ func (s *Service) List(actor Actor, status, nodeID, harnessName string, limit in
 		GroupID: actor.GroupID, Status: strings.TrimSpace(status), NodeID: strings.TrimSpace(nodeID),
 		Harness: strings.TrimSpace(harnessName), MigrationState: store.EndpointMigrationReady, Limit: limit,
 	})
+	if err != nil {
+		return nil, err
+	}
+	endpoints, err = s.store.FilterEndpointGroupDirectory(actor.GroupID, endpoints, s.now().UTC())
 	if err != nil {
 		return nil, err
 	}
@@ -579,6 +602,9 @@ func (s *Service) Resolve(actor Actor, input ResolveInput) (*NetworkCard, error)
 		joined, joinedErr := s.store.IsEndpointGroupActive(endpoint.ID, actor.GroupID)
 		if joinedErr != nil || !joined ||
 			endpoint.MigrationState != store.EndpointMigrationReady || endpoint.Status == "left" {
+			return nil, ErrNotFoundOrNotAuthorized
+		}
+		if err := s.store.NetworkGuardGroup(endpoint.PrincipalID, endpoint.ID, actor.GroupID, actor.NetworkID); err != nil {
 			return nil, ErrNotFoundOrNotAuthorized
 		}
 		binding, bindErr := s.store.GetActiveSessionBinding(endpoint.ID)

@@ -108,6 +108,12 @@ func (h *Handler) hubAccount(response http.ResponseWriter, request *http.Request
 		}
 	}
 	limit := wire.MaxPacketBytes
+	if wire.OwnerEndpointGroupsHTTPPath(operation) != "" {
+		limit = wire.MaxOwnerEndpointGroupsOriginalBytes
+		if operation == wire.OperationOwnerEndpointGroupsReconcile {
+			limit = wire.MaxOwnerEndpointGroupsReconcilePacketBytes
+		}
+	}
 	if wire.LocalDomainHTTPPath(operation) != "" {
 		limit = wire.MaxLocalDomainOriginalBytes
 		if operation == wire.OperationLocalDomainReconcile {
@@ -129,6 +135,14 @@ func (h *Handler) hubAccount(response http.ResponseWriter, request *http.Request
 	if e != nil {
 		if errors.Is(e, hubauth.ErrNodePairTrustACKRequired) {
 			writeError(response, http.StatusConflict, hubauth.ErrNodePairTrustACKRequired)
+			return
+		}
+		if errors.Is(e, hubauth.ErrEndpointGroupsPacketConflict) {
+			writeError(response, http.StatusConflict, hubauth.ErrEndpointGroupsPacketConflict)
+			return
+		}
+		if errors.Is(e, hubauth.ErrEndpointGroupsOutcomeUncertain) {
+			writeError(response, http.StatusServiceUnavailable, hubauth.ErrEndpointGroupsOutcomeUncertain)
 			return
 		}
 		if errors.Is(e, hubauth.ErrAppNodeCounterConflict) {

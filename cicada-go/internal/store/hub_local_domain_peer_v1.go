@@ -13,12 +13,16 @@ import (
 var errLocalDomainCarrierTooLarge = errors.New("local domain complete carrier exceeds bound")
 
 func sameGroupEvidenceManifest(e SameGroupSealedV1EndpointEvidence) GroupEndpointKeyGrantManifest {
-	if e.Grant != nil && e.LocalDomainGrant == nil {
+	if e.Grant != nil && e.LocalDomainGrant == nil && e.EndpointGroupGrant == nil {
 		return e.Grant.Manifest
 	}
 	var m GroupEndpointKeyGrantManifest
-	if e.Grant == nil && e.LocalDomainGrant != nil {
+	if e.Grant == nil && e.LocalDomainGrant != nil && e.EndpointGroupGrant == nil {
 		raw, _ := json.Marshal(e.LocalDomainGrant.Manifest)
+		_ = json.Unmarshal(raw, &m)
+	}
+	if e.Grant == nil && e.LocalDomainGrant == nil && e.EndpointGroupGrant != nil {
+		raw, _ := json.Marshal(e.EndpointGroupGrant.Manifest)
 		_ = json.Unmarshal(raw, &m)
 	}
 	return m
@@ -28,7 +32,7 @@ func sameGroupEvidenceAllowsExpiry(e SameGroupSealedV1EndpointEvidence, end time
 	m := sameGroupEvidenceManifest(e)
 	// Only the explicit delegated variant allows an unbounded policy. A missing
 	// or malformed legacy grant retains its original fail-closed interval.
-	if e.LocalDomainGrant != nil && e.Grant == nil && m.ExpiresAt == "" {
+	if (e.LocalDomainGrant != nil || e.EndpointGroupGrant != nil) && e.Grant == nil && m.ExpiresAt == "" {
 		return true
 	}
 	deadline, err := time.Parse(time.RFC3339Nano, m.ExpiresAt)

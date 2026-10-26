@@ -40,6 +40,25 @@ func (h *hubNodesHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	path := r.URL.Path
+	if path == wire.OwnerEndpointGroupsCapabilitiesPath {
+		if r.Method != http.MethodGet {
+			writeError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+			return
+		}
+		caps, err := h.account.OwnerEndpointGroupsCapabilities()
+		if err != nil {
+			writeError(w, http.StatusServiceUnavailable, errors.New("endpoint groups unavailable"))
+			return
+		}
+		writeJSON(w, http.StatusOK, caps)
+		return
+	}
+	for _, op := range wire.OwnerEndpointGroupsHTTPOperations() {
+		if path == wire.OwnerEndpointGroupsHTTPPath(op) {
+			h.base.hubAccount(w, r, op)
+			return
+		}
+	}
 	if h.nodePairTrust(w, r) {
 		return
 	}

@@ -21,6 +21,19 @@ type NativeActorScope struct {
 }
 
 func guardNativeActorTx(tx *sql.Tx, scope NativeActorScope, action string, at time.Time) error {
+	if managed, err := endpointGroupsGuardTx(tx, scope.EndpointID, scope.GroupID, action, at); err != nil {
+		return err
+	} else if managed {
+		r, err := endpointGroupsRegistrationTx(tx, scope.EndpointID)
+		if err != nil || r == nil || scope.PrincipalID != r.anchor.Registration.PrincipalID || scope.NetworkID != r.anchor.NetworkID || scope.BindingID != r.anchor.BindingID || scope.BindingEpoch != r.anchor.BindingEpoch || scope.LeaseOwner != r.anchor.LeaseOwner {
+			return ErrNetworkPermission
+		}
+		m, err := endpointGroupsMemberTx(tx, scope.PrincipalID, scope.GroupID)
+		if err != nil || m == nil || scope.MembershipID != m.ID || scope.MembershipRevision != m.Revision {
+			return ErrNetworkPermission
+		}
+		return guardDedicatedThreadGroupEndpointTx(tx, scope.EndpointID, scope.GroupID, at)
+	}
 	if scope.PrincipalID == "" || scope.EndpointID == "" || scope.GroupID == "" ||
 		scope.MembershipID == "" || scope.MembershipRevision <= 0 ||
 		scope.BindingID == "" || scope.BindingEpoch == 0 || scope.LeaseOwner == "" {

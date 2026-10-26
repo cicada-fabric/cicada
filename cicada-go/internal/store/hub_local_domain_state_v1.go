@@ -211,8 +211,8 @@ func localDomainTerminateTx(tx *sql.Tx, p *hubLocalDomain, state, reason string,
 	}
 	stamp := appNodeStamp(at)
 	queries := []string{
-		`UPDATE memberships SET status='revoked',revision=revision+1,version=version+1,revoked_at=?,revocation_reason='LOCAL_DOMAIN_TERMINAL',updated_at=? WHERE group_id=? AND principal_id IN(SELECT principal_id FROM hub_local_domain_members_v1 WHERE policy_id=?) AND status='active'`,
-		`UPDATE network_memberships_v2 SET status='revoked',revision=revision+1,updated_at=? WHERE network_id=? AND principal_id IN(SELECT principal_id FROM hub_local_domain_members_v1 WHERE policy_id=?) AND status='active'`,
+		`UPDATE memberships SET status='revoked',revision=revision+1,version=version+1,revoked_at=?,revocation_reason='LOCAL_DOMAIN_TERMINAL',updated_at=? WHERE group_id=? AND principal_id IN(SELECT principal_id FROM hub_local_domain_members_v1 WHERE policy_id=?) AND status='active' AND NOT EXISTS(SELECT 1 FROM hub_endpoint_groups_registrations_v1 r JOIN fabric_endpoints e ON e.id=r.endpoint_id JOIN hub_local_domains_v1 op ON op.policy_id=r.origin_policy_id WHERE e.principal_id=memberships.principal_id AND op.group_id=memberships.group_id)`,
+		`UPDATE network_memberships_v2 SET status='revoked',revision=revision+1,updated_at=? WHERE network_id=? AND principal_id IN(SELECT principal_id FROM hub_local_domain_members_v1 WHERE policy_id=?) AND status='active' AND NOT EXISTS(SELECT 1 FROM hub_endpoint_groups_registrations_v1 r JOIN fabric_endpoints e ON e.id=r.endpoint_id WHERE e.principal_id=network_memberships_v2.principal_id AND r.network_id=network_memberships_v2.network_id)`,
 	}
 	if _, err := tx.Exec(queries[0], stamp, stamp, p.policy.GroupID, p.policy.PolicyID); err != nil {
 		return err
@@ -220,10 +220,10 @@ func localDomainTerminateTx(tx *sql.Tx, p *hubLocalDomain, state, reason string,
 	if _, err := tx.Exec(queries[1], stamp, p.policy.NetworkID, p.policy.PolicyID); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(`UPDATE network_access_sessions_v2 SET status='revoked',updated_at=? WHERE id IN(SELECT access_id FROM hub_local_domain_members_v1 WHERE policy_id=?)`, stamp, p.policy.PolicyID); err != nil {
+	if _, err := tx.Exec(`UPDATE network_access_sessions_v2 SET status='revoked',updated_at=? WHERE id IN(SELECT access_id FROM hub_local_domain_members_v1 WHERE policy_id=?) AND NOT EXISTS(SELECT 1 FROM hub_endpoint_groups_registrations_v1 r WHERE json_extract(r.anchor_json,'$.network_access_binding_id')=network_access_sessions_v2.id)`, stamp, p.policy.PolicyID); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(`UPDATE session_bindings SET status='revoked',revocation_reason='LOCAL_DOMAIN_TERMINAL',version=version+1,updated_at=? WHERE id IN(SELECT binding_id FROM hub_local_domain_members_v1 WHERE policy_id=?) AND status!='revoked'`, stamp, p.policy.PolicyID); err != nil {
+	if _, err := tx.Exec(`UPDATE session_bindings SET status='revoked',revocation_reason='LOCAL_DOMAIN_TERMINAL',version=version+1,updated_at=? WHERE id IN(SELECT binding_id FROM hub_local_domain_members_v1 WHERE policy_id=?) AND status!='revoked' AND NOT EXISTS(SELECT 1 FROM hub_endpoint_groups_registrations_v1 r WHERE r.binding_id=session_bindings.id)`, stamp, p.policy.PolicyID); err != nil {
 		return err
 	}
 	memberState := wire.LocalDomainMemberRevoked

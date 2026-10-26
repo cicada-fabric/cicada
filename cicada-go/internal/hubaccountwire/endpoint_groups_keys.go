@@ -67,7 +67,7 @@ func ValidateEndpointGroupCurrent(c EndpointGroupCurrent, operation, attempt str
 	if now.IsZero() || c.Format != EndpointGroupCurrentFormat || !validID(c.HubID) || !validID(c.GroupID) || !endpointGroupsContains([]string{"peer_key", "native_delivery"}, operation) || attempt == "" || len(attempt) > 257 || c.Operation != operation || c.AttemptID != attempt ||
 		validateTimeWindowNow(c.ObservedAt, c.ExpiresAt, 30*time.Second, now) != nil || validateEndpointGroupCurrentEndpoint(c.Sender, now) != nil || validateEndpointGroupCurrentEndpoint(c.Receiver, now) != nil ||
 		c.Sender.Relation.EndpointID == c.Receiver.Relation.EndpointID || c.Sender.Relation.HubID != c.HubID || c.Receiver.Relation.HubID != c.HubID || c.Sender.Relation.GroupID != c.GroupID || c.Receiver.Relation.GroupID != c.GroupID ||
-		c.Sender.Relation.NetworkID != c.Receiver.Relation.NetworkID {
+		c.Sender.Relation.NetworkID != c.Receiver.Relation.NetworkID || c.Sender.Relation.OwnerID != c.Receiver.Relation.OwnerID {
 		return ErrInvalid
 	}
 	end, _ := parseCanonicalUTC(c.ExpiresAt)

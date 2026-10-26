@@ -97,11 +97,11 @@
   "proposed_owner_endpoint_groups": {
     "contract_revision": "owner-endpoint-groups-v1",
     "status": "CONTRACT_DRAFT",
-    "implementation_phase": "SHARED_DTO_CRYPTO",
+    "implementation_phase": "HUB_STORE_RPC_GUARDS_CANDIDATE",
     "default_available": false,
     "wire_version": 1,
     "legacy_contract_unchanged": true,
-    "schema_migration": "REQUIRED_NOT_ASSIGNED",
+    "schema_migration": 69,
     "new_identity_tables": false,
     "capabilities_path": "/v2/owner/endpoint-groups/capabilities",
     "capabilities_format": "cicada.owner-endpoint-groups-capabilities.v1",

@@ -9,6 +9,7 @@ func sameGroupSealedV1PeerCarrierTx(tx *sql.Tx, pair sameGroupEndpointPair) (*Sa
 	}
 	result := &SameGroupSealedV1PeerKey{HubID: pair.hubID, GroupID: pair.groupID, NativeContextScope: scope, Sender: pair.sender, Receiver: pair.receiver, NativePairEvidence: pair.nativeEvidence, NativePairCurrent: pair.nativeCurrent}
 	result.LocalDomainCurrent = pair.domainCurrent
+	result.EndpointGroupCurrent = pair.groupCurrent
 	// Preserve the established locator redaction. Current carries the separate
 	// actual approved SID required by native-pair policy.
 	result.Receiver.NativeSessionID = ""
@@ -16,6 +17,9 @@ func sameGroupSealedV1PeerCarrierTx(tx *sql.Tx, pair sameGroupEndpointPair) (*Sa
 		return nil, err
 	}
 	if err := localDomainCarrierSize(result, result.LocalDomainCurrent); err != nil {
+		return nil, err
+	}
+	if err := endpointGroupsCarrierSize(result, result.EndpointGroupCurrent); err != nil {
 		return nil, err
 	}
 	return result, nil
@@ -43,11 +47,20 @@ func sameGroupSealedV1DeliveryCarrier(pair sameGroupEndpointPair, record *RelayS
 		current.AttemptID = attemptID
 		result.LocalDomainCurrent = &current
 	}
+	if pair.groupCurrent != nil {
+		current := *pair.groupCurrent
+		current.Operation = "native_delivery"
+		current.AttemptID = attemptID
+		result.EndpointGroupCurrent = &current
+	}
 	result.Sender.NativeSessionID = ""
 	if err := nativePairCarrierTx(result, pair.nativeEvidence); err != nil {
 		return nil, err
 	}
 	if err := localDomainCarrierSize(result, result.LocalDomainCurrent); err != nil {
+		return nil, err
+	}
+	if err := endpointGroupsCarrierSize(result, result.EndpointGroupCurrent); err != nil {
 		return nil, err
 	}
 	return result, nil

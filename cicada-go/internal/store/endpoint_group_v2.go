@@ -259,6 +259,11 @@ func (s *Store) LeaveEndpointGroup(endpointID, groupID, bindingID string, expect
 		_ = tx.Rollback()
 		return "", cause
 	}
+	if r, e := endpointGroupsManagedTx(tx, endpointID); e != nil {
+		return rollback(e)
+	} else if r != nil {
+		return rollback(ErrNetworkPermission)
+	}
 	var principalID, status string
 	var epoch uint64
 	if err := tx.QueryRow(`SELECT principal_id, status, epoch FROM session_bindings
@@ -353,6 +358,11 @@ func (s *Store) LeaveEndpointAllGroups(endpointID, bindingID string, expectedEpo
 	rollback := func(cause error) error {
 		_ = tx.Rollback()
 		return cause
+	}
+	if r, e := endpointGroupsManagedTx(tx, endpointID); e != nil {
+		return rollback(e)
+	} else if r != nil {
+		return rollback(ErrNetworkPermission)
 	}
 	timestamp := now()
 	result, err := tx.Exec(`UPDATE session_bindings

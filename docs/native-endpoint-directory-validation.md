@@ -818,3 +818,58 @@ wrapper status or missing row settles pending. Node/Store/MCP/App consumers,
 full current Guard/renewal state, maximum legal product DTO, Docker interop,
 Runtime and M1–M8 are still NOT_RUN at this shared supplement. Source
 fingerprints match before/after and are verified against its commit.
+
+### Hub Store/RPC/source Guard candidate, 2026-10-26
+
+The Hub implementation candidate uses schema 69 and retains the original
+Owner, account, Node, Endpoint, key, binding, access-session and epoch coordinates.
+CREATE is management-only; ADD remains PENDING_KEY until the exact signed Node
+projection completes. Owner heads and original sealed operation receipts are
+permanent. Group removal/expiry cannot fall back to the default contribution.
+Public capabilities remain false pending the integrated Core/CLI validation.
+
+Source-specific evidence is
+`/home/zyf/Cicada/.local/evidence/owner-groups-hub-core-20261026T144616Z/`.
+`source-before.json` records the dirty input at `3e9f01e` and 1,572 Go/module
+hashes; the receipt verifies those bytes against the eventual checkpoint. A
+standalone HEAD is not used to identify the pre-commit build.
+
+| Gate | Result | Scope |
+| --- | --- | --- |
+| Relevant deterministic packages | 209 pass / 0 fail / 0 skip; 101 top-level | Owner/Node ledger, actual source Guards, strict wire/crypto, current directory targets, original lease, migration, legacy LocalDomain/sealed messaging and bounded directory/resolve compatibility |
+| Focused race | 4 pass / 0 fail / 0 skip | Two actual Store source/expiry tests and two production HTTP/PQ flows |
+| Disposable Docker | 4 pass / 0 fail / 0 skip | Same four Store/HTTP tests; pinned Go 1.27.3 image `sha256:5c3e9b43cfd3bb95c7937462e29d87ada57b481a96fa23ad0eb61778d7a00110`, network none, UID 1000, read-only source/modules, isolated SQLite and loopback listeners, Control nil |
+| Contract metadata/oracle | PASS | Inventory/schema 69, false availability, five oracle tests / 60 rejected mutations; wire 1/catalog 55/old activation scopes unchanged |
+
+The HTTP flows use the actual HubNodes Router, SDK packets, retained original
+Endpoint candidate and delegated Node proofs, then peer-key/SEND/CLAIM/final
+injection authorization. They cover actual five-minute cold renewal without
+credential/identity replacement, ACTIVE removal preserving another Group,
+READ/PREPARE lost-response recovery, packet conflict 409, uncertain outcome 503,
+Root-revoked historical receipts and unknown query wrappers after login changes.
+The Store tests place wider rights on the actual Principal before activation;
+both Fabric-facing and transactional source Guards still allow only the five
+reviewed rights, including denial of legacy global/Group Leave. Expired target
+metadata is filtered from the native directory. Finite-expiry boundaries use the
+production Store's injected At before/at/after a one-day policy expiry, followed
+by reopen/renew/old-proof checks with the original default still active. This is
+not a 24-hour wall-clock Runtime result.
+
+The first overly broad normal selector retains a FAIL for the pre-existing
+`TestStateMaintenanceDirectoryPolicyAndFailureCleanup` fixture: umask 077 made
+its requested 0755 directory become 0700 before product code ran. Its exact
+fixture passes separately under expected umask 022 (3 events / 1 top-level), with
+no production or unrelated fixture change. That broad run also retains one
+NOT_RUN live-owned-native test. Neither result is relabeled as a product pass;
+the final relevant selector has no failure/skip.
+
+Dependencies are the Owner Store checkpoint `fbcbe68`, Node Store `57ffe0e` and
+HTTP/recovery fix `d1c6902`, with parent-branch mappings recorded in the receipt.
+Their earlier exact overlay records retain their original attribution. Node CLI,
+App, real native Runtime/M1–M8, Android, physical devices and public HTTPS are
+separate gates. This Docker scope is production Hub/Node-protocol interoperability
+with synthetic test clients, not a complete installed Node daemon/native Runtime.
+Portable Hub checkpoint/export/restore for schema 69 remains unreviewed and
+fails closed; ordinary Store reopen and exact durable-receipt recovery are
+separate tested behavior. No shared development Hub or real credentials were
+used, and no merge/push/deployment is included.

@@ -504,6 +504,22 @@ OR (g.network_id!='' AND m.group_id IS NOT NULL AND (m.state!='APPROVED' OR m.ne
 func (s *Store) NetworkGuardGroup(principalID, endpointID, groupID, networkID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	if managed, e := endpointGroupsGuardTx(tx, endpointID, groupID, "", time.Now().UTC()); e != nil {
+		tx.Rollback()
+		return e
+	} else if managed {
+		r, e := endpointGroupsRegistrationTx(tx, endpointID)
+		tx.Rollback()
+		if e != nil || r == nil || r.anchor.Registration.PrincipalID != principalID || r.anchor.NetworkID != networkID {
+			return ErrNetworkPermission
+		}
+		return nil
+	}
+	tx.Rollback()
 	var phase, mapped string
 	if err := s.db.QueryRow(`SELECT phase FROM network_mode_v2 WHERE id=1`).Scan(&phase); err != nil {
 		return err
@@ -519,7 +535,7 @@ func (s *Store) NetworkGuardGroup(principalID, endpointID, groupID, networkID st
 	}
 	var ok int
 	var memberExpiry string
-	err := s.db.QueryRow(`SELECT 1,m.expires_at FROM groups g
+	err = s.db.QueryRow(`SELECT 1,m.expires_at FROM groups g
 JOIN networks_v2 n ON n.id=g.network_id AND n.state='ACTIVE'
 JOIN network_memberships_v2 m ON m.network_id=n.id AND m.principal_id=? AND m.status='active'
 JOIN principals p ON p.id=m.principal_id AND p.status='active'
@@ -823,6 +839,15 @@ func networkGuardRelaySecurityTx(tx *sql.Tx, security *RelayMessageSecurity, rec
 		{security.SenderPrincipalID, security.SenderEndpointID, security.SenderGroupID, "direct.send"},
 		{security.ReceiverPrincipalID, security.ReceiverEndpointID, security.ReceiverGroupID, "direct.receive"},
 	} {
+		if managed, err := endpointGroupsGuardTx(tx, side.endpointID, side.groupID, "", at); err != nil {
+			return err
+		} else if managed {
+			r, err := endpointGroupsRegistrationTx(tx, side.endpointID)
+			if err != nil || r == nil || r.anchor.Registration.PrincipalID != side.principalID || r.anchor.NetworkID != senderNetwork || security.SenderGroupID != security.ReceiverGroupID {
+				return ErrNetworkPermission
+			}
+			continue
+		}
 		query := `SELECT 1,nm.expires_at,gm.expires_at FROM network_memberships_v2 nm
 		JOIN endpoint_network_memberships_v2 en ON en.network_id=nm.network_id AND en.endpoint_id=? AND en.status='active'
 		JOIN fabric_endpoints e ON e.id=en.endpoint_id AND e.principal_id=nm.principal_id AND e.status!='left'
@@ -855,6 +880,15 @@ WHERE id=? AND principal_id=?`, side.endpointID, side.principalID).Scan(&ownerID
 }
 
 func networkGuardGroupEndpointTx(tx *sql.Tx, principalID, endpointID, groupID string, at time.Time) error {
+	if managed, err := endpointGroupsGuardTx(tx, endpointID, groupID, "", at); err != nil {
+		return err
+	} else if managed {
+		r, err := endpointGroupsRegistrationTx(tx, endpointID)
+		if err != nil || r == nil || r.anchor.Registration.PrincipalID != principalID {
+			return ErrNetworkPermission
+		}
+		return guardDedicatedThreadGroupEndpointTx(tx, endpointID, groupID, at)
+	}
 	security := &RelayMessageSecurity{
 		SenderPrincipalID: principalID, SenderEndpointID: endpointID, SenderGroupID: groupID,
 		ReceiverPrincipalID: principalID, ReceiverEndpointID: endpointID, ReceiverGroupID: groupID,

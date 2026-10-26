@@ -1,6 +1,7 @@
 package hubaccountwire
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -284,6 +285,10 @@ func NewOwnerEndpointGroupsReconcile(s AppNodeSession, scope e2ee.OwnerAppNodeSc
 
 func DecodeOwnerEndpointGroupsCapabilities(raw []byte, hub HubIdentity) (OwnerEndpointGroupsCapabilities, error) {
 	var c OwnerEndpointGroupsCapabilities
+	if len(raw) > 4096 {
+		return c, ErrInvalid
+	}
+	raw = bytes.TrimSpace(raw)
 	fp, err := HubFingerprint(hub)
 	if err != nil || decodeCanonical(raw, 4096, &c) != nil || c.Format != OwnerEndpointGroupsCapabilitiesFormat || c.ContractRevision != OwnerEndpointGroupsContractRevision || c.HubID != hub.HubID || c.HubFingerprint != fp ||
 		c.MaxPageRows != 64 || c.MaxPageCanonicalBytes != MaxOwnerEndpointGroupsPageBytes || c.MaxActiveGroupsPerEndpoint != 32 || !reflect.DeepEqual(c.DurationValues, EndpointGroupDurationValues()) || c.NativeSelfGroups && !c.Available {

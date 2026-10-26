@@ -787,16 +787,17 @@ explicitly new managed scopes; this is not evidence of migration of older scopes
 
 ## Proposed Owner-managed Endpoint Groups v1
 
-**SOURCE PHASE: SHARED DTO + CRYPTO ONLY, 2026-10-26.** Root approved the contract
-at `e3544d9`. The shared Go DTOs, Owner request/policy and Node-key signing
-primitives, strict request/review/result checks and existing PQ packet codecs
-are implemented in this source phase. The profile is
-`owner-endpoint-groups-v1`; its public availability is **false**. No production
-handler, Store state machine, Node consumer, App action, schema migration or
-Runtime gate is supplied by this checkpoint. The machine inventory is the separate
+**SOURCE PHASE: HUB STORE/RPC/GUARDS CANDIDATE, 2026-10-26.** Root approved the
+contract at `e3544d9`. The Hub candidate adds schema 69, durable Owner and Node
+transactions, bounded production HTTP/RPC handlers, exact receipts, original
+registration renewal and per-Endpoint source Guards to the shared Go codecs.
+The profile is `owner-endpoint-groups-v1`; public availability remains **false**
+pending the integrated Core/CLI gate. Node/MCP and App implementations retain
+separate commit and validation attribution; this Hub checkpoint claims no real
+native Runtime or M1–M8 pass. The machine inventory remains the separate
 `proposed_owner_endpoint_groups` object in `owner-endpoint-contract.json`.
 It does not revise `native-endpoint-directory-v1`, the existing directory cards,
-wire 1, the 55-operation Client catalog, Pair or literal `cicada join` semantics.
+wire 1, the 55-operation Client catalog or Pair/legacy-profile Join semantics.
 
 ### Scope and objects
 
@@ -1282,6 +1283,21 @@ record is based on its enrolled context/profile and current exact manual proof,
 not permission borrowed from a now-revoked default Group. The existing fresh
 one-use Hook context and dedicated-context history fences remain mandatory.
 
+For the new profile, explicit Join/Leave only enable/disable this Thread's
+local Endpoint access. Leave persists local offline state, clears the saved
+selection and stops that anchor's renewal; it does not withdraw Owner Group
+configuration, globally leave the Endpoint, stop the Node or kill Codex. Join
+checks the same original registration and current Owner/Node before restoring
+local access, and never auto-selects a Group. With no usable Groups it reports
+registration ready and asks the Owner to add one. Legacy global/Group Leave
+cannot borrow these five rights.
+
+Linux terminal `join --thread ID --name NAME` / `leave --thread ID` are thin
+local operator entries. The ID only selects a real owned Codex record; existing
+private Node discovery, original anchor and one-use invocation proof remain
+mandatory. No native Hook event, turn/tool ID or environment SID is synthesized.
+Each MCP call still authenticates its actual current Thread independently.
+
 The proposed read-only MCP tool **cicada_groups** supplies the missing self-scope
 list. Business parameters are the closed `{cursor?,limit?}` (default 64, integer
 1..64), with no model identity, Endpoint, Node, Network or Group selector. It
@@ -1475,10 +1491,38 @@ receipts and freshly guarded snapshots stay distinct. An absent operation or
 OUTCOME_UNCERTAIN never settles pending intent; only a verified terminal original
 receipt/no-effect fence does.
 
-This source phase does not provide Store transactions/migrations, durable
-anti-replay/receipt storage, a current-authority service, private native Hook
-profile, Node renewal/current-evidence verification, self-groups MCP or an App
-consumer. Shared crypto and DTO tests cannot establish those behaviors or M1–M8.
+The Hub candidate implements schema migration 69, original-registration references,
+Owner review/nonce and operation ledgers, exact sealed-response transactions,
+Node describe/key/renew/reconcile handlers and per-Endpoint source Guards. It
+reuses the retained Owner, Node, Principal, Endpoint, candidate and binding;
+registration renewal creates no business authority. Public capability defaults
+remain false until the integrated source passes its required gates. Node/MCP
+and App consumers have separate source attribution and validation; these Hub
+results do not establish M1–M8 or native Runtime behavior.
+
+Status/reconcile query completion is separate from the original outcome:
+COMPLETED plus OUTCOME_UNCERTAIN finishes only that query wrapper and leaves the
+original pending intent/ciphertext intact. After successfully authenticating a
+replacement account session for the same original actor, the App may replace
+only a STATUS/RECONCILE query wrapper and must persist it before sending. This
+requires independently authenticated password login, inspection and new account
+session authority: both token and session ID change, while the original
+Hub/Owner/account/device, keys and every security epoch remain unchanged. It
+retains the original business packet, request ID, digest and review unchanged;
+the replacement does not settle that original. With the same session it retries
+the exact wrapper. A raw transport/authentication error or local timeout alone
+never authorizes replacing or clearing business intent. A delayed
+old query wrapper can only read the same original receipt or establish its
+permanent zero-effect fence, and cannot dispatch original business. Only the
+independently opened and verified exact original receipt/fence settles the
+original. An empty-Node exception remains limited to an exact-bound, data-free
+terminal query result.
+Reconcile of a READ/PREPARE carries
+its Node ID from the authenticated original body, without a new directory read.
+Only the exact original APPLY targetless no-effect fence may settle without an
+operation target. Portable Hub checkpoint/export/restore for schema 69 remains
+unreviewed and fails closed; reopening the current Store and recovering exact
+receipts are separate tested operations.
 
 The Node DTO supplement supplies EndpointGroupsRegistrationAnchor with explicit
 OWNER_ENDPOINT_GROUPS_V1/CODEX_LOCAL_DOMAIN provenance, the original private
@@ -1503,5 +1547,6 @@ the Node retains its original token. Node request bodies retain the frozen field
 sets, no added identity selectors. Only exact node.endpoint_groups.reconcile
 accepts 128 KiB plaintext; response/default packet ceilings remain unchanged,
 with additional 64/224/560 KiB profile packet bounds. The inventory defines all
-new closed Node result field orders. These are shared codecs, not installed
-Node RPC handlers or a completed Runtime.
+new closed Node result field orders. The Hub candidate installs these bounded
+Node handlers behind the existing authenticated RPC route; a completed native
+Runtime gate remains a separate result.

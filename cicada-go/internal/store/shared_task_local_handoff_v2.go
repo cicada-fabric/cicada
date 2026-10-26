@@ -173,6 +173,12 @@ func localTaskHandoffPairGuardTx(tx *sql.Tx, groupID string, source, target loca
 	}, groupID, at); err != nil {
 		return ErrLocalDeliveryNotAuthorized
 	}
+	if _, err := endpointGroupsGuardTx(tx, source.EndpointID, groupID, "task.submit", at); err != nil {
+		return err
+	}
+	if _, err := endpointGroupsGuardTx(tx, target.EndpointID, groupID, "task.claim", at); err != nil {
+		return err
+	}
 	nowText := at.Format(time.RFC3339Nano)
 	if requireSenderTaskGrant {
 		allowed, err := localDeliveryMembershipAllows(tx, source.PrincipalID, groupID, "task.submit", nowText)

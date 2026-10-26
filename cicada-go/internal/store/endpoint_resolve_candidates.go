@@ -6,6 +6,7 @@ import (
 	"database/sql/driver"
 	"errors"
 	"strings"
+	"time"
 	"unicode"
 
 	"modernc.org/sqlite"
@@ -101,7 +102,7 @@ WHERE m.status='active' AND p.status='active' AND g.state='ACTIVE'
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.forEachEndpointResolveCandidatePage(query, args, true, false, scanEndpointV2, visit)
+	return s.forEachEndpointResolveCandidatePage(query, args, true, false, groupID, scanEndpointV2, visit)
 }
 
 // ForEachLegacyEndpointResolveCandidatePage pages only rows that can be
@@ -125,14 +126,14 @@ WHERE (e.migration_state IS NULL OR e.migration_state<>?) AND e.status<>'left'
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.forEachEndpointResolveCandidatePage(query, args, false, true, scanEndpoint, visit)
+	return s.forEachEndpointResolveCandidatePage(query, args, false, true, "", scanEndpoint, visit)
 }
 
 type endpointResolveQueryer interface {
 	Query(string, ...any) (*sql.Rows, error)
 }
 
-func (s *Store) forEachEndpointResolveCandidatePage(query string, args []any, withBindings, withMachineNames bool,
+func (s *Store) forEachEndpointResolveCandidatePage(query string, args []any, withBindings, withMachineNames bool, sourceGroup string,
 	scan func(interface{ Scan(...any) error }) (*Endpoint, error),
 	visit func([]Endpoint, map[string]*SessionBinding, map[string]string) (bool, error)) error {
 	tx, err := s.db.BeginTx(context.Background(), &sql.TxOptions{ReadOnly: true})
@@ -177,6 +178,17 @@ func (s *Store) forEachEndpointResolveCandidatePage(query string, args []any, wi
 		if closeErr != nil {
 			return closeErr
 		}
+		rawCount := len(page)
+		rawLast := ""
+		if rawCount > 0 {
+			rawLast = page[rawCount-1].ID
+		}
+		if sourceGroup != "" {
+			page, err = endpointGroupsFilterDirectoryTx(tx, sourceGroup, page, time.Now().UTC())
+			if err != nil {
+				return err
+			}
+		}
 		bindings := map[string]*SessionBinding{}
 		if withBindings && len(page) > 0 {
 			ids := make([]string, len(page))
@@ -206,11 +218,11 @@ func (s *Store) forEachEndpointResolveCandidatePage(query string, args []any, wi
 		if done || !hasMore {
 			return tx.Commit()
 		}
-		scanned += len(page)
+		scanned += rawCount
 		if scanned >= endpointResolveCandidateScanLimit {
 			return ErrEndpointResolveCandidateLimit
 		}
-		cursor = page[len(page)-1].ID
+		cursor = rawLast
 	}
 }
 
