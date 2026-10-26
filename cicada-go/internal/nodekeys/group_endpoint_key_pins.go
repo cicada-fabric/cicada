@@ -288,6 +288,9 @@ func (s *CryptoState) pinGroupEndpointPeerKeyWithOwnerTrust(ctx context.Context,
 	}
 	var result *PeerKeyPin
 	err = s.writeTx(ctx, func(conn *sql.Conn) error {
+		if err := endpointGroupsLegacyAllowed(ctx, conn, scope.LocalGroupID, scope.LocalEndpointID, scope.PeerEndpointID); err != nil {
+			return err
+		}
 		if !time.Now().UTC().Before(grantExpiry) {
 			return ErrGroupEndpointKeyGrantExpired
 		}

@@ -29,6 +29,9 @@ func (s *CryptoState) PinLocalDomainPeer(ctx context.Context, local string, send
 	}
 	var result *PeerKeyPin
 	err := s.writeTx(ctx, func(conn *sql.Conn) error {
+		if err := endpointGroupsLegacyAllowed(ctx, conn, group, local, sender.Member.EndpointID, receiver.Member.EndpointID); err != nil {
+			return err
+		}
 		p, err := loadLocalDomainPolicy(ctx, conn, group)
 		if err != nil {
 			return ErrLocalDomainPolicy
@@ -136,6 +139,9 @@ func (s *CryptoState) RememberLocalDomainGrant(ctx context.Context, g wire.Local
 		return err
 	}
 	return s.writeTx(ctx, func(conn *sql.Conn) error {
+		if err := endpointGroupsLegacyAllowed(ctx, conn, g.Manifest.GroupID, g.Member.EndpointID); err != nil {
+			return err
+		}
 		p, err := loadLocalDomainPolicy(ctx, conn, g.Manifest.GroupID)
 		if err != nil {
 			return ErrLocalDomainPolicy
@@ -214,6 +220,9 @@ func (s *CryptoState) RememberLocalDomainLocalAttestation(ctx context.Context, p
 		return err
 	}
 	return s.writeTx(ctx, func(conn *sql.Conn) error {
+		if err := endpointGroupsLegacyAllowed(ctx, conn, c.GroupID, c.EndpointID); err != nil {
+			return err
+		}
 		p, err := loadLocalDomainPolicy(ctx, conn, c.GroupID)
 		if err != nil || p.Policy.PolicyID != policy || p.Policy.Node.NodeID != c.NodeID || p.Policy.OwnerID != c.OwnerID {
 			return ErrLocalDomainPolicy

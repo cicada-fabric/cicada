@@ -194,6 +194,9 @@ func TestLoadOrCreateRejectsSymlinksAndInsecureModes(t *testing.T) {
 		if err := os.MkdirAll(keyDir, 0o755); err != nil {
 			t.Fatal(err)
 		}
+		if err := os.Chmod(keyDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
 		if _, err := LoadOrCreate(stateDir, "ep_a"); err == nil {
 			t.Fatal("accepted group/world-accessible key directory")
 		}
@@ -220,6 +223,9 @@ func TestLoadOrCreateRejectsSymlinksAndInsecureModes(t *testing.T) {
 		}
 		path := identityPath(keyDir, "ep_a")
 		if err := os.WriteFile(path, encoded, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(path, 0o644); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := LoadOrCreate(stateDir, "ep_a"); err == nil {

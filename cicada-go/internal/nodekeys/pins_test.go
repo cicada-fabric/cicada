@@ -248,8 +248,8 @@ func TestCryptoStateV1UpgradePreservesSequenceOutboxAndReplay(t *testing.T) {
 	if err := state.db.QueryRow(`SELECT version FROM node_crypto_schema WHERE singleton = 1`).Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if version != 7 {
-		t.Fatalf("migrated schema version = %d, want 7", version)
+	if version != cryptoSchemaVersion {
+		t.Fatalf("migrated schema version = %d, want current schema", version)
 	}
 	sequence, err := state.ReserveOutboundSequence(context.Background(), "ep_legacy", "key_legacy")
 	if err != nil || sequence != 12 {
@@ -295,7 +295,7 @@ func TestCryptoStateV2UpgradePreservesPeerPinAndRequiresLegacyInboxReconciliatio
 	if err != nil {
 		t.Fatal(err)
 	}
-	dropLocalDomainCryptoSchemaForLegacyTest(t, db)
+	dropDelegatedCryptoSchemasForLegacyTest(t, db)
 	if _, err := db.Exec(`DROP TABLE node_crypto_inbox;
 UPDATE node_crypto_schema SET version = 2 WHERE singleton = 1`); err != nil {
 		_ = db.Close()
@@ -344,7 +344,7 @@ func TestCryptoStateV3UpgradePreservesPinsAndAddsLinkGrantBinding(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	dropLocalDomainCryptoSchemaForLegacyTest(t, db)
+	dropDelegatedCryptoSchemasForLegacyTest(t, db)
 	_, err = db.Exec(`ALTER TABLE node_crypto_peer_pins DROP COLUMN target_grant_expires_at;
 ALTER TABLE node_crypto_peer_pins DROP COLUMN source_grant_expires_at;
 ALTER TABLE node_crypto_peer_pins DROP COLUMN link_expires_at;
@@ -375,8 +375,8 @@ UPDATE node_crypto_schema SET version = 3 WHERE singleton = 1`)
 	if err := state.db.QueryRow(`SELECT version FROM node_crypto_schema WHERE singleton=1`).Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if version != 7 {
-		t.Fatalf("schema after v3 migration = %d, want 7", version)
+	if version != cryptoSchemaVersion {
+		t.Fatalf("schema after v3 migration = %d, want current schema", version)
 	}
 }
 
@@ -499,9 +499,9 @@ VALUES ('ep_receiver', 'key_sender', 'msg_legacy', ?, 7);`, digest, wire, digest
 
 // Reconstruct the older version boundary rather than retaining future tables
 // while lowering its version marker. Existing counters/pins/receipts stay put.
-func dropLocalDomainCryptoSchemaForLegacyTest(t *testing.T, db *sql.DB) {
+func dropDelegatedCryptoSchemasForLegacyTest(t *testing.T, db *sql.DB) {
 	t.Helper()
-	for _, table := range []string{"node_local_domain_attestations_v1", "node_local_domain_members_v1", "node_local_domain_local_keys_v1", "node_local_domain_policies_v1"} {
+	for _, table := range []string{"node_endpoint_group_peer_bindings_v1", "node_endpoint_group_required_v1", "node_endpoint_group_sources_v1", "node_endpoint_group_heads_v1", "node_endpoint_group_policies_v1", "node_endpoint_group_registrations_v1", "node_local_domain_attestations_v1", "node_local_domain_members_v1", "node_local_domain_local_keys_v1", "node_local_domain_policies_v1"} {
 		if _, err := db.Exec(`DROP TABLE ` + table); err != nil {
 			t.Fatal(err)
 		}

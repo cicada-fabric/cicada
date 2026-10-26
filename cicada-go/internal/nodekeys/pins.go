@@ -183,6 +183,9 @@ func (s *CryptoState) PinVerifiedPeerKey(ctx context.Context, scope PeerPinScope
 	}
 	var result *PeerKeyPin
 	err = s.writeTx(ctx, func(conn *sql.Conn) error {
+		if err := endpointGroupsLegacyAllowed(ctx, conn, scope.LocalGroupID, scope.LocalEndpointID, scope.PeerEndpointID); err != nil {
+			return err
+		}
 		current, err := loadPeerPin(ctx, conn, scope)
 		if err == nil {
 			if current.RevokedAt == "" {
@@ -325,6 +328,9 @@ func (s *CryptoState) CheckPeerPinAdmission(ctx context.Context, expected PeerKe
 				return ErrPeerPinGrantExpired
 			}
 		}
+	}
+	if err := endpointGroupsPinAdmission(ctx, conn, *current, time.Now().UTC()); err != nil {
+		return err
 	}
 	return ctx.Err()
 }

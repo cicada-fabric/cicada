@@ -189,6 +189,9 @@ func (s *CryptoState) VerifyLocalDomainGroupAuthorization(ctx context.Context, g
 	if sender == nil || receiver == nil || current == nil {
 		return true, ErrLocalDomainPolicy
 	}
+	if err := endpointGroupsLegacyAllowed(ctx, s.db, group, sender.Member.EndpointID, receiver.Member.EndpointID); err != nil {
+		return true, err
+	}
 	trust, err := localDomainTrust(ctx, s.db, *p, now)
 	if err != nil {
 		return true, err

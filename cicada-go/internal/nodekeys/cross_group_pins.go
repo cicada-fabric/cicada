@@ -219,6 +219,12 @@ func (s *CryptoState) PinOwnerGrantedCrossGroupPeerKey(ctx context.Context,
 	}
 	var result *PeerKeyPin
 	err = s.writeTx(ctx, func(conn *sql.Conn) error {
+		if err := endpointGroupsLegacyAllowed(ctx, conn, scope.LocalGroupID, scope.LocalEndpointID); err != nil {
+			return err
+		}
+		if err := endpointGroupsLegacyAllowed(ctx, conn, scope.PeerGroupID, scope.PeerEndpointID); err != nil {
+			return err
+		}
 		if currentTime := time.Now().UTC(); !currentTime.Before(verified.linkExpiry) ||
 			!currentTime.Before(verified.sourceExpiry) || !currentTime.Before(verified.targetExpiry) {
 			return ErrPeerPinGrantExpired
@@ -309,6 +315,12 @@ func (s *CryptoState) GetOwnerGrantedCrossGroupPeerPin(ctx context.Context,
 	}
 	var pin *PeerKeyPin
 	err = s.writeTx(ctx, func(conn *sql.Conn) error {
+		if err := endpointGroupsLegacyAllowed(ctx, conn, scope.LocalGroupID, scope.LocalEndpointID); err != nil {
+			return err
+		}
+		if err := endpointGroupsLegacyAllowed(ctx, conn, scope.PeerGroupID, scope.PeerEndpointID); err != nil {
+			return err
+		}
 		if currentTime := time.Now().UTC(); !currentTime.Before(verified.linkExpiry) ||
 			!currentTime.Before(verified.sourceExpiry) || !currentTime.Before(verified.targetExpiry) {
 			return ErrPeerPinGrantExpired
