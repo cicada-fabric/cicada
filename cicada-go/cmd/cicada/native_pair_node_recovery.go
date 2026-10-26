@@ -23,6 +23,9 @@ type machineNativePairEnvelope struct {
 }
 
 func (client *machineNodeControlClient) recoverNodeControlPending(ctx context.Context, token string) error {
+	if _, issuer := ctx.Value(endpointGroupsIssueReadKey{}).(*endpointGroupsIssueReadScope); issuer {
+		return client.recoverPending(ctx, token)
+	}
 	client.mu.Lock()
 	pair := nativePairNodeBusinessOperation(client.state.PendingOperation)
 	groups := endpointGroupsNodeBusinessOperation(client.state.PendingOperation)

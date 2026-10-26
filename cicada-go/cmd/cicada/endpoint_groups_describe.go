@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -11,7 +14,43 @@ import (
 
 	wire "github.com/cicada-ai/cicada/internal/hubaccountwire"
 	"github.com/cicada-ai/cicada/internal/nodekeys"
+	"github.com/cicada-ai/cicada/internal/nodewire"
 )
+
+// Only issuer verification uses this read fence. An invocation may recover its
+// exact registration Describe; it cannot recover another intent's pending write.
+type endpointGroupsIssueReadKey struct{}
+type endpointGroupsIssueReadScope struct {
+	Request  wire.EndpointGroupsNodeDescribe
+	Original []byte
+}
+
+func endpointGroupsNodePendingEmpty(s machineNodeControlState) bool {
+	return len(s.PendingPacket) == 0 && s.PendingOperation == "" && s.PendingOperationID == "" && s.PendingSequence == 0 && s.PendingPlaintextDigest == "" && len(s.PendingResponsePacket) == 0 && s.PendingLocalEndpointIntentID == ""
+}
+
+// Caller holds c.mu. The original plaintext digest, complete Node route and
+// optional exact packet fence are checked before any recovery dispatch.
+func (c *machineNodeControlClient) endpointGroupsIssuePendingReadLocked(scope *endpointGroupsIssueReadScope) bool {
+	if len(c.state.PendingPacket) == 0 {
+		return endpointGroupsNodePendingEmpty(c.state)
+	}
+	if c.state.PendingOperation != wire.OperationEndpointGroupsNodeDescribe || c.state.PendingLocalEndpointIntentID != "" || len(scope.Original) != 0 && !bytes.Equal(scope.Original, c.state.PendingPacket) {
+		return false
+	}
+	plain, err := wire.CanonicalEndpointGroupsNodeRequest(wire.OperationEndpointGroupsNodeDescribe, scope.Request)
+	if err != nil {
+		return false
+	}
+	digest := sha256.Sum256(plain)
+	packet, err := wire.DecodeEndpointGroupsNodePacket(c.state.PendingPacket)
+	if err != nil || hex.EncodeToString(digest[:]) != c.state.PendingPlaintextDigest {
+		return false
+	}
+	r := packet.Route
+	b := machineNodeControlBindingFromState(c)
+	return r.Direction == nodewire.DirectionRequest && r.Operation == wire.OperationEndpointGroupsNodeDescribe && r.OperationID == c.state.PendingOperationID && r.Sequence == c.state.PendingSequence && r.HubID == b.HubID && r.NodeID == b.NodeID && r.BindingID == b.BindingID && r.BindingVersion == b.BindingVersion && r.NodeKeyEpoch == b.NodeKeyEpoch && r.SenderKeyID == b.NodeKey.ID && r.SenderKeyVersion == b.NodeKeyVersion && r.ReceiverKeyID == b.HubKey.ID && r.ReceiverKeyVersion == b.HubKeyVersion
+}
 
 func (b *machineAgentJoinBridge) endpointGroupsOriginalHub(ctx context.Context, c *machineNodeControlClient, r machineEndpointGroupsRegistration) (wire.HubIdentity, error) {
 	_, _, completed, err := c.endpointGroupsOriginal(r)
@@ -109,7 +148,15 @@ func (b *machineAgentJoinBridge) describeEndpointGroups(ctx context.Context, c *
 	if err != nil {
 		return r, wire.EndpointGroupsNodeDescribeResult{}, err
 	}
+	q := wire.EndpointGroupsNodeDescribe{EndpointID: original.Member.EndpointID, NetworkID: original.Description.Policy.NetworkID, Cursor: cursor, Limit: limit}
+	scope, issuer := ctx.Value(endpointGroupsIssueReadKey{}).(*endpointGroupsIssueReadScope)
+	if issuer {
+		scope.Request = q
+	}
 	if err := c.recoverNodeControlPending(ctx, b.nodeToken); err != nil {
+		if issuer && !errors.Is(err, errLocalEndpointReceiptExpired) {
+			return r, wire.EndpointGroupsNodeDescribeResult{}, err
+		}
 		c.mu.Lock()
 		unsettled := len(c.state.PendingPacket) > 0
 		c.mu.Unlock()
@@ -117,7 +164,9 @@ func (b *machineAgentJoinBridge) describeEndpointGroups(ctx context.Context, c *
 			return r, wire.EndpointGroupsNodeDescribeResult{}, err
 		}
 	}
-	q := wire.EndpointGroupsNodeDescribe{EndpointID: original.Member.EndpointID, NetworkID: original.Description.Policy.NetworkID, Cursor: cursor, Limit: limit}
+	if err := b.retireEndpointGroupsChallenges(ctx, c, r, hub); err != nil {
+		return r, wire.EndpointGroupsNodeDescribeResult{}, err
+	}
 	var d wire.EndpointGroupsNodeDescribeResult
 	if err := c.call(ctx, b.nodeToken, wire.OperationEndpointGroupsNodeDescribe, q, &d); err != nil {
 		return r, d, err
@@ -175,8 +224,17 @@ func (b *machineAgentJoinBridge) describeEndpointGroups(ctx context.Context, c *
 }
 
 func (b *machineAgentJoinBridge) endpointGroupsVerificationProfile(q localCodexContextIssue) (localCodexContext, bool, error) {
+	deadline := q.verifyDeadline
+	if deadline.IsZero() {
+		deadline = time.Now().Add(30 * time.Second)
+	}
+	verification, finish := context.WithDeadline(b.ctx, deadline)
+	defer finish()
 	b.endpointGroupsMu.Lock()
 	defer b.endpointGroupsMu.Unlock()
+	if err := verification.Err(); err != nil {
+		return localCodexContext{}, false, err
+	}
 	c, err := openMachineNodeControlClientMode(b.stateDir, b.baseURL, b.nodeID, true)
 	if err != nil {
 		return localCodexContext{}, false, err
@@ -198,9 +256,30 @@ func (b *machineAgentJoinBridge) endpointGroupsVerificationProfile(q localCodexC
 		return localCodexContext{}, true, errEndpointGroupsOffline
 	}
 	// Known enrollment is never downgraded if the Hub later becomes unsupported.
-	ctx, cancel := context.WithTimeout(b.ctx, 5*time.Second)
-	defer cancel()
-	r, _, err = b.describeEndpointGroups(ctx, c, r, "", 64)
+	scope := &endpointGroupsIssueReadScope{}
+	for attempt := 0; attempt < 2; attempt++ {
+		ctx, cancel := context.WithTimeout(context.WithValue(verification, endpointGroupsIssueReadKey{}, scope), 5*time.Second)
+		var next machineEndpointGroupsRegistration
+		next, _, err = b.describeEndpointGroups(ctx, c, r, "", 64)
+		timedOut := errors.Is(ctx.Err(), context.DeadlineExceeded) && errors.Is(err, context.DeadlineExceeded)
+		cancel()
+		if err == nil {
+			r = next
+			break
+		}
+		if attempt != 0 || !timedOut || verification.Err() != nil {
+			break
+		}
+		c.mu.Lock()
+		retry := len(c.state.PendingPacket) > 0 && len(c.state.PendingResponsePacket) == 0 && c.endpointGroupsIssuePendingReadLocked(scope)
+		if retry {
+			scope.Original = bytes.Clone(c.state.PendingPacket)
+		}
+		c.mu.Unlock()
+		if !retry {
+			break
+		}
+	}
 	if err != nil {
 		if !enrolled && errors.Is(err, errEndpointGroupsUnsupported) {
 			return localCodexContext{}, false, nil
@@ -209,6 +288,9 @@ func (b *machineAgentJoinBridge) endpointGroupsVerificationProfile(q localCodexC
 	}
 	if r.Anchor.Registration.NativeSessionID != q.NativeSessionID || r.Anchor.Registration.Workspace != q.Workspace || r.TranscriptPath != q.TranscriptPath {
 		return localCodexContext{}, true, errEndpointGroupsRegistration
+	}
+	if err := verification.Err(); err != nil {
+		return localCodexContext{}, true, err
 	}
 	return endpointGroupsContextForAnchor(r.Anchor, q), true, nil
 }

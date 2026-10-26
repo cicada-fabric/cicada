@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
@@ -56,6 +57,7 @@ type localCodexContextIssue struct {
 	ArgumentsDigest string `json:"arguments_digest"`
 	TurnID          string `json:"turn_id"`
 	ToolUseID       string `json:"tool_use_id"`
+	verifyDeadline  time.Time
 }
 
 type localCodexContextIssueResult struct {
@@ -243,6 +245,9 @@ func (b *machineAgentJoinBridge) localContextBinding(origin string) (string, err
 }
 
 func (b *machineAgentJoinBridge) codexContextIssue(q localCodexContextIssue) (*localCodexContextIssueResult, error) {
+	if q.verifyDeadline.IsZero() {
+		q.verifyDeadline = time.Now().Add(30 * time.Second)
+	}
 	if q.Version != localJoinProtocolVersion || q.Operation != "codex_context_issue" || q.Harness != "codex" || !localContextText(q.NativeSessionID, 128) || strings.ContainsAny(q.NativeSessionID, "/\\") || !localContextHex(q.ConnectionNonce, 64) || !localContextHex(q.ArgumentsDigest, 64) || !localContextText(q.ToolName, 256) || !localCodexContextEventIDs(q) {
 		return nil, errLocalCodexContext
 	}
@@ -256,6 +261,9 @@ func (b *machineAgentJoinBridge) codexContextIssue(q localCodexContextIssue) (*l
 	}
 	if err := verifyCodexContextTranscriptProfile(q.TranscriptPath, q.NativeSessionID, q.Workspace, verified.VerificationProfile == LocalCodexContextProfileDomain || verified.VerificationProfile == LocalCodexContextProfileEndpointGroups); err != nil {
 		return nil, err
+	}
+	if !time.Now().Before(q.verifyDeadline) {
+		return nil, context.DeadlineExceeded
 	}
 	return b.codexContexts.issueVerified(q, binding, time.Now(), verified)
 }

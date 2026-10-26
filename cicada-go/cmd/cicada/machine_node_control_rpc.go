@@ -104,7 +104,7 @@ type machineNodeControlPairingInput struct {
 type machineNodeControlState struct {
 	EndpointGroupsRegistrations   map[string]machineEndpointGroupsRegistration `json:"endpoint_groups_registrations,omitempty"`
 	EndpointGroupsDiagnostic      *machineEndpointGroupsDiagnostic             `json:"endpoint_groups_diagnostic,omitempty"`
-	EndpointGroupsLastReadFence *machineEndpointGroupsDiagnostic `json:"endpoint_groups_last_read_fence,omitempty"`
+	EndpointGroupsLastReadFence   *machineEndpointGroupsDiagnostic             `json:"endpoint_groups_last_read_fence,omitempty"`
 	ManagedLocalDomainLeases      map[string]machineManagedLocalDomainLease    `json:"managed_local_domain_leases,omitempty"`
 	LocalDomainReport             *machineLocalDomainReportState               `json:"local_domain_report,omitempty"`
 	ManagedPairLeases             map[string]machineManagedPairLease           `json:"managed_pair_leases,omitempty"`
@@ -573,9 +573,12 @@ func (client *machineNodeControlClient) call(ctx context.Context, token, operati
 			}
 		}
 		client.state.PendingWorkerID, client.state.PendingWorkerAttempt = machineNodeControlPendingWorker(operation, requestBody)
-		if endpointGroupsNodeBusinessOperation(operation){
-			stateRaw,err:=json.Marshal(client.state)
-			if err!=nil || len(stateRaw)+(2<<20)+managedPairStateReserve(client.state)>=maxMachineNodeControlStateBytes{client.state=previous;return errLocalEndpointHistoryFull}
+		if endpointGroupsNodeBusinessOperation(operation) {
+			stateRaw, err := json.Marshal(client.state)
+			if err != nil || len(stateRaw)+(2<<20)+managedPairStateReserve(client.state) >= maxMachineNodeControlStateBytes {
+				client.state = previous
+				return errLocalEndpointHistoryFull
+			}
 		}
 		if err := client.persistLocked(); err != nil {
 			client.state = previous
@@ -801,6 +804,10 @@ func decodeMachineNodeControlJSON(data []byte, target any) error {
 // response until execution begins, so restart never needs durable plaintext.
 func (client *machineNodeControlClient) recoverPending(ctx context.Context, token string) error {
 	client.mu.Lock()
+	if scope, issuer := ctx.Value(endpointGroupsIssueReadKey{}).(*endpointGroupsIssueReadScope); issuer && !client.endpointGroupsIssuePendingReadLocked(scope) {
+		client.mu.Unlock()
+		return errMachineNodeControlOutcomeUncertain
+	}
 	snapshotPending := len(client.state.PendingPacket) > 0 &&
 		(client.state.PendingOperation == nodewire.SnapshotUploadOperation ||
 			client.state.PendingOperation == nodewire.SnapshotDownloadOperation)
@@ -811,6 +818,9 @@ func (client *machineNodeControlClient) recoverPending(ctx context.Context, toke
 	}
 	client.mu.Lock()
 	defer client.mu.Unlock()
+	if scope, issuer := ctx.Value(endpointGroupsIssueReadKey{}).(*endpointGroupsIssueReadScope); issuer && !client.endpointGroupsIssuePendingReadLocked(scope) {
+		return errMachineNodeControlOutcomeUncertain
+	}
 	if len(client.state.PendingPacket) == 0 {
 		return nil
 	}

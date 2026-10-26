@@ -444,13 +444,14 @@ func (b *machineAgentJoinBridge) serve() {
 		go func() {
 			defer b.wg.Done()
 			defer connection.Close()
-			_ = connection.SetDeadline(time.Now().Add(30 * time.Second))
-			b.serveConnection(connection)
+			deadline := time.Now().Add(30 * time.Second)
+			_ = connection.SetDeadline(deadline)
+			b.serveConnection(connection, deadline)
 		}()
 	}
 }
 
-func (b *machineAgentJoinBridge) serveConnection(connection net.Conn) {
+func (b *machineAgentJoinBridge) serveConnection(connection net.Conn, deadline time.Time) {
 	// The local protocol is newline-delimited JSON. Keep reading one bounded
 	// record so older Join clients that leave the socket open after Encode still
 	// work; requiring EOF here would break that protocol.
@@ -507,6 +508,7 @@ func (b *machineAgentJoinBridge) serveConnection(connection net.Conn) {
 			_ = json.NewEncoder(connection).Encode(localJoinErrorResponse(errLocalCodexContext))
 			return
 		}
+		q.verifyDeadline = deadline
 		result, err := b.codexContextIssue(q)
 		if err != nil {
 			_ = json.NewEncoder(connection).Encode(localJoinErrorResponse(err))

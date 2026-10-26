@@ -1212,6 +1212,30 @@ to LEGACY_STRICT, reuse a consumed ticket or skip the Hook. A revoked Owner/Node
 or changed key/epoch cannot be repaired with another profile. M5 requires fresh
 post-revoke Hook issue/consume and new MCP processes, not just saved leases.
 
+If this profile's original Describe has an uncertain transport timeout, the
+same issue may make at most one bounded recovery attempt for that exact read's
+operation ID, sequence and ciphertext. Recovery must fit the original private
+connection deadline, then obtain a fresh Describe and repeat the full original
+registration, native-record, Owner/key and binding checks before issuing a
+ticket. A historical read receipt alone is not current authority. Each network
+attempt retains its five-second bound; the existing thirty-second connection,
+thirty-five-second client/Hook bounds and thirty-second minted ticket lifetime
+are unchanged. Lock waiting does not restart the original connection budget.
+Authorization refusals, invalid proof, identity changes, local capacity errors
+and pending writes do not authorize automatic retry or business redispatch.
+
+The Node may retire a settled KeyPrepare Challenge response only when its
+original registration's retained, authenticated successful Complete proves the
+same scope, Challenge and exact projected policy, head, relation and manifest.
+Existing cryptographic checks use the original observation times solely to
+establish this historical cache dependency, never current authority. Retirement
+keeps the read's original request, body, ID/digest and settled tombstone, every
+Complete receipt, original identity/anchor, current grants and Owner heads/deny.
+Any pending Node RPC or retained execution state prevents retirement. An exact replay of a retired read returns
+the existing local receipt-expired result without network dispatch; changing its
+body remains a conflict. Retirement persists atomically and does not change the
+8MiB state bound or 2MiB response reservation.
+
 The `endpoint_group_grant` peer carrier contains the complete existing Group manifest, original
 candidate attestation, exact Owner policy proof, Node delegated proof and fresh
 Hub-authenticated current relation/operation/attempt. Manifest optional expiry
