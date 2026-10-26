@@ -916,3 +916,46 @@ runtime-resource mismatch are also retained; final inventory/metadata checks
 use the new availability values and pass. Final integrated consumer and real
 Runtime gates remain pending. The previous Docker receipt belongs to Core
 `755053b`; no new heartbeat Docker result is claimed here.
+
+### Network source ceiling correction, 2026-10-26
+
+A real full Fabric router with Control absent accepted the original registered
+Endpoint's Network token for directory discovery after its Principal received
+wider stored Network grants. NetworkAllows also accepted direct.send, and
+global Network Leave revoked the original enrollment/access. This RED is
+retained; the bounded HubNodes router's missing routes are not an authorization
+oracle for the full router.
+
+The service and transactional Network guards now cap registered Endpoints at
+zero Network business rights, including bilateral participants and global
+Leave. Self identity, native self-binding and original registration renewal
+remain separate. The Endpoint invitation path now passes its existing
+NetworkAccessScope into the transaction that rechecks authority and inserts
+the invitation; the Owner CLI primitive remains available. A deterministic
+ordering test uses the same authenticated scope before/after registration:
+the independent enrollment succeeds before registration and the stale scope
+cannot borrow Principal grants afterward. No dedicated scheduler race inside
+that transaction is claimed.
+
+The tested source is parent `56f01a7` plus the exact correction, not that HEAD
+alone. Evidence at
+`/home/zyf/Cicada/.local/evidence/owner-groups-network-guard-20261026/receipt.json`
+has SHA-256
+`c4da83b441dd9e69b6519727ed4c7484ebd931adf2f6c8873ce0b7483be78246`.
+All 1,576 Go/module source hashes match before and after the gates. Final
+normal tests pass 62 events / 15 top-level, race passes 6 / 3, and disposable
+Docker passes 5 / 2, each with zero failures/skips. The Docker tests exercise
+actual full-router Network rejection and registration-only heartbeat with
+synthetic keys, UID 1000, no network, read-only source/modules and pinned image
+`sha256:5c3e9b43cfd3bb95c7937462e29d87ada57b481a96fa23ad0eb61778d7a00110`.
+Contract metadata still passes with wire 1, catalog 55 and original activation
+identifiers. The first Docker attempt could not execute the test binary from
+its noexec temporary mount; its failed environment record is retained and is
+not counted as a test pass. Final gates use an executable disposable tmpfs.
+
+The independent nodekeys M2 correction is checkpoint `7d46a02`; it is not part
+of these source hashes. QA's earlier real M1/M2 results remain attributed to
+their frozen source. This checkpoint claims no real Runtime/M1–M8, Android,
+physical device or public HTTPS pass, and changes no protocol identifier,
+identity, key or deployment. Schema-69 portable restore remains unreviewed
+and fail-closed as above.

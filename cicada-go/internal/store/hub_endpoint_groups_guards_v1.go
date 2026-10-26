@@ -39,6 +39,32 @@ func endpointGroupsManagedTx(tx *sql.Tx, endpoint string) (*hubEndpointGroupsReg
 	return endpointGroupsRegistrationTx(tx, endpoint)
 }
 
+// Registration retains Network identity and self-binding, but supplies no
+// Network business rights. Even an expired/revoked registration must not fall
+// back to wider Principal grants or global Network Leave.
+func endpointGroupsRejectNetworkBusiness(q nativePairReader, endpoint string) error {
+	present, err := endpointGroupsSchemaPresent(q)
+	if err != nil || !present {
+		return err
+	}
+	var managed bool
+	if err := q.QueryRow(`SELECT EXISTS(SELECT 1 FROM hub_endpoint_groups_registrations_v1 WHERE endpoint_id=?)`, endpoint).Scan(&managed); err != nil {
+		return err
+	}
+	if managed {
+		return ErrNetworkPermission
+	}
+	return nil
+}
+
+// CheckEndpointNetworkBusinessCeiling does not grant an operation: ordinary
+// Network authorization must still pass, including its transactional recheck.
+func (s *Store) CheckEndpointNetworkBusinessCeiling(endpoint string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return endpointGroupsRejectNetworkBusiness(s.db, endpoint)
+}
+
 func endpointGroupsRegistrationLeaseTx(tx *sql.Tx, r *hubEndpointGroupsRegistration, at time.Time) error {
 	if endpointGroupsRegistrationCurrentTx(tx, r, at) != nil {
 		return ErrNetworkPermission

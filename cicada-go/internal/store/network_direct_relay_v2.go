@@ -63,6 +63,9 @@ func networkDirectMembershipAllowsTx(tx *sql.Tx, networkID, endpointID,
 	if networkID == "" || endpointID == "" || principalID == "" || action == "" {
 		return ErrNetworkPermission
 	}
+	if err := endpointGroupsRejectNetworkBusiness(tx, endpointID); err != nil {
+		return err
+	}
 	var expiry string
 	err := tx.QueryRow(`SELECT m.expires_at FROM networks_v2 n
 JOIN network_memberships_v2 m ON m.network_id=n.id AND m.principal_id=? AND m.status='active'

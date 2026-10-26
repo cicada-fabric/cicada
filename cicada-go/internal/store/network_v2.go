@@ -1387,6 +1387,9 @@ func (s *Store) NetworkAllows(networkID, principalID, endpointID, action string)
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := endpointGroupsRejectNetworkBusiness(s.db, endpointID); err != nil {
+		return false, err
+	}
 	var allowed int
 	var memberExpiry string
 	err := s.db.QueryRow(`SELECT 1,m.expires_at FROM networks_v2 n
@@ -1455,6 +1458,9 @@ func (s *Store) LeaveEndpointNetwork(networkID, endpointID string, expectedRevis
 		return err
 	}
 	defer tx.Rollback()
+	if err := endpointGroupsRejectNetworkBusiness(tx, endpointID); err != nil {
+		return err
+	}
 	result, err := tx.Exec(`UPDATE endpoint_network_memberships_v2 SET status='revoked',revision=revision+1,updated_at=? WHERE network_id=? AND endpoint_id=? AND revision=? AND status='active'`, now(), networkID, endpointID, expectedRevision)
 	if err != nil {
 		return err
@@ -1503,6 +1509,11 @@ func networkGuardCurrentScopeTx(tx *sql.Tx, scope NetworkAccessScope, action str
 		scope.MembershipID == "" || scope.MembershipRevision <= 0 ||
 		scope.EndpointMembershipRevision <= 0 {
 		return ErrNetworkPermission
+	}
+	if action != "" {
+		if err := endpointGroupsRejectNetworkBusiness(tx, scope.EndpointID); err != nil {
+			return err
+		}
 	}
 	var leaseExpiry, membershipExpiry string
 	err := tx.QueryRow(`SELECT a.lease_expires_at,m.expires_at
@@ -1674,6 +1685,16 @@ func validNetworkGrants(grants []string) bool {
 }
 
 func (s *Store) IssueNetworkInvitation(networkID, targetOwnerID, issuerID, token, expiresAt string, grants []string) error {
+	return s.issueNetworkInvitation(networkID, targetOwnerID, issuerID, token, expiresAt, grants, nil)
+}
+
+// IssueNetworkInvitationScoped keeps an authenticated Endpoint's current
+// authority check in the transaction that persists its invitation.
+func (s *Store) IssueNetworkInvitationScoped(scope NetworkAccessScope, targetOwnerID, token, expiresAt string, grants []string) error {
+	return s.issueNetworkInvitation(scope.NetworkID, targetOwnerID, scope.PrincipalID, token, expiresAt, grants, &scope)
+}
+
+func (s *Store) issueNetworkInvitation(networkID, targetOwnerID, issuerID, token, expiresAt string, grants []string, scope *NetworkAccessScope) error {
 	grants = slices.Clone(grants)
 	slices.Sort(grants)
 	expiry, parseErr := time.Parse(time.RFC3339Nano, expiresAt)
@@ -1683,18 +1704,28 @@ func (s *Store) IssueNetworkInvitation(networkID, targetOwnerID, issuerID, token
 	encoded, _ := json.Marshal(grants)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if err := nativePairLegacyAllowed(s.db, networkID, "", ""); err != nil {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if scope != nil {
+		if err := networkGuardAccessTx(tx, *scope, "network.admin.invite", time.Now().UTC()); err != nil {
+			return err
+		}
+	}
+	if err := nativePairLegacyAllowed(tx, networkID, "", ""); err != nil {
 		return err
 	}
 	// This primitive requires its caller to authenticate issuerID; the Store
 	// still enforces that an Agent issuer has the narrow invite grant.
 	var ownerID string
-	if err := s.db.QueryRow(`SELECT owner_id FROM networks_v2 WHERE id=? AND state='ACTIVE'`, networkID).Scan(&ownerID); err != nil {
+	if err := tx.QueryRow(`SELECT owner_id FROM networks_v2 WHERE id=? AND state='ACTIVE'`, networkID).Scan(&ownerID); err != nil {
 		return ErrNetworkNotFound
 	}
 	if issuerID != ownerID {
 		var grantsJSON, status, memberExpiry, principalStatus string
-		err := s.db.QueryRow(`SELECT m.grants_json,m.status,m.expires_at,p.status FROM network_memberships_v2 m JOIN principals p ON p.id=m.principal_id WHERE m.network_id=? AND m.principal_id=?`, networkID, issuerID).Scan(&grantsJSON, &status, &memberExpiry, &principalStatus)
+		err := tx.QueryRow(`SELECT m.grants_json,m.status,m.expires_at,p.status FROM network_memberships_v2 m JOIN principals p ON p.id=m.principal_id WHERE m.network_id=? AND m.principal_id=?`, networkID, issuerID).Scan(&grantsJSON, &status, &memberExpiry, &principalStatus)
 		if err != nil || status != "active" || principalStatus != PrincipalStatusActive || !networkExpiryAllows(memberExpiry, time.Now().UTC()) {
 			return ErrNetworkPermission
 		}
@@ -1718,15 +1749,17 @@ func (s *Store) IssueNetworkInvitation(networkID, targetOwnerID, issuerID, token
 		}
 	}
 	var pending int
-	if err := s.db.QueryRow(`SELECT COUNT(*) FROM network_invitations_v2 WHERE network_id=? AND consumed_at='' AND cicada_network_expiry_allows(expires_at,?)=1`,
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM network_invitations_v2 WHERE network_id=? AND consumed_at='' AND cicada_network_expiry_allows(expires_at,?)=1`,
 		networkID, time.Now().UTC().Format(time.RFC3339Nano)).Scan(&pending); err != nil {
 		return err
 	}
 	if pending >= 256 {
 		return ErrNetworkPermission
 	}
-	_, err := s.db.Exec(`INSERT INTO network_invitations_v2(token_hash,network_id,target_owner_id,grants_json,expires_at,issued_by,created_at) VALUES(?,?,?,?,?,?,?)`, tokenDigest(token), networkID, targetOwnerID, string(encoded), expiresAt, issuerID, now())
-	return err
+	if _, err := tx.Exec(`INSERT INTO network_invitations_v2(token_hash,network_id,target_owner_id,grants_json,expires_at,issued_by,created_at) VALUES(?,?,?,?,?,?,?)`, tokenDigest(token), networkID, targetOwnerID, string(encoded), expiresAt, issuerID, now()); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Store) RevokeNetworkInvitation(token string) error {

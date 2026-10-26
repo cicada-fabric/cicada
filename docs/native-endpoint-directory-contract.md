@@ -1271,6 +1271,16 @@ by renewal or an unreviewed current-authority transition. No unknown renewal
 rotates a substitute token. An App session, read cache
 or process presence is not a renewal source.
 
+The retained Network identity can serve self identity, native self-binding and
+registration renewal only. Once the Endpoint has an explicit registration,
+wider Principal Network grants cannot authorize directory discovery, direct
+send/receive, task/broadcast operations or global Network Leave for that
+Endpoint. Apply this ceiling in service authorization and the same transaction
+as business reads/writes, including each participant of a bilateral operation.
+An expired source or registration lease does not restore legacy Network rights.
+Existing independently enrolled Endpoints without this registration retain
+their separately authorized Network behavior.
+
 Removing the final Group leaves an explicitly registered, zero-business-rights
 Thread and its original key/history; it does not call global Endpoint Leave,
 delete a Thread, stop the Node or erase registration. Native injection still

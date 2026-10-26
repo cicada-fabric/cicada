@@ -1,6 +1,7 @@
 package store
 
 import (
+	"encoding/json"
 	"errors"
 	"reflect"
 	"testing"
@@ -9,6 +10,54 @@ import (
 	"github.com/cicada-ai/cicada/internal/e2ee"
 	wire "github.com/cicada-ai/cicada/internal/hubaccountwire"
 )
+
+func TestEndpointGroupsNetworkBusinessCeilingCoversBilateralActions(t *testing.T) {
+	f := endpointGroupsNodeTestFixture(t)
+	m := f.join.Member
+	actions := []string{"directory.discover", "direct.send", "direct.receive", "task.offer.publish", "task.offer.list", "broadcast.publish", "network.admin.invite"}
+	raw, err := json.Marshal(actions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.f.db.db.Exec(`UPDATE network_memberships_v2 SET grants_json=? WHERE network_id=? AND principal_id=?`, string(raw), f.domain.Policy.NetworkID, m.PrincipalID); err != nil {
+		t.Fatal(err)
+	}
+	check := func(managed bool) {
+		t.Helper()
+		tx, err := f.f.db.db.Begin()
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer tx.Rollback()
+		for _, action := range actions {
+			err = networkDirectMembershipAllowsTx(tx, f.domain.Policy.NetworkID, m.EndpointID, m.PrincipalID, action, f.at)
+			if managed && !errors.Is(err, ErrNetworkPermission) || !managed && err != nil {
+				t.Fatalf("bilateral current Endpoint action %s managed=%v: %v", action, managed, err)
+			}
+		}
+	}
+	nm, err := f.f.db.GetNetworkMembership(f.domain.Policy.NetworkID, m.PrincipalID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scope := NetworkAccessScope{NetworkID: nm.NetworkID, PrincipalID: m.PrincipalID, EndpointID: m.EndpointID, AccessSessionID: m.NetworkAccessBindingID, AccessEpoch: m.NetworkAccessEpoch, LeaseOwner: m.LeaseOwner, MembershipID: nm.ID, MembershipRevision: nm.Revision, EndpointMembershipRevision: int64(m.EndpointNetworkRevision)}
+	check(false)
+	expires := time.Now().UTC().Add(time.Hour).Format(time.RFC3339Nano)
+	if err := f.f.db.IssueNetworkInvitationScoped(scope, "synthetic-target-owner", "synthetic-network-before-registration-invitation", expires, []string{"directory.discover"}); err != nil {
+		t.Fatal("independently enrolled Endpoint invitation positive", err)
+	}
+	f.describe(t, f.at)
+	check(true)
+	if err := f.f.db.IssueNetworkInvitationScoped(scope, "synthetic-target-owner", "synthetic-network-after-registration-invitation", expires, []string{"directory.discover"}); !errors.Is(err, ErrNetworkPermission) {
+		t.Fatal("invitation transaction borrowed wider Principal grants", err)
+	}
+	// Neither expired registration liveness nor a retained broad Principal row
+	// makes the original Endpoint a legacy Network business actor again.
+	if _, err = f.f.db.db.Exec(`UPDATE session_bindings SET lease_expires_at=? WHERE id=?`, f.at.Add(-time.Hour).Format(time.RFC3339Nano), m.BindingID); err != nil {
+		t.Fatal(err)
+	}
+	check(true)
+}
 
 // The Principal deliberately has wider actual stored rights before the Node
 // completes the exact original key. Current per-Endpoint authority must still

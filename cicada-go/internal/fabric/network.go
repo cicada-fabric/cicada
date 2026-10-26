@@ -228,6 +228,9 @@ func (s *Service) authorizeNetwork(actor NetworkActor, action string) error {
 	if action == "" {
 		return nil
 	}
+	if err := s.store.CheckEndpointNetworkBusinessCeiling(actor.EndpointID); err != nil {
+		return ErrPermissionDenied
+	}
 	allowed, err := s.store.NetworkAllows(actor.NetworkID, actor.PrincipalID, actor.EndpointID, action)
 	if err != nil {
 		return err
@@ -284,6 +287,9 @@ func (s *Service) ResolveNetwork(actor NetworkActor, query string) (*NetworkEndp
 func (s *Service) LeaveNetwork(actor NetworkActor, reason string) error {
 	if err := s.authorizeNetwork(actor, ""); err != nil {
 		return err
+	}
+	if err := s.store.CheckEndpointNetworkBusinessCeiling(actor.EndpointID); err != nil {
+		return ErrPermissionDenied
 	}
 	return s.store.LeaveEndpointNetwork(actor.NetworkID, actor.EndpointID, actor.EndpointMembershipRevision)
 }
@@ -348,7 +354,7 @@ func (s *Service) IssueNetworkInvitation(actor NetworkActor, targetOwnerID strin
 		return "", "", err
 	}
 	expires := s.now().UTC().Add(time.Duration(ttlSeconds) * time.Second).Format(time.RFC3339Nano)
-	if err := s.store.IssueNetworkInvitation(actor.NetworkID, targetOwnerID, actor.PrincipalID, token, expires, grants); err != nil {
+	if err := s.store.IssueNetworkInvitationScoped(networkDirectoryScope(actor), targetOwnerID, token, expires, grants); err != nil {
 		return "", "", ErrPermissionDenied
 	}
 	return token, expires, nil
