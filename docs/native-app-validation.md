@@ -7332,6 +7332,20 @@ Both use task-owned outputs. The helper ran in the existing pinned offline Go
 image with readonly source/modules, exclusive build-cache lock and confirmed
 owned-container absence. No user Codex, device, deployment or model was used.
 
+The actual-adapter foundation now compiles against formal shared SDK `b52ea56`:
+the established native peer fixture supplies real App/Node/default-G1 setup;
+the same Host driver has four-TUI calls, exact ASK/REPLY queue correlation and
+private Node/daemon/MCP restart support without replacing original SIDs. Captured
+packet verification uses the SDK and REMOVE's authenticated original head.
+This is **compile only**, not execution of those scenes or M1–M8. Dirty-source
+manifest `e0d2f3cd1e0c49362fdb832dd096e6e2b55902742fcec00b1e57fc375b7fc334`
+stayed stable; `go test -c ./acceptance/n3` exited 0, Python syntax passed, and
+the owned compiler container was absent. Receipt:
+`/home/zyf/Cicada/.local/evidence/n2-acceptance/owner-groups-actors-b52ea56-03/result.json`
+SHA-256 `3b1dc21f54390bdfb96dbdd87a122f71a833a0328afb8e2b76e5bad1a967caa0`.
+Real App Group actions and delivered Hub/Node handlers still need connection;
+the complete runtime adapter remains unavailable and all new product gates NOT_RUN.
+
 ### 2026-10-26 user-reported four-Thread Group continuation
 
 Root relayed the user's report that four real native Threads on the same Node

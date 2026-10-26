@@ -24,6 +24,8 @@ from codex_product_cli import digest, private_json
 
 TOOLS = ('cicada_whoami', 'cicada_select_peer', 'cicada_ask', 'cicada_receive',
          'cicada_reply', 'cicada_operation_status')
+OWNER_GROUP_TOOLS = TOOLS + ('cicada_groups', 'cicada_use_group', 'cicada_find',
+                             'cicada_resolve', 'cicada_send', 'cicada_operation_retry')
 CODEX_SHA256 = 'b93f6811d3f653f0fb83be4050d857fb9abbb111dfa2ce160563327daff7f306'
 PEER_CODES = ('PEER_DIRECTORY_EMPTY', 'PEER_FORM_UNSUPPORTED', 'PEER_SELECTION_INVALID',
               'PEER_SELECTION_STALE', 'MCP_FORM_DECLINED', 'MCP_FORM_CANCELLED',
@@ -212,7 +214,223 @@ class PeerFormCLI(DomainHostCLI):
             self.active_form = None
 
 
+def run_owner_groups(config):
+    """Extend this Host driver; the Go parent owns actual App actions/Guards.
+
+    Checkpoints mean observed transport only. Only the parent can emit M1-M8
+    acceptance after checking actual authority, DB, crypto and lease evidence.
+    """
+    os.umask(0o077)
+    assert config['codex_sha256'] == CODEX_SHA256 and config['daemon_umask'] == '0002'
+    cli = PeerFormCLI(config)
+    workspaces = [Path(p) for p in config['workspaces']]
+    assert len(workspaces) == 4 and len(set(workspaces)) == 4
+    assert all(p.is_dir() and p.is_relative_to(cli.root) for p in workspaces)
+    control = Path(config['control'])
+    control.mkdir(mode=0o700)
+    provider = StaticHostProvider(str(cli.root))
+    provider.capture_nonce_hash = True
+    result = {'scope': 'ACTUAL_OWNER_GROUP_HOST_TRANSPORT_NOT_PRODUCT_ACCEPTANCE', 'status': 'FAIL',
+              'real_model_turns': 0, 'Windows_DPAPI_ACL_GUI': 'NOT_RUN'}
+    phase, started, restarts = 'SETUP', False, 0
+    ids, summaries, nonces, retired_nonces = [], [], {}, {}
+
+    def close_proxy():
+        if not hasattr(cli, 'proxy'):
+            return
+        cli.proxy.stdin.close()
+        try:
+            cli.proxy.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            cli.proxy.kill()
+            cli.proxy.wait()
+        cli.proxy_log.close()
+        del cli.proxy
+
+    def start_daemon(label, connect=True):
+        nonlocal started
+        daemon = json.loads(cli.command(label, ['app-server', 'daemon', 'start']))
+        started = True
+        cli.control_socket = daemon['socketPath']
+        assert Path(cli.control_socket).is_relative_to(cli.codex_home)
+        cli.config['persistent_remote'] = 'unix://' + cli.control_socket
+        cli.original_daemon = cli.daemon_identity()
+        cli.notifications = collections.deque()
+        if connect:
+            cli.connect()
+
+    def stop_daemon(label):
+        nonlocal started
+        original = cli.original_daemon
+        cli.command(label, ['app-server', 'daemon', 'stop'])
+        started = False
+        path = Path('/proc') / str(original['pid']) / 'stat'
+        deadline = time.monotonic() + 5
+        while path.exists() and time.monotonic() < deadline:
+            try:
+                fields = path.read_text().rsplit(') ', 1)[1].split()
+            except FileNotFoundError:
+                return
+            if fields[19] != original['start_ticks'] or fields[0] == 'Z':
+                return
+            time.sleep(.025)
+        assert not path.exists(), 'OWNER_GROUP_PRIVATE_DAEMON_STILL_RUNNING'
+
+    def reply(sequence, **values):
+        assert cli.daemon_identity() == cli.original_daemon, 'OWNER_GROUP_HOST_DAEMON_CHANGED'
+        assert provider.request_counts()['literal'] == 0, 'LITERAL_REACHED_PROVIDER'
+        with provider.lock:
+            queue_posts = {body: row['posts'] for body, row in provider.queue_inputs.items()}
+        private_json(control / (str(sequence) + '.reply.json'), {'status': 'OBSERVED',
+            'daemon': cli.original_daemon, 'native_session_ids': ids, 'fixture_scope': provider.scope,
+            'daemon_restarts': restarts, 'literal_provider_posts': 0,
+            'queue_posts': queue_posts, **values})
+
+    try:
+        configuration = cli.codex_home / 'config.toml'
+        assert not configuration.exists(), 'OWNED_CONFIG_ALREADY_EXISTS'
+        text = '''model = "synthetic-owner-groups"
+model_provider = "qa_static"
+approval_policy = {granular = {mcp_elicitations = true, rules = false, sandbox_approval = false, skill_approval = false, request_permissions = false}}
+approvals_reviewer = "user"
+sandbox_mode = "read-only"
+[model_providers.qa_static]
+name = "Synthetic local static Host; no real model"
+base_url = BASE_URL
+env_key = "CICADA_SYNTHETIC_API_KEY"
+wire_api = "responses"
+requires_openai_auth = false
+request_max_retries = 0
+stream_max_retries = 0
+[analytics]
+enabled = false
+'''.replace('BASE_URL', json.dumps(provider.origin))
+        for workspace in workspaces:
+            text += '\n[projects.' + json.dumps(str(workspace)) + ']\ntrust_level = "trusted"\n'
+        for tool in OWNER_GROUP_TOOLS:
+            text += '\n[plugins."cicada@cicada-repo".mcp_servers.cicada.tools.' + tool + ']\napproval_mode = "approve"\n'
+        configuration.write_text(text)
+        cli.command('owner-marketplace-add', ['plugin', 'marketplace', 'add', str(cli.marketplace)])
+        cli.command('owner-plugin-add', ['plugin', 'add', 'cicada@cicada-repo'])
+        phase = 'ORIGINAL_FOUR_THREADS'
+        start_daemon('owner-daemon-start', connect=False)
+        cli.config['startup_only'] = True
+        cli.literal_tui([])
+        cli.config.pop('startup_only')
+        cli.connect()
+        for index in range(4):
+            cli.workspace = workspaces[index]
+            sid, _ = cli.literal_admit(provider, 'owner-group-' + 'abcd'[index], 'Synthetic Owner Group ' + 'ABCD'[index])
+            assert sid not in ids, 'OWNER_GROUP_NATIVE_THREAD_DUPLICATED'
+            ids.append(sid)
+            status = cli.tool_status(sid)
+            assert status['tools_count'] > 0 and not status['tools_error'], 'CURRENT_NATIVE_MCP_NOT_READY'
+        reply(0)
+        sequence = 1
+        while True:
+            phase = 'WAIT_PARENT'
+            path = control / (str(sequence) + '.command.json')
+            deadline = time.monotonic() + 900  # Parent may cross an actual five-minute lease.
+            while not path.is_file() and time.monotonic() < deadline:
+                time.sleep(.025)
+            assert path.is_file(), 'OWNER_GROUP_PARENT_TIMEOUT'
+            command = json.loads(path.read_text())
+            assert isinstance(command, dict) and not (set(command) - {
+                'action', 'actor', 'label', 'tool', 'arguments', 'form', 'queue', 'bind_queue', 'expected_literal',
+                'observe_fields', 'expected_request_id', 'expected_body_marker'}), 'OWNER_GROUP_COMMAND_FIELDS'
+            action, actor = command['action'], command.get('actor', 0)
+            assert type(actor) is int and 0 <= actor < 4, 'OWNER_GROUP_ACTOR_INDEX'
+            cli.workspace = workspaces[actor]
+            for item in command.get('queue', []):
+                assert set(item) == {'body', 'native_session_id', 'sender_endpoint_id', 'receiver_endpoint_id', 'group_id', 'kind'}, 'OWNER_GROUP_QUEUE_FIELDS'
+                assert item['native_session_id'] in ids, 'OWNER_GROUP_QUEUE_FOREIGN_SID'
+                provider.expect_queue(item['body'], item['native_session_id'], item['sender_endpoint_id'], item['receiver_endpoint_id'], item['group_id'], item['kind'])
+            for body, request in command.get('bind_queue', {}).items():
+                provider.bind_queue_request(body, request)
+            if action in ('call', 'receive_match'):
+                phase = 'HOST_CALL'
+                assert isinstance(command.get('label'), str) and re.fullmatch('[A-Za-z0-9_.-]{1,80}', command['label']), 'OWNER_GROUP_CALL_LABEL'
+                tool, args = command['tool'], command.get('arguments', {})
+                assert tool in OWNER_GROUP_TOOLS and isinstance(args, dict) and '_cicada_context' not in args, 'OWNER_GROUP_TOOL_OR_CONTEXT_INVALID'
+                if action == 'receive_match':
+                    assert tool == 'cicada_receive' and command.get('expected_request_id') and command.get('expected_body_marker'), 'OWNER_GROUP_RECEIVE_EXPECTATION'
+                for poll in range(60 if action == 'receive_match' else 1):
+                    output, summary = cli.host_call(provider, ids[actor], command['label'] + '-' + str(poll), tool, args, command.get('form'))
+                    summaries.append(summary)
+                    nonce = summary['connection_nonce_sha256']
+                    if ids[actor] in retired_nonces:
+                        assert nonce != retired_nonces[ids[actor]], 'OWNER_GROUP_MCP_NONCE_REUSED_AFTER_RESTART'
+                    nonces[ids[actor]] = nonce
+                    if action != 'receive_match' or any(row.get('request_id') == command['expected_request_id'] and
+                                                       command['expected_body_marker'] in json.dumps(row) for row in output_objects(output)):
+                        break
+                    time.sleep(.25)
+                else:
+                    raise AssertionError('OWNER_GROUP_EXACT_REQUEST_NOT_RECEIVED')
+                public = {}
+                for field in command.get('observe_fields', []):
+                    assert field in ('request_id', 'operation_id', 'endpoint_id', 'group_id', 'native_session_id', 'workspace', 'node_id', 'peer_selection_id', 'scope_id'), 'OWNER_GROUP_PUBLIC_FIELD'
+                    values = {row[field] for row in output_objects(output) if isinstance(row.get(field), str) and row[field]}
+                    assert len(values) <= 1, 'OWNER_GROUP_PUBLIC_FIELD_AMBIGUOUS'
+                    public[field] = next(iter(values), '')
+                reply(sequence, output=output, summary=summary, public=public)
+            elif action == 'restart_host':
+                phase = 'RESTART_PRIVATE_HOST'
+                old = cli.original_daemon
+                close_proxy()
+                stop_daemon('owner-daemon-stop-' + str(restarts))
+                retired_nonces.update(nonces)
+                nonces.clear()
+                restarts += 1
+                cli.state = cli.root / ('owner-host-connection-' + str(restarts))
+                cli.state.mkdir(mode=0o700)
+                start_daemon('owner-daemon-restart-' + str(restarts))
+                assert cli.original_daemon != old, 'OWNER_GROUP_HOST_NOT_RESTARTED'
+                assert all(sid in cli.native_records() for sid in ids), 'OWNER_GROUP_ORIGINAL_RECORD_LOST'
+                reply(sequence)
+            elif action == 'literal_join_refused':
+                phase = 'LITERAL_DENY_RECHECK'
+                assert command['expected_literal'] == 'OWNER_READD_REQUIRED', 'OWNER_GROUP_LITERAL_EXPECTATION'
+                assert isinstance(command.get('label'), str) and re.fullmatch('[A-Za-z0-9_.-]{1,80}', command['label']), 'OWNER_GROUP_CALL_LABEL'
+                sid = cli.literal(command['label'], 'cicada join', command['expected_literal'], resume=ids[actor])
+                assert sid == ids[actor], 'OWNER_GROUP_LITERAL_REPLACED_THREAD'
+                reply(sequence)
+            elif action == 'checkpoint':
+                reply(sequence)
+            elif action == 'finish':
+                reply(sequence)
+                result.update(status='HOST_FIXTURE_COMPLETED_NOT_PRODUCT_ACCEPTANCE', native_session_ids=ids,
+                              daemon_restarts=restarts, tool_summaries=summaries)
+                break
+            else:
+                raise AssertionError('OWNER_GROUP_COMMAND_UNSUPPORTED')
+            sequence += 1
+    except Exception as error:
+        code = str(error) if isinstance(error, AssertionError) and re.fullmatch('[A-Z][A-Z0-9_]{0,100}', str(error)) else 'UNCLASSIFIED'
+        result.update(status='FAIL', failure_phase=phase, failure_kind=type(error).__name__, failure_code=code,
+                      host_diagnostic=provider.safe_diagnostic())
+    finally:
+        cleanup = True
+        try:
+            close_proxy()
+            if started:
+                stop_daemon('owner-daemon-final-stop')
+        except Exception:
+            cleanup = False
+        provider.close()
+        counts = provider.request_counts()
+        result.update(cleanup_confirmed=cleanup, literal_provider_posts=counts['literal'],
+                      host_provider_posts=counts['host'], native_queue_provider_posts=counts['native_queue'],
+                      static_provider_posts=len(provider.requests))
+        if not cleanup or counts['literal'] or digest(Path(cli.binary)) != cli.expected_binary:
+            result['status'] = 'FAIL'
+        private_json(Path(config['result']), result)
+    return 0 if result['status'] == 'HOST_FIXTURE_COMPLETED_NOT_PRODUCT_ACCEPTANCE' else 1
+
+
 def run(config):
+    if config.get('step') == 'owner-groups-native':
+        return run_owner_groups(config)
     os.umask(0o077)
     assert config['codex_sha256'] == CODEX_SHA256 and config['daemon_umask'] == '0002'
     cli = PeerFormCLI(config)

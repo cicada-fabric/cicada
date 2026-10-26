@@ -6,7 +6,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"testing"
 	"time"
 
@@ -34,77 +33,8 @@ func TestN3PeerFormNativeOriginalDaemonAB(t *testing.T) {
 		t.Skip("NOT_RUN: opt in to actual native peer-form fixture with CICADA_N3_PEER_FORM=1")
 	}
 	v := newCodexProductFixture(t, "1s")
-	requireLocalDomainAvailable(t, v)
-	v.coldOwnerPin(t)
-	v.actualNode.kill(t)
-	controlHash := hash(readPrivate(t, v.actualNode.statePath()))
-	prefix := filepath.Join(v.root, "peer-form-selected-root")
-	if os.Mkdir(prefix, 0755) != nil || os.Chmod(prefix, 0755) != nil {
-		t.Fatal("owned peer-form installation root unavailable")
-	}
-	var workspaces []string
-	for _, name := range []string{"a", "b"} {
-		path := filepath.Join(v.root, "peer-form-workspace-"+name)
-		if os.Mkdir(path, 0700) != nil {
-			t.Fatal("owned native peer-form workspace unavailable")
-		}
-		workspaces = append(workspaces, path)
-	}
-	var environment []string
-	for _, item := range v.environment {
-		name := strings.SplitN(item, "=", 2)[0]
-		if !strings.HasPrefix(name, "CICADA_") && name != "PATH" {
-			environment = append(environment, item)
-		}
-	}
-	environment = append(environment, "PATH=/usr/local/bin:/usr/bin:/bin")
-	log := must(os.OpenFile(filepath.Join(v.root, "private-peer-form-native.log"), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600))
-	t.Cleanup(func() { log.Close() })
-	var assets [][]string
-	for _, path := range []string{".agents/plugins/cicada/.codex-plugin/plugin.json", ".agents/plugins/cicada/.mcp.json",
-		".agents/plugins/cicada/hooks/hooks.json", ".agents/plugins/cicada/skills/cicada-network/SKILL.md", ".agents/plugins/marketplace.json"} {
-		assets = append(assets, []string{path, hash(readPrivate(t, filepath.Join("/repo", path)))})
-	}
-	assetHash := hash(must(json.Marshal(map[string]any{"format": "cicada.codex-plugin-assets.v1", "files": assets})))
-	binary := os.Getenv("CICADA_N3_CICADA_BINARY")
-	install := exec.Command(binary, "components", "install", "--prefix", prefix, "--components", "node", "--binary", binary,
-		"--sha256", hash(readPrivateBinary(t, binary)), "--licenses", "/licenses", "--codex-plugin-assets", "/repo", "--codex-plugin-sha256", assetHash)
-	install.Env, install.Stdout, install.Stderr = environment, log, log
-	if install.Run() != nil || hash(readPrivate(t, v.actualNode.statePath())) != controlHash || v.actualNode.running() {
-		t.Fatal("file-only peer-form installation failed or changed original Node state")
-	}
-	installed := filepath.Join(prefix, "components/node/bin/cicada")
-	if hash(readPrivateBinary(t, installed)) != hash(readPrivateBinary(t, binary)) {
-		t.Fatal("peer-form installed binary differs from the tested executable")
-	}
-	outbox := filepath.Join(filepath.Dir(v.mcpState), "outbox.sqlite3")
-	node := exec.Command(installed, "machine", "agent", "--relay-only", "--id", v.actualNode.id, "--name", v.actualNode.id,
-		"--control-url", v.f.cfg.Origin, "--state-dir", v.actualNode.state, "--interval", "1s", "--user-root", prefix,
-		"--mcp-session-state-file", v.mcpState, "--mcp-outbox-state-file", outbox)
-	node.Env = append(append([]string(nil), v.environment...), "CICADA_CODEX_BIN=/tools/codex-package/bin/codex")
-	node.Stdout, node.Stderr = log, log
-	v.actualNode = &nodeProcess{process: startProcess(t, node), id: v.actualNode.id, state: v.actualNode.state}
-	bound := v.actualNode.awaitState(t, v.f, true)
-	if bound.BindingID != v.bound.BindingID || bound.NodeKeyID != v.bound.NodeKeyID ||
-		bound.NodeKeyEpoch != v.bound.NodeKeyEpoch || bound.NodeFingerprint != v.bound.NodeFingerprint {
-		t.Fatal("peer-form installed Node replaced its original approved identity")
-	}
-	_, _ = threeStageLivePin(t, v, prefix, outbox, "")
-	initial := v.do(appcore.Action{Kind: appcore.ActionRefreshLocalCollaboration}).LocalCollaboration
-	if !initial.Current || initial.Pending || initial.State != "UNCONFIGURED" || initial.NodeID != v.actualNode.id {
-		t.Fatal("peer-form original Node policy is not unconfigured")
-	}
-	preview := v.do(appcore.Action{Kind: appcore.ActionPrepareLocalCollaboration,
-		LocalCollaboration: appcore.LocalCollaborationAction{NewNetworkName: "Synthetic peer-form Network", GroupName: "Synthetic peer-form Group"}}).LocalCollaboration
-	if !preview.Current || preview.Pending || preview.ReviewID == "" || preview.NodeID != v.actualNode.id || preview.LocalUserScope != "uid:1000" {
-		t.Fatal("peer-form actual App policy review changed its original scope")
-	}
-	active := v.do(appcore.Action{Kind: appcore.ActionActivateLocalCollaboration,
-		LocalCollaboration: appcore.LocalCollaborationAction{ReviewID: preview.ReviewID, ConfirmActivation: true}}).LocalCollaboration
-	requireSameLocalDomain(t, preview, active)
-	if active.State != wire.LocalDomainActive || active.GroupID == "" || active.NetworkID == "" {
-		t.Fatal("peer-form actual App did not activate its policy")
-	}
+	shared := prepareNativePeerActors(t, v, "peer-form", []string{"a", "b"})
+	prefix, workspaces, environment, log, active := shared.prefix, shared.workspaces, shared.environment, shared.log, shared.active
 	control, config, result := filepath.Join(v.root, "peer-form-native-control"), filepath.Join(v.root, "private-peer-form-config.json"), filepath.Join(v.root, "private-peer-form-result.json")
 	writeJSON(t, config, map[string]any{"root": v.root, "workspace": workspaces[0], "workspaces": workspaces,
 		"codex_home": v.codexHome, "environment": environment, "codex_binary": "/tools/codex-package/bin/codex",
