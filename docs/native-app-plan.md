@@ -417,7 +417,7 @@ and public HTTPS keep separate statuses. Pure contract checks establish only the
 inventory/document constraints, never successful cryptography or implementation.
 
 Root's 2026-10-26 scoped acceptance decision preserves the minimum manual duration
-of one day. The 30-minute disposable runtime gate does not claim to cross that
+of one day. The bounded disposable runtime gate does not claim to cross that
 deadline: M4's permanent Owner-control, original G1 permission refusal after
 restart/Join and immutable finite
 duration use actual Runtime evidence; expiry/no-default-fallback requires separate
@@ -427,14 +427,18 @@ bounded scopes pass. Do not shorten the product duration, add a product clock
 switch or report injected time as elapsed wall time. M5 still requires a real
 five-minute lease boundary measured by both wall and monotonic clocks. Any top
 result is **SCOPED_PASS** with these separate limits, never all M1–M8 real-clock
-acceptance.
+acceptance. The test process now has a 60-minute execution budget after real
+four-TUI bootstrap measured about 270 seconds and M7 requires two independent
+baselines. This changes only the test timeout; product durations and clocks stay
+unchanged.
 
 The existing `scripts/test-native-pair.sh --owner-endpoint-groups` now selects
-the actual product parent with M1–M3 scenarios. It uses real Controller actions
+the actual product parent with M1–M8 adapters. It uses real Controller actions
 and the original four native Threads; a missing actual Hub/self-list capability
-returns typed 125/NOT_RUN after owned fixture bootstrap. M4–M8 adapters remain
-unfinished: any partial execution fails the complete evidence gate rather than
-becoming an aggregate pass. M1–M8 remain NOT_RUN until source-bound execution.
+returns typed 125/NOT_RUN after owned fixture bootstrap. M4/M5/M6/M8 continue
+the original four identities; M7 uses two fresh independent baselines for Owner
+key and Node-binding revocation. Any partial execution fails the complete
+evidence gate. No M1–M8 acceptance pass has been established.
 The existing N3 fault proxy now targets exact Node RPC operations so concurrent
 traffic cannot consume a key-completion/renewal fault. Shared fixture inputs cover
 response loss, unsigned/corrupt receipts, delayed completion, stale head/profile,
@@ -452,9 +456,16 @@ denials do not count as five-right Actor Guard evidence. The four-Thread fixture
 has its existing narrow grants; a wider shared-Principal attack still requires
 separate producer Core/Store evidence and is not inferred from that baseline.
 The newly delivered default plugin has only PreToolUse. Its native bootstrap
-must be switched to actual external CLI registration of real Host-created SIDs
-after the formal Node CLI delivery; old literal tests remain compatibility
-evidence for their tested source. No new CLI, Hook or M1–M8 Runtime pass is claimed.
+now uses external CLI registration of real Host-created SIDs. It inspects the
+unselected self list and explicitly selects G1 before business calls. Normal
+PreToolUse trust uses the actual TUI. The pinned Host's automatic title requests
+have their own bounded lane: its complete fixed template must wrap an exact
+previously observed fixture prompt, once per prompt, with separate actual
+coordinates. Title coordinates never register or participate in Cicada business.
+Seed, title, tool and native queue posts are counted separately; unknown requests
+fail. Historical literal-dependent native lanes return 125 before allocating
+resources with the new default; parser compatibility and old source receipts
+remain separate. No new M1–M8 Runtime pass is claimed.
 The [preparation record](native-app-validation.md#2026-10-26-owner-managed-group-driver-preparation)
 separates the pure oracle and synthetic TCP self-check from product validation.
 

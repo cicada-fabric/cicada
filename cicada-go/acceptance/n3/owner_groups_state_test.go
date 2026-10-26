@@ -68,6 +68,15 @@ func ownerGroupsOriginalActors(t *testing.T, v *codexProductFixture, actors nati
 	t.Helper()
 	identities := ownerGroupsStoredIdentities(t, v, actors, host.originalSIDs)
 	for index, identity := range identities {
+		label := "original-" + string(rune('a'+index))
+		// External Join registers the native anchor without choosing business
+		// authority. Inspect actual available rights, then explicitly select G1.
+		host.groups(t, index, label+"-unselected", actors.active.NetworkID, "", map[string]string{actors.active.GroupID: "DEFAULT_POLICY"})
+		selected := host.command(t, ownerGroupsHostCommand{Action: "call", Actor: index, Label: label + "-select", Tool: "cicada_use_group",
+			Arguments: map[string]any{"group_id": actors.active.GroupID}, ObserveFields: []string{"group_id"}})
+		if selected.Public["group_id"] != actors.active.GroupID {
+			t.Fatal("actual original actor could not explicitly select its authorized default Group")
+		}
 		observed := host.command(t, ownerGroupsHostCommand{Action: "call", Actor: index, Label: "original-" + string(rune('a'+index)), Tool: "cicada_whoami",
 			Arguments: map[string]any{}, ObserveFields: []string{"endpoint_id", "native_session_id", "node_id", "workspace", "group_id"}})
 		if observed.Public["endpoint_id"] != identity.Endpoint || observed.Public["native_session_id"] != identity.SID ||

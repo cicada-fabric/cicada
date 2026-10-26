@@ -1,6 +1,7 @@
 package n3_test
 
 import (
+	"net/http"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -48,13 +49,17 @@ func exerciseOwnerGroupsM1(t *testing.T, v *codexProductFixture, actors nativePe
 	}
 	d := original[3]
 	g2 := exerciseOwnerGroupsCreateRecovery(t, v, actors, d)
+	credential := originalOwnerGroupsRESTCredential(t, v, d, actors.active.GroupID)
+	router := startOwnerGroupsFabricRouter(t, v)
+	defer router.process.kill(t)
+	router.requireActor(t, credential, actors.active.GroupID)
 	panel := prepareOwnerGroupsEndpointChange(t, v, actors, d, g2, wire.OwnerEndpointGroupsAddEndpoint, "until_revoked")
 	entered, release := armOwnerGroupsFault(t, v.f.proxy, "complete-held-before-forward")
 	defer release()
 	submitOwnerGroupsReview(t, v, panel, "ADD_SUBMITTED")
 	select {
 	case <-entered:
-	case <-time.After(8 * time.Second):
+	case <-time.After(75 * time.Second):
 		t.Fatal("actual Node did not reach its exact Group key-completion barrier")
 	}
 	pending := selectOwnerGroupsThread(t, v, actors.active.NetworkID, d)
@@ -78,11 +83,30 @@ func exerciseOwnerGroupsM1(t *testing.T, v *codexProductFixture, actors nativePe
 	if !manualPending || ownerGroupsRelationCount(t, v, d.Endpoint, g2) != 0 {
 		t.Fatal("actual pending manual contribution created an ACTIVE Endpoint Group edge")
 	}
-	// The actual fresh Hook/Node self list must also exclude the uncompleted G2.
-	host.groups(t, 3, "m1-pending-d", actors.active.NetworkID, actors.active.GroupID,
-		map[string]string{actors.active.GroupID: "DEFAULT_POLICY"})
+	// The production worker holds its local RPC mutex around the held
+	// completion. Verify pending authority at the real Hub Guard while this
+	// network fault is active; a concurrent Hook cannot establish a lock SLA.
+	status, raw := router.request(t, credential, g2, http.MethodGet, "/v2/fabric/whoami", nil)
+	clear(raw)
+	if status != http.StatusForbidden {
+		t.Fatal("actual pending G2 acquired business authority before key completion")
+	}
+	router.requireActor(t, credential, actors.active.GroupID)
+	nodeDB := nodePairReadOnlyDB(t, filepath.Join(ownerGroupsNodeRoot(v), "node-crypto-state.sqlite"))
+	var grants int
+	err := nodeDB.QueryRow(`SELECT count(*) FROM node_endpoint_group_sources_v1 WHERE endpoint_id=? AND group_id=? AND source='OWNER_EXPLICIT' AND json_extract(CAST(relation_json AS TEXT),'$.state')='ACTIVE'`, d.Endpoint, g2).Scan(&grants)
+	nodeDB.Close()
+	if err != nil || grants != 0 {
+		t.Fatal("pending completion already persisted an active Node Group grant")
+	}
 	release()
 	awaitOwnerGroupsRelation(t, v, actors.active.NetworkID, d, g2, "ACTIVE", "OWNER")
+	selected := host.command(t, ownerGroupsHostCommand{Action: "call", Actor: 3, Label: "m1-explicit-original-g1", Tool: "cicada_use_group",
+		Arguments: map[string]any{"group_id": actors.active.GroupID}, ObserveFields: []string{"group_id"}})
+	if selected.Public["group_id"] != actors.active.GroupID {
+		t.Fatal("completed ADD prevented explicit original G1 selection")
+	}
+	host.groups(t, 3, "m1-completed-d", actors.active.NetworkID, actors.active.GroupID, map[string]string{actors.active.GroupID: "DEFAULT_POLICY", g2: "OWNER_EXPLICIT"})
 	// Exercise both unauthenticated denial and cryptographic response corruption
 	// after actual Hub commits. Each restarts/reconciles the exact original.
 	panel = prepareOwnerGroupsEndpointChange(t, v, actors, d, g2, wire.OwnerEndpointGroupsRemoveEndpoint, "")
@@ -123,6 +147,11 @@ func exerciseOwnerGroupsM2(t *testing.T, v *codexProductFixture, actors nativePe
 	}
 	var originalG2 []string
 	for index, identity := range original {
+		selected := host.command(t, ownerGroupsHostCommand{Action: "call", Actor: index, Label: "m2-explicit-original-g1-" + string(rune('a'+index)), Tool: "cicada_use_group",
+			Arguments: map[string]any{"group_id": actors.active.GroupID}, ObserveFields: []string{"group_id"}})
+		if selected.Public["group_id"] != actors.active.GroupID {
+			t.Fatal("exact G2 add prevented explicit authorized G1 selection")
+		}
 		host.groups(t, index, "m2-self-"+string(rune('a'+index)), actors.active.NetworkID, actors.active.GroupID,
 			map[string]string{actors.active.GroupID: "DEFAULT_POLICY", g2: "OWNER_EXPLICIT"})
 		if ownerGroupsRelationCount(t, v, identity.Endpoint, actors.active.GroupID) != 1 || ownerGroupsRelationCount(t, v, identity.Endpoint, g2) != 1 {

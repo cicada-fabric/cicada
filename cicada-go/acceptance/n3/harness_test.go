@@ -77,10 +77,23 @@ func readPrivate(t *testing.T, path string) []byte {
 
 func readJSON(t *testing.T, path string, value any) {
 	t.Helper()
-	raw := readPrivate(t, path)
+	var raw []byte
+	if filepath.Base(path) == "node-control-state.json" {
+		// Production bounds protected Node history separately from packets.
+		// Match maxMachineNodeControlStateBytes, never the 2 MiB wire bound.
+		file := must(os.Open(path))
+		raw = must(io.ReadAll(io.LimitReader(file, (8<<20)+1)))
+		file.Close()
+		if len(raw) > 8<<20 {
+			clear(raw)
+			t.Fatal("owned Node protected state exceeds production's 8 MiB bound")
+		}
+	} else {
+		raw = readPrivate(t, path)
+	}
 	defer clear(raw)
-	if json.Unmarshal(raw, value) != nil {
-		t.Fatal("owned fixture checkpoint is invalid")
+	if err := json.Unmarshal(raw, value); err != nil {
+		t.Fatalf("owned fixture checkpoint invalid file=%s error_type=%T", filepath.Base(path), err)
 	}
 }
 
@@ -164,6 +177,9 @@ func awaitMarker(t *testing.T, p *process, marker string) {
 }
 
 type exchange struct {
+	StartedAt      string `json:"started_at,omitempty"`
+	RecordedAt     string `json:"recorded_at,omitempty"`
+	FaultMode      string `json:"fault_mode,omitempty"`
 	Method         string `json:"method"`
 	Path           string `json:"path"`
 	RequestSHA256  string `json:"request_sha256"`
@@ -243,6 +259,7 @@ func (p *faultProxy) snapshot() []exchange {
 }
 
 func (p *faultProxy) record(ex exchange) {
+	ex.RecordedAt = time.Now().UTC().Format(time.RFC3339Nano)
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.trace = append(p.trace, ex)
@@ -267,7 +284,7 @@ func (p *faultProxy) serve(w http.ResponseWriter, r *http.Request) {
 		p.count--
 	}
 	p.mu.Unlock()
-	ex := exchange{Method: r.Method, Path: r.URL.Path, RequestSHA256: hash(raw), request: bytes.Clone(raw)}
+	ex := exchange{StartedAt: time.Now().UTC().Format(time.RFC3339Nano), FaultMode: mode, Method: r.Method, Path: r.URL.Path, RequestSHA256: hash(raw), request: bytes.Clone(raw)}
 	if mode == "unsupported-before-forward" || mode == "unknown-profile-before-forward" {
 		ex.Status = http.StatusNotFound
 		if mode == "unknown-profile-before-forward" {

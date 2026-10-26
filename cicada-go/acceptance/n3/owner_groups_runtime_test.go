@@ -14,11 +14,13 @@ func TestN3OwnerEndpointGroupsAcceptance(t *testing.T) {
 		t.Skip("OWNER_GROUPS_NOT_RUN opt in through the isolated native-pair driver")
 	}
 	v := newCodexProductFixture(t, "1s")
+	registerOwnerGroupsProtocolAudit(t, v)
 	requireOwnerGroupsAvailable(t, v)
 	actors := prepareNativePeerActors(t, v, "owner-groups", []string{"a", "b", "c", "d"})
 	host, _ := startOwnerGroupsHost(t, v, actors)
 	original := ownerGroupsOriginalActors(t, v, actors, host)
 	var g2 string
+	var denied ownerGroupsDeniedDelivery
 	if !t.Run("M1_G2OriginalMutation", func(t *testing.T) {
 		g2 = exerciseOwnerGroupsM1(t, v, actors, host, original)
 	}) {
@@ -30,13 +32,28 @@ func TestN3OwnerEndpointGroupsAcceptance(t *testing.T) {
 		return
 	}
 	if !t.Run("M3_RemoveOnlyD", func(t *testing.T) {
-		exerciseOwnerGroupsM3(t, v, actors, host, original, g2)
+		denied = exerciseOwnerGroupsM3(t, v, actors, host, original, g2)
 	}) {
 		return
 	}
+	for _, scene := range []struct {
+		name string
+		run  func(*testing.T, *codexProductFixture, nativePeerActors, *ownerGroupsHost, []ownerGroupsIdentity, string, ownerGroupsDeniedDelivery)
+	}{
+		{"M4_PermanentOwnerControl", exerciseOwnerGroupsM4},
+		{"M5_IndependentRealLease", exerciseOwnerGroupsM5},
+		{"M6_LastGroupRetainsIdentity", exerciseOwnerGroupsM6},
+		{"M8_OriginalScopeRecovery", exerciseOwnerGroupsM8},
+	} {
+		if !t.Run(scene.name, func(t *testing.T) { scene.run(t, v, actors, host, original, g2, denied) }) {
+			return
+		}
+	}
+	// Retain the four originals across every Group operation. M7 uses fresh
+	// independent baselines for intentional key/binding revocation afterward.
+	observeOwnerGroupsIdentities(t, original, ownerGroupsStoredIdentities(t, v, actors, host.originalSIDs))
 	host.finish(t)
-	// Do not fabricate missing cases, set their observation booleans or emit the
-	// final pre-revocation identity witness early. The full evidence gate fails
-	// closed until M4-M8 have actual executable adapters and measured results.
-	t.Log("OWNER_GROUPS_INCOMPLETE M4_M8_NOT_RUN final_identity_and_real_lease_witness_NOT_RUN")
+	if !t.Run("M7_TrueAuthorityRevocation", exerciseOwnerGroupsM7) {
+		return
+	}
 }

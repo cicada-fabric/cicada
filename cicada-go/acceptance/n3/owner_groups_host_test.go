@@ -2,6 +2,7 @@ package n3_test
 
 import (
 	"encoding/json"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -84,6 +85,40 @@ type ownerGroupsHost struct {
 	fixtureScope string
 }
 
+// Both private IPC directions publish complete, exclusive checkpoints. A
+// duplicate sequence cannot overwrite the original command under review.
+func publishOwnerGroupsControl(path string, raw []byte) error {
+	temporary := path + ".next"
+	file, err := os.OpenFile(temporary, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if err != nil {
+		return err
+	}
+	defer os.Remove(temporary)
+	n, writeErr := file.Write(raw)
+	syncErr, closeErr := file.Sync(), file.Close()
+	if writeErr != nil {
+		return writeErr
+	}
+	if n != len(raw) {
+		return io.ErrShortWrite
+	}
+	if syncErr != nil {
+		return syncErr
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	if err := os.Link(temporary, path); err != nil {
+		return err
+	}
+	directory, err := os.Open(filepath.Dir(path))
+	if err != nil {
+		return err
+	}
+	defer directory.Close()
+	return directory.Sync()
+}
+
 func startOwnerGroupsHost(t *testing.T, v *codexProductFixture, actors nativePeerActors) (*ownerGroupsHost, ownerGroupsHostReply) {
 	t.Helper()
 	if len(actors.workspaces) != 4 {
@@ -95,7 +130,8 @@ func startOwnerGroupsHost(t *testing.T, v *codexProductFixture, actors nativePee
 		"codex_home": v.codexHome, "environment": actors.environment, "codex_binary": "/tools/codex-package/bin/codex",
 		"codex_sha256": directIPCodexSHA256, "marketplace": filepath.Join(actors.prefix, "components/node/share/codex"),
 		"step": "owner-groups-native", "persistent_daemon": true, "allow_test_termination": true, "daemon_umask": "0002",
-		"preparation": "none", "selected_root": actors.prefix, "control": control, "result": result})
+		"preparation": "none", "selected_root": actors.prefix, "control": control, "result": result,
+		"cicada_sha256": hash(readPrivateBinary(t, filepath.Join(actors.prefix, "components/node/bin/cicada")))})
 	command := exec.Command("/usr/bin/python3", "/qa/scripts/fixtures/native-pair/peer_form_native.py", config)
 	command.Env, command.Dir, command.Stdout, command.Stderr = actors.environment, actors.workspaces[0], actors.log, actors.log
 	h := &ownerGroupsHost{process: startProcess(t, command), control: control, result: result, sequence: 1}
@@ -142,13 +178,15 @@ func (h *ownerGroupsHost) await(t *testing.T, sequence int) ownerGroupsHostReply
 		}
 		if !h.process.running() {
 			var failure struct {
-				Phase string `json:"failure_phase"`
-				Code  string `json:"failure_code"`
+				Phase      string          `json:"failure_phase"`
+				Code       string          `json:"failure_code"`
+				Shapes     json.RawMessage `json:"unclassified_shapes"`
+				Diagnostic json.RawMessage `json:"host_diagnostic"`
 			}
 			if _, err := os.Stat(h.result); err == nil {
 				readJSON(t, h.result, &failure)
 			}
-			t.Fatalf("actual Owner Group Host stopped: phase=%s code=%s", failure.Phase, failure.Code)
+			t.Fatalf("actual Owner Group Host stopped: phase=%s code=%s shapes=%s host_diagnostic=%s", failure.Phase, failure.Code, failure.Shapes, failure.Diagnostic)
 		}
 		time.Sleep(25 * time.Millisecond)
 	}
@@ -166,7 +204,11 @@ func (h *ownerGroupsHost) command(t *testing.T, value ownerGroupsHostCommand) ow
 	if _, present := value.Arguments["_cicada_context"]; present {
 		t.Fatal("fixture must not provide an actor ticket")
 	}
-	writeJSON(t, filepath.Join(h.control, strconv.Itoa(h.sequence)+".command.json"), value)
+	raw := must(json.Marshal(value))
+	defer clear(raw)
+	if publishOwnerGroupsControl(filepath.Join(h.control, strconv.Itoa(h.sequence)+".command.json"), raw) != nil {
+		t.Fatal("owned Host command cannot be published completely and exclusively")
+	}
 	result := h.await(t, h.sequence)
 	h.sequence++
 	if value.Action != "restart_host" && result.Daemon != h.latestDaemon {
@@ -194,12 +236,14 @@ func (h *ownerGroupsHost) finish(t *testing.T) {
 		Literal    int               `json:"literal_provider_posts"`
 		Host       int               `json:"host_provider_posts"`
 		Queue      int               `json:"native_queue_provider_posts"`
+		Seed       int               `json:"native_seed_provider_posts"`
+		Title      int               `json:"native_title_provider_posts"`
 		Total      int               `json:"static_provider_posts"`
 		Calls      []json.RawMessage `json:"tool_summaries"`
 	}
 	readJSON(t, h.result, &result)
 	if result.Status != "HOST_FIXTURE_COMPLETED_NOT_PRODUCT_ACCEPTANCE" || !result.Cleanup || result.RealModels != 0 || result.Literal != 0 ||
-		result.Host != 2*len(result.Calls) || result.Total != result.Host+result.Queue || h.process.cmd.ProcessState.ExitCode() != 0 {
+		result.Seed != 4 || result.Title < 0 || result.Title > 1024 || result.Host != 2*len(result.Calls) || result.Total != result.Host+result.Queue+result.Seed+result.Title || h.process.cmd.ProcessState.ExitCode() != 0 {
 		t.Fatal("actual Owner Group Host cleanup/provider accounting did not match its measured calls")
 	}
 }
@@ -211,7 +255,7 @@ func (h *ownerGroupsHost) groups(t *testing.T, actor int, label, network, select
 	list := reply.SelfGroups
 	if list == nil || !list.Complete || list.NextCursor != "" || list.Freshness != "SNAPSHOT_ONLY" ||
 		list.CurrentGroupID != selected || list.SelectionRequired != (selected == "") || len(list.Groups) != len(sources) {
-		t.Fatal("actual self-Group list selected an implicit scope, omitted a Group or returned incomplete authority")
+		t.Fatalf("actual self-Group list mismatch: present=%t complete=%t cursor_empty=%t snapshot=%t selected_matches=%t required_matches=%t count_matches=%t", list != nil, list != nil && list.Complete, list != nil && list.NextCursor == "", list != nil && list.Freshness == "SNAPSHOT_ONLY", list != nil && list.CurrentGroupID == selected, list != nil && list.SelectionRequired == (selected == ""), list != nil && len(list.Groups) == len(sources))
 	}
 	seen := make(map[string]bool)
 	for _, group := range list.Groups {

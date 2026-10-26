@@ -282,6 +282,69 @@ def run_owner_groups(config):
         cli.proxy_log.close()
         del cli.proxy
 
+    def create_native_tui(index):
+        # A normal prompt through the real TUI/Host creates its native record.
+        # The local static provider returns neutral text, with no Cicada tool,
+        # implicit Join, model service or fabricated record/SID.
+        label = 'owner-create-' + 'abcd'[index]
+        prompt = 'SYNTHETIC_OWNER_GROUP_NATIVE_CREATE_' + provider.scope + '_' + label
+        prior = cli.state
+        cli.state = cli.root / ('cli-' + label)
+        cli.state.mkdir(mode=0o700)
+        keys = ('literal_prompt', 'literal_expected', 'literal_resume_sid')
+        previous = {key: cli.config.get(key) for key in keys}
+        try:
+            provider.expect_native_seed(prompt)
+            cli.actual_result_ready = lambda: provider.native_seed_inputs[prompt]['posts'] == 1
+            cli.actual_before_tui_exit = lambda: cli.await_idle(provider.native_seed_inputs[prompt]['sid'])
+            cli.config.update(literal_prompt=prompt, literal_expected='SYNTHETIC STATIC HOST RESPONSE; NO REAL MODEL', literal_resume_sid=None)
+            sid = cli.literal_tui(cli.inventory(label + '-before'))
+            observed = provider.native_seed_inputs[prompt]
+            assert observed['sid'] == sid and observed['posts'] == 1, 'OWNER_GROUP_REAL_NATIVE_SEED_MISMATCH'
+            records = [row for row in cli.native_metadata() if row['id'] == sid]
+            assert (len(records) == 1 and records[0]['cwd_matches_original'] and records[0]['uid_matches_current'] and
+                    records[0]['open_inode_matches']), 'OWNER_GROUP_ORIGINAL_NATIVE_RECORD_INVALID'
+            return sid
+        finally:
+            cli.state = prior
+            del cli.actual_result_ready
+            del cli.actual_before_tui_exit
+            for key, value in previous.items():
+                if value is None:
+                    cli.config.pop(key, None)
+                else:
+                    cli.config[key] = value
+
+    def register_cli(index, sid):
+        binary = Path(config['selected_root']) / 'components/node/bin/cicada'
+        assert digest(binary) == config['cicada_sha256'], 'OWNER_GROUP_REGISTRATION_BINARY_CHANGED'
+        arguments = [str(binary), 'join', '--thread', sid, '--name', 'Synthetic Owner Group ' + 'ABCD'[index],
+                     '--user-root', config['selected_root']]
+        with (cli.root / ('private-cli-register-' + 'abcd'[index] + '.log')).open('xb') as log:
+            completed = subprocess.run(arguments, env=cli.environment, cwd=cli.workspace,
+                                       stdin=subprocess.DEVNULL, stdout=log, stderr=log, timeout=45)
+        assert completed.returncode == 0, 'OWNER_GROUP_ACTUAL_CLI_REGISTRATION_FAILED'
+        assert digest(binary) == config['cicada_sha256'] and sid in cli.native_records(), 'OWNER_GROUP_CLI_REPLACED_NATIVE_RECORD'
+
+    def trust_actual_pretool(index, sid):
+        # Resume that same TUI and let its normal hook-trust control act on a
+        # real Cicada call. Never inject trust hashes or fake a UserPromptSubmit.
+        label = 'owner-pretool-' + 'abcd'[index]
+        provider.begin(label, 'cicada_groups', {'limit': 64}, sid)
+        cli.actual_result_ready = lambda: provider.phase is not None and provider.phase['posts'] == 2 and provider.phase['output_received']
+        cli.actual_before_tui_exit = lambda: cli.await_idle(sid)
+        try:
+            resumed = cli.literal(label, 'SYNTHETIC LOCAL DOMAIN HOST TOOL ' + label,
+                                  'SYNTHETIC STATIC HOST RESPONSE; NO REAL MODEL', resume=sid)
+        finally:
+            del cli.actual_result_ready
+            del cli.actual_before_tui_exit
+        assert resumed == sid and provider.phase is not None, 'OWNER_GROUP_PRETOOL_REPLACED_NATIVE_THREAD'
+        output, summary = provider.finish(provider.phase['turn_id'])
+        require_successful_output(output)
+        summaries.append(summary)
+        nonces[sid] = summary['connection_nonce_sha256']
+
     def start_daemon(label, connect=True):
         nonlocal started
         daemon = json.loads(cli.command(label, ['app-server', 'daemon', 'start']))
@@ -314,7 +377,7 @@ def run_owner_groups(config):
     def reply(sequence, **values):
         assert cli.daemon_identity() == cli.original_daemon, 'OWNER_GROUP_HOST_DAEMON_CHANGED'
         assert provider.request_counts()['literal'] == 0, 'LITERAL_REACHED_PROVIDER'
-        assert len(ids) == 4, 'OWNER_GROUP_ORIGINAL_RECORD_COUNT'
+        assert len(ids) == 4 and not set(ids).intersection(provider.native_title_sids), 'OWNER_GROUP_ORIGINAL_RECORD_COUNT'
         conserve_native_history()
         with provider.lock:
             queue_posts = {body: row['posts'] for body, row in provider.queue_inputs.items()}
@@ -358,9 +421,13 @@ enabled = false
         cli.connect()
         for index in range(4):
             cli.workspace = workspaces[index]
-            sid, _ = cli.literal_admit(provider, 'owner-group-' + 'abcd'[index], 'Synthetic Owner Group ' + 'ABCD'[index])
+            sid = create_native_tui(index)
             assert sid not in ids, 'OWNER_GROUP_NATIVE_THREAD_DUPLICATED'
             ids.append(sid)
+            phase = 'EXTERNAL_CLI_REGISTRATION'
+            register_cli(index, sid)
+            phase = 'NORMAL_PRETOOL_TRUST'
+            trust_actual_pretool(index, sid)
             status = cli.tool_status(sid)
             assert status['tools_count'] > 0 and not status['tools_error'], 'CURRENT_NATIVE_MCP_NOT_READY'
         reply(0)
@@ -390,10 +457,17 @@ enabled = false
                 assert isinstance(command.get('label'), str) and re.fullmatch('[A-Za-z0-9_.-]{1,80}', command['label']), 'OWNER_GROUP_CALL_LABEL'
                 tool, args = command['tool'], command.get('arguments', {})
                 assert tool in OWNER_GROUP_TOOLS and isinstance(args, dict) and '_cicada_context' not in args, 'OWNER_GROUP_TOOL_OR_CONTEXT_INVALID'
+                form = command.get('form')
+                if form is not None and not form.get('server'):
+                    catalog = cli.rpc('mcpServerStatus/list', {'threadId': ids[actor], 'limit': 100, 'detail': 'full'})
+                    servers = [row for row in catalog['data'] if row.get('pluginId') == cli.original_plugin_id and
+                               'cicada_select_peer' in row.get('tools', {})]
+                    assert len(servers) == 1 and isinstance(servers[0].get('name'), str), 'OWNER_GROUP_ACTUAL_FORM_SERVER_NOT_UNIQUE'
+                    form = {**form, 'server': servers[0]['name']}
                 if action == 'receive_match':
                     assert tool == 'cicada_receive' and command.get('expected_request_id') and command.get('expected_body_marker'), 'OWNER_GROUP_RECEIVE_EXPECTATION'
                 for poll in range(60 if action == 'receive_match' else 1):
-                    output, summary = cli.host_call(provider, ids[actor], command['label'] + '-' + str(poll), tool, args, command.get('form'))
+                    output, summary = cli.host_call(provider, ids[actor], command['label'] + '-' + str(poll), tool, args, form)
                     summaries.append(summary)
                     nonce = summary['connection_nonce_sha256']
                     if ids[actor] in retired_nonces:
@@ -455,7 +529,7 @@ enabled = false
     except Exception as error:
         code = str(error) if isinstance(error, AssertionError) and re.fullmatch('[A-Z][A-Z0-9_]{0,100}', str(error)) else 'UNCLASSIFIED'
         result.update(status='FAIL', failure_phase=phase, failure_kind=type(error).__name__, failure_code=code,
-                      host_diagnostic=provider.safe_diagnostic())
+                      host_diagnostic=provider.safe_diagnostic(), unclassified_shapes=provider.unclassified_shapes)
     finally:
         cleanup = True
         try:
@@ -468,8 +542,9 @@ enabled = false
         counts = provider.request_counts()
         result.update(cleanup_confirmed=cleanup, literal_provider_posts=counts['literal'],
                       host_provider_posts=counts['host'], native_queue_provider_posts=counts['native_queue'],
+                      native_seed_provider_posts=counts['native_seed'], native_title_provider_posts=counts['native_title'],
                       static_provider_posts=len(provider.requests))
-        if not cleanup or counts['literal'] or digest(Path(cli.binary)) != cli.expected_binary:
+        if not cleanup or counts['literal'] or counts['native_seed'] != 4 or counts['native_title'] != len(provider.native_title_sids) or counts['native_title'] > len(provider.native_title_inputs) or digest(Path(cli.binary)) != cli.expected_binary:
             result['status'] = 'FAIL'
         private_json(Path(config['result']), result)
     return 0 if result['status'] == 'HOST_FIXTURE_COMPLETED_NOT_PRODUCT_ACCEPTANCE' else 1

@@ -51,7 +51,7 @@ type ownerGroupsFabricRouter struct {
 
 func startOwnerGroupsFabricRouter(t *testing.T, v *codexProductFixture) ownerGroupsFabricRouter {
 	t.Helper()
-	marker := filepath.Join(v.root, "private-full-fabric-router.json")
+	marker := filepath.Join(t.TempDir(), "private-full-fabric-router.json")
 	command := exec.Command(must(os.Executable()), "-test.run=^TestN3OwnerGroupsFabricRouterProcess$", "-test.timeout=30m")
 	command.Env = append(os.Environ(), "CICADA_N3_OWNER_GROUPS_FABRIC_CHILD=1", "CICADA_N3_FIXTURE="+v.f.dir, "CICADA_N3_MARKER="+marker)
 	process := startProcess(v.f.parent, command)

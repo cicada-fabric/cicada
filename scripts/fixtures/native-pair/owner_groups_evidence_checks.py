@@ -162,6 +162,22 @@ def run(output):
                     actual = e.code
             check(name, actual, wanted)
 
+    with tempfile.TemporaryDirectory(prefix='SYNTHETIC_AUDIT_NOT_PRODUCT-', dir=output) as scratch:
+        scratch=Path(scratch)
+        artifacts=scratch/'artifacts'
+        artifacts.mkdir()
+        for name in ('cicada','n3.test'):
+            (artifacts/name).write_bytes(b'SYNTHETIC_NOT_EXECUTABLE')
+        oracle.binaries(artifacts,scratch/'before.json')
+        audit=artifacts/'owner-groups-protocol-audit'
+        audit.mkdir()
+        (audit/'synthetic.json').write_text('{"scope":"SYNTHETIC_NOT_PROTOCOL_EVIDENCE"}')
+        oracle.binaries(artifacts,scratch/'after.json')
+        check('diagnostic_directory_does_not_change_executable_set',json.loads((scratch/'before.json').read_text()),json.loads((scratch/'after.json').read_text()))
+        (artifacts/'cicada').write_bytes(b'SYNTHETIC_CHANGED_EXECUTABLE')
+        oracle.binaries(artifacts,scratch/'changed.json')
+        check('diagnostics_cannot_hide_binary_drift',json.loads((scratch/'before.json').read_text())!=json.loads((scratch/'changed.json').read_text()),True)
+
     result = {'scope': 'SYNTHETIC_RECEIPT_ORACLE_ONLY_NOT_PRODUCT', 'status': 'ORACLE_PASS', 'exit_code': 0,
               'product_status': 'NOT_RUN', 'cases': len(checks), 'checks': checks,
               'driver_sha256': hashlib.sha256(source.read_bytes()).hexdigest(),

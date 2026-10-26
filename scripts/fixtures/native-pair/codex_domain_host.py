@@ -143,6 +143,11 @@ def host_output_diagnostic(value, issues=(), observed=True):
             'provider_issues': sorted({code if code in HOST_PROVIDER_ISSUES else 'UNCLASSIFIED' for code in issues})}
 
 
+# Exact automatic-title template verified in the pinned 0.164.0 Host binary.
+MAX_NATIVE_TITLES = 1024
+NATIVE_TITLE_PREFIX = "Generate a concise, single-line task title of at most 36 characters and under five words where possible. Start with an imperative verb. Capitalize only the first word unless the user's language, proper nouns, acronyms, or code terms require otherwise. Preserve ticket references exactly. Write in the user's language. Do not use quotes, markdown, or trailing punctuation. Do not answer the request.\n\nUser prompt:\n"
+
+
 class StaticHostProvider:
     def __init__(self, run_scope):
         self.scope = hashlib.sha256(run_scope.encode()).hexdigest()[:16]
@@ -152,6 +157,10 @@ class StaticHostProvider:
         self.last_diagnostic = None
         self.lock = threading.RLock()
         self.queue_inputs = {}
+        self.native_seed_inputs = {}
+        self.native_title_sids = set()
+        self.native_title_inputs = {}
+        self.unclassified_shapes = []
         owner = self
 
         class Handler(http.server.BaseHTTPRequestHandler):
@@ -173,11 +182,38 @@ class StaticHostProvider:
                 request = json.loads(raw)
                 with owner.lock:
                     phase, lane = owner.classify_request(request)
+                    if lane == 'literal':
+                        rows = request.get('input', []) if isinstance(request, dict) else []
+                        metadata = request.get('client_metadata', {}) if isinstance(request, dict) else {}
+                        last = rows[-1] if rows and isinstance(rows[-1], dict) else {}
+                        text = current_user_text(request)
+                        owner.unclassified_shapes.append({
+                            'active_phase': bool(owner.phase),
+                            'phase_posts': owner.phase['posts'] if owner.phase else 0,
+                            'sid_matches_phase': bool(owner.phase and metadata.get('thread_id') == owner.phase['sid']),
+                            'turn_present': isinstance(metadata.get('turn_id'), str),
+                            'input_count': len(rows),
+                            'last_type': last.get('type') if last.get('type') in ('message', 'function_call', 'function_call_output', 'reasoning') else 'OTHER',
+                            'last_role': last.get('role') if last.get('role') in ('user', 'assistant', 'developer', 'system') else 'OTHER',
+                            'content_count': len(last.get('content', [])) if isinstance(last.get('content'), list) else -1,
+                            'current_text_present': isinstance(text, str),
+                            'current_text_length': len(text) if isinstance(text, str) else -1,
+                            'seed_exact': text in owner.native_seed_inputs if isinstance(text, str) else False,
+                            'known_seed_sid': any(row['sid'] == metadata.get('thread_id') for row in owner.native_seed_inputs.values()),
+                            'known_seed_turn': any(row['turn_id'] == metadata.get('turn_id') for row in owner.native_seed_inputs.values()),
+                            'seed_as_prefix': any(text.startswith(seed) for seed in owner.native_seed_inputs) if isinstance(text, str) else False,
+                            'seed_as_suffix': any(text.endswith(seed) for seed in owner.native_seed_inputs) if isinstance(text, str) else False,
+                            'contains_exit_command': '/exit' in text if isinstance(text, str) else False,
+                            'synthetic_seed_marker': 'SYNTHETIC_OWNER_GROUP_NATIVE_CREATE_' in text if isinstance(text, str) else False,
+                            'current_text_sha256': hashlib.sha256(text.encode()).hexdigest() if isinstance(text, str) else None,
+                            'text_matches_phase': bool(owner.phase and text == 'SYNTHETIC LOCAL DOMAIN HOST TOOL ' + owner.phase['label']),
+                            'call_matches_phase': bool(owner.phase and last.get('call_id') == owner.phase['call_id']),
+                        })
                     owner.requests.append({'phase': lane,
                                            'request_sha256': hashlib.sha256(raw).hexdigest(), 'bytes': len(raw)})
                     request_index = len(owner.requests)
                     phase_id = phase['id'] if phase else owner.scope + '_' + lane
-                    final = 'SYNTHETIC STATIC HOST RESPONSE; NO REAL MODEL'
+                    final = 'Create synthetic acceptance fixture' if lane == 'native_title' else 'SYNTHETIC STATIC HOST RESPONSE; NO REAL MODEL'
                     item = {'type': 'message', 'id': 'msg_' + phase_id + '_' + str(request_index), 'role': 'assistant', 'status': 'completed',
                             'content': [{'type': 'output_text', 'text': final, 'annotations': []}]}
                     events = []
@@ -251,8 +287,14 @@ class StaticHostProvider:
 
     def request_counts(self):
         with self.lock:
-            return {name: sum((row['phase'] == name if name != 'host' else row['phase'] not in ('literal', 'native_queue'))
-                              for row in self.requests) for name in ('literal', 'native_queue', 'host')}
+            return {name: sum((row['phase'] == name if name != 'host' else row['phase'] not in ('literal', 'native_queue', 'native_seed', 'native_title'))
+                              for row in self.requests) for name in ('literal', 'native_queue', 'native_seed', 'native_title', 'host')}
+
+    def expect_native_seed(self, body):
+        """One real TUI prompt creates its own native record; no tool or Join."""
+        with self.lock:
+            assert self.phase is None and self.scope in body and body not in self.native_seed_inputs, 'NATIVE_SEED_SCOPE_INVALID'
+            self.native_seed_inputs[body] = {'sid': None, 'turn_id': None, 'posts': 0, 'title_posts': 0, 'title_turn_id': None}
 
     def expect_queue(self, body, sid, sender, receiver, group, kind):
         with self.lock:
@@ -289,9 +331,29 @@ class StaticHostProvider:
                 phase['issues'].append('ACTUAL_HOST_TURN_CORRELATION_FAILED')
                 return None, 'literal'
             phase['turn_id'] = turn
+            if text == 'SYNTHETIC LOCAL DOMAIN HOST TOOL ' + phase['label'] and len(self.native_title_inputs) < MAX_NATIVE_TITLES:
+                self.native_title_inputs.setdefault(text, {'sid': sid, 'turn_id': turn, 'posts': 0})
             return phase, phase['label']
         if not isinstance(text, str):
             return None, 'literal'
+        if text.startswith(NATIVE_TITLE_PREFIX):
+            title_input = self.native_title_inputs.get(text[len(NATIVE_TITLE_PREFIX):])
+            if (title_input is not None and
+                    re.fullmatch(r'[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}', sid) is not None and
+                    sid not in self.native_title_sids and
+                    all(row['sid'] != sid and row['turn_id'] != turn for row in self.native_title_inputs.values()) and
+                    title_input['posts'] == 0 and len(self.native_title_sids) < MAX_NATIVE_TITLES):
+                title_input.update(posts=1, title_sid=sid, title_turn_id=turn)
+                self.native_title_sids.add(sid)
+                return None, 'native_title'
+            return None, 'literal'
+        seed = self.native_seed_inputs.get(text)
+        if seed is not None:
+            if seed['posts'] or seed['sid'] is not None:
+                return None, 'literal'
+            seed.update(sid=sid, turn_id=turn, posts=1)
+            self.native_title_inputs[text] = {'sid': sid, 'turn_id': turn, 'posts': 0}
+            return None, 'native_seed'
         header, separator, encoded = text.partition('\n')
         if not separator or header not in QUEUE_HEADERS:
             return None, 'literal'

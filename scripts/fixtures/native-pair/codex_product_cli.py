@@ -31,9 +31,25 @@ def digest(path):
 
 
 def private_json(path, value):
-    with path.open('x') as stream:
-        os.chmod(path, 0o600)
-        stream.write(json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + '\n')
+    # Publish only complete checkpoints. Keep the original exclusive-create
+    # contract: a duplicate final path must fail rather than replace evidence.
+    raw = json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + '\n'
+    temporary = path.with_name(path.name + '.next')
+    stream = temporary.open('x')
+    try:
+        with stream:
+            os.chmod(temporary, 0o600)
+            stream.write(raw)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.link(temporary, path)
+        directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+    finally:
+        temporary.unlink()
 
 
 def render_terminal(raw, rows=45, columns=180):
@@ -421,7 +437,11 @@ class ActualCLI:
                     raise AssertionError('ACTUAL_NATIVE_RECORD_REFUSED')
                 prompt_echo = '›' + re.sub(r'\s+', '', prompt)
                 current_result = compact.rsplit(prompt_echo, 1)[-1] if prompt_echo in compact else ''
-                if single_marker and re.sub(r'\s+', '', single_marker) in current_result:
+                if (single_marker and re.sub(r'\s+', '', single_marker) in current_result and
+                        getattr(self, 'actual_result_ready', lambda: True)()):
+                    barrier = getattr(self, 'actual_before_tui_exit', None)
+                    if barrier is not None:
+                        barrier()
                     visible = True
                     frames.append({'stage': 'literal-single-result', 'screen': plain})
                     finish_tui()

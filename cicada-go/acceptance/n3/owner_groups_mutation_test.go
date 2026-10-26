@@ -129,7 +129,7 @@ func ownerGroupsCandidateNamed(t *testing.T, panel ownerGroupsPanel, name string
 
 func awaitOwnerGroupsRelation(t *testing.T, v *codexProductFixture, network string, identity ownerGroupsIdentity, group, state, mode string) ownerGroupsRelationCard {
 	t.Helper()
-	deadline := time.Now().Add(45 * time.Second)
+	deadline := time.Now().Add(75 * time.Second)
 	for time.Now().Before(deadline) {
 		panel := selectOwnerGroupsThread(t, v, network, identity)
 		var found []ownerGroupsRelationCard

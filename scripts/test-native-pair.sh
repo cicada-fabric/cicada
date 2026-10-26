@@ -30,6 +30,21 @@ elif [[ $# == 1 && "$1" == --owner-endpoint-groups ]]; then mode=owner-endpoint-
 elif [[ $# != 0 ]]; then printf 'Usage: scripts/test-native-pair.sh [--store-regressions|--a3-core|--a3-http|--a3-size-store|--app-owner|--endpoint-security|--endpoint-security-boundaries|--endpoint-security-app-fixture|--endpoint-security-owner-directory|--endpoint-security-owner-directory-recovery|--codex-product-guards|--codex-product-cli|--codex-product-cold|--codex-product-three-stage|--codex-product-other-uid|--codex-product-domain-app|--codex-product-domain-native|--codex-product-peer-form|--codex-product-peer-form-native|--peer-form-network|--peer-form-network-focus|--direct-ip-tls|--node-pair-trust|--owner-endpoint-groups]\n' >&2; exit 2; fi
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source_root="$repo_root"
+case "$mode" in
+ codex-product-cli|codex-product-cold|codex-product-three-stage|codex-product-domain-native|codex-product-peer-form|codex-product-peer-form-native|direct-ip-tls|node-pair-trust)
+  # Historical native lanes submit literal Join and require that legacy hook.
+  # The new default must never send that command to a model as registration.
+  if ! python3 - "$source_root/.agents/plugins/cicada/hooks/hooks.json" <<'PY'
+import json,pathlib,sys
+hooks=json.loads(pathlib.Path(sys.argv[1]).read_text())['hooks']
+raise SystemExit(0 if 'UserPromptSubmit' in hooks else 1)
+PY
+  then
+   printf 'LEGACY_LITERAL_NOT_RUN: this lane requires legacy UserPromptSubmit; default PreToolUse-only uses external CLI registration. Historical receipts and parser compatibility tests retain their source scope.\n' >&2
+   exit 125
+  fi
+ ;;
+esac
 if [[ "$mode" == owner-endpoint-groups && ! -f "$source_root/cicada-go/acceptance/n3/owner_groups_runtime_test.go" ]]; then
  printf 'OWNER_GROUPS_NOT_RUN: formal App/Hub/Node/native adapter has not been delivered; M1-M8 NOT_RUN.\n' >&2
  exit 125
@@ -319,7 +334,7 @@ else
    runtime_timeout=20m
   elif [[ "$mode" == owner-endpoint-groups ]]; then
    selector='^TestN3OwnerEndpointGroupsAcceptance$'
-   runtime_timeout=30m
+   runtime_timeout=60m
   elif [[ "$mode" == node-pair-trust ]]; then
    selector='^TestN3NodePairTrustAcceptance$'
    runtime_timeout=20m

@@ -7416,6 +7416,86 @@ Wider shared-Principal ceiling tests are a separate producer Core/Store scope;
 the runtime's existing narrow Principal grants do not prove that adversarial
 baseline. Windows DPAPI/ACL/GUI and the 24-hour wall-clock expiry remain NOT_RUN.
 
+### 2026-10-26 external CLI bootstrap and Group driver failures
+
+The first real runs use clean production baseline
+`4df65451b1511890eb8446942be74b50ea33a4c4` plus manifest-pinned QA changes
+in a separate linked `n2-acceptance-runtime` worktree. They use the fixed
+0.164.0 complete Host package, real TCP/PQ/SQLite and disposable Docker, with
+Control inference absent. They do not test the separately built delivery ZIP.
+
+| Receipt under `~/Cicada/.local/evidence/native-pair-acceptance/` | Result and limit | Receipt SHA-256 |
+| --- | --- | --- |
+| `run-20261026T154822Z-nxQzwV/result.json` | Exit 1 before M1: the classifier rejected the Host's actual automatic title request. Compiler/CLI/vet exits 0. | `7142b438a3869edfe679b19cc14abe33401ff59727a4e37228fce0de26214959` |
+| `run-20261026T160821Z-uyydhD/result.json` | Exit 1 after four actual TUI/CLI/Hook bootstraps: the adapter assumed Join selected G1. Formal Join retains an unselected registration. | `4c61f454be165bcfe3368fa8fcb5819de9466dec6f99a2bd79706eee2b3a3ddd` |
+| `run-20261026T161315Z-RgCYm2/result.json` | M1 FAIL, exit 1: its 8-second completion barrier was shorter than the actual 30-second worker cadence. G2 original-packet fence/loss/restart assertions had been reached. | `402a6015f82347d27e15a4ea72569737e8debf83a209abe0f0546b213e7f6f56` |
+| `run-20261026T162141Z-wTYI4t/result.json` | M1 FAIL, exit 1: actual key-complete reached the 75-second barrier, then the held-window self-list assertion failed. No complete list-field diagnostics were retained; the particular mismatch is unresolved. | `75326ffed5edb89916dc678c5cd08c924e7b2d08847b8a75372d3691c094e41a` |
+| `run-20261026T163205Z-3e0pBt/result.json` | M1 terminal PASS (142.11s); M2 FAIL (93.87s) reading a fixture checkpoint, with no product error established; M3 and tail NOT_RUN. Whole exit 1. | `0ad1979aeefbde2a24a12813d7f79a6c9ec4d91eefd720703ae7542805031651` |
+
+The Node owner independently observed a settled real key-prepare at
+`16:27:34.798594841Z` and the original key-complete pending at sequence 103 at
+`16:27:37.944Z`. This is a narrow live metadata observation, not a recovered
+proxy payload or a passing M1 result. The temporary private state was cleaned;
+missing old diagnostics must not be reconstructed as evidence. Intermediate
+failed classifier probes remain in their task-owned evidence directories. One
+main-worktree attempt, `run-20261026T155458Z-7V8ftp`, was stopped with exit 143
+after compilation and supplies no Runtime result.
+
+The adapter now registers real TUI-created SIDs through the actual external
+CLI, verifies an unselected self list, and explicitly selects G1. Host titles
+require the exact template found in the pinned binary and an exact previously
+observed fixture input, once per input, with a separate bounded SID/turn;
+unknown posts still fail. Seed/title/tool/queue counts stay separate. The
+held completion window uses the same actual Hub's complete Fabric router:
+original G1 positive authentication brackets G2 business 403, with zero Hub
+active edges and zero Node active manual sources. Actual Host lists and business
+communication follow release. No product clock, cadence, lock or Guard changes.
+
+M4/M5/M6/M8 and independent M7 revocation adapters are wired in the QA source;
+compilation or synthetic oracle results never establish their product status.
+The five-minute boundary still requires real parent wall/monotonic passage;
+24-hour wall expiry, Windows DPAPI/ACL/GUI, Android, second physical Node and
+public HTTPS remain NOT_RUN. Closed route/time/status/authenticated-error and
+durable-step summaries are added before fixture cleanup; no raw packet,
+credential, key or result payload is exported. In `3e0pBt`, that audit failed
+before publication because the generic 2 MiB fixture read bound was smaller
+than the production Node state's separate 8 MiB bound. The source and executable
+hashes nevertheless matched before/after, and the owned container was absent.
+The adapter now applies 8 MiB only to `node-control-state.json`; the generic
+2 MiB bound remains unchanged. The M2 checkpoint cause is still unresolved:
+Python had a real non-atomic publication race, now fixed with complete 0600
+same-directory exclusive publication. Go commands also preserve exclusive
+sequence publication; neither direction may replace the first checkpoint.
+
+The pure classifier/checkpoint checks and evidence-oracle checks are separate
+from product execution. Their new receipts are under
+`~/Cicada/.local/evidence/n2-acceptance/`; the final source-bound results are
+recorded after the fixture changes settle. The complete test process has a
+60-minute execution budget based on the measured four-TUI baseline; this does
+not change the 30-second worker cadence, five-minute lease or minimum one-day
+manual grant duration.
+
+The complete eight-adapter source, including the held-window M4 rewrite,
+compiled in pinned disposable Docker with source/module caches read-only and a
+fresh exclusive build cache. Compile exit **0** and the synthetic Go exclusive
+IPC test exit **0**; 14 Python classifier/atomic-checkpoint checks exit **0**.
+This is compilation plus synthetic infrastructure validation, not execution of
+M4–M8. Before/after source snapshots matched dirty baseline
+`b52ad0e62a465b2d8d771c8b8a8bdd36781a3f2e`, manifest
+`105aa80bd0e391a1fe5996361549b2176a64adcd4b248f001b7fffdca2d540a4`.
+The tested binary SHA-256 is
+`6fe7d19362584c93c7ef9cbebe2178f591b9da8b99511c9367144e0908a4392f`.
+Receipt `~/Cicada/.local/evidence/n2-acceptance/owner-groups-checkpoint-b52ad0e-01/result.json`
+SHA-256 `ea7d0ce1fd7daed6f08d13c2c10e9faaf30d466765137f7770973a2de7578d66`;
+its `command.json` records the complete replayable Docker command. Container
+cleanup is confirmed. This validation paragraph was added afterward.
+
+The pure evidence oracle now has 113 successful checks, including separation
+of nested diagnostic artifacts from the immutable executable manifest; changing
+an executable still fails. Product status is **NOT_RUN** for this check:
+`~/Cicada/.local/evidence/n2-acceptance/owner-groups-oracle-b52ad0e-audit-01/result.json`
+SHA-256 `757140b0df6a41b9fb1a455d5ff99f4e9c3020c49509a250a320b1e3185d72a5`.
+
 ### 2026-10-26 user-reported four-Thread Group continuation
 
 Root relayed the user's report that four real native Threads on the same Node

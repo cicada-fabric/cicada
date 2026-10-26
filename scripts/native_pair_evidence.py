@@ -580,6 +580,8 @@ def finish_owner_groups(run, artifacts, image, owned):
                'external_codex_package': before.get('external_codex_package'),
                'external_component_licenses': before.get('external_component_licenses'),
                'executed_binaries': records, 'executed_binary_hashes_before_after_match': stable,
+               'protocol_audits': {p.relative_to(artifacts).as_posix(): {'sha256': sha(p), 'bytes': p.stat().st_size}
+                                   for p in sorted((artifacts / 'owner-groups-protocol-audit').glob('*.json')) if p.is_file()},
                'container_absent': owned == 'false', 'diagnostics': diagnostics, 'malformed_evidence': malformed,
                'docker_image_reference': image, 'docker_image_digest': image.rsplit('@', 1)[-1],
                'artifacts': {p.name: {'sha256': sha(p), 'bytes': p.stat().st_size} for p in artifacts.iterdir() if p.is_file()},
