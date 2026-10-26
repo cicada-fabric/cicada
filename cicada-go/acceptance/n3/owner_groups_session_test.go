@@ -54,7 +54,7 @@ func ownerGroupsFreshAppSession(t *testing.T, v *codexProductFixture, network st
 	if reply.ActionFailed || reply.ClockMode != "WALL_CLOCK" || after.Account.State != appcore.AccountStateOwnerReady ||
 		after.Account.RootState != appcore.RootStateActive || parseErr != nil || !time.Now().Add(time.Minute).Before(newDeadline) ||
 		after.Node.Binding == nil || after.Node.Binding.ID != binding.ID || after.Node.Binding.Version != binding.Version ||
-		after.Node.Binding.NodeID != binding.NodeID || after.Node.Binding.Authorized != binding.Authorized ||
+		after.Node.Binding.NodeID != binding.NodeID ||
 		after.ThreadGroups.NodeID != v.actualNode.id || after.ThreadGroups.NetworkID != network ||
 		after.ThreadGroups.Pending || after.ThreadGroups.Review != nil {
 		t.Fatal("real account login did not retain the original identity and fresh management scope")
@@ -73,6 +73,8 @@ func ownerGroupsFreshAppSession(t *testing.T, v *codexProductFixture, network st
 			t.Fatal("account reauthentication dispatched a new business or Root/Node approval")
 		}
 	}
-	t.Logf("OWNER_GROUPS_ACCOUNT_SESSION previous_state=%s previous_expires_at=%s login_at=%s expires_at=%s original_Owner_device_binding=true new_business_apply_posts=0", s.Account.State, s.Account.SessionExpiresAt, loginAt.Format(time.RFC3339Nano), after.Account.SessionExpiresAt)
+	// Authorized projects the old N3 read grant, which a new login does not
+	// renew. Persistent binding identity is the ID/NodeID/Version checked above.
+	t.Logf("OWNER_GROUPS_ACCOUNT_SESSION previous_state=%s previous_expires_at=%s login_at=%s expires_at=%s original_Owner_device_binding=true new_business_apply_posts=0 previous_read_authorized=%t read_authorized=%t", s.Account.State, s.Account.SessionExpiresAt, loginAt.Format(time.RFC3339Nano), after.Account.SessionExpiresAt, binding.Authorized, after.Node.Binding.Authorized)
 	return after
 }

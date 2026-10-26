@@ -7776,6 +7776,30 @@ SHA-256 `eb1e19cd37a565c42454901b89c2012971d1821a9eeaa74b5a3f1160a7c12684`.
 It proves compilation/privacy only. Original-profile login recovery and M3–M8
 still require the next complete real Runtime execution.
 
+The first clean 842e531 attempt `run-20261026T195938Z-4QdY28` was stopped
+during bootstrap after App-owner source review found an invalid new fixture
+comparison: Binding.Authorized projects the old N3 read grant, whereas
+ID/NodeID/Version come from persistent nodeConfirmation. Normal login may
+clear Authorized without changing the binding. The fixture now compares only
+those persistent coordinates and records the read projection separately;
+Root/Node/business approval remains forbidden during reauthentication.
+No M1–M8 case completed in this stopped attempt. The strict collector returned
+FAIL / exit 1, with no terminal case events, stable source/executables and
+owned container absence. Its receipt SHA-256 is
+`ee8804a7941e8a6288e23f1e57908034f459e6c0569a57481331b726542a1e57`;
+`operator-stop.json` SHA-256
+`de3717fdb7e1be53e60faef89804ec35c4b80e6e93159987a50837a264f99af3`
+records the specific invalid fixture assumption, not a product failure.
+
+The minimal binding-projection correction compiled and passed both readonly
+privacy checks, exit 0; pinned disposable Docker/source/modules/cache isolation
+is unchanged. Dirty 842e531 manifest
+`1a117e0502e12f03f045a91785aa84832227ad2537bf2aef7ee23512871c10cd`
+matched before/after; this paragraph follows the check. Receipt
+`~/Cicada/.local/evidence/n2-acceptance/owner-groups-session-842e531-01/result.json`
+SHA-256 `74f6f871a1180d0d0f0cfbd71a7dbd541f15e455838889bea54a1a1865117b5f`.
+No new Runtime pass is inferred; the full corrected gate is still required.
+
 ### 2026-10-26 user-reported four-Thread Group continuation
 
 Root relayed the user's report that four real native Threads on the same Node
