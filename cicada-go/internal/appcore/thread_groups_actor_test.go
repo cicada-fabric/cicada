@@ -25,20 +25,21 @@ import (
 // Actual Controller/vault/Owner/PQ packets with a synthetic response actor.
 // This is not evidence of Hub Store/Guard, a real Node or native Runtime.
 type threadGroupActor struct {
-	t          *testing.T
-	local      *localCollaborationActor
-	c          *nativeController
-	card       wire.OwnerEndpointGroupsThreadCard
-	groups     []wire.OwnerEndpointGroupsGroupCard
-	reviews    map[string]wire.OwnerEndpointGroupsReview
-	receipts   map[string][]byte
-	results    map[string]wire.OwnerEndpointGroupsResult
-	posts      map[string][][]byte
-	available  bool
-	deny, drop string
-	wrongHead  bool
-	badNested  bool
-	applyCount int
+	t           *testing.T
+	local       *localCollaborationActor
+	c           *nativeController
+	card        wire.OwnerEndpointGroupsThreadCard
+	groups      []wire.OwnerEndpointGroupsGroupCard
+	reviews     map[string]wire.OwnerEndpointGroupsReview
+	receipts    map[string][]byte
+	results     map[string]wire.OwnerEndpointGroupsResult
+	posts       map[string][][]byte
+	available   bool
+	deny, drop  string
+	wrongHead   bool
+	badNested   bool
+	applyCount  int
+	queryResult func(*wire.OwnerEndpointGroupsResult)
 }
 
 func newThreadGroupActor(t *testing.T) *threadGroupActor {
@@ -200,6 +201,9 @@ func (a *threadGroupActor) Do(req *http.Request) (*http.Response, error) {
 				result.ReceiptPacket, result.NodeID = fence, ""
 			}
 			result.Operation = originalResult.Operation
+			if a.queryResult != nil {
+				a.queryResult(&result)
+			}
 		default:
 			a.t.Fatal("unexpected Group operation")
 		}

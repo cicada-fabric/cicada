@@ -20,6 +20,9 @@ func (c *nativeController) recoverThreadGroup(ctx context.Context) error {
 			return c.finishThreadGroup(original, result, false)
 		}
 	}
+	if err := c.refreshThreadGroupQuerySession(ctx); err != nil {
+		return err
+	}
 	if g.recovery == nil {
 		scope, err := c.localCollaborationActor(ctx)
 		if err != nil {
@@ -49,8 +52,8 @@ func (c *nativeController) recoverThreadGroup(ctx context.Context) error {
 		if err := c.threadGroupBudget(original, recovery); err != nil {
 			return c.failThreadGroups("APP_THREAD_GROUP_STORAGE_BUDGET", err)
 		}
-		// A lost wrapper response retries this same wrapper. A raw HTTP error
-		// cannot release it or replace the uncertain original with a new ID.
+		// Within one verified login a lost response retries this same wrapper.
+		// A raw HTTP error never settles or replaces the business original.
 		raw, err := c.postThreadGroupPacket(ctx, recovery)
 		if err != nil {
 			return c.failThreadGroups("OUTCOME_UNCERTAIN", err)
@@ -65,6 +68,10 @@ func (c *nativeController) recoverThreadGroup(ctx context.Context) error {
 			if err != nil || !threadGroupResultSettles(original, nested) {
 				return c.failThreadGroups("OUTCOME_UNCERTAIN", errThreadGroupUnconfirmed)
 			}
+		} else if !c.threadGroupEmptyTerminalQuery(recovery, opened, original) {
+			// A nonterminal query cannot become a permanent response cache.
+			// Keep and retry the exact wrapper; it supplies no original outcome.
+			return c.failThreadGroups("OUTCOME_UNCERTAIN", errThreadGroupUnconfirmed)
 		}
 		g.recoveryResponse, err = c.saveThreadGroupResponse(threadGroupRecoveryResponse, recovery, raw)
 		if err != nil {
@@ -89,7 +96,7 @@ func (c *nativeController) recoverThreadGroup(ctx context.Context) error {
 		}
 		return c.finishThreadGroup(original, nested, false)
 	}
-	if result.State == "REJECTED_FENCED" || result.State == "COMPLETED" && result.ErrorCode == "OUTCOME_UNCERTAIN" {
+	if c.threadGroupEmptyTerminalQuery(recovery, result, original) {
 		// This wrapper has an authenticated terminal read outcome, while its
 		// business original remains unknown. Release only the settled wrapper
 		// so a later login can make a fresh query for the same original bytes.

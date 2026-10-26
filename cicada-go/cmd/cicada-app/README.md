@@ -67,7 +67,7 @@ The confirmation explains that Owner takeover does not fall back to default
 authority after removal or expiry, and that one Thread retains its conversation
 context across Groups without automatic old-record sharing.
 
-All requests and exact recovery wrappers are committed before POST, with a
+All requests and recovery wrappers are committed before POST, with a
 no-write budget for the original response, recovery response and retained
 review. Bare HTTP failures retain the uncertain original. Recovery verifies
 the nested original receipt before caching it; a truly unseen apply settles
@@ -99,6 +99,48 @@ sixteen-record reader compatibility gate is recorded separately in
 after the checks; tested implementation and test bytes did not change.
 Disposable Docker/Hub/Node and actual native Runtime acceptance remain the
 QA gate; physical Windows DPAPI, ACL and GUI execution remain unrun here.
+
+Recovery retries the exact read-only query wrapper within one verified login.
+After an independently verified replacement login and fresh account authority,
+it may replace only a status/reconcile wrapper if the session token and session
+ID changed while every other actor/key/security coordinate stayed equal.
+The exact original business packet, ID, digest and review remain pending and
+unchanged. Raw HTTP errors and local deadlines cannot establish a new login
+or settle that original. Late wrappers only query its retained receipt or
+permanent no-effect fence; they never execute its business effect.
+
+An authenticated terminal query may omit Node only when its exact original
+binding is verified and it carries no operation, review, cards, current state
+or nested receipt. Such a response, including READ_EXPIRED, releases only the
+query wrapper. A nonterminal query response is not cached indefinitely.
+Responses with data or receipts retain strict Node/target checks and independent
+verification of the original receipt. The tagged
+`cicada_owner_groups_integration` tests exercise actual App/TCP Router/services/
+SQLite/PQ recovery against frozen integrated Hub source. Their pre-availability
+fixture enables only the public discovery flag; it does not bypass private
+Guard or establish complete product availability, native Runtime or Windows
+acceptance.
+
+The 2026-10-26 recovery delta used clean Hub source
+`8a02cf901108b8b207cac713b7e888a10ca7b318` through a frozen 50-file production
+overlay on this App checkpoint. Targeted normal and race runs each passed
+12 test events, with no failures, skips or race reports; scoped vet and skill
+validation also passed. Four cases use actual App/TCP/SQLite/PQ: READ/PREPARE
+lost responses, App+Hub restart and replacement login with an unadmitted old
+query, READ_EXPIRED query recovery, and a deliberately missing synthetic
+original receipt whose permanent floor still exists. The remaining cases
+retain the earlier strict nested-receipt checks and reject nonterminal cache
+poisoning, wrong Node/original IDs, uninspected login and changed security scope.
+The App manifest was
+`1b46a0925323eb3ea0dbc3e23f2fa16332b6b34e640a2c20260f5a5daa001073`;
+the frozen Hub overlay manifest was
+`2a688dacb94d2f9b8b739c32b3c818779e28e732c9dbe5811746588e296dce20`.
+Commands, earlier failed fixture attempts and final stable-source results are
+retained in
+`~/Cicada/.local/evidence/n2-app/query-wrapper-real-hub-20261026T144631060446Z/`,
+with final receipts under `clean-8a02cf9/`. This validation paragraph was added
+after the checks; implementation/test bytes are unchanged. The complete App
+suite, vault21 compatibility and Windows build were not repeated for this delta.
 
 The direct trusted-Hub profile also offers one device-pairing-code field. Paste
 the Node's `cicada-npt1.` code, review the authenticated computer name and approve

@@ -1,6 +1,7 @@
 package appcore
 
 import (
+	"bytes"
 	"reflect"
 	"time"
 
@@ -82,6 +83,9 @@ func threadGroupReviewCASMatches(r *threadGroupRecord, review wire.OwnerEndpoint
 
 func (c *nativeController) verifyThreadGroupResultTarget(record *threadGroupRecord, result *wire.OwnerEndpointGroupsResult, original *threadGroupRecord) error {
 	if result.NodeID != record.NodeID {
+		if result.NodeID == "" && c.threadGroupEmptyTerminalQuery(record, result, original) {
+			return nil
+		}
 		if result.NodeID == "" && c.verifiedThreadGroupOriginalFence(record, result) {
 			return nil
 		}
@@ -124,6 +128,30 @@ func (c *nativeController) verifyThreadGroupResultTarget(record *threadGroupReco
 		}
 	}
 	return nil
+}
+
+// Call only after authenticating the outer response against its exact request.
+// A terminal, data-free observation settles only that query, never its original.
+func (c *nativeController) threadGroupEmptyTerminalQuery(record *threadGroupRecord, result *wire.OwnerEndpointGroupsResult, original *threadGroupRecord) bool {
+	if record == nil || original == nil || result == nil || record.ParentDigest != original.Digest ||
+		(result.NodeID != "" && result.NodeID != record.NodeID) ||
+		(result.State != "COMPLETED" && result.State != "REJECTED_FENCED" && result.State != "READ_EXPIRED") ||
+		result.Operation != nil || result.Review != nil || result.CurrentRelation != nil || result.CurrentGroup != nil ||
+		len(result.Threads)+len(result.Groups)+len(result.Relations)+len(result.ReceiptPacket) != 0 ||
+		result.ScopeActions != nil || result.RelationPage != nil || result.NextCursor != "" {
+		return false
+	}
+	request, err := c.threadGroupDTO(record, original)
+	if err != nil {
+		return false
+	}
+	switch q := request.(type) {
+	case wire.OwnerEndpointGroupsReconcileRequest:
+		return bytes.Equal(q.Body.OriginalPacket, original.Packet)
+	case wire.OwnerEndpointGroupsStatusRequest:
+		return original.Route.Operation == wire.OperationOwnerEndpointGroupsApply && q.Body.OperationID == original.Route.OperationID && q.Body.OriginalPacketDigest == original.Digest
+	}
+	return false
 }
 
 func (c *nativeController) verifiedThreadGroupOriginalFence(record *threadGroupRecord, result *wire.OwnerEndpointGroupsResult) bool {

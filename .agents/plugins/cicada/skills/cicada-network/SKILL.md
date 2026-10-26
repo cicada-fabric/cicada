@@ -16,7 +16,8 @@ Network and dedicated Group for an exact Hub, Node and Node OS user in the App.
 That policy lasts until revoke unless the Owner selects an expiry. Closing the
 App, logging out or ending its account session does not end the policy.
 
-Each Thread still needs explicit registration in its own native conversation.
+Each original Thread still needs explicit registration; the default Linux flow
+uses the separate system terminal described below.
 Under an enabled local policy, the Node verifies the current Thread and derives
 only its delegated registration, directory, send, ask and reply scope. This
 default flow needs no separate Owner approval for each Thread or Pair slot.
@@ -112,7 +113,14 @@ not add Group communication rights. Never print API credentials, tickets, privat
 proofs, transcripts, `.env` files or private workspace contents in reports or tool
 arguments.
 
-Use the Fabric tools directly:
+Use only tools and permissions advertised by the current connection. Under
+`OWNER_ENDPOINT_GROUPS_V1`, the profile permits only its five communication
+rights and current-Thread self-Group tools. Group/all-Group/Network Leave,
+journals, discussions and Tasks below belong to legacy or advanced profiles;
+never use them in place of the Owner's exact relation removal or the CLI's
+local offline operation.
+
+Use the Fabric tools directly when that profile advertises and authorizes them:
 
 - `cicada_list` queries the current machines and visible Endpoint directory.
 - `cicada_use_group` selects one already joined Group scope; selection is
