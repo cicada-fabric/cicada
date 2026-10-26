@@ -163,13 +163,19 @@ func compareEndpointGroupRelation(old, next wire.EndpointGroupRelation, oldHead,
 	if old.Source != next.Source {
 		return nil
 	}
-	if next.ContributionRevision < old.ContributionRevision || next.AuthorityEpoch < old.AuthorityEpoch {
+	// Each immutable authority owns its contribution counter. A newly signed
+	// Owner policy starts a fresh counter only after its higher Endpoint head
+	// and epoch have independently passed the caller's proof/current checks.
+	if next.AuthorityID != old.AuthorityID {
+		if next.AuthorityEpoch <= old.AuthorityEpoch || nextHead.Mode != "OWNER" || nextHead.Revision <= oldHead.Revision {
+			return ErrEndpointGroupsConflict
+		}
+		return nil
+	}
+	if next.AuthorityEpoch != old.AuthorityEpoch || next.ContributionRevision < old.ContributionRevision {
 		return ErrEndpointGroupsConflict
 	}
 	if next.ContributionRevision == old.ContributionRevision && !reflect.DeepEqual(old, next) {
-		return ErrEndpointGroupsConflict
-	}
-	if next.AuthorityID != old.AuthorityID && next.AuthorityEpoch <= old.AuthorityEpoch {
 		return ErrEndpointGroupsConflict
 	}
 	return nil

@@ -77,7 +77,8 @@ func syntheticEndpointGroupsKeys(t *testing.T, trust, finiteDefault bool) *endpo
 				t.Fatal("original registration", err)
 			}
 		}
-		f.grants[i], f.policies[i], f.heads[i] = f.manual(t, i, "synthetic-manual-G2", 1, 1, e2ee.EndpointGroupOwnerControl{Mode: "DEFAULT", DenyReason: "NONE"}, "")
+		// Hub Apply installs pending contribution 1; Complete advances it to 2.
+		f.grants[i], f.policies[i], f.heads[i] = f.manual(t, i, "synthetic-manual-G2", 1, 2, e2ee.EndpointGroupOwnerControl{Mode: "DEFAULT", DenyReason: "NONE"}, "")
 	}
 	return f
 }
@@ -477,5 +478,80 @@ func TestEndpointGroupsTrustedForeignOwnerCannotBorrowSameNetworkGroup(t *testin
 	var count int
 	if s.db.QueryRow(`SELECT count(*) FROM node_crypto_peer_pins`).Scan(&count) != nil || count != 0 {
 		t.Fatal("foreign Owner refusal partially installed a pin")
+	}
+}
+
+// A peer can miss removal while retaining the old ACTIVE source. The first
+// subsequent ASK must accept the new signed authority, in either direction,
+// even though both Hub Complete results have contribution revision two.
+func TestEndpointGroupsReaddedPeerAuthorityKeepsIndependentContributionCounter(t *testing.T) {
+	f := syntheticEndpointGroupsKeys(t, true, false)
+	ctx := context.Background()
+	s := f.x.f.state
+	now := f.x.f.now
+	oldGrant := f.grants[0]
+	otherGrant := f.grants[1]
+	local := f.anchors[1].Registration.EndpointID
+	oldCurrent := f.manualCurrent(now)
+	oldSource := wire.EndpointGroupPeerSource{EndpointGroupGrant: &oldGrant}
+	otherSource := wire.EndpointGroupPeerSource{EndpointGroupGrant: &otherGrant}
+	pin, err := s.PinEndpointGroupsPeer(ctx, local, oldSource, otherSource, oldCurrent, oldCurrent.Operation, oldCurrent.AttemptID, now)
+	if err != nil {
+		t.Fatal("initial remote source", err)
+	}
+	removed := f.heads[0]
+	removed.Revision++
+	removed.DenyReason = "REMOVED"
+	readded, _, head := f.manual(t, 0, oldGrant.Relation.GroupID, 2, 2, removed, "")
+	if oldGrant.Relation.ContributionRevision != 2 || readded.Relation.ContributionRevision != 2 {
+		t.Fatal("fixture differs from actual Hub Complete counters")
+	}
+	source := wire.EndpointGroupPeerSource{EndpointGroupGrant: &readded}
+	current := f.current(readded.Relation.GroupID, wire.EndpointGroupCurrentEndpoint{OwnerControl: head, Relation: readded.Relation}, oldCurrent.Receiver, now)
+	if required, err := s.VerifyEndpointGroupsGroupAuthorization(ctx, local, current.GroupID, source, otherSource, &current, current.Operation, current.AttemptID, now); err != nil || !required {
+		t.Fatal("first ASK rejected higher remote authority with the same contribution counter", err)
+	}
+	fresh, err := s.PinEndpointGroupsPeer(ctx, local, source, otherSource, current, current.Operation, current.AttemptID, now)
+	if err != nil {
+		t.Fatal("new remote authority pin", err)
+	}
+	if fresh.Version <= pin.Version || fresh.KeyID != pin.KeyID || fresh.BindingID != pin.BindingID || fresh.BindingEpoch != pin.BindingEpoch || !samePublicIdentity(fresh.Public, pin.Public) {
+		t.Fatal("readd replaced original identity instead of advancing admission metadata")
+	}
+	if s.CheckPeerPinAdmission(ctx, *pin) == nil {
+		t.Fatal("old cached pin borrowed new authority")
+	}
+	// The opposite direction reuses each Endpoint's own source/head. A shared
+	// Group counter or sender-only comparison would reject or mutate this pin.
+	reverse := f.current(current.GroupID, current.Receiver, current.Sender, now)
+	reversePin, err := s.PinEndpointGroupsPeer(ctx, local, otherSource, source, reverse, reverse.Operation, reverse.AttemptID, now)
+	if err != nil || reversePin.Version != fresh.Version {
+		t.Fatal("ASK direction changed authority admission", err)
+	}
+	if err = s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := OpenCryptoState(f.x.f.root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	f.x.f.state = reopened
+	s = reopened
+	if required, err := s.VerifyEndpointGroupsGroupAuthorization(ctx, local, reverse.GroupID, otherSource, source, &reverse, reverse.Operation, reverse.AttemptID, now); err != nil || !required {
+		t.Fatal("new authority failed persisted restart", err)
+	}
+	if err := s.CheckPeerPinAdmission(ctx, *fresh); err != nil {
+		t.Fatal("fresh persisted pin rejected", err)
+	}
+	if required, err := s.VerifyEndpointGroupsGroupAuthorization(ctx, local, oldCurrent.GroupID, oldSource, otherSource, &oldCurrent, oldCurrent.Operation, oldCurrent.AttemptID, now); !required || !errors.Is(err, ErrEndpointGroupsConflict) {
+		t.Fatal("old authority epoch replay accepted", err)
+	}
+	if _, err := s.PinEndpointGroupsPeer(ctx, local, oldSource, otherSource, current, current.Operation, current.AttemptID, now); err == nil {
+		t.Fatal("old source blended with higher current head")
+	}
+	// Neither replay attempt may roll back the accepted source or cached pin.
+	if err := s.CheckPeerPinAdmission(ctx, *fresh); err != nil {
+		t.Fatal("rejected replay damaged current admission", err)
 	}
 }

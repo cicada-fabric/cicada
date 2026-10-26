@@ -1,0 +1,83 @@
+{
+  "scope": "Synthetic Node key authority regression; not a rerun of native acceptance M2",
+  "source_parent": "57ffe0ebed5e72ef245e01089a372596a3835de5",
+  "source_files_sha256": {
+    "cicada-go/internal/nodekeys/endpoint_groups_state.go": "deb5340454e871eb11e564ae842b77dd9b3e3d8295e2d0234d7c7579de9b75e6",
+    "cicada-go/internal/nodekeys/endpoint_groups_authorization_test.go": "e589bb2de0c9949e51b238eab37cd1a1dcbd66048f95a100f7de3b04d2999e1c",
+    "cicada-go/internal/nodekeys/endpoint_groups_state_test.go": "f03bfd96b5ff2622c89736e2c64d38e7fce2c34c8bb9dad8c0a8ebc0cd44363d"
+  },
+  "same_source_normal_and_race": true,
+  "source_manifest_sha256": "27f4160b615776f5eff67a4d20fe787ba807e9994a2ba9d66ebb46e7209988aa",
+  "red": {
+    "exit": 1,
+    "same_source": true,
+    "pass": 0,
+    "fail": 1,
+    "skip": 0,
+    "top_pass": 0,
+    "log_sha256": "117ff604534f1b023a658bdb2211fcfad488f3ac6c3d0eeda6f09ecd763a13b3",
+    "package_result": [
+      {
+        "action": "fail",
+        "elapsed": 0.168
+      }
+    ]
+  },
+  "red_case": "OwnerDeny uses the actual Hub Complete counter 2 for both old policy epoch 1 and readded policy epoch 2; valid readd failed with ErrEndpointGroupsConflict before the fix.",
+  "fix": "Contribution revision compares only inside one immutable Source/AuthorityID/AuthorityEpoch. A different authority requires a strictly higher epoch and Endpoint OWNER head before its independent counter is accepted; original identity, current proof, expected-head and replay checks remain required.",
+  "covered": [
+    "actual signed old/new Complete contribution 2 -> 2",
+    "remote readded sender first ASK with missed intermediate removal",
+    "sender/receiver reversal uses each Endpoint source and head",
+    "same original key, BindingID and BindingEpoch; only cached pin admission version advances",
+    "reopen persistence and rejection of old authority/current replay",
+    "old grant mixed with new current rejected",
+    "same-authority contribution rollback or changed same revision rejected",
+    "replacement authority same/older epoch or no higher OWNER head rejected",
+    "different Endpoint identity rejected"
+  ],
+  "normal_selector": ".",
+  "normal": {
+    "exit": 0,
+    "same_source": true,
+    "pass": 154,
+    "fail": 0,
+    "skip": 0,
+    "top_pass": 91,
+    "log_sha256": "c2dbd6ce736636414f1880bae09c72400c316bab7c4e71ff477f08a85c7f07c6",
+    "package_result": [
+      {
+        "action": "pass",
+        "elapsed": 4.214
+      }
+    ]
+  },
+  "race_selector": "EndpointGroups|LocalDomain",
+  "race": {
+    "exit": 0,
+    "same_source": true,
+    "pass": 32,
+    "fail": 0,
+    "skip": 0,
+    "top_pass": 15,
+    "log_sha256": "498092b97453420be9d170dc8626e146e68904df29e8b0b43ffa9da91a54ddb3",
+    "package_result": [
+      {
+        "action": "pass",
+        "elapsed": 17.264
+      }
+    ]
+  },
+  "audit_reference": {
+    "path": "/home/zyf/Cicada/.local/artifacts/native-pair-acceptance/run-20261026T164716Z-7iOeqO/owner-groups-protocol-audit/aaac694adf18b5af.json",
+    "sha256": "d3539c8f33185ed9a6939f90a4b26971234b689229373626400decc05dc03258",
+    "kind": "closed protocol diagnostics, original live state already cleaned; not independently rerun"
+  },
+  "external_evidence_directory": "/home/zyf/Cicada/.local/evidence/owner-groups-nodekeys-m2-20261026T171047Z",
+  "not_claimed": [
+    "fresh native M1/M2 acceptance rerun",
+    "Docker interop",
+    "real Native Runtime or public HTTPS acceptance"
+  ],
+  "synthetic_keys_only": true
+}

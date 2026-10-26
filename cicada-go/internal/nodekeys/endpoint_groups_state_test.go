@@ -90,3 +90,51 @@ func TestEndpointGroupsPrivateSchemaPreservesLegacyAndPermanentMarkers(t *testin
 		t.Fatal("migration manufactured Owner trust")
 	}
 }
+
+func TestEndpointGroupsContributionCounterIsScopedToExactAuthority(t *testing.T) {
+	old := wire.EndpointGroupRelation{HubID: "synthetic-hub", OwnerID: "synthetic-owner", NodeID: "synthetic-node", LocalUserScope: "uid:1000", NetworkID: "synthetic-network", GroupID: "synthetic-group", EndpointID: "synthetic-endpoint", PrincipalID: "synthetic-agent", RegistrationDigest: strings.Repeat("a", 64), RegistrationRevision: 1, Source: "OWNER_EXPLICIT", AuthorityID: strings.Repeat("1", 32), AuthorityEpoch: 1, ContributionRevision: 2, State: "ACTIVE", BindingID: "synthetic-binding", BindingEpoch: 1, CandidateVersion: 1, CandidateKeyID: "synthetic-original-key", CandidateFingerprint: "sha256:" + strings.Repeat("b", 64), CandidateProofDigest: strings.Repeat("c", 64)}
+	oldHead := e2ee.EndpointGroupOwnerControl{Mode: "OWNER", Revision: 1, DenyReason: "NONE", PolicyID: old.AuthorityID, PolicyEpoch: 1}
+	head := e2ee.EndpointGroupOwnerControl{Mode: "OWNER", Revision: 3, DenyReason: "NONE", PolicyID: strings.Repeat("2", 32), PolicyEpoch: 2}
+	for _, revision := range []uint64{1, 2} {
+		next := old
+		next.AuthorityID = head.PolicyID
+		next.AuthorityEpoch = 2
+		next.ContributionRevision = revision
+		if err := compareEndpointGroupRelation(old, next, oldHead, head); err != nil {
+			t.Fatal("independent new authority inherited old contribution floor", err)
+		}
+	}
+	for _, kind := range []string{"same_authority_rollback", "same_authority_changed_same_revision", "same_authority_new_epoch", "new_authority_same_epoch", "new_authority_old_epoch", "new_authority_without_head_advance", "other_endpoint"} {
+		t.Run(kind, func(t *testing.T) {
+			next := old
+			nextHead := head
+			switch kind {
+			case "same_authority_rollback":
+				next.ContributionRevision = 1
+			case "same_authority_changed_same_revision":
+				next.State = "REVOKED"
+			case "same_authority_new_epoch":
+				next.AuthorityEpoch = 2
+				next.ContributionRevision = 3
+			case "new_authority_same_epoch":
+				next.AuthorityID = head.PolicyID
+				next.ContributionRevision = 3
+			case "new_authority_old_epoch":
+				next.AuthorityID = head.PolicyID
+				next.AuthorityEpoch = 0
+				next.ContributionRevision = 3
+			case "new_authority_without_head_advance":
+				next.AuthorityID = head.PolicyID
+				next.AuthorityEpoch = 2
+				nextHead = oldHead
+			case "other_endpoint":
+				next.AuthorityID = head.PolicyID
+				next.AuthorityEpoch = 2
+				next.EndpointID = "synthetic-other-endpoint"
+			}
+			if compareEndpointGroupRelation(old, next, oldHead, nextHead) == nil {
+				t.Fatal("invalid source/authority/Endpoint transition accepted")
+			}
+		})
+	}
+}
