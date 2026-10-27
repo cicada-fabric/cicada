@@ -124,7 +124,12 @@ func openOwnerGroupsNodeRequest(t *testing.T, v *codexProductFixture, raw []byte
 // a later retry cannot finish before that exchange is recorded and dropped.
 func awaitOwnerGroupsDroppedNodeResponse(t *testing.T, p *faultProxy, from int, operation string) exchange {
 	t.Helper()
-	deadline := time.Now().Add(75 * time.Second)
+	return awaitOwnerGroupsDroppedNodeResponseSince(t, p, from, operation, time.Now())
+}
+
+func awaitOwnerGroupsDroppedNodeResponseSince(t *testing.T, p *faultProxy, from int, operation string, started time.Time) exchange {
+	t.Helper()
+	deadline := started.Add(75 * time.Second)
 	for time.Now().Before(deadline) {
 		p.mu.Lock()
 		configured := p.path == "/v2/node/control/rpc" && p.method == http.MethodPost && p.nodeOperation == operation && p.mode == "drop-after-response"
@@ -898,6 +903,7 @@ func exerciseOwnerGroupsM5(t *testing.T, v *codexProductFixture, actors nativePe
 	ownerGroupsSelect(t, host, 3, "m5-select-d-g2", g2)
 	v.actualNode.kill(t)
 	frozen := readOwnerGroupsNativeLease(t, v, d)
+	frozenAnchors := readOwnerGroupsRenewalAnchors(t, v, original)
 	requireOwnerGroupsSameLeaseIdentity(t, before, frozen)
 	witness := startOwnerGroupsLeaseWitness(t, frozen.ExpiresAt)
 	if remaining := time.Until(witness.originalExpiry); remaining <= 0 || remaining > 5*time.Minute+5*time.Second {
@@ -924,8 +930,10 @@ func exerciseOwnerGroupsM5(t *testing.T, v *codexProductFixture, actors nativePe
 	_, release := armOwnerGroupsFault(t, v.f.proxy, "renew-lost-response")
 	defer release()
 	restartNativePeerNode(t, v, actors)
-	lostRenew := awaitOwnerGroupsDroppedNodeResponse(t, v.f.proxy, from, wire.OperationEndpointGroupsNodeRenew)
+	captureStarted := time.Now()
+	lostRenew := awaitOwnerGroupsDroppedNodeResponseSince(t, v.f.proxy, from, wire.OperationEndpointGroupsNodeRenew, captureStarted)
 	release()
+	awaitOwnerGroupsRenewalSettlement(t, v, "m5-lost-renew-after-restart", lostRenew, captureStarted, frozenAnchors)
 	host.command(t, ownerGroupsHostCommand{Action: "restart_host"})
 	host.groups(t, 3, "m5-cold-renewed-self", actors.active.NetworkID, g2, map[string]string{g2: "OWNER_EXPLICIT"})
 	host.roundtrip(t, "m5-after-real-boundary", g2, 3, 2, original)

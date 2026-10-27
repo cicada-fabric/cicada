@@ -36,22 +36,30 @@ func endpointGroupsRetirementMetadata(intent machineLocalEndpointIntent, read ma
 }
 
 // A successful original Complete supersedes only its historical Challenge
-// response. Its original read request and intent fence remain durable; replay
-// returns receipt-expired without redispatch. ACTIVE grant reads are retained.
+// response. A previously ACTIVE read can retire only behind a durable higher
+// Owner head, as checked separately below. Original requests remain fenced.
 func (b *machineAgentJoinBridge) retireEndpointGroupsChallenges(ctx context.Context, c *machineNodeControlClient, r machineEndpointGroupsRegistration, hub wire.HubIdentity) error {
 	c.mu.Lock()
 	stored, enrolled := c.state.EndpointGroupsRegistrations[r.Anchor.RegistrationDigest]
 	candidate := false
+	challengeCandidate := false
 	if enrolled && stored.IntentID == r.IntentID && stored.IntentDigest == r.IntentDigest && sameEndpointGroupsAnchor(stored.Anchor, r.Anchor) && endpointGroupsRetentionIdle(c.state) {
 		for _, step := range c.state.LocalEndpointIntents[r.IntentID].Steps {
 			if endpointGroupsRetirementMetadata(c.state.LocalEndpointIntents[r.IntentID], step) {
+				challengeCandidate = true
 				candidate = true
 				break
+			}
+			if endpointGroupsActiveRetirementMetadata(c.state.LocalEndpointIntents[r.IntentID], step) {
+				candidate = true
 			}
 		}
 	}
 	c.mu.Unlock()
 	if !candidate {
+		return nil
+	}
+	if !challengeCandidate && !b.endpointGroupsHasSupersededActive(ctx, c, r, hub) {
 		return nil
 	}
 	_, _, original, err := c.endpointGroupsOriginal(r)
@@ -124,6 +132,9 @@ func (b *machineAgentJoinBridge) retireEndpointGroupsChallenges(ctx context.Cont
 			changed = true
 		}
 	}
+	if c.retireSupersededEndpointGroupsActiveLocked(ctx, state, r, hub, trust.PublicIdentity, intent) {
+		changed = true
+	}
 	if !changed {
 		return nil
 	}
@@ -138,6 +149,10 @@ func (b *machineAgentJoinBridge) retireEndpointGroupsChallenges(ctx context.Cont
 // Caller holds c.mu. Historical time authenticates retention evidence only;
 // it is never used to mint a ticket or authorize a current Group operation.
 func (c *machineNodeControlClient) endpointGroupsRetainedKeyResultLocked(id string, step machineLocalEndpointStep, r machineEndpointGroupsRegistration, hub wire.HubIdentity, owner e2ee.PublicIdentity) (wire.EndpointGroupsNodeKeyResult, e2ee.EndpointGroupPolicy, bool) {
+	return c.endpointGroupsRetainedResultLocked(id, step, r, hub, owner, false)
+}
+
+func (c *machineNodeControlClient) endpointGroupsRetainedResultLocked(id string, step machineLocalEndpointStep, r machineEndpointGroupsRegistration, hub wire.HubIdentity, owner e2ee.PublicIdentity, allowActiveRead bool) (wire.EndpointGroupsNodeKeyResult, e2ee.EndpointGroupPolicy, bool) {
 	var result wire.EndpointGroupsNodeKeyResult
 	var empty e2ee.EndpointGroupPolicy
 	packet, err := wire.DecodeEndpointGroupsNodePacket(step.RequestPacket)
@@ -148,7 +163,7 @@ func (c *machineNodeControlClient) endpointGroupsRetainedKeyResultLocked(id stri
 	if err != nil || !envelope.OK || decodeStrictBridgeJSON(envelope.Result, &result) != nil {
 		return result, empty, false
 	}
-	if step.Operation == wire.OperationEndpointGroupsNodeKeyPrepare && (result.Challenge == nil || result.Grant != nil) {
+	if !allowActiveRead && step.Operation == wire.OperationEndpointGroupsNodeKeyPrepare && (result.Challenge == nil || result.Grant != nil) {
 		return result, empty, false
 	}
 	observed, err := endpointGroupsHistoricalObservedAt(result.ObservedAt)

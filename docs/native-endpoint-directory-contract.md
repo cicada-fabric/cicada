@@ -1231,10 +1231,33 @@ Existing cryptographic checks use the original observation times solely to
 establish this historical cache dependency, never current authority. Retirement
 keeps the read's original request, body, ID/digest and settled tombstone, every
 Complete receipt, original identity/anchor, current grants and Owner heads/deny.
-Any pending Node RPC or retained execution state prevents retirement. An exact replay of a retired read returns
-the existing local receipt-expired result without network dispatch; changing its
-body remains a conflict. Retirement persists atomically and does not change the
-8MiB state bound or 2MiB response reservation.
+Any pending Node RPC or retained execution state prevents retirement. An exact
+replay of a retired read returns the existing local receipt-expired result
+without network dispatch; changing its body remains a conflict. Retirement
+persists atomically and does not change the 8MiB state bound or 2MiB response
+reservation.
+
+A settled ACTIVE KeyPrepare response may be retired only within that same
+original registration intent when its authenticated grant and Owner head
+exactly match a retained successful Complete for the same Endpoint and Group.
+The existing-only, read-only Node high-water lookup must confirm the original
+registration, independent active Owner pin and immutable identity scope, and
+recompute the stored head digest. Retirement then requires either a retained,
+authenticated successful Complete for that same original scope whose strictly
+higher policy epoch and Owner-head revision exactly match the stored OWNER/NONE
+head, or a stored OWNER/REMOVED or OWNER/EXPIRED head with a strictly higher
+revision and a policy epoch at least as high as the old grant. At the same epoch,
+the terminal head must retain the same policy ID. A pending policy or cached
+authority projection alone does not prove this permanent supersession.
+
+Terminal observations may retain the previous identity snapshot; its immutable
+scope must still match, while its old decision fields are not compared with the
+new terminal head. This lookup never advances a head or grants current business
+authority. Only the superseded read response bytes are removed. Any ACTIVE read
+whose authority remains current, every request/body/ID and settled tombstone,
+every write and Complete receipt, original keys/registration, current grants and
+Owner heads/deny remain intact. The same pending-state fences, atomic persistence,
+receipt-expired/conflict replay rules, capacity bounds and deadlines apply.
 
 The `endpoint_group_grant` peer carrier contains the complete existing Group manifest, original
 candidate attestation, exact Owner policy proof, Node delegated proof and fresh

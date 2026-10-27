@@ -391,7 +391,7 @@ func TestEndpointGroupsCompletedChallengeRetirementPreservesFourOriginalThreads(
 	canceled, cancel := context.WithCancel(f.ctx)
 	cancel()
 	if err := f.bridge.retireEndpointGroupsChallenges(canceled, f.client, activeR, f.hub); err != nil {
-		t.Fatal("ACTIVE-only origin did not skip before crypto-state access", err)
+		t.Fatal("ACTIVE-only origin did not preserve its read under a canceled context", err)
 	}
 	f.client.mu.Lock()
 	activeAfter, _ := json.Marshal(f.client.state)
@@ -399,7 +399,7 @@ func TestEndpointGroupsCompletedChallengeRetirementPreservesFourOriginalThreads(
 	if !bytes.Equal(activeBefore, activeAfter) {
 		t.Fatal("ACTIVE prefilter changed protected state")
 	}
-	t.Logf("CLOSED_ACTIVE_RETENTION_SKIP active_reads=%d unchanged=true canceled_context=SKIPPED_BEFORE_CRYPTO", activeCount)
+	t.Logf("CLOSED_ACTIVE_RETENTION_SKIP active_reads=%d unchanged=true canceled_context=NO_RECEIPT_VALIDATION", activeCount)
 	restart := func(label string) {
 		t.Helper()
 		unlock()

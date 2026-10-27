@@ -27,22 +27,23 @@ type ownerGroupsSettlementIntent struct {
 }
 
 type ownerGroupsSettlementState struct {
-	PendingOperation             string                                 `json:"pending_operation"`
-	PendingOperationID           string                                 `json:"pending_operation_id"`
-	PendingSequence              uint64                                 `json:"pending_sequence"`
-	PendingPlaintextDigest       string                                 `json:"pending_plaintext_digest"`
-	PendingPacket                []byte                                 `json:"pending_packet"`
-	PendingResponsePacket        []byte                                 `json:"pending_response_packet"`
-	PendingLocalEndpointIntentID string                                 `json:"pending_local_endpoint_intent_id"`
-	PendingNativePairBody        []byte                                 `json:"pending_native_pair_body"`
-	PendingWorkerID              string                                 `json:"pending_worker_id"`
-	PendingWorkerAttempt         int                                    `json:"pending_worker_attempt"`
-	PendingSnapshotPath          string                                 `json:"pending_snapshot_path"`
-	PendingSnapshotManifest      json.RawMessage                        `json:"pending_snapshot_manifest"`
-	ClaimTicket                  json.RawMessage                        `json:"claim_ticket"`
-	NativePairDiagnostic         json.RawMessage                        `json:"native_pair_diagnostic"`
-	EndpointGroupsDiagnostic     json.RawMessage                        `json:"endpoint_groups_diagnostic"`
-	Intents                      map[string]ownerGroupsSettlementIntent `json:"local_endpoint_intents"`
+	PendingOperation             string                                       `json:"pending_operation"`
+	PendingOperationID           string                                       `json:"pending_operation_id"`
+	PendingSequence              uint64                                       `json:"pending_sequence"`
+	PendingPlaintextDigest       string                                       `json:"pending_plaintext_digest"`
+	PendingPacket                []byte                                       `json:"pending_packet"`
+	PendingResponsePacket        []byte                                       `json:"pending_response_packet"`
+	PendingLocalEndpointIntentID string                                       `json:"pending_local_endpoint_intent_id"`
+	PendingNativePairBody        []byte                                       `json:"pending_native_pair_body"`
+	PendingWorkerID              string                                       `json:"pending_worker_id"`
+	PendingWorkerAttempt         int                                          `json:"pending_worker_attempt"`
+	PendingSnapshotPath          string                                       `json:"pending_snapshot_path"`
+	PendingSnapshotManifest      json.RawMessage                              `json:"pending_snapshot_manifest"`
+	ClaimTicket                  json.RawMessage                              `json:"claim_ticket"`
+	NativePairDiagnostic         json.RawMessage                              `json:"native_pair_diagnostic"`
+	EndpointGroupsDiagnostic     json.RawMessage                              `json:"endpoint_groups_diagnostic"`
+	Intents                      map[string]ownerGroupsSettlementIntent       `json:"local_endpoint_intents"`
+	Registrations                map[string]ownerGroupsSettlementRegistration `json:"endpoint_groups_registrations"`
 }
 
 func (s ownerGroupsSettlementState) remaining() map[string]bool {
@@ -63,6 +64,7 @@ type ownerGroupsSettlementReference struct {
 	request, response []byte
 	bodyDigest        string
 	route             nodewire.Route
+	renewal           *ownerGroupsRenewalReference
 }
 
 // This authenticates retained bytes only. It never submits an RPC or writes
@@ -72,13 +74,15 @@ func ownerGroupsSettlementReady(s ownerGroupsSettlementState, original ownerGrou
 	diagnostic := map[string]any{"remaining": remaining, "pending_sequence": s.PendingSequence,
 		"pending_operation_sha256": hash([]byte(s.PendingOperation)), "step_present": false, "step_settled": false}
 	var found *ownerGroupsSettlementStep
-	for _, intent := range s.Intents {
+	var foundIntent string
+	for intentID, intent := range s.Intents {
 		if step, ok := intent.Steps[original.route.OperationID]; ok {
 			if found != nil {
 				return false, diagnostic, errors.New("DUPLICATE_ORIGINAL_STEP")
 			}
 			copy := step
 			found = &copy
+			foundIntent = intentID
 		}
 	}
 	if found == nil {
@@ -118,6 +122,11 @@ func ownerGroupsSettlementReady(s ownerGroupsSettlementState, original ownerGrou
 		return false, diagnostic, errors.New("LOCAL_RECEIPT_RESULT_CHANGED")
 	}
 	diagnostic["response_authenticated"], diagnostic["ok"] = true, reply.OK
+	if original.route.Operation == wire.OperationEndpointGroupsNodeRenew {
+		ready, err := ownerGroupsRenewalReady(s, foundIntent, original, reply)
+		diagnostic["renewal_anchor_consumed"] = ready
+		return ready, diagnostic, err
+	}
 	return true, diagnostic, nil
 }
 
@@ -128,9 +137,15 @@ func awaitOwnerGroupsNodeSettlement(t *testing.T, v *codexProductFixture, label 
 
 func awaitOwnerGroupsNodeSettlementSince(t *testing.T, v *codexProductFixture, label string, original exchange, started time.Time) {
 	t.Helper()
+	awaitOwnerGroupsSettlementSince(t, v, label, original, started, nil)
+}
+
+func awaitOwnerGroupsSettlementSince(t *testing.T, v *codexProductFixture, label string, original exchange, started time.Time, renewal *ownerGroupsRenewalReference) {
+	t.Helper()
 	key, binding := ownerGroupsNodeAuditIdentity(t, v)
 	packet := must(wire.DecodeEndpointGroupsNodePacket(original.request))
-	if packet.Route.Operation != wire.OperationEndpointGroupsNodeKeyComplete || original.RequestSHA256 != hash(original.request) {
+	if (packet.Route.Operation != wire.OperationEndpointGroupsNodeKeyComplete && packet.Route.Operation != wire.OperationEndpointGroupsNodeRenew) ||
+		(packet.Route.Operation == wire.OperationEndpointGroupsNodeRenew) != (renewal != nil) || original.RequestSHA256 != hash(original.request) {
 		t.Fatal("Node settlement lost its captured original completion")
 	}
 	// Existing request/response audits use only the original independently
@@ -139,10 +154,10 @@ func awaitOwnerGroupsNodeSettlementSince(t *testing.T, v *codexProductFixture, l
 	canonical := must(wire.CanonicalEndpointGroupsNodeRequest(packet.Route.Operation, body))
 	defer clear(canonical)
 	reply := openOwnerGroupsNodeExchange(t, v, original)
-	if !reply.OK && reply.ErrorCode != "TARGET_NOT_AUTHORIZED" {
+	if !reply.OK && (packet.Route.Operation == wire.OperationEndpointGroupsNodeRenew || reply.ErrorCode != "TARGET_NOT_AUTHORIZED") {
 		t.Fatal("Node settlement lacks its authenticated expected terminal result")
 	}
-	reference := ownerGroupsSettlementReference{request: original.request, response: original.response, bodyDigest: hash(canonical), route: packet.Route}
+	reference := ownerGroupsSettlementReference{request: original.request, response: original.response, bodyDigest: hash(canonical), route: packet.Route, renewal: renewal}
 	var last map[string]any
 	nextLog := started
 	for time.Since(started) < 75*time.Second {

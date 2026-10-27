@@ -367,6 +367,17 @@ normal/race checks validate only that fixture. Root authorized the full parent
 test budget to increase from 60 to 90 minutes; product windows and acceptance
 bounds remain unchanged. This complete attempt establishes scoped M4 PASS;
 M5 FAIL and the remaining NOT_RUN items keep candidate finalization withheld.
+A later correction for superseded ACTIVE read caches is prepared on seven
+frozen Go inputs plus the contract at dirty a610cbe. Its normal checks passed
+37 events, focused race 26, and disposable Docker 37, each with zero failures
+or skips. The mandatory early-D ACTIVE lifecycle changed its independent
+capacity RED to GREEN and completed the same post-default-revoke M6 tail.
+These are synthetic-origin core/crypto/TCP checks, not another native Runtime
+run or the historical broader four-record race gate. QA also prepared a
+read-only lost-Renew settlement barrier before M5's first post-cold MCP call;
+its separate real-PQ/TCP matcher checks passed. The original M5 Runtime FAIL,
+unrun real five-minute boundary and remaining platform/identity requirements
+are unchanged. See [the correction checkpoint](native-app-validation.md#2026-10-27-superseded-active-retention-and-renew-settlement-checkpoint).
 The existing Session page may show registered
 Thread cards, their Group relations and authorized candidate Groups. It may
 offer one same-Owner/same-Network named Group creation followed by a separate
@@ -429,8 +440,8 @@ conflict/unsupported without changing shared Membership; unknown sources reject.
 | M2 — one Thread, two Groups | Original SID/Endpoint/workspace/key remains identical in G1/G2. Explicit use_group changes current scope; real Cicada ASK/REPLY and receive stay within it, without a new Join or grant. | SCOPED_PASS at clean 76647a4, 487.35s; all four G1/G2 original ASK/REPLY/receive roundtrips and six facts passed |
 | M3 — remove only D-G1 | Actual App removes exact D-G1 with current CAS; A/B/C, shared-principal other Endpoints and D-G2 retain their original authority/key snapshots. Queued D-G1 work fails fresh final Guard. | SCOPED_PASS at clean 76647a4, 195.08s; all eight facts, Network self 200/business and Leave 403, writer release 7,903ms |
 | M4 — no automatic resurrection | Runtime: after removal, literal Join, fresh Attempt, warm/cold recovery, old response replay and Node/MCP restart cannot clear deny; pending re-add preserves old deny. Only exact key completion of a new Owner add at the current head can clear it. Verify finite duration binds the original review and retries do not extend it. Separate production Store/crypto deterministic boundary: finite manual expiry never falls back to default. Actual 24-hour expiry remains a distinct NOT_RUN subitem. | Runtime SCOPED_PASS at clean 76647a4, 614.92s, all seven facts; actual DEFAULT positive then same still-current old-default denial after Node OWNER head, original negative/436, lost positive/480 and finite/523 locally settled. Actual restart read 4,861,921 bytes within 8 MiB. Controlled finite Node M4/M6 preflight passed separately at c58bf19. Deterministic expiry SCOPED_PASS at 755053b with reviewed attribution to e5d76c2; 24-hour wall clock NOT_RUN |
-| M5 — independent lifetime | Revoke/expire default policy while D-G2 is manually authorized. Cross the actual lease-renewal boundary, restart Node/MCP and continue exact G2 ASK/REPLY with App closed. Immediate one-send success is insufficient. | Runtime FAIL at clean 76647a4, 25.80s: post-revoke/App-closed fresh Host, D cicada_groups returned CODEX_NODE_TICKET_UNAVAILABLE; real five-minute timer not started, cause open |
-| M6 — last Group | Remove D's final relation; preserve original key, native Thread/history, Endpoint/workspace and running Node, with zero Group rights. New explicit Owner add cannot substitute an identity/key. | NOT_RUN |
+| M5 — independent lifetime | Revoke/expire default policy while D-G2 is manually authorized. Cross the actual lease-renewal boundary, restart Node/MCP and continue exact G2 ASK/REPLY with App closed. Immediate one-send success is insufficient. | Runtime FAIL at clean 76647a4, 25.80s: post-revoke/App-closed fresh Host, D cicada_groups returned CODEX_NODE_TICKET_UNAVAILABLE; real five-minute timer not started, cause open. Separate seven-input retention correction and QA Renew matcher checks passed; new Runtime NOT_RUN |
+| M6 — last Group | Remove D's final relation; preserve original key, native Thread/history, Endpoint/workspace and running Node, with zero Group rights. New explicit Owner add cannot substitute an identity/key. | Runtime NOT_RUN; separate corrected core lifecycle passed the same P0-revoked remove/Join/explicit-readd tail without replacing original identities |
 | M7 — real authority revocation | Independently revoke actual Owner key and Node binding/key; all dependent sources/Groups deny new work, including cold recovery. App closure is not this revocation. | NOT_RUN |
 | M8 — retained operations | Old request/reply/selection/outbox cannot borrow surviving Group, Network or Link authority. Original exact read recovery remains distinct from authorized redispatch; same-ID changed bytes conflict. | NOT_RUN |
 | Contract/security negatives | Wrong Owner/Node/user/Network/Group/key, stale CAS, parallel add/remove, unsupported profile, expired review, oversized/unknown DTO and maximum actual PQ carriers; shared Principal wider grants cannot bypass the managed Endpoint's five-right ceiling or Owner-control through legacy/global mutation paths; backup/restore retains epochs/deny/original receipts. | NOT_RUN |

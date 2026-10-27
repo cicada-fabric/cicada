@@ -8497,6 +8497,140 @@ SHA-256 `b14b7d2deb47f94d516c15936c784da407afeb5c58d9f3d3bc269da3824d8442`.
 This record follows the frozen run and changes documentation only. The defect
 and evidence were delivered to Root and Hub/App owners; no rerun was launched.
 
+### 2026-10-27 superseded ACTIVE retention and Renew settlement checkpoint
+
+After the clean-76647a4 M5 failure, Root authorized three bounded core controls,
+then the narrowly reviewed retention correction. They use synthetic native
+origin/nonce inputs with real cryptography, TCP, Unix context issue/consume and
+persistent protected state. They do not provide native Host Runtime facts or
+establish the missing bottom private error of the older M5 failure.
+
+The first P0-revoked original-D control was **NO_REPRO**: Unix issue/consume
+419ms, four intents/42 steps, Prepare 14/Complete 8, serialized state 5,924,897
+bytes, headroom after the unchanged 2 MiB RPC reserve 366,559 bytes. Receipt
+`~/Cicada/.local/evidence/owner-groups-p0-revoke-control/receipt.json`, SHA-256
+`7a084b50abdd09febccb4acb8e04555d9c93967712823d7438d4e9a2784ab309`.
+The second added real original-D Leave/Join and bounded maintenance batches:
+**NO_REPRO**, issue/consume 381ms, six intents/47 steps, Prepare 15/Complete 8,
+serialized 6,199,184 bytes, reserve headroom 92,272 bytes. It still lacked one
+D Prepare compared with the actual run's final audit; its earlier 29db build
+failure remains separate from executed source 40a4. Receipt
+`~/Cicada/.local/evidence/owner-groups-p0-six-intent-control/receipt.json`, SHA-256
+`f36984646df086848d5be48e62630cc4b1ad1b0cdca6938c9377832015050250`.
+
+The third added exactly one real production maintenance batch after the first
+D-G2 ACTIVE Complete and before its later Owner removal. It authenticated a
+new original-D/current-policy ACTIVE response (request 12,409 / response
+181,290 bytes); it added no fabricated history, padding, authority or identity.
+Executed test source SHA-256
+`797e2f0cbf5e13e9e55243ef0830260a6b43765c3d52b4b1967824301e12b4b7`
+produced independent **CONTROL_RED / exit 1**, case 41.16s. At P0 revoke there
+were six intents/48 steps, Prepare 16/Complete 8, per-original A/B/C/D Prepare
+5/2/2/7, serialized state 6,460,245 bytes and reserve headroom **-168,789 bytes**.
+All 15 pending/execution/diagnostic flags were empty. The original-D Unix call
+returned **ENDPOINT_LOCAL_HISTORY_FULL**, 118ms, no ticket. This is a real
+representative lifecycle capacity counterexample, not a retrospective private
+cause assigned to the actual Runtime. Receipt
+`~/Cicada/.local/evidence/owner-groups-p0-early-active-control/receipt.json`, SHA-256
+`a240a1dce0778a041ae4ca8839e8d5635207372b9e8f949a7bac3cd1bde2758b`;
+sealed `closed-result.json` SHA-256
+`37ff771d3401a4ab4feab25d8d7717d50ac0fe154627fb41307ec81fc9728491`.
+The three original results, source archives and resource cleanup remain retained.
+
+The correction removes only a settled, authenticated old ACTIVE read response
+from its caller's original registration intent. Its grant/Owner head must match
+an original successful Complete. An existing-only single-database read snapshot
+checks the immutable registration scope, independent ACTIVE Owner pin and actual
+stored head digest. Eligibility then requires either an exact authenticated new
+Complete matching a strictly higher-epoch, higher-revision OWNER/NONE stored
+head, or a higher-revision OWNER/REMOVED or EXPIRED stored head with epoch at
+least the old epoch (same epoch requires the same policy ID). The getter accepts
+legitimate terminal heads whose retained identity has older decision fields.
+Metadata alone never establishes supersession or current authority. Current
+ACTIVE reads, every original request/body/digest/tombstone and Complete/write,
+keys/anchors/current grants/heads/deny remain. The existing 13 pending fences,
+diagnostics, atomic persistence/rollback, exact retired-read expiry without
+redispatch and changed-body conflict remain. State 8 MiB / response reserve
+2 MiB, product TTLs and original issuer refusal to recover writes are unchanged.
+
+Final frozen inputs are **seven Go files plus the contract over dirty a610cbe**,
+not a build attributable solely to that HEAD. Manifest
+`~/Cicada/.local/evidence/owner-groups-stale-active-retention/final/manifest.json`,
+SHA-256 `e8393f568d4b460c3bbd8e71ab27e969cda566b51352855d69ebe36cc8463a33`;
+contract SHA-256
+`b87463ded7afad57848a37e4f5347b1124b5a0e67f7c994b8c36e99ab20b1fd0`.
+Independent read-only QA review found no production/API blocker on those exact
+inputs. Actual normal logs passed **37** events (cmd 17, API 20); focused race
+passed **26** (cmd 6, API 20), zero FAIL/SKIP/DATA RACE. The formal lifecycle
+requires the early ACTIVE row instead of silently returning if it is absent.
+Its final normal case passed **47.34s**, P0-revoked D issue/consume 404ms,
+serialized 5,977,320 bytes and reserve headroom 314,136 bytes, still six
+intents/48 steps/Prepare 16/Complete 8. The same P0-revoked baseline completed
+last-Group removal, literal original Join with zero Groups and exact explicit
+Owner re-add, preserving original keys/registration; it did not re-enable P0.
+This controlled M6 tail does not satisfy full Runtime M5/M6 or real five minutes.
+Host normal/race summary `final-gates-receipt.json` SHA-256
+`4190faf9e75ce8d9bc967fed892d54b3853a36c64a2df233077afb2a6ce9613c`
+retains exact commands, selected sources and executed-binary hashes. Its Docker
+field was pending when sealed; the later separate Docker receipt is authoritative.
+
+Disposable Docker on those same seven inputs passed **37** events, exit 0,
+zero FAIL/SKIP. Pinned image digest
+`sha256:5c3e9b43cfd3bb95c7937462e29d87ada57b481a96fa23ad0eb61778d7a00110`;
+source/module mounts were read-only and the task-private build cache serialized.
+`final/docker/final-receipt.json` SHA-256
+`528e18384c42dfbba935ba9436a6fcf1be0328e5e07c70ca56667bcf125794a7`
+retains actual executed binary hashes. The initial cleanup classifier failed to
+recognize the daemon's `No such container` spelling; that preliminary receipt is
+retained. A later read-only typed inspect proved the same container absent,
+without deletion or rerun: `cleanup-verification.json` SHA-256
+`75c9d21ed499345db3e713438220a24d344ddb3f8122228e686095c3d8929d4e`.
+QA independently matched logs, seven source blobs, contract and cleanup proof.
+These focused race results do not relabel the historical broader four-record
+race failure or any older Runtime failure.
+
+Root separately authorized a **QA-only M5 Renew settlement barrier**. The prior
+cold-Renew loss sequence observed only an upstream Hub response before restarting
+Host and attempting positive MCP; the final wire-recovery check occurred later.
+The new barrier shares one 75-second capture/authentication/observation budget,
+allowing only Complete/Renew. After the dropped Renew is captured/released and
+before the first restarted-Host MCP call, it locates the unique original step by
+captured operation ID, not a presumed actor. It requires exact operation/sequence,
+original canonical body digest, request/response ciphertext, complete reversed
+route authentication, a positive original Renew, settled timestamp and all 15
+flags clear. Frozen stopped-Node snapshots of all four original anchors ensure
+only the original lease extends; native IDs, key, bindings/epochs and every other
+anchor field remain exact. The matching local original-intent anchor must have
+consumed that same authenticated result. This observer performs no HTTP, replay,
+state write, grant insertion, fixed delay or TTL extension. A 75-second failure
+remains a true gate failure. The original five-minute and later wire/identity
+oracles remain; issuer write recovery stays prohibited.
+
+Separate pinned-Docker real-PQ/TCP matcher checks compiled N3 and passed the
+existing Complete and new Renew cases: **16 PASS, zero FAIL/SKIP, exit 0**.
+They distinguish Hub response, settled local step and consumed local anchor;
+reject changed key/binding/lease owner, duplicate/wrong origin, signed different
+sequence/registration or negative result; and verify no matcher traffic/state
+writes/private-coordinate export. These driver tests use dirty QA a610cbe,
+not the seven-file production overlay or a full Runtime. Source snapshots
+matched; snapshot SHA-256
+`4566a408ae547b848cdf0125edc18a3bd3dc8777bc162cf5c1c0cf327348de2a`;
+executed test SHA-256
+`e345e5a3bed59a237176f2dbae10254562c01521b187e0c950169cf8c8ed3500`.
+`~/Cicada/.local/evidence/n2-acceptance/owner-groups-renewal-settlement-a610cbe-03/result.json`
+SHA-256 `f2227238c8a4c9e02076b11adee25a4a62761ed36c1ede0101580df029d87f12`.
+Attempts 01/02 are retained failures at synthetic fixture entry (wrong fingerprint
+domain, then the protected reader's fixed-basename guard); they did not execute
+the Renew matcher or supply product counterexamples. The successful check's
+container was absent. This documentation follows the frozen checks; tested Go
+inputs remain unchanged. QA hands the uncommitted driver/document patch to the
+fix writer for one complete checkpoint, without another gate or separate commit.
+
+The candidate's complete Runtime, real five-minute cold renewal, both M7
+baselines, final four-identity witness, Windows DPAPI/ACL/GUI, Android, physical
+second Node, public HTTPS and actual 24-hour expiry remain **NOT_RUN**. The
+clean-76647a4 M5 **FAIL** and its missing private cause remain recorded separately.
+
 ### 2026-10-26 user-reported four-Thread Group continuation
 
 Root relayed the user's report that four real native Threads on the same Node
