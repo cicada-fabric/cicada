@@ -8147,6 +8147,110 @@ M5–M8, final four-identity/five-minute witnesses, Windows DPAPI/ACL/GUI, Andro
 physical second Node, public HTTPS and actual 24-hour expiry remain NOT_RUN.
 All gates must finish before candidate finalization.
 
+### 2026-10-27 clean 93473b9 Runtime refusal mismatch and separate gates
+
+Root combined the QA record and Node correction at clean
+`93473b98a2e07bd23e505fedf9c1f336a8e49ec8`. Its eight Go blobs match the frozen
+c58bf19 normal gate. The whole contract blob differs because cherry-picking
+preserved newer dev paragraphs; c58bf19's added 24 lines remain identical.
+This does not establish equality of nine whole-file blobs.
+
+From that same clean source/harness, QA ran the original complete entry once
+under Root's explicit new-run authorization:
+
+```sh
+CICADA_NATIVE_PAIR_LICENSES_DIR=/home/zyf/Cicada/.local/artifacts/native-ip-complete/run-owner-thread-groups-defdd9d-20261026/payload/licenses \
+  bash scripts/test-native-pair.sh --owner-endpoint-groups
+```
+
+`run-20261026T234324Z-vkkzuV` finished **FAIL / exit 1**. M1 passed in
+162.01s with six measured facts, M2 in 488.18s with six, and M3 in 195.92s
+with eight. All four original G1/G2 request/reply/native roundtrips passed;
+M3's exact writer release was 7,700ms, Network self identity returned 200 and
+business/Leave remained 403. M4 failed after 221.75s. M5–M8, the final main
+four-identity witness and actual five-minute witness were not reached.
+
+The precise failed call was checkpoint **81**, **D / actor 3**, label
+`m4-released-g1-denied`, tool **cicada_use_group** for removed G1. The oracle
+expected OWNER_READD_REQUIRED; the observed safe Host code was
+CODEX_NODE_TICKET_UNAVAILABLE, with no parsed result or successful coordinates.
+Checkpoint 80 had already completed the original D→C G2 roundtrip following
+external Join and actual Node/Host restart. Actual protected state at that
+restart was 4,862,086 bytes within the unchanged 8 MiB bound. This failure is
+before the later `m4-released-original-g2` C reply, which was not executed;
+it must not be described as the older d982a90 C-reply failure.
+
+The held original Complete was sequence **434**, operation SHA-256
+`353a96dd0d1af605bb5857c138ff26d74702fa73105656cee0b4bd75e2d93092`,
+request SHA-256 `88af9f35811c7d0722a27b10dc4a837cd2fb3221dac8959a5ea441799ff10954`.
+The initial hold ended without forwarding. After actual Owner removal and
+release, the fixture's exact replay obtained an authenticated
+TARGET_NOT_AUTHORIZED result at 00:05:40.506522647Z. Only one such result was
+retained. Final real Node state still had `node.endpoint_groups.key_complete`
+pending at sequence 434, and the corresponding intent step was unsettled;
+there was no subsequent Node Describe in the audit. Hub refusal alone does not
+prove the real Node consumed its receipt or settled its durable original.
+
+The frozen source gives ordinary worker recovery an original-write path;
+issuer verification separately refuses pending writes. Evidence does not show
+why the worker had not completed that recovery. Worker scheduling, verification
+cost, other failures and a missing fixture synchronization boundary remain
+unattributed. The underlying issuer error, actual Hook latency and instantaneous
+process-liveness snapshot are **NOT_RETAINED**. Checkpoint 81 command/reply file
+mtimes were 00:05:44.612743235Z / 00:05:54.733818420Z; these are file-publication
+boundaries, not exact Hook timings. The fixture releases the held response
+before this call. No issuer write redispatch or authorization relaxation is
+accepted as a remedy. Root and the Node owner received these facts for triage.
+
+Version, CLI/test compilation and vet exited 0; harness exited 1. Source/harness
+were clean 93473b9, manifest
+`9b00260aca871b3bd07222c766f8f51c9ef56f8da5249d6649cbf62ae7605f7c`,
+with matching source and executable hashes before/after and container absent.
+The actual compiled CLI SHA-256 was
+`42728a5c142b3950ca9bf1dcfec709be403d03ed1a935f142f4f1ed645f5a84d`;
+this run does not claim execution of an App ZIP's bytes. Receipt
+`~/Cicada/.local/evidence/native-pair-acceptance/run-20261026T234324Z-vkkzuV/result.json`
+SHA-256 `b4f1b5b2d198f28e8fad398fa9b900df25265afd294487ec84d284745e261419`;
+artifact `owner-groups-protocol-audit/883510f5bf076446.json` SHA-256
+`25d944a217f455f222b5526a46c11844689d16e5c3de5da625a0111a7ce4956e`.
+Closed external file observations, with no nonce/body export, are retained as
+`live-host-observation.jsonl` SHA-256
+`6c8720aff169b284afd26acfcd75b2a5f23bc4510aca0c45d5c75ba16b3ea1fe`.
+
+The final-source synthetic gates remain separate. Disposable Docker exited 0:
+seven top-level plus three subtest PASS, zero FAIL/SKIP, package 76.755s.
+Receipt `~/Cicada/.local/evidence/owner-groups-challenge-retention-final/docker-receipt.json`
+SHA-256 `351a3c27aa41e8eee4407c38d6f8a717e3bf83c7af25d6d3a1cdc6fcc56e8f43`.
+Its canonical HEAD changed d6b1b75→93473b9 while all eight selected Go inputs
+and other Go/module/asset inputs remained identical. Its temporary test binary
+hash is NOT_RETAINED. The independent three-case race command exited **1**:
+two top-level PASS, one four-record retention FAIL (256.55s), package 341.883s.
+Its first C issue took 30,528ms and reported OTHER_PRIVATE_ISSUE_ERROR; the
+finite tail was not reached and no DATA RACE warning was emitted. Time alone
+does not establish a cause. Receipt in the same directory `race-receipt.json`
+SHA-256 `53619017a8bbc7da29bb4ba975a4e054d187eb5070b711166ed648e9fb94a483`.
+Docker/normal success cannot replace that race failure or this Runtime failure.
+
+The earlier same-source `run-20261026T233812Z-5e32Rf` was operator-stopped during
+bootstrap before Root's continuation decision arrived. It remains
+**OPERATOR_ABORT**, collector FAIL/exit 1, with no terminal case and M1–M8
+NOT_RUN; receipt SHA-256
+`4ff3b206d0ae81811fdadef15470d40d08f2bb7e83f2430fa892b9ceeb19754a`.
+It is not a product failure or a resumed part of vkkzuV. Its operator record also
+retains the overly strict nine-whole-blob precheck failure and subsequent
+eight-Go/contract-attribution correction. Root explicitly authorized the fresh
+vkkzuV attempt; neither attempt is relabeled or combined into a pass.
+
+QA independently checked the receipts, logs, exact call metadata, final pending
+state and source/executable hashes. Review
+`~/Cicada/.local/evidence/n2-acceptance/owner-groups-normal-failure-review-93473b9-01/result.json`
+SHA-256 `ff1290d2e2d1bbc59e3bc2647cc35da1fb633824b3ed282a1fab2c611b254aa1`.
+No source changed during either Runtime, and no further run was automatically
+started. Candidate finalization remains withheld. Windows DPAPI/ACL/GUI,
+Android, physical second Node, public HTTPS and actual 24-hour expiry remain
+NOT_RUN. Test-only diagnostic or narrower race results retain their own scope;
+none closes the original Runtime or four-record race failures.
+
 ### 2026-10-26 user-reported four-Thread Group continuation
 
 Root relayed the user's report that four real native Threads on the same Node
