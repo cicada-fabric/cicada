@@ -354,6 +354,10 @@ The same frozen correction's controlled normal and finite M4/M6 tests passed,
 as did disposable Docker; its three-case race gate failed one case. Candidate
 finalization remains withheld. Current statuses and exact evidence are in
 [the Runtime and separate-gate record](native-app-validation.md#2026-10-27-clean-93473b9-runtime-refusal-mismatch-and-separate-gates).
+The QA settlement barrier now waits read-only for the real Node's authenticated
+original completion before affected positive MCP expectations. Its 75-second
+bound and strict refusal checks do not replace another full Runtime run; current
+M4 FAIL and M5–M8 NOT_RUN remain unchanged pending Root's next frozen source.
 The existing Session page may show registered
 Thread cards, their Group relations and authorized candidate Groups. It may
 offer one same-Owner/same-Network named Group creation followed by a separate

@@ -143,8 +143,10 @@ func exerciseOwnerGroupsM7(t *testing.T) {
 		g2 := ownerGroupsCandidateNamed(t, panel, "Synthetic Revocation G2").GroupID
 		for _, index := range []int{0, 3} {
 			review := prepareOwnerGroupsEndpointChange(t, v, actors, original[index], g2, wire.OwnerEndpointGroupsAddEndpoint, "until_revoked")
+			completionFrom := len(v.f.proxy.snapshot())
 			submitOwnerGroupsReview(t, v, review, "ADD_SUBMITTED")
 			awaitOwnerGroupsRelation(t, v, actors.active.NetworkID, original[index], g2, "ACTIVE", "OWNER")
+			awaitOwnerGroupsPositiveCompletion(t, v, completionFrom, "m7-before-revoke-add-"+kind+strconv.Itoa(index), original[index], g2)
 		}
 		host.roundtrip(t, "m7-before-g1", actors.active.GroupID, 3, 0, original)
 		host.roundtrip(t, "m7-before-g2", g2, 3, 0, original)

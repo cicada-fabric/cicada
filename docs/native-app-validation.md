@@ -8251,6 +8251,57 @@ Android, physical second Node, public HTTPS and actual 24-hour expiry remain
 NOT_RUN. Test-only diagnostic or narrower race results retain their own scope;
 none closes the original Runtime or four-record race failures.
 
+### 2026-10-27 read-only Node settlement barrier preparation
+
+Root authorized a narrowly scoped synchronization correction after the 93473b9
+failure. Hub's negative original receipt is a witness, not proof that the real
+Node has consumed it. The existing exact Hub replay remains unchanged; its
+private response is retained in memory for the subsequent read-only barrier.
+The barrier does not dispatch, reconcile, sign a new request or write Node state.
+
+Within one maximum **75-second** observation budget, including original receipt
+capture/verification, it reads atomic protected-state snapshots within the
+existing 8 MiB bound. It matches the original operation ID/sequence, request
+ciphertext, canonical body digest, exact response bytes, settled step and valid
+completion timestamp. The cached response must authenticate under the original
+Node key/Hub pin with the complete reversed route and exact envelope ID/sequence;
+the negative original must remain TARGET_NOT_AUTHORIZED. All seven pending
+coordinates, retained execution fields and the two diagnostic fields must clear.
+Only closed presence flags, hashes, state size, elapsed/UTC times and process
+liveness leave memory. A timeout or changed original is an explicit failure.
+
+M4 waits after released negative Complete and ordinary restart of the lost
+positive Complete, then retains the original D-G1 typed refusal and G2 positive
+roundtrip. The finite takeover keeps its existing actual Node/default-verifier
+window check before settlement observation and verifies the same retained
+completion again after restart. M7 uses the barrier only for its pre-revocation
+G2 additions while the original identity is still valid. Its held native writer
+already waits for actual final delivery denial. After real Owner/Node revocation,
+the original negative checks remain unchanged and pending writes may remain;
+there is no post-revocation clear-all requirement.
+
+Necessary gate checks use synthetic protected snapshots with real PQ packet
+authentication and one loopback TCP receipt exchange. They distinguish a Hub
+receipt from local settlement, reject changed body/request/response/time or a
+validly signed different sequence, and retain every pending/execution fence.
+They also check the matcher changes neither file bytes nor TCP request count
+and exports no private body/operation ID. These are acceptance-gate safety tests,
+not native Runtime facts. Existing Inbox/Outbox privacy checks remain separate.
+No production file, product clock, timeout, typed-refusal oracle or public entry
+was changed. The prior normal and race failures are retained; no complete gate
+was automatically rerun. Root reviews this checkpoint before the next unique
+source-bound full M1–M8 run.
+
+The pinned disposable Docker check compiled N3 and passed the real-PQ/TCP gate
+test with five subcases plus the two existing privacy cases: eight PASS events,
+zero FAIL/SKIP, exit 0. Source before/after matched dirty ba6fd07 manifest
+`860de9fae8b24367e10503f3fec92171685e10883dfd08fb68ccf68ce2797b15`;
+the container was absent afterward. Receipt
+`~/Cicada/.local/evidence/n2-acceptance/owner-groups-settlement-ba6fd07-01/result.json`
+SHA-256 `4c8d2a8803defeb74136ad8662ad023c2810ecaa7ad02f8eda0320e82e51795f`.
+This final paragraph follows those checks. The actual 75-second worker wait and
+full Runtime have not been rerun by this checkpoint; no product pass is inferred.
+
 ### 2026-10-26 user-reported four-Thread Group continuation
 
 Root relayed the user's report that four real native Threads on the same Node

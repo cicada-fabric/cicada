@@ -463,7 +463,7 @@ func requireOwnerGroupsRESTDenied(t *testing.T, router ownerGroupsFabricRouter, 
 // A held client may cancel before forwarding. Retain only the actual packet
 // recorded by the fault proxy, then submit those SAME bytes after Owner REMOVE
 // solely to prove the production negative fence. No signer or new completion.
-func rejectOwnerGroupsHeldCompletion(t *testing.T, v *codexProductFixture, from int, identity ownerGroupsIdentity, group string, challenge wire.EndpointGroupKeyPrepareResult) {
+func rejectOwnerGroupsHeldCompletion(t *testing.T, v *codexProductFixture, from int, identity ownerGroupsIdentity, group string, challenge wire.EndpointGroupKeyPrepareResult) exchange {
 	t.Helper()
 	var held exchange
 	deadline := time.Now().Add(75 * time.Second)
@@ -531,6 +531,10 @@ WHERE owner_binding_id=? AND node_key_epoch=? AND operation_id=? AND sequence=?`
 		t.Fatal("negative old completion lacks its exact original ID/sequence/ciphertext permanent Hub fence")
 	}
 	clear(receipt)
+	// The returned witness is not local Node consumption. Its private response
+	// survives this function's buffer clear only for the readonly settlement gate.
+	actual.response = bytes.Clone(raw)
+	return actual
 }
 
 func exerciseOwnerGroupsM4(t *testing.T, v *codexProductFixture, actors nativePeerActors, host *ownerGroupsHost, original []ownerGroupsIdentity, g2 string, denied ownerGroupsDeniedDelivery) {
@@ -613,7 +617,9 @@ func exerciseOwnerGroupsM4(t *testing.T, v *codexProductFixture, actors nativePe
 	panel = prepareOwnerGroupsEndpointChange(t, v, actors, d, actors.active.GroupID, wire.OwnerEndpointGroupsRemoveEndpoint, "")
 	submitOwnerGroupsReview(t, v, panel, "REMOVED")
 	release()
-	rejectOwnerGroupsHeldCompletion(t, v, heldFrom, d, actors.active.GroupID, deniedChallenge)
+	rejectedCompletion := rejectOwnerGroupsHeldCompletion(t, v, heldFrom, d, actors.active.GroupID, deniedChallenge)
+	defer clear(rejectedCompletion.response)
+	awaitOwnerGroupsNodeSettlement(t, v, "m4-released-original-complete", rejectedCompletion)
 	awaitOwnerGroupsRelation(t, v, actors.active.NetworkID, d, actors.active.GroupID, "REMOVED", "OWNER")
 	requireOwnerGroupsRESTDenied(t, router, dCredential, g2, actors.active.GroupID)
 	ownerGroupsDenySelection(t, host, 3, "m4-released-g1-denied", actors.active.GroupID)
@@ -642,6 +648,7 @@ func exerciseOwnerGroupsM4(t *testing.T, v *codexProductFixture, actors nativePe
 	lostRelease()
 	awaitOwnerGroupsRelation(t, v, actors.active.NetworkID, d, actors.active.GroupID, "ACTIVE", "OWNER")
 	restartNativePeerNode(t, v, actors)
+	awaitOwnerGroupsNodeSettlement(t, v, "m4-lost-complete-after-restart", lostCompletion)
 	awaitOwnerGroupsRelation(t, v, actors.active.NetworkID, d, actors.active.GroupID, "ACTIVE", "OWNER")
 	panel = prepareOwnerGroupsEndpointChange(t, v, actors, d, actors.active.GroupID, wire.OwnerEndpointGroupsRemoveEndpoint, "")
 	submitOwnerGroupsReview(t, v, panel, "REMOVED")
@@ -656,6 +663,7 @@ func exerciseOwnerGroupsM4(t *testing.T, v *codexProductFixture, actors nativePe
 		t.Fatal("actual finite Owner review omitted its original policy deadline")
 	}
 	policyEnd := panel.Review.PolicyExpiresAt
+	finiteFrom := len(v.f.proxy.snapshot())
 	entered, release = armOwnerGroupsFault(t, v.f.proxy, "complete-held-before-forward")
 	defer release()
 	submitOwnerGroupsReview(t, v, panel, "ADD_SUBMITTED")
@@ -691,6 +699,7 @@ func exerciseOwnerGroupsM4(t *testing.T, v *codexProductFixture, actors nativePe
 	release()
 	awaitOwnerGroupsDefaultTakeover(t, v, a, original[1], actors.active.GroupID, challenge.ProjectedOwnerControl, oldDefault)
 	active := awaitOwnerGroupsRelation(t, v, actors.active.NetworkID, a, actors.active.GroupID, "ACTIVE", "OWNER")
+	awaitOwnerGroupsPositiveCompletion(t, v, finiteFrom, "m4-finite-original-complete", a, actors.active.GroupID)
 	retained.oldDefaultRefusedWhileCurrent = true
 	grant, policy := readOwnerGroupsCompletedGrant(t, v, challenge)
 	if active.ExpiresAt != policyEnd || policy.ExpiresAt != policyEnd || grant.Manifest.ExpiresAt != policyEnd ||
@@ -698,6 +707,7 @@ func exerciseOwnerGroupsM4(t *testing.T, v *codexProductFixture, actors nativePe
 		t.Fatal("finite manual duration moved from the original Owner review")
 	}
 	restartNativePeerNode(t, v, actors)
+	awaitOwnerGroupsPositiveCompletion(t, v, finiteFrom, "m4-finite-complete-after-restart", a, actors.active.GroupID)
 	host.command(t, ownerGroupsHostCommand{Action: "restart_host"})
 	active = awaitOwnerGroupsRelation(t, v, actors.active.NetworkID, a, actors.active.GroupID, "ACTIVE", "OWNER")
 	retried, retriedPolicy := readOwnerGroupsCompletedGrant(t, v, challenge)
