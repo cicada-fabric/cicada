@@ -8405,6 +8405,98 @@ identity/five-minute observations remain NOT_RUN pending Root's next frozen
 complete run. Windows DPAPI/ACL/GUI, Android, physical second Node, public HTTPS
 and actual 24-hour expiry retain separate NOT_RUN statuses.
 
+### 2026-10-27 clean 76647a4 M5 fresh-Hook failure
+
+Root integrated the finite original-operation hold checkpoint and authorized
+one complete existing entry from clean source/harness
+`76647a44e52b54aa48ea10b4f771c4a1b5d8c418`. No subset or automatic retry ran.
+Production Go/module/assets match 93473b9; the externally compiled candidate was
+not executed by this gate. The exact entry was:
+
+```sh
+CICADA_NATIVE_PAIR_LICENSES_DIR=/home/zyf/Cicada/.local/artifacts/native-ip-complete/run-owner-thread-groups-defdd9d-20261026/payload/licenses \
+bash scripts/test-native-pair.sh --owner-endpoint-groups
+```
+
+`run-20261027T014501Z-ApzCkU` ended **FAIL / exit 1**, package 1758.943s.
+Version, CLI compile, test compile and vet each exited 0; harness exited 1.
+M1 **PASS 163.44s**, M2 **PASS 487.35s**, M3 **PASS 195.08s**, M4 **PASS
+614.92s**, and M5 **FAIL 25.80s**. M1/M2/M3/M4 emitted respectively
+6/6/8/7 successful facts. M3's actual positive-Guard-to-writer-release interval
+was **7,903ms**; original Network self returned 200 with exactly three identity
+fields and zero business capabilities, while business/Leave were denied.
+
+M4 now completed the real formerly failing finite scene. Its pre-release
+DEFAULT/DEFAULT proof was allowed at `02:11:51.100600210Z`. The refreshed
+Current projection observed at `02:11:51.116970673Z`, expiring at
+`02:12:21.116970673Z`, was also positively verified. After the actual Node OWNER
+head, the same retained DEFAULT proof was denied at `02:12:16.557087586Z`,
+with **4.560s still remaining**. Original negative Complete/436 settled locally
+in 16,233ms; lost positive Complete/480 after ordinary restart in 1,650ms;
+finite Complete/523 in 133ms and the same request/response after restart in
+107ms. All those settlement witnesses authenticated the original response,
+cleared pending coordinates and all 15 presence flags, and observed live
+Node/Hub. This run's protected restart read was 4,861,921 bytes within 8 MiB;
+finite settlement read 6,207,199 bytes. The M4 seven-fact terminal PASS does not
+run actual 24-hour expiry or relabel the older failed runs.
+
+The exact new counterexample is M5's **first post-restart Host call**, checkpoint
+104, actor **3 / original D**, tool `cicada_groups`, label
+`m5-new-mcp-fresh-hook`. The actual App had already confirmed default-policy
+revoke; D-G2 was independently read ACTIVE/OWNER before and after that revoke.
+The post-revoke service-health guard passed and the App was closed before Host
+restart. Checkpoint 103's restart reply was observed. Checkpoint 104's command
+file timestamp is `02:14:24.909961114Z`; the Go failure log is
+`02:14:33.269819040Z`. These are file/log coordinates, not measured Hook duration.
+The Host stopped at `HOST_CALL` with
+`OWNER_GROUP_SELF_LIST_MISSING_OR_AMBIGUOUS`, `shapes=[]`; its closed product
+classification was **CODEX_NODE_TICKET_UNAVAILABLE**. The bottom private-issuer
+cause and child stderr were **NOT_RETAINED**. This is not an expected authority
+denial and does not establish a timeout, cache, idle-state or permission cause.
+
+The command-file-to-failure window contains one unbound capabilities GET 200,
+`02:14:28.513801185Z`–`02:14:28.514592580Z`, and no recorded Node RPC; it does
+not identify that GET's caller or prove two five-second attempts. The latest
+Node RPC was authenticated successful key_prepare/575 at
+`02:14:21.983626428Z`–`02:14:22.085320707Z`; its original step was settled,
+completed `02:14:22.144623730Z`, before checkpoint 104. The final audit captured
+at `02:14:33.816040829Z` has pending operation empty and sequence 0. That final
+metadata is distinct from assertion-time state: failure-time actual size,
+other 15 pending/execution/diagnostic flags and Node/Hub liveness were
+**NOT_RETAINED**. Owned state contained zero files after cleanup. No shared Hub,
+public deployment, production permission or implementation was changed.
+
+The real five-minute timer had **not started**; later M5 cold renewal/positive
+roundtrip, M6/M8, both independent M7 revocation baselines and final four-identity
+witness remain **NOT_RUN**. Collector `identities_unchanged=false` and
+`actual_lease_boundary_valid=false` indicate missing required witnesses here,
+not observed identity rotation or an executed failed lease boundary. Windows
+DPAPI/ACL/GUI, Android, physical second Node, public HTTPS and actual 24-hour
+expiry retain separate NOT_RUN statuses. Candidate finalization remains withheld;
+the historical broader four-record race failure remains separate and unresolved.
+
+Source/binary snapshots matched before/after; source manifest SHA-256
+`3318785022d3e88c06814f7c065fbd1d7063d49b06987e318b14660a60efd308`.
+Executed CLI SHA-256
+`42728a5c142b3950ca9bf1dcfec709be403d03ed1a935f142f4f1ed645f5a84d`;
+executed test SHA-256
+`cdfa2944ff1049a770c822ac20438f6729936bacdb42cbcb9e6c1d336f407ada`.
+The owned container was absent. Exact argv and exits are retained under
+`~/Cicada/.local/evidence/native-pair-acceptance/run-20261027T014501Z-ApzCkU/`.
+Its `result.json` SHA-256 is
+`9fa9def40c58726c203a974c13895c5bf15b37a52a855277e4cf23b1ebf9bafd`.
+The corresponding owned artifacts directory contains protocol audit
+`owner-groups-protocol-audit/cc43d66e20229ed8.json`, SHA-256
+`967c014176c999d769bfe33bdb2b0d7a90992b5feb8dd4143982a799d18f06cc`.
+The external read-only observer retained 248 closed observations with zero read
+retries; its JSONL SHA-256 is
+`ed485ffefec4a70145a2ab1b6c5b06990a727f33b381e45cfaae6da06a24f2cc`.
+The consolidated exact counterexample is
+`~/Cicada/.local/evidence/n2-acceptance/owner-groups-full-preflight-76647a4-01/exact-m5-counterexample.json`,
+SHA-256 `b14b7d2deb47f94d516c15936c784da407afeb5c58d9f3d3bc269da3824d8442`.
+This record follows the frozen run and changes documentation only. The defect
+and evidence were delivered to Root and Hub/App owners; no rerun was launched.
+
 ### 2026-10-26 user-reported four-Thread Group continuation
 
 Root relayed the user's report that four real native Threads on the same Node
