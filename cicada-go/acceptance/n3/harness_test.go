@@ -213,8 +213,16 @@ type faultProxy struct {
 	mode          string
 	count         int
 	gate          *pausePoint
+	originalHold  *originalOperationHold
 	gates         []*pausePoint
 	trace         []exchange
+}
+
+type originalOperationHold struct {
+	operationID string
+	sequence    uint64
+	packetHash  string
+	attempts    int
 }
 
 type pausePoint struct {
@@ -234,6 +242,7 @@ func newFaultProxy(t *testing.T, origin string) *faultProxy {
 		for _, gate := range p.gates {
 			gate.unblock()
 		}
+		p.originalHold, p.count = nil, 0
 		p.mu.Unlock()
 		p.server.Close()
 		for _, ex := range p.snapshot() {
@@ -259,8 +268,21 @@ func (p *faultProxy) armMatch(path, method, nodeOperation, mode string, count in
 	defer p.mu.Unlock()
 	p.path, p.method, p.mode, p.count = path, method, mode, count
 	p.nodeOperation = nodeOperation
+	p.originalHold = nil
 	p.gate = &pausePoint{entered: make(chan struct{}), release: make(chan struct{})}
 	p.gates = append(p.gates, p.gate)
+	if mode == "hold-original-before-forward" {
+		gate := p.gate
+		return gate.entered, func() {
+			p.mu.Lock()
+			defer p.mu.Unlock()
+			// An old release must not clear a subsequently armed operation.
+			if p.gate == gate {
+				p.originalHold, p.count = nil, 0
+			}
+			gate.unblock()
+		}
+	}
 	return p.gate.entered, p.gate.unblock
 }
 
@@ -291,9 +313,24 @@ func (p *faultProxy) serve(w http.ResponseWriter, r *http.Request) {
 		var packet nodewire.Packet
 		operationMatches = json.Unmarshal(raw, &packet) == nil && packet.Route.Operation == p.nodeOperation
 	}
-	if p.count > 0 && r.URL.Path == p.path && (p.method == "" || r.Method == p.method) && operationMatches {
-		mode, gate = p.mode, p.gate
-		p.count--
+	if r.URL.Path == p.path && (p.method == "" || r.Method == p.method) && operationMatches {
+		if p.mode == "hold-original-before-forward" {
+			packet, decodeErr := nodewire.DecodePacket(raw)
+			if decodeErr == nil && packet.Route.Direction == nodewire.DirectionRequest && p.nodeOperation != "" {
+				packetHash := hash(raw)
+				if p.originalHold == nil && p.count > 0 {
+					p.originalHold = &originalOperationHold{operationID: packet.Route.OperationID, sequence: packet.Route.Sequence, packetHash: packetHash}
+					p.count-- // One original operation, not one HTTP attempt.
+				}
+				if original := p.originalHold; original != nil && packet.Route.OperationID == original.operationID && packet.Route.Sequence == original.sequence && packetHash == original.packetHash {
+					mode, gate = p.mode, p.gate
+					original.attempts++
+				}
+			}
+		} else if p.count > 0 {
+			mode, gate = p.mode, p.gate
+			p.count--
+		}
 	}
 	p.mu.Unlock()
 	ex := exchange{StartedAt: time.Now().UTC().Format(time.RFC3339Nano), FaultMode: mode, Method: r.Method, Path: r.URL.Path, RequestSHA256: hash(raw), request: bytes.Clone(raw)}
@@ -314,7 +351,7 @@ func (p *faultProxy) serve(w http.ResponseWriter, r *http.Request) {
 		dropConnection(w)
 		return
 	}
-	if mode == "hold-before-forward" {
+	if mode == "hold-before-forward" || mode == "hold-original-before-forward" {
 		gate.enterOnce.Do(func() { close(gate.entered) })
 		select {
 		case <-gate.release:

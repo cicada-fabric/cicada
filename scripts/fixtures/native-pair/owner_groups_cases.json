@@ -44,6 +44,14 @@
       "count": 1
     },
     {
+      "id": "finite-complete-held-until-release",
+      "path": "/v2/node/control/rpc",
+      "method": "POST",
+      "node_operation": "node.endpoint_groups.key_complete",
+      "mode": "hold-original-before-forward",
+      "count": 1
+    },
+    {
       "id": "complete-lost-response",
       "path": "/v2/node/control/rpc",
       "method": "POST",
@@ -137,6 +145,7 @@
       ],
       "faults": [
         "complete-held-before-forward",
+        "finite-complete-held-until-release",
         "complete-lost-response"
       ],
       "negative_inputs": [

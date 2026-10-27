@@ -417,8 +417,11 @@ def owner_groups_inputs():
     for fault in value['faults']:
         if (not isinstance(fault, dict) or set(fault) != {'id', 'path', 'method', 'node_operation', 'mode', 'count'}
                 or fault['id'] in faults or fault['method'] != 'POST' or type(fault['count']) is not int or fault['count'] != 1
-                or fault['mode'] not in {'before-forward', 'drop-after-response', 'unsigned-403', 'corrupt-response', 'hold-before-forward'}):
+                or fault['mode'] not in {'before-forward', 'drop-after-response', 'unsigned-403', 'corrupt-response', 'hold-before-forward', 'hold-original-before-forward'}):
             raise ValueError('Invalid Owner Group fault')
+        if fault['mode'] == 'hold-original-before-forward' and (fault['id'] != 'finite-complete-held-until-release'
+                or fault['path'] != '/v2/node/control/rpc' or fault['node_operation'] != 'node.endpoint_groups.key_complete'):
+            raise ValueError('Exact original hold is limited to finite completion')
         if fault['path'] == '/v2/node/control/rpc':
             if fault['node_operation'] not in {'node.endpoint_groups.key_complete', 'node.endpoint_groups.renew'}:
                 raise ValueError('Group fault may not intercept another Node RPC')

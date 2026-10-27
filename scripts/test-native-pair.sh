@@ -334,7 +334,7 @@ else
    runtime_timeout=20m
   elif [[ "$mode" == owner-endpoint-groups ]]; then
    selector='^TestN3OwnerEndpointGroupsAcceptance$'
-   runtime_timeout=60m
+   runtime_timeout=90m
   elif [[ "$mode" == node-pair-trust ]]; then
    selector='^TestN3NodePairTrustAcceptance$'
    runtime_timeout=20m

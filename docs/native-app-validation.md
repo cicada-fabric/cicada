@@ -8302,6 +8302,109 @@ SHA-256 `4c8d2a8803defeb74136ad8662ad023c2810ecaa7ad02f8eda0320e82e51795f`.
 This final paragraph follows those checks. The actual 75-second worker wait and
 full Runtime have not been rerun by this checkpoint; no product pass is inferred.
 
+### 2026-10-27 vnzdu6 exact-original hold failure
+
+Clean QA harness `43c142a70e59d7828432cb8c9e62c79391b89ce8`, with production
+source `93473b98a2e07bd23e505fedf9c1f336a8e49ec8`, ran the complete entry in
+`run-20261027T004147Z-vnzdu6`: **FAIL / exit 1**. M1, M2 and M3 passed;
+M4 failed, and M5–M8 were **NOT_RUN**. Source and executed-binary snapshots
+matched before/after. The Runtime CLI/test were independently compiled;
+this was not execution of the packaged candidate binary.
+
+M4 had passed the original negative Complete settlement at sequence 434 in
+**16.753s**, the original positive Complete settlement at sequence 478 after
+Node restart in **1.124s**, and the G2 positive roundtrip after sequence 434. Those
+observations do not establish completion of M4 or its later finite takeover.
+
+The finite-takeover fault at original sequence **521** held only the first
+matching HTTP attempt before forwarding. When that attempt ended, the proxy's
+single-HTTP fault count was already consumed. The exact original retry, with
+unchanged operation-ID digest, sequence and request-ciphertext digest, therefore
+forwarded **before explicit release** and received an authenticated HTTP 200
+result. The first subsequent peer projection already showed sender source
+`OWNER_EXPLICIT`, Owner mode `OWNER`, revision 1. The initial positive DEFAULT
+witness was absent, so its compound predicate failed. This is an exact-retry
+escape from the fixture's intended hold, not a demonstrated timeout at the
+75-second Node-settlement barrier.
+
+The authenticated Current projection's `ObservedAt`/`ExpiresAt` values were
+**NOT_RETAINED**; this
+record does not establish a pure TTL/expiry cause. QA's next change is limited
+to holding this exact original operation across HTTP attempts, preserving the
+positive DEFAULT witness and old-default still-current denial. Production
+clocks, request deadlines and permissions remain unchanged. Any focused
+normal/race proxy checks must retain their own actual results alongside this
+FAIL; they cannot relabel this run or supply a complete Runtime pass.
+
+Original result:
+`~/Cicada/.local/evidence/native-pair-acceptance/run-20261027T004147Z-vnzdu6/result.json`,
+SHA-256 `15d8ea2a63fa50eec5061406e5408372aa70c68e7b55281e7b9ca5a5e07131fc`.
+Root review:
+`~/Cicada/.local/evidence/local-domain-root/owner-groups-core-combination-20261026T1502/review-vnzdu6-exact-hold-failure.json`,
+SHA-256 `8ea4e18e9546c77d57648da7ecae0a1a3ac61b2f38e09b1c38a439713bfa7d6e`.
+Owned-fixture cleanup was confirmed. Physical Windows DPAPI/ACL/GUI and actual
+24-hour wall-clock expiry remain **NOT_RUN**. This record adds
+no test or protocol-audit execution; candidate 93473b9 remains unchanged and
+unfinalized.
+
+### 2026-10-27 finite original-operation fault correction
+
+The QA-only fault `finite-complete-held-until-release` applies solely to finite
+A takeover's POST `/v2/node/control/rpc` operation
+`node.endpoint_groups.key_complete`. It pins the first request's operation ID,
+sequence and complete ciphertext SHA-256. Cancellation ends that HTTP attempt
+without consuming the original-operation hold. Exact retries remain held until
+explicit release; a different ID, sequence, ciphertext, operation, method or path
+passes. Rearming clears the old pin, an old release cannot clear the new gate,
+and cleanup releases retained gates. The earlier D-negative HTTP hold is unchanged.
+Both the Go registry and evidence-input parser restrict the new mode to this
+single finite-completion fault. No Hub/App/Node production file changed.
+
+The existing DEFAULT positive witness, the same still-current old-default
+negative after actual Node OWNER head, and all M4 criteria remain required.
+The compound witness assertion now reports source shape, DEFAULT mode and
+actual-wall-clock Current validation separately. Closed diagnostics include
+presence flags, bounded mode labels, Group hash and authenticated projection
+Current timestamps; they export no request body, key or operation ID. These
+are projection timestamps, not separately signed DTO fields. No product timing
+or authority predicate changed.
+
+Root authorized only this complete parent's timeout to increase from **60 to
+90 minutes** in the existing `--owner-endpoint-groups` entry. This is total test
+budget, not an authority extension or performance acceptance. Product 5/30/35s
+windows, the 75s read-only settlement bound, real five-minute renewal and
+15-minute observation criteria remain unchanged. No subset/resume entry was added.
+
+Pinned disposable Docker, read-only source/module mounts and a locked task-private
+build cache compiled normal and race binaries. Each executed only
+`^TestN3OwnerGroupsExactOperationHoldSurvivesCancellation$`, with `-test.count=1`
+and test timeouts 30s / 60s respectively. Real PQ Nodewire authentication and
+loopback TCP exercised two canceled exact attempts, an exact held retry,
+explicit release, unrelated-packet isolation and rearm/old-release isolation.
+Normal: **PASS / exit 0**, 0.04s test body. Race: **PASS / exit 0**, 0.33s test
+body (1.351s process); zero FAIL/SKIP or DATA RACE warnings. Compilation exits
+were also 0. This synthetic transport fixture creates no business grant and
+supplies no native Runtime fact; it does not close the historical broader
+four-record race failure.
+
+Source before/after matched the dirty 43c142a snapshot; snapshot-file SHA-256
+`0723059553e8744928febf2cb63cd6a6062d8bdad40e366d52649fbe136b4f63`.
+Normal binary SHA-256
+`cdfa2944ff1049a770c822ac20438f6729936bacdb42cbcb9e6c1d336f407ada`;
+race binary SHA-256
+`ab9cec6c8b570ed702b50f53ced9d11084737f5b5b529db160cf493cc06ecdae`.
+Exact Docker/compile/test argv, preflight exits and snapshots are retained in
+`~/Cicada/.local/evidence/n2-acceptance/owner-groups-exact-hold-43c142a-01/`.
+Its `result.json` SHA-256 is
+`6bea02631c03d2ab8a6b13e85f204aa18a30605d5b144ffba88a20b5c7dbd1df`.
+The container was absent afterward. Shell syntax, diff whitespace and the strict
+eight-case input loader also passed. These failure/checkpoint paragraphs were
+added after the frozen checks; tested code and fault inputs are unchanged.
+No full Runtime was automatically rerun. M4 remains FAIL, M5–M8 and final
+identity/five-minute observations remain NOT_RUN pending Root's next frozen
+complete run. Windows DPAPI/ACL/GUI, Android, physical second Node, public HTTPS
+and actual 24-hour expiry retain separate NOT_RUN statuses.
+
 ### 2026-10-26 user-reported four-Thread Group continuation
 
 Root relayed the user's report that four real native Threads on the same Node

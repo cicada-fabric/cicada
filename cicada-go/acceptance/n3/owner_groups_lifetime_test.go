@@ -344,14 +344,38 @@ func readOwnerGroupsActualPeerKey(t *testing.T, v *codexProductFixture, a, b own
 	return peer
 }
 
-func ownerGroupsRetainedDefaultAllowed(t *testing.T, v *codexProductFixture, peer ownerGroupsActualPeerKey) bool {
+func ownerGroupsRetainedDefaultAllowed(t *testing.T, v *codexProductFixture, peer ownerGroupsActualPeerKey, phase string) bool {
 	t.Helper()
 	now := time.Now().UTC()
 	current := peer.Current
-	if current == nil || peer.Sender.Default == nil || peer.Receiver.Default == nil || peer.Sender.Manual != nil || peer.Receiver.Manual != nil ||
-		current.Sender.OwnerControl.Mode != "DEFAULT" || current.Receiver.OwnerControl.Mode != "DEFAULT" ||
-		wire.ValidateEndpointGroupCurrent(*current, current.Operation, current.AttemptID, now) != nil {
-		t.Fatal("old-default takeover check outlived its actual authenticated Current window")
+	diagnostic := map[string]any{"phase": phase, "actual_wall": now.Format(time.RFC3339Nano), "current_present": current != nil,
+		"sender_default": peer.Sender.Default != nil, "receiver_default": peer.Receiver.Default != nil,
+		"sender_manual": peer.Sender.Manual != nil, "receiver_manual": peer.Receiver.Manual != nil}
+	if current != nil {
+		mode := func(value string) string {
+			if value == "DEFAULT" || value == "OWNER" {
+				return value
+			}
+			return "OTHER"
+		}
+		stamp := func(value string) string {
+			if parsed, err := time.Parse(time.RFC3339Nano, value); err == nil {
+				return parsed.UTC().Format(time.RFC3339Nano)
+			}
+			return "INVALID"
+		}
+		diagnostic["sender_mode"], diagnostic["receiver_mode"] = mode(current.Sender.OwnerControl.Mode), mode(current.Receiver.OwnerControl.Mode)
+		diagnostic["current_observed_at"], diagnostic["current_expires_at"] = stamp(current.ObservedAt), stamp(current.ExpiresAt)
+		diagnostic["group_sha256"] = hash([]byte(current.GroupID))
+	}
+	if current == nil || peer.Sender.Default == nil || peer.Receiver.Default == nil || peer.Sender.Manual != nil || peer.Receiver.Manual != nil {
+		t.Fatalf("old-default witness source shape changed: metadata=%s", must(json.Marshal(diagnostic)))
+	}
+	if current.Sender.OwnerControl.Mode != "DEFAULT" || current.Receiver.OwnerControl.Mode != "DEFAULT" {
+		t.Fatalf("old-default witness is not DEFAULT: metadata=%s", must(json.Marshal(diagnostic)))
+	}
+	if wire.ValidateEndpointGroupCurrent(*current, current.Operation, current.AttemptID, now) != nil {
+		t.Fatalf("old-default witness Current is invalid at actual wall clock: metadata=%s", must(json.Marshal(diagnostic)))
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -366,12 +390,18 @@ func ownerGroupsRetainedDefaultAllowed(t *testing.T, v *codexProductFixture, pee
 	if err != nil && !errors.Is(err, nodekeys.ErrEndpointGroupsConflict) {
 		t.Fatal("actual old-default verification failed outside the expected permanent Owner highwater Guard")
 	}
+	diagnostic["allowed"] = err == nil
+	t.Logf("OWNER_GROUPS_DEFAULT_WITNESS metadata=%s", must(json.Marshal(diagnostic)))
 	return err == nil
 }
 
 func verifyOwnerGroupsRetainedDefault(t *testing.T, v *codexProductFixture, peer ownerGroupsActualPeerKey, wantAllowed bool) {
 	t.Helper()
-	if ownerGroupsRetainedDefaultAllowed(t, v, peer) != wantAllowed {
+	phase := "PRE_RELEASE_DEFAULT"
+	if !wantAllowed {
+		phase = "AFTER_NODE_OWNER_HEAD"
+	}
+	if ownerGroupsRetainedDefaultAllowed(t, v, peer, phase) != wantAllowed {
 		t.Fatal("actual existing Node verifier did not enforce permanent Owner takeover against the same still-current default source")
 	}
 }
@@ -418,7 +448,7 @@ func awaitOwnerGroupsDefaultTakeover(t *testing.T, v *codexProductFixture, a, b 
 		// A concurrent completion may commit after the Hub captured DEFAULT
 		// but before this read guard. Only an actual successful positive check
 		// replaces the retained witness; a racing rejection never supplies one.
-		if ownerGroupsRetainedDefaultAllowed(t, v, peer) {
+		if ownerGroupsRetainedDefaultAllowed(t, v, peer, "REFRESH_DEFAULT") {
 			previous = peer
 		}
 		time.Sleep(100 * time.Millisecond)
@@ -664,7 +694,7 @@ func exerciseOwnerGroupsM4(t *testing.T, v *codexProductFixture, actors nativePe
 	}
 	policyEnd := panel.Review.PolicyExpiresAt
 	finiteFrom := len(v.f.proxy.snapshot())
-	entered, release = armOwnerGroupsFault(t, v.f.proxy, "complete-held-before-forward")
+	entered, release = armOwnerGroupsFault(t, v.f.proxy, "finite-complete-held-until-release")
 	defer release()
 	submitOwnerGroupsReview(t, v, panel, "ADD_SUBMITTED")
 	select {

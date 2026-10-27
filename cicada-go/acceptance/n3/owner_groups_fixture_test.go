@@ -79,6 +79,10 @@ func armOwnerGroupsFault(t *testing.T, p *faultProxy, id string) (<-chan struct{
 		}
 		switch f.Mode {
 		case "before-forward", "drop-after-response", "unsigned-403", "corrupt-response", "hold-before-forward":
+		case "hold-original-before-forward":
+			if f.ID != "finite-complete-held-until-release" || f.NodeOperation != "node.endpoint_groups.key_complete" || f.Path != "/v2/node/control/rpc" {
+				t.Fatal("exact original hold is limited to the finite Node completion")
+			}
 		default:
 			t.Fatal("unreviewed Group fault mode would silently forward the request")
 		}
