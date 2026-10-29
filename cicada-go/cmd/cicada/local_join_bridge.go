@@ -509,8 +509,10 @@ func (b *machineAgentJoinBridge) serveConnection(connection net.Conn, deadline t
 			return
 		}
 		q.verifyDeadline = deadline
-		result, err := b.codexContextIssue(q)
+		started := time.Now()
+		result, stage, err := b.codexContextIssueChecked(q)
 		if err != nil {
+			b.logCodexIssueFailure(stage, err, started, deadline)
 			_ = json.NewEncoder(connection).Encode(localJoinErrorResponse(err))
 			return
 		}

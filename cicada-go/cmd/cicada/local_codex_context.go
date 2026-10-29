@@ -245,27 +245,33 @@ func (b *machineAgentJoinBridge) localContextBinding(origin string) (string, err
 }
 
 func (b *machineAgentJoinBridge) codexContextIssue(q localCodexContextIssue) (*localCodexContextIssueResult, error) {
+	issued, _, err := b.codexContextIssueChecked(q)
+	return issued, err
+}
+
+func (b *machineAgentJoinBridge) codexContextIssueChecked(q localCodexContextIssue) (*localCodexContextIssueResult, string, error) {
 	if q.verifyDeadline.IsZero() {
 		q.verifyDeadline = time.Now().Add(30 * time.Second)
 	}
 	if q.Version != localJoinProtocolVersion || q.Operation != "codex_context_issue" || q.Harness != "codex" || !localContextText(q.NativeSessionID, 128) || strings.ContainsAny(q.NativeSessionID, "/\\") || !localContextHex(q.ConnectionNonce, 64) || !localContextHex(q.ArgumentsDigest, 64) || !localContextText(q.ToolName, 256) || !localCodexContextEventIDs(q) {
-		return nil, errLocalCodexContext
+		return nil, "INPUT", errLocalCodexContext
 	}
 	binding, err := b.localContextBinding(q.APIOrigin)
 	if err != nil {
-		return nil, err
+		return nil, "BINDING", err
 	}
 	verified, err := b.localCodexVerificationProfile(q)
 	if err != nil {
-		return nil, err
+		return nil, "VERIFICATION", err
 	}
 	if err := verifyCodexContextTranscriptProfile(q.TranscriptPath, q.NativeSessionID, q.Workspace, verified.VerificationProfile == LocalCodexContextProfileDomain || verified.VerificationProfile == LocalCodexContextProfileEndpointGroups); err != nil {
-		return nil, err
+		return nil, "TRANSCRIPT", err
 	}
 	if !time.Now().Before(q.verifyDeadline) {
-		return nil, context.DeadlineExceeded
+		return nil, "BUDGET", context.DeadlineExceeded
 	}
-	return b.codexContexts.issueVerified(q, binding, time.Now(), verified)
+	issued, err := b.codexContexts.issueVerified(q, binding, time.Now(), verified)
+	return issued, "ISSUE", err
 }
 
 func (b *machineAgentJoinBridge) codexContextConsume(q localCodexContextConsume) (*localCodexContextConsumeResult, error) {

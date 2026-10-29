@@ -1089,3 +1089,37 @@ network disabled, UID/GID 1000, read-only source and module cache, task-owned
 build cache and disposable tmpfs. The actually executed test binary SHA-256 is
 `2cd4826a799402328aa8c0d355583c2b10fbd78c876f34ea91e55f101026e1f6`.
 The Docker gate is a normal test execution, not another race or Runtime gate.
+
+
+## Closed private context-issuer failure diagnostics — 2026-10-29
+
+Producer base `d4566fcd969424dc47ab811bfdcfd8c65afc59e2` plus the four
+`cmd/cicada` files frozen in
+`owner-groups-m6-c-selection-control-20261029-04/issuer-diagnostic-review/`.
+This independent checkpoint only adds the closed
+`CICADA_NODE_CONTEXT_ISSUE_FAILURE` record to existing private daemon stderr.
+The record contains a fixed stage/error enum, original budget/elapsed time and,
+when an existing cached client can be TryLocked, serialized state size,
+managed/generic reserve and 15 presence flags. BUSY/NOT_CACHED are explicit
+unknown snapshots. It never opens, initializes or persists a client, and emits
+no raw error text, path, identity, argument, code, nonce, ticket or packet.
+The private Unix error response, public ticket-unavailable result and original
+issuer verification/deadline/authorization behavior remain unchanged.
+
+Normal deterministic checks: **5 top-level PASS**, zero failures/skips, 0.012s:
+`TestCodexIssueFailureDiagnosticClosedErrors`,
+`TestCodexIssueFailureDiagnosticReadOnlyAndBusy`, and the three existing
+`TestCodexHook{InvocationDiagnosticsRemainClosedAndPrivate,
+RecordDiagnosticBlocksWithoutChangingOriginal,RecordDiagnosticUsesOnlyTypedSafeStage}`
+checks. Evidence is `diagnostic-hook-normal.jsonl` in that evidence root.
+The new checks cover typed/wrapped closed errors, sanitizing unknown stages and
+errors, retained-state byte equality, absence of synthetic secrets, nonblocking
+busy handling and no missing-cache initialization. The earlier two-test run
+also passed (0.010s); neither run contains a production credential.
+
+No capacity change or real Runtime retest is part of this checkpoint. The
+separate synthetic 04 control reproduces a history-full refusal, but the first
+private issuer error and failure-time snapshot for original Runtime blqDI4 and
+M7 1JdBiX remain NOT_RETAINED; this logging change does not retroactively prove
+their cause. Race, disposable Docker interop, Android, actual Runtime, physical
+Windows and public HTTPS were NOT_RUN for this diagnostic-only checkpoint.
