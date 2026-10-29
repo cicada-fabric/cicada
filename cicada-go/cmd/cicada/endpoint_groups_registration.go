@@ -18,6 +18,37 @@ var errEndpointGroupsUnsupported = errors.New("UNSUPPORTED_PROFILE: independent 
 var errEndpointGroupsRegistration = errors.New("OWNER_ENDPOINT_GROUPS_REJECTED: the original registered native identity could not be verified")
 var errEndpointGroupsOffline = errors.New("ENDPOINT_LOCAL_OFFLINE: this Thread stopped local Cicada access; use explicit cicada join to restore the original registration")
 
+// Retain only a confirmed context cause. The check context is captured for
+// private diagnostics, never used to reclassify a permanent refusal.
+type endpointGroupsVerificationError struct {
+	cause              error
+	substage           string
+	childContextError  error
+	underlyingDeadline bool
+}
+
+func (e *endpointGroupsVerificationError) Error() string { return e.cause.Error() }
+func (e *endpointGroupsVerificationError) Unwrap() error { return e.cause }
+
+func endpointGroupsVerificationRefusal(ctx context.Context, substage string, cause error) error {
+	var retained *endpointGroupsVerificationError
+	if errors.As(cause, &retained) {
+		return retained
+	}
+	classified := errEndpointGroupsRegistration
+	switch {
+	case errors.Is(cause, context.DeadlineExceeded):
+		classified = context.DeadlineExceeded
+	case errors.Is(cause, context.Canceled):
+		classified = context.Canceled
+	}
+	var childError error
+	if ctx != nil {
+		childError = ctx.Err()
+	}
+	return &endpointGroupsVerificationError{cause: classified, substage: substage, childContextError: childError, underlyingDeadline: errors.Is(cause, context.DeadlineExceeded)}
+}
+
 // The token remains only in the original encrypted LocalDomain Join receipt.
 // This protected record pins that receipt and its original writer/key identity;
 // it grants no Group permission and survives the last Group's removal.
@@ -112,11 +143,14 @@ func (c *machineNodeControlClient) endpointGroupsOriginalLocked(r machineEndpoin
 // The default policy's CURRENT state is deliberately not an identity source.
 func (b *machineAgentJoinBridge) validateEndpointGroupsRegistration(ctx context.Context, c *machineNodeControlClient, r machineEndpointGroupsRegistration, a wire.EndpointGroupsRegistrationAnchor, hub wire.HubIdentity) error {
 	if wire.ValidateEndpointGroupsRegistrationAnchor(a, hub) != nil || a.Profile != LocalCodexContextProfileEndpointGroups || a.RegistrationSource != "CODEX_LOCAL_DOMAIN" || a.State == "REVOKED" {
-		return errEndpointGroupsRegistration
+		return endpointGroupsVerificationRefusal(ctx, "ANCHOR_SHAPE", nil)
 	}
 	m, j, completed, err := c.endpointGroupsOriginal(r)
-	if err != nil || c.verifyLocalDomainHistory(ctx, m, j, completed) != nil {
-		return errEndpointGroupsRegistration
+	if err != nil {
+		return endpointGroupsVerificationRefusal(ctx, "ORIGINAL_RECEIPTS", err)
+	}
+	if err := c.verifyLocalDomainHistory(ctx, m, j, completed); err != nil {
+		return endpointGroupsVerificationRefusal(ctx, "ORIGINAL_HISTORY", err)
 	}
 	member, p, k := completed.Member, completed.Description.Policy, completed.Grant.Manifest
 	registration := e2ee.EndpointGroupRegistration{HubID: p.HubID, OwnerID: p.OwnerID, NodeID: member.NodeID, Harness: member.Runtime, NativeSessionID: member.NativeSessionID, Workspace: member.Workspace, EndpointID: member.EndpointID, PrincipalID: member.PrincipalID}
@@ -127,13 +161,13 @@ func (b *machineAgentJoinBridge) validateEndpointGroupsRegistration(ctx context.
 		a.NodeKeyEpoch != p.Node.NodeKeyEpoch || a.LeaseOwner != member.LeaseOwner || a.NetworkAccessBindingID != member.NetworkAccessBindingID || a.NetworkAccessEpoch != member.NetworkAccessEpoch ||
 		a.NetworkMembershipRevision != member.NetworkMembershipRevision || a.EndpointNetworkRevision != member.EndpointNetworkRevision || a.CandidateVersion != member.CandidateVersion ||
 		a.CandidateKeyID != k.CandidateKeyID || !machineSamePublicIdentity(a.CandidatePublic, k.CandidatePublicIdentity) || a.CandidateFingerprint != k.CandidateFingerprint || a.CandidateProofDigest != k.CandidateProofDigest {
-		return errEndpointGroupsRegistration
+		return endpointGroupsVerificationRefusal(ctx, "ANCHOR_COORDINATES", nil)
 	}
 	c.mu.Lock()
 	currentEpoch, currentKey := c.state.NodeKeyEpoch, c.identity.Public()
 	c.mu.Unlock()
 	if currentEpoch != a.NodeKeyEpoch || !machineSamePublicIdentity(currentKey, p.Node.NodePublic) || verifyCodexContextTranscriptProfile(r.TranscriptPath, member.NativeSessionID, member.Workspace, true) != nil {
-		return errEndpointGroupsRegistration
+		return endpointGroupsVerificationRefusal(ctx, "NATIVE_RECORD_OR_NODE_KEY", nil)
 	}
 	state, err := nodekeys.OpenCryptoState(machineNodeStateDir(b.stateDir, b.nodeID))
 	if err != nil {
@@ -142,15 +176,15 @@ func (b *machineAgentJoinBridge) validateEndpointGroupsRegistration(ctx context.
 	defer state.Close()
 	public, err := state.LocalDomainOriginalLocalKey(ctx, member.EndpointID)
 	if err != nil || !machineSamePublicIdentity(public, a.CandidatePublic) {
-		return errEndpointGroupsRegistration
+		return endpointGroupsVerificationRefusal(ctx, "LOCAL_KEY", err)
 	}
 	attestation, err := state.LocalDomainLocalAttestation(ctx, member.EndpointID, member.BindingID, member.BindingEpoch)
 	if err != nil || !bytes.Equal(attestation.Attestation, k.CandidateAttestation) || attestation.ProofDigest != a.CandidateProofDigest {
-		return errEndpointGroupsRegistration
+		return endpointGroupsVerificationRefusal(ctx, "LOCAL_ATTESTATION", err)
 	}
 	identity, err := nodekeys.LoadExisting(machineNodeStateDir(b.stateDir, b.nodeID), member.EndpointID)
 	if err != nil || !machineSamePublicIdentity(identity.Public(), a.CandidatePublic) {
-		return errEndpointGroupsRegistration
+		return endpointGroupsVerificationRefusal(ctx, "EXISTING_PRIVATE_KEY", err)
 	}
 	return state.CheckEndpointGroupsRegistration(ctx, hub, a, time.Now().UTC())
 }

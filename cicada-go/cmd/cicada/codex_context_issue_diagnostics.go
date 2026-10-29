@@ -26,6 +26,29 @@ type codexIssueFailureDiagnostic struct {
 	RPCReserve     int             `json:"generic_rpc_reserve_bytes,omitempty"`
 	Headroom       int             `json:"generic_rpc_headroom_bytes,omitempty"`
 	Pending        map[string]bool `json:"pending_flags_15,omitempty"`
+	Substage       string          `json:"registration_substage,omitempty"`
+	ChildContext   string          `json:"child_ctx_error,omitempty"`
+	CauseDeadline  *bool           `json:"underlying_deadline,omitempty"`
+}
+
+func codexIssueRegistrationSubstage(value string) string {
+	switch value {
+	case "ANCHOR_SHAPE", "ORIGINAL_RECEIPTS", "ORIGINAL_HISTORY", "ANCHOR_COORDINATES", "NATIVE_RECORD_OR_NODE_KEY", "LOCAL_KEY", "LOCAL_ATTESTATION", "EXISTING_PRIVATE_KEY", "ORIGINAL_HUB_POLICY", "ORIGINAL_HUB_BINDING", "DESCRIBE_DTO", "DESCRIBE_SCOPE", "REGISTRATION_CHECK", "SAVED_ANCHOR":
+		return value
+	}
+	return "UNKNOWN"
+}
+
+func codexIssueChildContextError(err error) string {
+	switch {
+	case err == nil:
+		return "NONE"
+	case errors.Is(err, context.DeadlineExceeded):
+		return "DEADLINE_EXCEEDED"
+	case errors.Is(err, context.Canceled):
+		return "CANCELED"
+	}
+	return "UNKNOWN"
 }
 
 func codexIssueErrorEnum(err error) string {
@@ -71,6 +94,13 @@ func (b *machineAgentJoinBridge) codexIssueFailureDiagnostic(stage string, err e
 	}
 	now := time.Now()
 	d := codexIssueFailureDiagnostic{Stage: stage, Error: codexIssueErrorEnum(err), StartedAt: started.UTC().Format(time.RFC3339Nano), ObservedAt: now.UTC().Format(time.RFC3339Nano), BudgetMS: deadline.Sub(started).Milliseconds(), ElapsedMS: now.Sub(started).Milliseconds(), Snapshot: "NOT_CACHED"}
+	var registration *endpointGroupsVerificationError
+	if errors.As(err, &registration) {
+		d.Substage = codexIssueRegistrationSubstage(registration.substage)
+		d.ChildContext = codexIssueChildContextError(registration.childContextError)
+		underlying := registration.underlyingDeadline
+		d.CauseDeadline = &underlying
+	}
 	_, path := machineNodeControlPaths(b.stateDir, b.nodeID)
 	cached, ok := machineNodeControlClients.Load(path)
 	if !ok {

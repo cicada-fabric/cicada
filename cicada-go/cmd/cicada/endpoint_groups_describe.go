@@ -64,11 +64,11 @@ func (b *machineAgentJoinBridge) endpointGroupsOriginalHub(ctx context.Context, 
 	defer state.Close()
 	p, err := state.LocalDomainPolicyForGroup(ctx, completed.Description.Policy.GroupID)
 	if err != nil || p.Hub.HubID != completed.Description.Policy.HubID || p.Policy.Origin != b.baseURL || !reflect.DeepEqual(p.Policy, completed.Description.Policy) {
-		return wire.HubIdentity{}, errEndpointGroupsRegistration
+		return wire.HubIdentity{}, endpointGroupsVerificationRefusal(ctx, "ORIGINAL_HUB_POLICY", err)
 	}
 	binding := c.approvedBinding()
 	if binding.HubID != p.Policy.HubID || !machineSamePublicIdentity(binding.HubKey, p.Policy.Node.HubNodeControlPublic) {
-		return wire.HubIdentity{}, errEndpointGroupsRegistration
+		return wire.HubIdentity{}, endpointGroupsVerificationRefusal(ctx, "ORIGINAL_HUB_BINDING", nil)
 	}
 	return p.Hub, nil
 }
@@ -172,12 +172,17 @@ func (b *machineAgentJoinBridge) describeEndpointGroups(ctx context.Context, c *
 		return r, d, err
 	}
 	now := time.Now().UTC()
-	if wire.ValidateEndpointGroupsNodeDescribeResult(d, hub, now) != nil || d.Registration.Registration.EndpointID != q.EndpointID || d.Registration.NetworkID != q.NetworkID ||
-		b.validateEndpointGroupsRegistration(ctx, c, r, d.Registration, hub) != nil {
-		return r, d, errEndpointGroupsRegistration
+	if err := wire.ValidateEndpointGroupsNodeDescribeResult(d, hub, now); err != nil {
+		return r, d, endpointGroupsVerificationRefusal(ctx, "DESCRIBE_DTO", err)
+	}
+	if d.Registration.Registration.EndpointID != q.EndpointID || d.Registration.NetworkID != q.NetworkID {
+		return r, d, endpointGroupsVerificationRefusal(ctx, "DESCRIBE_SCOPE", nil)
+	}
+	if err := b.validateEndpointGroupsRegistration(ctx, c, r, d.Registration, hub); err != nil {
+		return r, d, endpointGroupsVerificationRefusal(ctx, "REGISTRATION_CHECK", err)
 	}
 	if r.Anchor.RegistrationDigest != "" && (!sameEndpointGroupsAnchor(r.Anchor, d.Registration) || d.RelationsRevision < r.RelationsRevision) {
-		return r, d, errEndpointGroupsRegistration
+		return r, d, endpointGroupsVerificationRefusal(ctx, "SAVED_ANCHOR", nil)
 	}
 	state, err := nodekeys.OpenCryptoState(machineNodeStateDir(b.stateDir, b.nodeID))
 	if err != nil {

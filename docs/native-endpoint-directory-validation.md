@@ -1123,3 +1123,64 @@ private issuer error and failure-time snapshot for original Runtime blqDI4 and
 M7 1JdBiX remain NOT_RETAINED; this logging change does not retroactively prove
 their cause. Race, disposable Docker interop, Android, actual Runtime, physical
 Windows and public HTTPS were NOT_RUN for this diagnostic-only checkpoint.
+
+## Confirmed context causes in registration verification — 2026-10-29
+
+Producer base `e0a6a21c38be15fd8e88d9291828dabd7741e67e` plus the five Go
+source/test files in
+`/home/zyf/Cicada/.local/evidence/node-issuer-context-cause-20261029-01/tested-source-manifest.json`,
+SHA-256 `71a5a150aaefc055db10017352f0763bd016d297476bd152e30db610de7918b0`.
+This is an explicit dirty-source attribution, not that HEAD alone.
+
+The original Hub-policy lookup and registration history/local-key/attestation
+checks could fold a real context error into RegistrationRejected; Describe
+could fold it again. A private wrapper now preserves only causes independently
+confirmed by `errors.Is(DeadlineExceeded/Canceled)`. Structural, coordinate,
+signature and other refusals retain RegistrationRejected. An expired/canceled
+check context alone never reclassifies a permanent refusal.
+
+The existing private stderr record adds only allowlisted
+`registration_substage`, `child_ctx_error` and `underlying_deadline`. It captures
+the context at the failed check before cancellation and preserves an inner
+substage across Describe's outer classification. Unknown stage/context values
+are sanitized; wrapped private error text is not emitted. The existing
+nonblocking snapshot, original budget and 15 presence flags are unchanged.
+
+The five-second attempt, original invocation deadline, two-attempt bound and
+exact original-pending read eligibility are unchanged. In particular, a failure
+after a read has settled does not create a new read, and an unrelated pending
+write is never retried by verification. No identity, key, epoch, authority,
+wire operation, public interface or caller authorization is added.
+
+| Focused gate | Result |
+| --- | --- |
+| Normal, frozen five-file input | **10 top-level / 18 test PASS**, zero FAIL/SKIP, 42.555s, wrapper exit 0 |
+| Necessary race, same input | **4 top-level / 9 test PASS**, zero FAIL/SKIP, 38.573s, wrapper exit 0 |
+| Existing disposable cmd interop selection, same input | **10 top-level / 18 test PASS**, zero FAIL/SKIP, 42.361s, container exit 0 |
+
+Raw JSONL, exact commands, source inventory, test binary hash and cleanup
+receipts remain under the evidence root above. The qualification receipt has
+SHA-256 `dc45280bc48e48a956800bc1dbcc5aff7b5aca6bd78fa2624f76b3b88854115a`;
+the Docker receipt has SHA-256
+`3e5256d62f9404896e8a36dd552f0447113d583179ddbf95941226f9090b663e`.
+The container uses pinned image
+`sha256:5c3e9b43cfd3bb95c7937462e29d87ada57b481a96fa23ad0eb61778d7a00110`,
+Go 1.27.3, network disabled, UID/GID 1000, read-only source/module cache and
+disposable tmpfs; the exact owned container is absent afterward. `git diff
+--check` passes. Only this validation document is added after the Go input
+freeze; the five tested Go files remain byte-identical.
+
+The direct verifier test uses the existing synthetic LocalDomain/Node fixture
+and actual protected originals/local crypto state. It verifies real canceled
+and expired contexts, permanent shape/coordinate refusal, unchanged Node state
+and zero extra RPCs. The existing Unix recovery tests retain their exact
+original/replay/fresh-read assertions, refusal/changed-native denial, repeated
+timeout bound, pending-write fence and original-budget checks. The fixture's
+sealed Describe projection is scripted; these producer checks do not establish
+a new production Hub Guard or native Runtime acceptance run.
+
+The historical HfnP8D run retains its original result and **NOT_RETAINED**
+underlying registration cause. Its closed five-second timing and error enum do
+not prove which check failed. This independent cause-preservation fix does not
+backfill that cause, turn that cross run into PASS, or rerun complete cross/
+M1–M8, physical Windows, Android or public HTTPS acceptance.

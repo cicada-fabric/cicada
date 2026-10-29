@@ -27,6 +27,39 @@ func TestCodexIssueFailureDiagnosticClosedErrors(t *testing.T) {
 		}
 	}
 }
+
+func TestCodexIssueRegistrationDiagnosticPreservesOnlyConfirmedCauses(t *testing.T) {
+	const secret = "synthetic-private-cause-and-stage"
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	for _, tc := range []struct {
+		cause error
+		want  string
+	}{
+		{nil, "REGISTRATION_REJECTED"},
+		{errors.New(secret), "REGISTRATION_REJECTED"},
+		{fmt.Errorf("%s: %w", secret, context.DeadlineExceeded), "DEADLINE_EXCEEDED"},
+		{fmt.Errorf("%s: %w", secret, context.Canceled), "CANCELED"},
+	} {
+		err := endpointGroupsVerificationRefusal(ctx, secret, tc.cause)
+		b := &machineAgentJoinBridge{stateDir: t.TempDir(), nodeID: "SYNTHETIC-diagnostic"}
+		started := time.Now()
+		d := b.codexIssueFailureDiagnostic("VERIFICATION", err, started, started.Add(30*time.Second))
+		raw, _ := json.Marshal(d)
+		if d.Error != tc.want || d.Substage != "UNKNOWN" || d.ChildContext != "CANCELED" || d.CauseDeadline == nil || *d.CauseDeadline != errors.Is(tc.cause, context.DeadlineExceeded) || strings.Contains(string(raw), secret) || strings.Contains(err.Error(), secret) {
+			t.Fatal("context cause or private allowlist diagnostic changed")
+		}
+		if tc.want == "REGISTRATION_REJECTED" && (!errors.Is(err, errEndpointGroupsRegistration) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)) {
+			t.Fatal("canceled context promoted a permanent refusal")
+		}
+		if tc.want == "DEADLINE_EXCEEDED" && !errors.Is(err, context.DeadlineExceeded) || tc.want == "CANCELED" && !errors.Is(err, context.Canceled) {
+			t.Fatal("confirmed wrapped context cause was lost")
+		}
+	}
+	if codexIssueChildContextError(errors.New(secret)) != "UNKNOWN" {
+		t.Fatal("private context error escaped the allowlist")
+	}
+}
 func TestCodexIssueFailureDiagnosticReadOnlyAndBusy(t *testing.T) {
 	const secret = "synthetic-private-secret-not-to-log"
 	b := &machineAgentJoinBridge{stateDir: filepath.Join(t.TempDir(), secret), nodeID: secret}

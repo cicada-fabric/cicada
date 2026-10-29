@@ -29,6 +29,59 @@ type endpointGroupsIssueRecoveryTrace struct {
 	allowWrite bool
 }
 
+func TestEndpointGroupsRegistrationPreservesConfirmedContextCauses(t *testing.T) {
+	f, original, _, trace := endpointGroupsIssueRecoveryFixture(t, "none", 0)
+	f.client.mu.Lock()
+	before, _ := json.Marshal(f.client.state)
+	f.client.mu.Unlock()
+	for _, kind := range []string{"canceled", "deadline", "shape_with_canceled_context", "shape_with_deadline_context", "coordinates"} {
+		t.Run(kind, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(f.ctx)
+			defer cancel()
+			anchor := original.Anchor
+			var want error
+			switch kind {
+			case "canceled":
+				cancel()
+				want = context.Canceled
+			case "deadline":
+				ctx, cancel = context.WithDeadline(f.ctx, time.Now().Add(-time.Second))
+				defer cancel()
+				want = context.DeadlineExceeded
+			case "shape_with_canceled_context":
+				cancel()
+				anchor.Profile = "SYNTHETIC-invalid-profile"
+				want = errEndpointGroupsRegistration
+			case "shape_with_deadline_context":
+				ctx, cancel = context.WithDeadline(f.ctx, time.Now().Add(-time.Second))
+				defer cancel()
+				anchor.Profile = "SYNTHETIC-invalid-profile"
+				want = errEndpointGroupsRegistration
+			case "coordinates":
+				anchor.NetworkMembershipRevision++
+				want = errEndpointGroupsRegistration
+			}
+			err := f.bridge.validateEndpointGroupsRegistration(ctx, f.client, original, anchor, f.hub)
+			if !errors.Is(err, want) || want == errEndpointGroupsRegistration && (errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)) {
+				t.Fatal("actual registration verifier lost cause or promoted a permanent Guard refusal", kind)
+			}
+			started := time.Now()
+			d := f.bridge.codexIssueFailureDiagnostic("VERIFICATION", err, started, started.Add(30*time.Second))
+			if d.Substage == "" || d.Substage == "UNKNOWN" || d.CauseDeadline == nil || *d.CauseDeadline != (want == context.DeadlineExceeded) {
+				t.Fatal("actual verifier did not retain its private failure substage", kind)
+			}
+		})
+	}
+	f.client.mu.Lock()
+	after, _ := json.Marshal(f.client.state)
+	f.client.mu.Unlock()
+	trace.mu.Lock()
+	defer trace.mu.Unlock()
+	if !bytes.Equal(before, after) || len(trace.exchanges) != 0 {
+		t.Fatal("registration refusal changed original state or dispatched an RPC")
+	}
+}
+
 // This fixture uses the actual TCP Hub and owner-only Unix issuer. The worker's
 // existing entry lock attributes the controlled fault to this issue, not to an
 // unrelated periodic read. No public protocol, native event or timer is changed.
