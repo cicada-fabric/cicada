@@ -843,6 +843,7 @@ func ownerGroupsSelect(t *testing.T, host *ownerGroupsHost, actor int, label, gr
 	reply := host.command(t, ownerGroupsHostCommand{Action: "call", Actor: actor, Label: label, Tool: "cicada_use_group",
 		Arguments: map[string]any{"group_id": group}, ObserveFields: []string{"group_id"}})
 	if reply.Public["group_id"] != group {
+		host.recordSelectionFailure(t, actor, label, group, reply)
 		t.Fatal("actual original native actor did not select the exact authorized Group")
 	}
 }

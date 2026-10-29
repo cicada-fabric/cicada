@@ -9040,6 +9040,140 @@ ASK/REPLY are unchanged; the next complete gate requires a new explicit Root
 checkpoint/CPU authorization. No candidate finalization or public deployment
 change occurred.
 
+### 2026-10-29 d4566fcd Runtime M6 ticket failure
+
+Exactly one complete run, `run-20261029T151312Z-blqDI4`, used clean canonical
+source/harness `d4566fcd969424dc47ab811bfdcfd8c65afc59e2`, the original 90m
+entry and unchanged CEA candidate licenses. It independently compiled source;
+it did not execute or rebuild the CEA ZIP. **FAIL / exit 1**: M1 PASS 139.89s,
+M2 PASS 470.93s, M3 PASS 191.30s, M4 PASS 643.49s, M5 PASS 456.45s,
+M6 FAIL 150.35s; parent 2324.89s. Version/CLI compile/test compile/vet exited 0.
+M7/M8 and the final four-identity witness were not reached. No automatic retry.
+
+The actual M5 cold stop reached 301s. Renew/592 authenticated and converged in
+4646ms to its **exact** original response anchor (no later-expiry branch needed),
+all fifteen pending flags clear, protected state 6,127,058 bytes, Hub/Node alive.
+Fresh post-boundary G2 ASK/REPLY completed. Formal lease evidence is valid:
+398.084277278 monotonic seconds from 15:43:05.890966668Z to
+15:49:43.975243963Z; original expiry 15:48:03.729641121Z, renewed expiry
+15:54:40.196573123Z. These facts do not upgrade older hXlWlN's failure.
+
+M6 passed through zero-business Group removal/Join, retained original identity/
+history checks and explicit D re-add. Host124, actor3/D, selected the re-added
+G2 successfully; Host125, actor2/C, then selected the **same** G2 and returned
+`CODEX_NODE_TICKET_UNAVAILABLE` with no parsed result object. The complete M6
+case remains FAIL. Last Hub Describe/KeyPrepare responses were authenticated OK,
+but their raw target tuples were not exported and cannot prove C's local issuer
+success. First private issuer cause, failure-time protected registration/state,
+size and fifteen pending flags are **NOT_RETAINED**. The last standalone size
+5,939,847 bytes was recorded at 15:48:07Z during M5 restart, not at M6 failure;
+it cannot establish a capacity cause. Audit pending operation/sequence were
+empty/zero; this does not substitute for the missing fifteen-field snapshot.
+Hub owns production reproduction/fix; QA does not change production or the
+existing acceptance predicates from this generic error.
+
+Receipts under `~/Cicada/.local/evidence/native-pair-acceptance/`:
+`run-20261029T151312Z-blqDI4/result.json`, SHA-256
+`c540a44ba1a54bf2703cc32136417549fc11fc8139979b3b1ab548a4dcaa5717`;
+source snapshot-file `8ce4ba0fda9f4d3aec616b34e280ea35fbe4b71234640087821f76a5039bd394`,
+manifest `8f811a1072903f0a5fd79dcd81bb1da14985e46ce529d81e2c24336e2d0e0ea6`.
+Actual CLI SHA-256 `490c5b4d519c2cbfa1b08d3cf811694a966b707f7bd3d5482d45b776976be06b`;
+test binary `ac1d68c2b7f23dd4ef47ec5481cb4266192347f8a0f23ff5eeeca4c14473c199`.
+Both binaries and source snapshots were stable. Matching artifact audit
+`owner-groups-protocol-audit/2c77daeaadade6ed.json`, SHA-256
+`ddecd184c5985f0045923fb8e31dccb3b4feddd8c12c99b988cfc7c2cacacb6e`,
+retains 53 steps/1471 traces/26 peer coordinates (limit 128). Closed Host observer:
+295 rows/zero read retries, SHA-256
+`a9f49fce6bba7dd2c57263a87451e7406dd752a13f0ad2c162b4ef49835dc687`.
+Typed inspect confirmed container absence; owned run state has zero files.
+Closed failure v2 at
+`~/Cicada/.local/evidence/n2-acceptance/owner-groups-d4566fcd-full-preflight-01/full-closed-failure-v2.json`
+has SHA-256 `0dc4f1fd1c99c51f174079ce775418aeb22e5c12d03c0f53c823ed39b3e8401d`;
+it reassembles split test2json output before reading long Renew metadata and
+preserves the earlier summary/log bytes. Final identity array is empty, so no
+final unchanged-identity claim is made; absence is not proof of mutation.
+Windows DPAPI/ACL/GUI and other unexecuted platform/public scopes retain NOT_RUN.
+
+### 2026-10-29 M7-only pre-revocation failure and closed diagnostics
+
+Root approved an additive thin `--owner-endpoint-groups-m7` entry in the existing
+driver. It invokes the unchanged `exerciseOwnerGroupsM7` through
+`TestN3OwnerEndpointGroupsM7Only/M7_TrueAuthorityRevocation`; the full parent/M8
+are unchanged. The finalizer requires that narrow terminal/fact set and two
+separate audit fixtures, labels the scope `OWNER_GROUPS_M7_INDEPENDENT_REVOCATION_ONLY`
+and always reports `full_m1_m8_accepted=false`. The existing pure receipt checks
+passed **114 / exit 0**, SHA-256 `90a81ed91563b3375df3257969841ef97ce1547c85d32a9430460e9c82c5358e`;
+this validates only the synthetic oracle, not product acceptance.
+
+Exactly one narrow actual run, `run-20261029T165403Z-1JdBiX`, ended **FAIL /
+exit 1** after 649.81s (outer compile/vet/cleanup 678.999s). Source/harness were
+dirty QA-only d4566fcd, with complete stable snapshots. Version/CLI compile/test
+compile/vet exited 0. The first OwnerKey fixture completed four real roundtrips:
+G1/G2 before logout and G1/G2 after App logout. Then Host37's
+`m7-source-g1` selection by actor0/A failed the original exact-Group assertion.
+Target G1 hash was `d596d1f42062ab85df870d1c3dd431f6de56bf841f8968fa35a5da2a88750efc`.
+It failed before writer hold or actual Owner-key revoke; the independent
+NodeBinding fixture never started. Neither actual revocation is accepted.
+Host37's raw reply, inner error and failure-time protected state are
+**NOT_RETAINED**: the external observer captured its command but not its reply,
+owned state was cleaned, and artifacts contain only binaries/the one audit.
+No common cause with blqDI4 or a producer HISTORY_FULL control is inferred.
+
+Run `result.json` under the existing native-pair evidence root has SHA-256
+`de89125b70783e348e980d60ab5b6f1ff6372b22f4de1ca7f9d8d0b85d3d7c4d`;
+source snapshot-file `44873850acf2e8b8af71bb5b61696a43c98a749ca251f4bbda38c2b019c4e245`,
+manifest `51d0f0c60f7cc23a4a355039238695d8222301ca4bc7d29b1b83670d11e94629`.
+Actual CLI SHA-256 `e2a138e63657462644d1c464affd6c10af1ee3bcd01549d403eeb1f46d187e23`;
+test binary `61a9925a2881bcef4de46a4053fd493ed97394534675512a2d5e2dd1bff5e003`.
+Audit `d8ae46469c663b03.json` SHA-256
+`cf591e5d5cedc682f4e3ab13b3d89f9bbed34c9ade12e78801732b6dc9228324`,
+245,428 bytes / 459 traces / 26 steps. Closed observer retained 90 rows, zero
+read retries. Source/binaries were stable; typed inspect proved container absent,
+owned state zero files. Closed failure receipt under
+`~/Cicada/.local/evidence/n2-acceptance/owner-groups-m7-only-d4566fcd-01/closed-failure.json`
+has SHA-256 `fc99e615221f4ab24a69c37b5730498c7c52e3f7f9b3452929d8f98304be3ec7`.
+No automatic retry or complete gate was run.
+
+To prevent the same evidence loss, both existing selection assertions now call
+one synchronous closed capture before the unchanged fatal assertion. It records
+actor/label and target/returned Group hashes, whitelisted Host errors/parsed flags,
+then reads the original bounded atomic Node JSON without a product mutex, API,
+retry or state mutation. It retains size/fixed-reserve counts, fifteen pending
+flags and the unique original SID/Node/workspace registration's state/lease/hash.
+Missing/bad/over-limit/unknown-scope reads remain **UNKNOWN**, not false. The safe
+projection is logged and saved separately under `owner-groups-selection-diagnostics`;
+write failure never replaces the original assertion. No raw return, credential,
+private coordinate or packet is exported. This is observability, not a fix or
+retrospective cause claim.
+
+The final pinned Docker pure helper check passed **1 / exit 0**, source stable
+and container absent: `TestN3OwnerGroupsSelectionFailureKeepsClosedImmediateState`.
+It covers missing/bad JSON/over-limit/unknown Node, secret-field filtering,
+known-code fallback, read-only bytes, invalid secret-bearing lease, directory
+and leaf symlink. Lease output is canonical UTC only after RFC3339Nano parsing;
+invalid values stay UNKNOWN. Lstat rejects nonregular/oversized entries before
+Open, and SameFile checks the opened file before bounded reading. Receipt
+`~/Cicada/.local/evidence/n2-acceptance/owner-groups-selection-diagnostic-d4566fcd-02/result.json`
+SHA-256 `db86697f464a2a37f20b6f0b3be51bd404731cb81b4701c7d9e2346541e86144`;
+test binary `c3bd1059ba5ef587aebe4982723777cc93099c23d0bee30ff5c4cf0ac9fd03ef`.
+The earlier helper-only checkpoint 01 receipt `d44e05b0a9bcef2908e432ced67a59955eac70de846b26d02554f73d17438741`
+is retained at its original source; review then added those boundary cases.
+The revised evidence tool indexes safe selection diagnostics by relative path,
+bytes and SHA-256 without parsing/exporting their payload; absent files give an
+empty map and cannot fill any acceptance condition. Its unchanged full receipt
+oracle again passed 114 pure mutations, and three pure index checks passed.
+No product, actual M7 or full gate was run by these pure checks.
+
+The current exit index separately retains the real **two actual Node/native**
+communication gap. App's read-only inventory found single-Node confirmation and
+missing existing-Network selection in the current flow; the multi-Node Hub/App
+contract needs closure before implementation/acceptance. Historical two-Node
+registration/MCP or dirty-helper ASK/REPLY results do not establish this current
+flow; same-Node M1–M8 cannot cover it. Root assigned that contract/inventory work
+separately. No new cross-Node driver or run was created by QA. M6 production
+fix/actual M7/M8/final original-four and physical Windows DPAPI/ACL/GUI remain
+unaccepted at this checkpoint.
+
 ### 2026-10-26 user-reported four-Thread Group continuation
 
 Root relayed the user's report that four real native Threads on the same Node

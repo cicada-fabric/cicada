@@ -401,6 +401,7 @@ def terminal_event_counts(path):
 
 
 OWNER_GROUPS_PARENT = 'TestN3OwnerEndpointGroupsAcceptance'
+OWNER_GROUPS_M7_PARENT = 'TestN3OwnerEndpointGroupsM7Only'
 OWNER_GROUPS_INPUTS = Path(__file__).parent / 'fixtures/native-pair/owner_groups_cases.json'
 
 
@@ -475,6 +476,24 @@ def valid_owner_groups_facts(facts, results, counts):
     return seen == set(required)
 
 
+def valid_owner_groups_m7_facts(facts, results, counts):
+    """Only the existing independent two-baseline M7 scope, never full closure."""
+    case = 'M7_TrueAuthorityRevocation'
+    expected = {OWNER_GROUPS_M7_PARENT, OWNER_GROUPS_M7_PARENT + '/' + case}
+    required = next(set(c['observations']) for c in owner_groups_inputs()['cases'] if c['id'] == case)
+    if (set(results) != expected or any(v != 'pass' for v in results.values())
+            or counts != {name: 1 for name in expected} or len(facts) != 1):
+        return False
+    item = facts[0]
+    if not isinstance(item, dict) or set(item) != {'test', 'measurement'}:
+        return False
+    value = item['measurement']
+    return (item['test'] == OWNER_GROUPS_M7_PARENT + '/' + case
+            and isinstance(value, dict) and set(value) == {'case', 'observed'}
+            and value['case'] == case and isinstance(value['observed'], dict)
+            and set(value['observed']) == required and all(v is True for v in value['observed'].values()))
+
+
 def valid_owner_groups_lease(value):
     fields = {'clock', 'source', 'baseline_at', 'original_lease_expires_at', 'after_boundary_at',
               'renewed_lease_expires_at', 'monotonic_elapsed_seconds'}
@@ -527,10 +546,19 @@ def valid_owner_groups_identities(value):
     return snapshots[0] == snapshots[1]
 
 
-def finish_owner_groups(run, artifacts, image, owned):
+def selection_diagnostic_manifest(artifacts):
+    """Index closed QA diagnostics without parsing or exporting their payload."""
+    return {p.relative_to(artifacts).as_posix(): {'bytes': p.stat().st_size, 'sha256': sha(p)}
+            for p in sorted((artifacts / 'owner-groups-selection-diagnostics').glob('*.json'))
+            if not p.is_symlink() and p.is_file()}
+
+
+def finish_owner_groups(run, artifacts, image, owned, *, m7_only=False):
     """M1-M8 extension of this driver; no synthetic result can fill absent cases."""
     before, after = [json.loads((run / f'source-{side}.json').read_text()) for side in ('before', 'after')]
-    expected = {OWNER_GROUPS_PARENT} | {OWNER_GROUPS_PARENT + '/' + c['id'] for c in owner_groups_inputs()['cases']}
+    parent = OWNER_GROUPS_M7_PARENT if m7_only else OWNER_GROUPS_PARENT
+    cases = ['M7_TrueAuthorityRevocation'] if m7_only else [c['id'] for c in owner_groups_inputs()['cases']]
+    expected = {parent} | {parent + '/' + case for case in cases}
     results, counts = terminal_events(run / 'harness.log'), terminal_event_counts(run / 'harness.log')
     facts, lease, identities, diagnostics = [], [], [], []
     malformed = False
@@ -558,18 +586,23 @@ def finish_owner_groups(run, artifacts, image, owned):
     tools = before.get('external_runtime_tools', {})
     codex = tools.get('codex', {})
     runtime_pinned = codex.get('sha256') == DIRECT_IP_CODEX_SHA256 and codex.get('version') == DIRECT_IP_CODEX_VERSION
-    facts_valid = not malformed and valid_owner_groups_facts(facts, results, counts)
+    facts_valid = not malformed and (valid_owner_groups_m7_facts(facts, results, counts) if m7_only
+                                     else valid_owner_groups_facts(facts, results, counts))
     lease_valid = (len(lease) == 1 and lease[0]['test'] == OWNER_GROUPS_PARENT + '/M5_IndependentRealLease'
                    and valid_owner_groups_lease(lease[0]['measurement']))
     identities_valid = (len(identities) == 1 and identities[0]['test'] == OWNER_GROUPS_PARENT
                         and valid_owner_groups_identities(identities[0]['measurement']))
     infrastructure = all(exits[name] == 0 for name in stages) and stable and source_stable and owned == 'false'
-    passed = infrastructure and runtime_pinned and facts_valid and lease_valid and identities_valid and not diagnostics
-    not_run = (infrastructure and not malformed and results == {OWNER_GROUPS_PARENT: 'skip'}
-               and counts == {OWNER_GROUPS_PARENT: 1} and len(diagnostics) == 1
-               and diagnostics[0]['test'] == OWNER_GROUPS_PARENT and not facts and not lease and not identities)
+    audits = {p.relative_to(artifacts).as_posix(): {'sha256': sha(p), 'bytes': p.stat().st_size}
+              for p in sorted((artifacts / 'owner-groups-protocol-audit').glob('*.json')) if p.is_file()}
+    completed = (facts_valid and len(audits) == 2 and not lease and not identities) if m7_only else (facts_valid and lease_valid and identities_valid)
+    passed = infrastructure and runtime_pinned and completed and not diagnostics
+    not_run = (infrastructure and not malformed and results == {parent: 'skip'}
+               and counts == {parent: 1} and len(diagnostics) == 1
+               and diagnostics[0]['test'] == parent and not facts and not lease and not identities)
     code = 0 if passed else 125 if not_run else 1
-    summary = {'scope': 'OWNER_GROUPS_M1_M8_RUNTIME_EXCEPT_FINITE_EXPIRY_NOT_PHYSICAL_WINDOWS',
+    summary = {'scope': ('OWNER_GROUPS_M7_INDEPENDENT_REVOCATION_ONLY' if m7_only else
+                         'OWNER_GROUPS_M1_M8_RUNTIME_EXCEPT_FINITE_EXPIRY_NOT_PHYSICAL_WINDOWS'),
                'status': 'SCOPED_PASS' if passed else 'NOT_RUN' if not_run else 'FAIL', 'exit_code': code,
                'exit_codes': exits, 'head': before['head'], 'dirty': before['dirty'],
                'harness_head': before['harness_head'], 'harness_dirty': before['harness_dirty'],
@@ -583,8 +616,8 @@ def finish_owner_groups(run, artifacts, image, owned):
                'external_codex_package': before.get('external_codex_package'),
                'external_component_licenses': before.get('external_component_licenses'),
                'executed_binaries': records, 'executed_binary_hashes_before_after_match': stable,
-               'protocol_audits': {p.relative_to(artifacts).as_posix(): {'sha256': sha(p), 'bytes': p.stat().st_size}
-                                   for p in sorted((artifacts / 'owner-groups-protocol-audit').glob('*.json')) if p.is_file()},
+               'protocol_audits': audits,
+               'selection_diagnostics': selection_diagnostic_manifest(artifacts),
                'container_absent': owned == 'false', 'diagnostics': diagnostics, 'malformed_evidence': malformed,
                'docker_image_reference': image, 'docker_image_digest': image.rsplit('@', 1)[-1],
                'artifacts': {p.name: {'sha256': sha(p), 'bytes': p.stat().st_size} for p in artifacts.iterdir() if p.is_file()},
@@ -593,6 +626,9 @@ def finish_owner_groups(run, artifacts, image, owned):
                           ['M4_24h_wall_clock_expiry', 'Windows_DPAPI', 'Windows_ACL', 'Windows_GUI', 'Android', 'physical_second_Node', 'public_HTTPS'],
                'separate_required_evidence': ['M4_production_Store_crypto_finite_expiry_no_default_fallback'],
                'private_payloads_exported': False, 'public_deployment_touched': False}
+    if m7_only:
+        summary.update({'full_m1_m8_accepted': False, 'independent_revocation_baselines': len(audits)})
+        summary['not_run'] += ['complete_M1_M8_gate', 'M5_real_lease', 'final_original_four_identity_witness']
     save(run / 'result.json', summary)
     print(f'Native pair {summary["status"]} exit={code} evidence={run / "result.json"}')
     raise SystemExit(code)
@@ -601,6 +637,8 @@ def finish_owner_groups(run, artifacts, image, owned):
 def finish(run, artifacts, image, owned, mode='protocol'):
     if mode == 'owner-endpoint-groups':
         return finish_owner_groups(run, artifacts, image, owned)
+    if mode == 'owner-endpoint-groups-m7':
+        return finish_owner_groups(run, artifacts, image, owned, m7_only=True)
     if mode not in ('protocol', 'store', 'a3', 'a3-http', 'a3-size-store', 'app-owner', 'endpoint-security', 'endpoint-security-boundaries', 'endpoint-security-app-fixture', 'endpoint-security-owner-directory', 'endpoint-security-owner-directory-recovery', 'codex-product-guards', 'codex-product-cli', 'codex-product-cold', 'codex-product-three-stage', 'codex-product-other-uid', 'codex-product-domain-app', 'codex-product-domain-native', 'codex-product-peer-form', 'codex-product-peer-form-native', 'peer-form-network', 'peer-form-network-focus', 'direct-ip-tls', 'node-pair-trust'):
         raise ValueError('Only protocol and isolated core regression modes are active.')
     before, after = [json.loads((run / f'source-{side}.json').read_text()) for side in ('before', 'after')]

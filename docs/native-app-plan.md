@@ -6,6 +6,13 @@ Its Go implementation remains in `cicada-go`; Android is maintained under
 native Windows acceptance. “App” is the current product name; older Client-facing wire names,
 code and evidence remain attributed to their original contract and source.
 
+Current v0.1 exit status: clean `d4566fcd` completed M1–M5, then failed M6 at
+original C's G2 selection (`CODEX_NODE_TICKET_UNAVAILABLE`). M7/M8 and final
+four-identity closure are unaccepted. A subsequent M7-only attempt failed before
+actual revocation; two-Node native communication also has an App/contract gap.
+Use the [short exit index](#current-feedback-and-acceptance-ledger)
+and [source-bound result](native-app-validation.md#2026-10-29-d4566fcd-runtime-m6-ticket-failure).
+
 ## Product boundary
 
 CICADA is operated through three independently distributed components: Hub,
@@ -340,18 +347,18 @@ legacy Pair and physical platforms retain separate NOT_RUN rows.
 
 2026-10-26 Root-reviewed scope is
 [Owner-managed Endpoint Groups v1](native-endpoint-directory-contract.md#proposed-owner-managed-endpoint-groups-v1).
-Hub/Node/App implementation and QA driver were integrated through clean
-`cea80367ba6d4898335fdbf7ab2763fc9c77c473`. Public capability availability is
-true; it does not authorize a caller or establish acceptance. The latest complete
-native attempt, `run-20261029T135840Z-hXlWlN`, is **FAIL / exit 1**: M1–M4
-passed; M5 stopped at the exact local Renew-anchor observation after 301 real
-seconds with App closed and Node stopped. The original Renew/590 authenticated,
-replayed identically and settled with all pending fields clear; its local anchor
-never matched the old exact-expiry oracle within 75 seconds. Actual local anchor
-presence/expiry values were not retained, so the historical cause is not proven.
-M6–M8, the final lease observation and final four-identity witness were not reached.
-The older clean-303639d YY0pOo expired-Current failure and clean-76647a4 M5
-fresh-Hook failure retain their original source and receipts.
+The latest complete attempt is clean source/harness `d4566fcd969424dc47ab811bfdcfd8c65afc59e2`,
+`run-20261029T151312Z-blqDI4`, **FAIL / exit 1**. M1–M5 passed, including the
+actual 301-second App/Node cold stop and fresh correlated G2 ASK/REPLY afterward.
+M6 reached zero Group rights, retained original identity/history and explicit D
+re-add/self-selection; the subsequent original C selection of G2 returned
+`CODEX_NODE_TICKET_UNAVAILABLE`. Its private issuer cause and failure-time
+protected state are NOT_RETAINED. M7/M8 and the final four-identity witness were
+not reached. Hub owns the bounded production reproduction/fix; QA does not infer
+a capacity or authorization cause from the generic Host error. See
+[the actual receipt and limits](native-app-validation.md#2026-10-29-d4566fcd-runtime-m6-ticket-failure).
+Older hXlWlN M5, YY0pOo expired-Current and 76647a4 fresh-Hook failures retain
+their original attribution.
 
 A subsequent real production-path control proved that a normal authenticated
 Describe can absorb the recovered registration and a normal heartbeat can then
@@ -362,7 +369,7 @@ also needs this run's later actual same-tuple forwarded Hub heartbeat or PQ
 Describe with the identical local expiry. An arbitrary larger timestamp cannot
 pass. This observes original-registration convergence, not a particular response
 consumer implementation. One pinned Docker gate passed 43 events across three
-top-level tests; the corrected complete Runtime is **NOT_RUN**. The original
+top-level tests; the corrected complete Runtime is the later blqDI4 partial failure above. The original
 75-second settlement bound, five-minute cold interval and subsequent fresh Guard
 and real ASK/REPLY remain required. See
 [the actual failure and narrow correction](native-app-validation.md#2026-10-29-clean-cea80367-runtime-failure-and-registration-convergence-correction).
@@ -391,8 +398,8 @@ passed a persistent two-handle ADD/REMOVE same-CAS competition and real TCP
 Node/Network/Group scope refusals on dirty 303639d. These are two test-only
 checks, separate from the producer source and from the full Runtime. See
 [the exact commands, hashes and limits](native-app-validation.md#2026-10-29-independent-security-checks-and-producer-continuation-handoff).
-The integrated cea80367 Runtime subsequently failed as recorded above; a new
-Runtime with the registration-convergence matcher remains **NOT_RUN**. Candidate finalization stays
+The integrated cea80367 Runtime failure remains historical; the later d4566fcd
+Runtime passed M5 but failed M6 as recorded above. Candidate finalization stays
 withheld. The [existing manual procedure](native-app-validation.md#连续真机验收步骤完全清除-cicada-后全新安装尚未执行)
 now starts by clearing only the designated Cicada installation/state and creating
 fresh Cicada identities; Codex history/daemon/other plugins, Caddy and source are
@@ -455,12 +462,12 @@ conflict/unsupported without changing shared Membership; unknown sources reject.
 
 | Case | Required independent observation | Current status |
 | --- | --- | --- |
-| M1 — G2 exists | Fresh owned Hub with default G1 only; actual App creates named G2 and separately adds exact D after Owner review. An unseen original APPLY is permanently fenced with zero effect; only a new explicit Owner intent may then create G2. Drop committed responses and restart App/Hub; exact original recovery yields one G2/relation, no extra identity/grants. | SCOPED_PASS at clean 303639d, 143.18s, all six facts; final four-identity witness not reached |
-| M2 — one Thread, two Groups | Original SID/Endpoint/workspace/key remains identical in G1/G2. Explicit use_group changes current scope; real Cicada ASK/REPLY and receive stay within it, without a new Join or grant. | SCOPED_PASS at clean 303639d, 477.02s; all four G1/G2 original ASK/REPLY/receive roundtrips and six facts passed |
-| M3 — remove only D-G1 | Actual App removes exact D-G1 with current CAS; A/B/C, shared-principal other Endpoints and D-G2 retain their original authority/key snapshots. Queued D-G1 work fails fresh final Guard. | SCOPED_PASS at clean 303639d, 195.13s; all eight facts, Network self 200/business and Leave 403, writer release 7,474ms |
-| M4 — no automatic resurrection | Runtime: after removal, literal Join, fresh Attempt, warm/cold recovery, old response replay and Node/MCP restart cannot clear deny; pending re-add preserves old deny. Only exact key completion of a new Owner add at the current head can clear it. Verify finite duration binds the original review and retries do not extend it. Separate production Store/crypto deterministic boundary: finite manual expiry never falls back to default. Actual 24-hour expiry remains a distinct NOT_RUN subitem. | Latest clean-cea80367 Runtime SCOPED_PASS 618.52s, seven facts: the same retained DEFAULT Current was rejected with 29.485s remaining after a 1ms exact local OWNER-head read; original finite Complete/restart settled. Earlier clean-303639d expired-Current FAIL remains historical. Latest finite restart state 5,616,572 bytes within 8 MiB. Controlled finite Node M4/M6 preflight passed separately at c58bf19. Deterministic expiry SCOPED_PASS at 755053b with reviewed attribution to e5d76c2; 24-hour wall clock NOT_RUN |
-| M5 — independent lifetime | Revoke/expire default policy while D-G2 is manually authorized. Cross the actual lease-renewal boundary, restart Node/MCP and continue exact G2 ASK/REPLY with App closed. Immediate one-send success is insufficient. | Latest clean-cea80367 Runtime FAIL 432.39s: cold App/Node stop reached 301s and crossed the original lease, but the 75s exact-anchor oracle remained false after authenticated settled Renew/590. No final lease witness or post-cold G2 exchange was reached. Local expiry/presence values were not retained. A real later-lease counterexample and corrected source-backed QA convergence checks passed separately; corrected full Runtime NOT_RUN. Older 76647a4 fresh-Hook FAIL remains historical. |
-| M6 — last Group | Remove D's final relation; preserve original key, native Thread/history, Endpoint/workspace and running Node, with zero Group rights. New explicit Owner add cannot substitute an identity/key. | Runtime NOT_RUN; separate corrected core lifecycle passed the same P0-revoked remove/Join/explicit-readd tail without replacing original identities |
+| M1 — G2 exists | Fresh owned Hub with default G1 only; actual App creates named G2 and separately adds exact D after Owner review. An unseen original APPLY is permanently fenced with zero effect; only a new explicit Owner intent may then create G2. Drop committed responses and restart App/Hub; exact original recovery yields one G2/relation, no extra identity/grants. | SCOPED_PASS at clean d4566fcd, 139.89s, all six facts; final four-identity witness not reached |
+| M2 — one Thread, two Groups | Original SID/Endpoint/workspace/key remains identical in G1/G2. Explicit use_group changes current scope; real Cicada ASK/REPLY and receive stay within it, without a new Join or grant. | SCOPED_PASS at clean d4566fcd, 470.93s; all four G1/G2 original ASK/REPLY/receive roundtrips and six facts passed |
+| M3 — remove only D-G1 | Actual App removes exact D-G1 with current CAS; A/B/C, shared-principal other Endpoints and D-G2 retain their original authority/key snapshots. Queued D-G1 work fails fresh final Guard. | SCOPED_PASS at clean d4566fcd, 191.30s, all eight facts; earlier 303639d detailed Guard timings retain their own receipt |
+| M4 — no automatic resurrection | Runtime: after removal, literal Join, fresh Attempt, warm/cold recovery, old response replay and Node/MCP restart cannot clear deny; pending re-add preserves old deny. Only exact key completion of a new Owner add at the current head can clear it. Verify finite duration binds the original review and retries do not extend it. Separate production Store/crypto deterministic boundary: finite manual expiry never falls back to default. Actual 24-hour expiry remains a distinct NOT_RUN subitem. | Latest clean-d4566fcd Runtime SCOPED_PASS 643.49s, seven facts: the same retained DEFAULT Current was rejected with 29.482s remaining after a 1ms exact local OWNER-head read; original finite Complete/restart settled. Earlier clean-303639d expired-Current FAIL remains historical. Latest finite restart state 5,616,498 bytes within 8 MiB. Controlled finite Node M4/M6 preflight passed separately at c58bf19. Deterministic expiry SCOPED_PASS at 755053b with reviewed attribution to e5d76c2; 24-hour wall clock NOT_RUN |
+| M5 — independent lifetime | Revoke/expire default policy while D-G2 is manually authorized. Cross the actual lease-renewal boundary, restart Node/MCP and continue exact G2 ASK/REPLY with App closed. Immediate one-send success is insufficient. | SCOPED_PASS at clean d4566fcd, 456.45s: actual cold stop 301s, formal real lease witness valid (398.084s), original Renew/592 converged in 4.646s with the exact authenticated response anchor, then fresh G2 ASK/REPLY. Old hXlWlN exact-expiry failure remains historical; no retrospective cause claimed. |
+| M6 — last Group | Remove D's final relation; preserve original key, native Thread/history, Endpoint/workspace and running Node, with zero Group rights. New explicit Owner add cannot substitute an identity/key. | FAIL at clean d4566fcd, 150.35s: D zero-right Join, original identity/history and explicit re-add/self-selection prerequisites reached; original C's following G2 selection returned CODEX_NODE_TICKET_UNAVAILABLE. No M6 whole-case pass. |
 | M7 — real authority revocation | Independently revoke actual Owner key and Node binding/key; all dependent sources/Groups deny new work, including cold recovery. App closure is not this revocation. | NOT_RUN |
 | M8 — retained operations | Old request/reply/selection/outbox cannot borrow surviving Group, Network or Link authority. Original exact read recovery remains distinct from authorized redispatch; same-ID changed bytes conflict. | NOT_RUN |
 | Security: Guard ceilings and historical expiry | Managed Endpoint five-right ceiling, shared-Principal/Network and legacy/global Leave denial; finite expiry cannot fall back to default. | Latest 303639d M3 SCOPED_PASS plus separately attributed HTTP/Store/crypto producer checks; see the evidence mapping below. Actual 24-hour expiry NOT_RUN. |
@@ -545,6 +552,48 @@ its own validation and mapping are under
 `~/Cicada/.local/evidence/owner-groups-guard-clarification-20261026/`.
 
 ## Current feedback and acceptance ledger
+
+### v0.1 exit index — 2026-10-29
+
+This short index follows Root's current agreed scope. It does not reopen every
+historical NOT_RUN below or replace the existing detailed evidence.
+
+| Function | Existing implementation/evidence | Remaining acceptance | Dependency / shortest next step |
+| --- | --- | --- | --- |
+| Finite onboarding, Root separation and local key custody | Existing N2/NPT/Guard checks distinguish account login, Owner proof, Node binding and business authority; identity flow works without Control inference. | Preserve exact scopes; physical custody remains unaccepted until tested. | Reuse existing checks affected by the bounded fix; no new onboarding framework. |
+| Node on/off and original Codex discovery/communication | Existing lifecycle, explicit native registration, nickname/name/ID/contact-form paths and user batches; original managed capabilities retained. | Final repaired-source Runtime and existing user batch. | Reuse source-bound implementation/tests; no new App feature or upstream Codex fork. |
+| App named Groups and exact multi-Group changes | blqDI4 M1–M5 PASS, including real five-minute cold recovery and post-boundary G2 communication. | M6 original C ticket failure is the current automatic blocker. | Hub's minimum core reproduction/fix, then impacted checks and existing disposable gate. |
+| Real authority revoke and retained-scope recovery | Thin M7-only entry reuses the existing independent OwnerKey/NodeBinding baselines; M8 retains the original denied request/outbox. | M7-only 1JdBiX FAIL: first baseline completed four positive/logout roundtrips, then source G1 selection failed before actual revoke. Second baseline/M8/final original-four closure unaccepted. | After Hub fix, reuse the narrow M7 entry; M8 still requires actual M3/M4/M6 prerequisites. Final full M1–M8 gate remains mandatory. |
+| Communication across two actual Nodes/native processes | Lower-level Owner/Network Group primitives exist, but current App keeps one Node confirmation and does not wire existing-Network selection into local collaboration. | Actual two-Node/native ASK/REPLY unaccepted; same-Node M1–M8 and historical two-registration/MCP lanes do not cover it. | Freeze the multi-Node Hub/App contract, address the real App flow gap, then reuse the existing two-Node topology/entry. No new driver or result is claimed here. |
+| Windows usability and protection | Existing Enter/CJK/copy/user-root/packaging code and source-specific checks; no reimplementation requested. | Existing fresh-install batch plus DPAPI/ACL/GUI/DPI/instance/recovery observations on real Windows. | One necessary final candidate build after production source stabilizes; reuse the current finalizer and user batch. Unexecuted physical checks stay NOT_RUN. |
+| Candidate/source closure | Complete CEA candidate and its 48 reviewed licenses already exist. | Match repaired source, exact package/hash, Runtime evidence and cleanup before finalization. | Keep candidate attribution separate; rebuild only when the final production fix requires it. |
+
+Shortest order: **Hub minimum reproduction/fix and multi-Node contract closure →
+relevant existing checks/isolated gate and the separate real two-Node/native
+communication check → one frozen-source full M1–M8 run → necessary final package
+and existing Windows batch → Root closeout**. The separately reviewed M7-only lane
+can uncover its independent revoke failures earlier; it never fills absent full
+parent scenes. Keep the original 90m parent, 75s settlement, real five-minute
+boundary, fresh Guard/ASK/REPLY and final original-four requirements.
+
+C0/H1/H2, App2/shared-Hub expansion, real-time canvas, general permission presets,
+rename and encrypted PKCS#8 are explicitly unimplemented/frozen/later scopes,
+not hidden gates added from historical NOT_RUN. v0.2 input extensions remain
+deferred. Existing managed behavior remains in scope; no production deployment,
+key rotation or public change is authorized by this index.
+
+The additive `bash scripts/test-native-pair.sh --owner-endpoint-groups-m7`
+entry reuses the original fixture/transport/build isolation and calls only the
+existing M7 routine; its receipt scope is distinct and `full_m1_m8_accepted`
+is always false. Its first actual attempt is the retained FAIL above, not M7
+acceptance. M8 has no valid independent selector: it requires M3's original
+denied packet/outbox, M4's retained Current/selection and M6's same-origin state.
+The original complete parent is unchanged. Future selection failures now retain
+closed return/state evidence before the same fatal assertion; this adds no
+retry, authority, time or product-state write. See the [narrow result and pure
+observability check](native-app-validation.md#2026-10-29-m7-only-pre-revocation-failure-and-closed-diagnostics).
+
+### Historical ledger context
 
 2026-10-20 consolidation on recording baseline
 `6f7f2c9bd5e98caa1ef76465f6a2a79e8062d735`. This is the single current

@@ -57,3 +57,12 @@ func TestN3OwnerEndpointGroupsAcceptance(t *testing.T) {
 		return
 	}
 }
+
+// A narrow diagnostic entry reuses both original independent M7 baselines.
+// Its separate evidence scope cannot close the complete M1-M8 acceptance gate.
+func TestN3OwnerEndpointGroupsM7Only(t *testing.T) {
+	if os.Getenv("CICADA_N3_OWNER_ENDPOINT_GROUPS") != "1" {
+		t.Skip("OWNER_GROUPS_NOT_RUN opt in through the isolated native-pair driver")
+	}
+	t.Run("M7_TrueAuthorityRevocation", exerciseOwnerGroupsM7)
+}
