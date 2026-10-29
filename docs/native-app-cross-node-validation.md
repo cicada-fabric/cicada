@@ -329,3 +329,131 @@ Root requires only a subsequent cross-Node rerun after this QA-only fix; the
 complete-gate result is mapped by exact production-blob equality instead of
 rerunning it solely because synthetic fixture markers changed. That equivalence
 mapping is separate evidence and is not an automatic pass.
+
+## Full Runtime terminal and independent log reclassification — 2026-10-29
+
+The unchanged `64927cbe740f3d01ffc6a68250468394bd4dadb3` full run
+`run-20261029T221657Z-QtqKRp` is now terminal. All eight M1–M8 cases and their
+parent pass, once each; parent elapsed time is 4051.15 s and M7 is 1265.82 s.
+Version, both compilations, harness and vet exit 0. The original driver exits 1
+because it treats each physical `test2json` Output event as a complete JSON
+witness. The final four-identity line is split into four consecutive events of
+1024, 1024, 1024 and 589 bytes, with the exact same Test/Package and LF only in
+the last event. That is a QA evidence parser failure, not a missing identity
+witness. The original FAIL result remains unchanged, SHA-256
+`ad75ce148b1ce502f0ee68df24930e26dcd318223d1617de77a06bb7a25d4998`.
+
+Root authorized bounded logical-line reassembly for this classifier. The helper
+uses the existing strict JSON decoder, retains the exact Test/Package scope,
+requires LF, and rejects interrupted/truncated output, scope changes and
+oversized physical records/fragments/logical lines. Full, M7-only and cross-Node
+finalizers share it. Existing facts, lease, identity, terminal count, source,
+binary and cleanup validators remain unchanged. The existing synthetic oracle
+retains its negative controls and gains fragmented full/cross positive controls
+plus explicit framing refusals: 198 checks, exit 0, product NOT_RUN. The existing
+Host classifier suite passes all 27 tests, exit 0. Neither suite is a Runtime
+substitute.
+
+The sealed original log and other regular evidence files were copied byte for
+byte into a new evidence directory, independently reclassified with the corrected
+helper, and checked again against the untouched originals. No Runtime was
+repeated, no original result was overwritten, and the executed binaries were
+reused unchanged. The independent result is **SCOPED_PASS / 0**: all eight facts,
+the real lease boundary and unchanged original four identities validate, with
+no malformed evidence. The actual tested Runtime source is still `64927cbe`;
+the classifier is base `5d2304fcdcd4b61919458c81ff88cbf181328220` plus the recorded
+dirty QA change, SHA-256
+`04481dcb9da5a648a1e1deb0485d792e1b1f1375cffec048f91035454a373736`.
+
+| Retained evidence | Path / SHA-256 |
+| --- | --- |
+| Original actual run | `~/Cicada/.local/evidence/native-pair-acceptance/run-20261029T221657Z-QtqKRp/` |
+| Independent reclassification | `~/Cicada/.local/evidence/n2-acceptance/full-QtqKRp-independent-reclassification-wok_hijt/` |
+| New `sealed-input/result.json` | `0980ffed5f54bf621402b6054f4e09b0833fd4c9193f7502ee463d25e9bb7832` |
+| `reclassification-receipt.json` | `e7e82395ffde59972e11e73e0220edcf6c5f7220ee6c5479594c4d3303792bf3` |
+| 198-check oracle result | `frames-bootstrap-final-5d2304f-fgk_5mtf/oracle/result.json`, SHA-256 `2de39c39a86692bafecee1b62510801c9e36aae82a300d3612ddb002135979d0` |
+| Python qualification receipt | `frames-bootstrap-final-5d2304f-fgk_5mtf/result.json`, SHA-256 `7542cac97e70195c90b1b35ff4c8ec20045368f89c2973a35c8d6852fbc0a8fe` |
+
+Both qualification directories are under `~/Cicada/.local/evidence/n2-acceptance/`.
+The full run retains stable source/binary manifests, actual CLI SHA-256
+`ad705a083b1b02983ac16bdec53f0110a97b18245f1989f0b220ea798866b21f`
+and test binary SHA-256
+`7ed5dafa73c67f77e8f540c30e38a8855542441350ec03f42eb441e5224c776e`.
+The closed observer has 537 records, zero read retries and zero issuer-error
+observations. Root independently checked the eight facts, final four identities,
+1833 tracked plus three generated inputs, 21 evidence hashes, three audits and
+the exact owned container's absence. This qualifies the full gate's scope on
+its actual source; it does not fill cross-Node cases or physical-platform lanes.
+
+## Cross retry bootstrap failure and closed diagnostics — 2026-10-29
+
+After Root reviewed the two-Host marker fix, the existing cross gate ran once on
+clean `5d2304fcdcd4b61919458c81ff88cbf181328220` in its separate worktree:
+`run-20261029T232544Z-HfnP8D`. It is **FAIL / 1**. C1 fails in 196.94 s, parent
+205.22 s; C2–C7 are NOT_RUN. The original parent error at
+`owner_groups_cross_node_fixture_test.go:244` is
+`actual Owner Group Host checkpoint timed out`, while awaiting the first Host's
+checkpoint 0 with the unchanged three-minute deadline. No checkpoint-0 reply
+arrived. The exact internal bootstrap stage, active native actor and Host exit
+state were NOT_RETAINED. The closed observer has zero Host records and one
+issuer-error observation. The body-marker fix is not reached; it is not an
+established cause of this failure.
+
+The issuer observation reports `VERIFICATION / REGISTRATION_REJECTED`, original
+budget 29999 ms, elapsed 5181 ms, state 566858 bytes under an 8388608-byte limit,
+5724598 bytes generic RPC headroom and all 15 pending flags false. It establishes
+neither the cause of the registration rejection nor its causal relationship to
+the Host timeout. Root assigned read-only investigation to the Hub owner. QA
+did not replace an original pending request, change a proof or edit production
+code. The original result is retained at
+`~/Cicada/.local/evidence/native-pair-acceptance/run-20261029T232544Z-HfnP8D/result.json`,
+SHA-256 `0a5cfd13064f72d40b97712eba2a274cad132507a77b8806c8acd5f5e4f5f7da`.
+Source and actual binaries are stable, the exact owned container is absent,
+and private state has zero files and only an empty `tmp` directory.
+
+The comparison also found three ignored generated UI inputs absent from this
+new worktree, although present in the earlier full run. This is an input
+discrepancy, not an established failure cause. Original failed-run evidence and
+worktree inputs remain unchanged. Only the next QA worktree restores exact
+copies against the full run's recorded hashes, without rebuilding:
+
+| Generated input under `cicada-go/internal/server/ui/generated/` | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `cicada-webcrypto.wasm.gz` | 1789916 | `2ea8127a27921c8de48ce01b2e08a7df551fe69cc59685e0c9028e2e089982c8` |
+| `panel.manifest.json` | 575 | `cf47e7026ad05b60cb2e5c538bdbc53015cfa09cd76834d57ea27778a74f92dc` |
+| `wasm_exec.js` | 16992 | `0c949f4996f9a89698e4b5c586de32249c3b69b7baadb64d220073cc04acba14` |
+
+QA adds bounded bootstrap phase/actor/original-Thread-count/daemon-state records
+through the existing private checkpoint-progress mechanism. Host timeout logs
+also record whether the original process is running and whether an exit code
+was observed. These closed records contain no SID, key, proof, code or payload.
+The original three-minute Host wait, 90-minute parent, 75-second barrier, real
+five-minute lease, original requests, four/eight identities and all business
+assertions remain unchanged. No retry or acceptance branch is added.
+
+This diagnostic-only Go change compiles and passes N3 vet in the existing pinned
+disposable Docker image, exit 0 / 0, 8.582 / 1.668 s. Qualification is retained at
+`~/Cicada/.local/evidence/n2-acceptance/frames-bootstrap-go-5d2304f-jboxirep/`,
+result SHA-256
+`95668a85fdc707b5e05d8277eb323a92167eaa945438ad942770160ae10531e2`.
+Changed input hashes remain stable; the dependency cache is mounted read-only,
+the task build cache is exclusively locked, the owned container is absent and
+temporary state has zero entries. This compilation supplies no new Runtime
+case. Root will integrate the minimal Hub error/diagnostic change and this QA
+checkpoint before freezing a single complete C1→C7 retry; no standalone C1
+preflight or further Runtime has started at this checkpoint.
+
+Reproduction remains the existing driver selector after Root's next freeze:
+
+```sh
+CICADA_NATIVE_PAIR_LICENSES_DIR=/home/zyf/Cicada/.local/artifacts/native-ip-complete/run-owner-thread-groups-cea8036-20261029/payload/licenses \
+  scripts/test-native-pair.sh --owner-endpoint-groups-cross-node
+python3 scripts/fixtures/native-pair/owner_groups_evidence_checks.py /absolute/new/task-owned-oracle-output
+python3 scripts/test_native_pair_host_classifier.py
+```
+
+The first command is a future Runtime gate; the other two only qualify QA
+helpers. Cross-Node C3–C7 remain unaccepted. Windows DPAPI, ACL, GUI and IME,
+Android, physical second Node and public HTTPS remain NOT_RUN. Final plan/index
+closure waits for Root's review and the actual remaining gate; this record does
+not declare the product or all platforms accepted.

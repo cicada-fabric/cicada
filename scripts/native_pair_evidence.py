@@ -553,6 +553,55 @@ def selection_diagnostic_manifest(artifacts):
             if not p.is_symlink() and p.is_file()}
 
 
+MAX_OWNER_GROUPS_LOGICAL_OUTPUT_BYTES = 1 << 20
+
+
+def owner_groups_logical_events(path):
+    """Reassemble bounded test2json Output lines within one exact Test/Package.
+
+    test2json may split one t.Log JSON witness into 1024-byte output events.
+    A fragment is never a standalone measurement. EOF, a scope/event boundary
+    before LF, invalid JSON or an oversized logical line remains malformed.
+    """
+    pending, first, scope = '', None, None
+    with path.open() as stream:
+        while True:
+            raw = stream.readline(8 * MAX_OWNER_GROUPS_LOGICAL_OUTPUT_BYTES + 1)
+            if not raw:
+                break
+            if len(raw.encode('utf-8')) > 8 * MAX_OWNER_GROUPS_LOGICAL_OUTPUT_BYTES:
+                raise ValueError('Owner Group test2json record exceeds its bound.')
+            item = decode_node_pair_measurement(raw)
+            if not isinstance(item, dict):
+                raise ValueError('Owner Group test2json record is not an object.')
+            if item.get('Action') != 'output':
+                if pending:
+                    raise ValueError('Owner Group logical output is interrupted.')
+                yield item
+                continue
+            output = item.get('Output')
+            current = (item.get('Package'), item.get('Test'))
+            if (not isinstance(output, str)
+                    or any(v is not None and (not isinstance(v, str) or len(v) > 1024) for v in current)
+                    or pending and current != scope):
+                raise ValueError('Owner Group output changed its Test/Package scope.')
+            if len(output.encode('utf-8')) > MAX_OWNER_GROUPS_LOGICAL_OUTPUT_BYTES:
+                raise ValueError('Owner Group output fragment exceeds its bound.')
+            if not pending:
+                first, scope = item, current
+            pending += output
+            while '\n' in pending:
+                line, pending = pending.split('\n', 1)
+                if len((line + '\n').encode('utf-8')) > MAX_OWNER_GROUPS_LOGICAL_OUTPUT_BYTES:
+                    raise ValueError('Owner Group logical output exceeds its bound.')
+                yield {**first, 'Output': line + '\n'}
+                first = item
+            if len(pending.encode('utf-8')) > MAX_OWNER_GROUPS_LOGICAL_OUTPUT_BYTES:
+                raise ValueError('Owner Group logical output exceeds its bound.')
+    if pending:
+        raise ValueError('Owner Group logical output is truncated before LF.')
+
+
 def finish_owner_groups(run, artifacts, image, owned, *, m7_only=False):
     """M1-M8 extension of this driver; no synthetic result can fill absent cases."""
     before, after = [json.loads((run / f'source-{side}.json').read_text()) for side in ('before', 'after')]
@@ -562,9 +611,8 @@ def finish_owner_groups(run, artifacts, image, owned, *, m7_only=False):
     results, counts = terminal_events(run / 'harness.log'), terminal_event_counts(run / 'harness.log')
     facts, lease, identities, diagnostics = [], [], [], []
     malformed = False
-    for line in (run / 'harness.log').read_text().splitlines():
-        try:
-            item = json.loads(line)
+    try:
+        for item in owner_groups_logical_events(run / 'harness.log'):
             output = item.get('Output', '')
             if 'OWNER_GROUPS_NOT_RUN' in output:
                 diagnostics.append({'test': item.get('Test'), 'reason': 'OWNER_GROUPS_NOT_RUN'})
@@ -573,8 +621,8 @@ def finish_owner_groups(run, artifacts, image, owned, *, m7_only=False):
                     if item.get('Action') != 'output':
                         malformed = True
                     destination.append({'test': item.get('Test'), 'measurement': decode_node_pair_measurement(output.split(marker, 1)[1])})
-        except (ValueError, TypeError, AttributeError):
-            malformed = True
+    except (ValueError, TypeError, AttributeError):
+        malformed = True
     stages = ('version', 'compile-cli', 'compile-tests', 'harness', 'vet')
     exits = {name: int((run / (name + '.exit')).read_text()) if (run / (name + '.exit')).exists() else None for name in stages}
     records = [json.loads((run / f'binaries-{side}.json').read_text()) if (run / f'binaries-{side}.json').exists() else {} for side in ('before', 'after')]
@@ -740,9 +788,8 @@ def finish_owner_groups_cross_node(run, artifacts, image, owned):
     results, counts = terminal_events(run / 'harness.log'), terminal_event_counts(run / 'harness.log')
     facts, identities, roundtrips, diagnostics = [], [], [], []
     malformed = False
-    for line in (run / 'harness.log').read_text().splitlines():
-        try:
-            item = json.loads(line)
+    try:
+        for item in owner_groups_logical_events(run / 'harness.log'):
             output = item.get('Output', '')
             if 'OWNER_GROUPS_CROSS_NOT_RUN' in output:
                 diagnostics.append({'test': item.get('Test'), 'reason': 'OWNER_GROUPS_CROSS_NOT_RUN'})
@@ -752,8 +799,8 @@ def finish_owner_groups_cross_node(run, artifacts, image, owned):
                     if item.get('Action') != 'output':
                         malformed = True
                     destination.append({'test': item.get('Test'), 'measurement': decode_node_pair_measurement(output.split(marker, 1)[1])})
-        except (ValueError, TypeError, AttributeError):
-            malformed = True
+    except (ValueError, TypeError, AttributeError):
+        malformed = True
     stages = ('version', 'compile-cli', 'compile-tests', 'harness', 'vet')
     exits = {n: int((run / (n + '.exit')).read_text()) if (run / (n + '.exit')).exists() else None for n in stages}
     records = [json.loads((run / f'binaries-{side}.json').read_text()) if (run / f'binaries-{side}.json').exists() else {} for side in ('before', 'after')]

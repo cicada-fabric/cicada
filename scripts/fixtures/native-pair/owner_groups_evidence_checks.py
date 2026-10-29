@@ -99,6 +99,8 @@ def run(output):
             'extra_lines': []}
     mutations = [
         ('SYNTHETIC_aggregate_control_NOT_PRODUCT', lambda x: None, 0),
+        ('SYNTHETIC_full_split_1024_NOT_PRODUCT', lambda x: x.update(frame_width=1024), 0),
+        ('SYNTHETIC_full_split_marker_NOT_PRODUCT', lambda x: x.update(frame_width=17), 0),
         ('empty_execution', lambda x: x.update(events=[]), 1),
         ('duplicate_execution', lambda x: x['events'].append(copy.deepcopy(x['events'][0])), 1),
         ('missing_facts', lambda x: x.update(facts=[]), 1),
@@ -110,7 +112,7 @@ def run(output):
         ('Docker_unavailable_not_absence', lambda x: x.update(owned='UNKNOWN'), 1),
         ('unreviewed_runtime', lambda x: x.update(runtime_pinned=False), 1),
         ('truncated_json_stream', lambda x: x['extra_lines'].append('{'), 1),
-        ('duplicate_lease', lambda x: x['extra_lines'].append(json.dumps({'Test': oracle.OWNER_GROUPS_PARENT + '/M5_IndependentRealLease', 'Action': 'output', 'Output': 'OWNER_GROUPS_LEASE ' + json.dumps(lease)})), 1),
+        ('duplicate_lease', lambda x: x['extra_lines'].append(json.dumps({'Test': oracle.OWNER_GROUPS_PARENT + '/M5_IndependentRealLease', 'Action': 'output', 'Output': 'OWNER_GROUPS_LEASE ' + json.dumps(lease) + '\n'})), 1),
         ('skip_is_not_pass', lambda x: x.update(events=[{'Test': oracle.OWNER_GROUPS_PARENT, 'Action': 'skip'}]), 1),
     ]
     for stage in base['exits']:
@@ -146,12 +148,14 @@ def run(output):
                     data['cicada']['sha256'] = '0' * 64
                 (evidence / ('binaries-' + side + '.json')).write_text(json.dumps(data))
             events = copy.deepcopy(value['events'])
-            events += [{'Test': f['test'], 'Action': 'output', 'Output': 'OWNER_GROUPS_FACTS ' + json.dumps(f['measurement'])}
+            events += [{'Test': f['test'], 'Action': 'output', 'Output': 'OWNER_GROUPS_FACTS ' + json.dumps(f['measurement']) + '\n'}
                        for f in value['facts']]
             for marker, item, test in [('OWNER_GROUPS_LEASE ', value['lease'], oracle.OWNER_GROUPS_PARENT + '/M5_IndependentRealLease'),
                                        ('OWNER_GROUPS_IDENTITIES ', value['identities'], oracle.OWNER_GROUPS_PARENT)]:
                 if item is not None:
-                    events.append({'Test': test, 'Action': 'output', 'Output': marker + json.dumps(item)})
+                    events.append({'Test': test, 'Action': 'output', 'Output': marker + json.dumps(item) + '\n'})
+            if value.get('frame_width'):
+                events = fragment_outputs(events, value['frame_width'])
             (evidence / 'harness.log').write_text('\n'.join([json.dumps(e) for e in events] + value['extra_lines']) + '\n')
             for stage, code in value['exits'].items():
                 (evidence / (stage + '.exit')).write_text(str(code))
@@ -179,6 +183,7 @@ def run(output):
         check('diagnostics_cannot_hide_binary_drift',json.loads((scratch/'before.json').read_text())!=json.loads((scratch/'changed.json').read_text()),True)
 
     check_cross_node(oracle, check, output)
+    check_logical_output_frames(oracle, check, output)
 
     result = {'scope': 'SYNTHETIC_RECEIPT_ORACLE_ONLY_NOT_PRODUCT', 'status': 'ORACLE_PASS', 'exit_code': 0,
               'product_status': 'NOT_RUN', 'cases': len(checks), 'checks': checks,
@@ -188,6 +193,49 @@ def run(output):
               'no_crypto_Hub_Node_App_Host_Docker_or_model_executed': True}
     (output / 'result.json').write_text(json.dumps(result, indent=2, sort_keys=True) + '\n')
     print(f'Synthetic Owner Groups oracle cases={len(checks)} exit=0 product=NOT_RUN evidence={output / "result.json"}')
+
+
+def fragment_outputs(events, width):
+    result = []
+    for event in events:
+        text = event.get('Output')
+        if event.get('Action') == 'output' and isinstance(text, str):
+            result += [{**event, 'Output': text[i:i+width]} for i in range(0, len(text), width)]
+        else:
+            result.append(event)
+    return result
+
+
+def check_logical_output_frames(oracle, check, output):
+    with tempfile.TemporaryDirectory(prefix='SYNTHETIC_FRAMES_NOT_RUNTIME-', dir=output) as temp:
+        path = Path(temp) / 'harness.log'
+        text = 'OWNER_GROUPS_IDENTITIES ' + json.dumps({'synthetic': 'x'*3661}) + '\n'
+        event = {'Action': 'output', 'Package': 'SYNTHETIC_PACKAGE', 'Test': 'SYNTHETIC_TEST', 'Output': text}
+        def observe(events, extra=()):
+            path.write_text('\n'.join([json.dumps(e) for e in events]+list(extra))+'\n')
+            try:
+                return list(oracle.owner_groups_logical_events(path))
+            except (ValueError, TypeError, AttributeError):
+                return None
+        for width in (1, 17, 1024):
+            check('frames_exact_reassembly_'+str(width), observe(fragment_outputs([event], width)), [event])
+        check('frames_multiple_complete_lines', observe([{**event, 'Output':'first\nsecond\n'}]),
+              [{**event, 'Output':'first\n'}, {**event, 'Output':'second\n'}])
+        split = fragment_outputs([event], 1024)
+        check('frames_EOF_before_LF', observe(split[:-1]), None)
+        check('frames_complete_JSON_without_LF', observe([{**event, 'Output':text[:-1]}]), None)
+        check('frames_terminal_interrupts_partial', observe(split[:1]+[{'Action':'pass','Test':event['Test']}]+split[1:]), None)
+        for field in ('Test','Package'):
+            changed=copy.deepcopy(split)
+            changed[1][field]='SYNTHETIC_DIFFERENT_SCOPE'
+            check('frames_cross_'+field+'_refused',observe(changed),None)
+        check('frames_nonstring_Output',observe([{**event,'Output':[]}]),None)
+        check('frames_nonobject_event',observe([[]]),None)
+        check('frames_invalid_JSON',observe([],['{']),None)
+        check('frames_duplicate_scope_key',observe([],['{"Action":"output","Test":"A","Test":"B","Output":"x\\n"}']),None)
+        cap=oracle.MAX_OWNER_GROUPS_LOGICAL_OUTPUT_BYTES
+        check('frames_oversize_single',observe([{**event,'Output':'x'*(cap+1)+'\n'}]),None)
+        check('frames_oversize_accumulated',observe([{**event,'Output':'x'*cap},{**event,'Output':'x\n'}]),None)
 
 
 def check_cross_node(oracle, check, output):
@@ -247,6 +295,8 @@ def check_cross_node(oracle, check, output):
     base = {'events': [{'Test': n, 'Action': 'pass'} for n in sorted(expected)], 'facts':facts,
             'identities':identities, 'roundtrips':roundtrips, 'owned':'false', 'drift':False, 'binary_drift':False, 'bad_stage':None, 'extra':[]}
     mutations = [('SYNTHETIC_cross_aggregate_NOT_RUNTIME',lambda v:None,0),
+                 ('SYNTHETIC_cross_eight_split_1024_NOT_RUNTIME',lambda v:v.update(frame_width=1024),0),
+                 ('SYNTHETIC_cross_split_marker_NOT_RUNTIME',lambda v:v.update(frame_width=17),0),
                  ('cross_missing_facts',lambda v:v.update(facts=[]),1), ('cross_missing_eight',lambda v:v.update(identities=None),1),
                  ('cross_missing_native_route',lambda v:v.update(roundtrips=roundtrips[:-1]),1),
                  ('cross_skip_not_pass',lambda v:v.update(events=[{'Test':parent,'Action':'skip'}]),1),
@@ -279,9 +329,11 @@ def check_cross_node(oracle, check, output):
                 (run/('binaries-'+side+'.json')).write_text(json.dumps(data))
             events=copy.deepcopy(value['events'])
             for marker, items in [('OWNER_GROUPS_CROSS_FACTS ',value['facts']),('OWNER_GROUPS_CROSS_ROUNDTRIP ',value['roundtrips'])]:
-                events += [{'Test':v['test'],'Action':'output','Output':marker+json.dumps(v['measurement'])} for v in items]
+                events += [{'Test':v['test'],'Action':'output','Output':marker+json.dumps(v['measurement'])+'\n'} for v in items]
             if value['identities'] is not None:
-                events.append({'Test':parent+'/C7_SurvivingGroupsAndOriginals','Action':'output','Output':'OWNER_GROUPS_CROSS_IDENTITIES '+json.dumps(value['identities'])})
+                events.append({'Test':parent+'/C7_SurvivingGroupsAndOriginals','Action':'output','Output':'OWNER_GROUPS_CROSS_IDENTITIES '+json.dumps(value['identities'])+'\n'})
+            if value.get('frame_width'):
+                events=fragment_outputs(events,value['frame_width'])
             (run/'harness.log').write_text('\n'.join([json.dumps(v) for v in events]+value['extra'])+'\n')
             for stage in ('version','compile-cli','compile-tests','harness','vet'):
                 (run/(stage+'.exit')).write_text('1' if stage==value['bad_stage'] else '0')

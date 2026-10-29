@@ -221,6 +221,12 @@ func (h *ownerGroupsHost) await(t *testing.T, sequence int) ownerGroupsHostReply
 	if latest != "" {
 		t.Logf("OWNER_GROUPS_RECEIVE_PROGRESS %s", readPrivate(t, latest))
 	}
+	running := h.process.running()
+	exitObserved, exitCode := false, -1
+	if !running && h.process.cmd.ProcessState != nil {
+		exitObserved, exitCode = true, h.process.cmd.ProcessState.ExitCode()
+	}
+	t.Logf("OWNER_GROUPS_HOST_TIMEOUT sequence=%d host_running=%t host_exit_observed=%t host_exit_code=%d", sequence, running, exitObserved, exitCode)
 	t.Fatal("actual Owner Group Host checkpoint timed out")
 	return ownerGroupsHostReply{}
 }

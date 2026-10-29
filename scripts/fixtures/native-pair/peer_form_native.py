@@ -236,6 +236,19 @@ def run_owner_groups(config):
     ids, summaries, nonces, retired_nonces = [], [], {}, {}
     histories = {}
 
+    bootstrap_sequence = 0
+
+    def bootstrap_progress(stage, actor=None):
+        nonlocal phase, bootstrap_sequence
+        phase = stage
+        value = {'scope': 'CLOSED_HOST_BOOTSTRAP_PROGRESS_NOT_ACCEPTANCE',
+                 'phase': stage, 'host_pid': os.getpid(), 'daemon_started': started,
+                 'original_native_thread_count': len(ids)}
+        if actor is not None:
+            value['actor'] = actor
+        private_json(control / ('0.progress-' + str(bootstrap_sequence) + '.json'), value)
+        bootstrap_sequence += 1
+
     def conserve_native_history():
         previous_workspace = cli.workspace
         try:
@@ -388,6 +401,7 @@ def run_owner_groups(config):
             'queue_posts': queue_posts, **values})
 
     try:
+        bootstrap_progress('CONFIGURATION')
         configuration = cli.codex_home / 'config.toml'
         assert not configuration.exists(), 'OWNED_CONFIG_ALREADY_EXISTS'
         text = '''model = "synthetic-owner-groups"
@@ -411,25 +425,32 @@ enabled = false
         for tool in OWNER_GROUP_TOOLS:
             text += '\n[plugins."cicada@cicada-repo".mcp_servers.cicada.tools.' + tool + ']\napproval_mode = "approve"\n'
         configuration.write_text(text)
+        bootstrap_progress('MARKETPLACE_INSTALL')
         cli.command('owner-marketplace-add', ['plugin', 'marketplace', 'add', str(cli.marketplace)])
+        bootstrap_progress('PLUGIN_INSTALL')
         cli.command('owner-plugin-add', ['plugin', 'add', 'cicada@cicada-repo'])
-        phase = 'ORIGINAL_FOUR_THREADS'
+        bootstrap_progress('DAEMON_START')
         start_daemon('owner-daemon-start', connect=False)
         cli.config['startup_only'] = True
+        bootstrap_progress('STARTUP_TUI')
         cli.literal_tui([])
         cli.config.pop('startup_only')
+        bootstrap_progress('HOST_CONNECT')
         cli.connect()
         for index in range(4):
             cli.workspace = workspaces[index]
+            bootstrap_progress('CREATE_NATIVE_TUI', index)
             sid = create_native_tui(index)
             assert sid not in ids, 'OWNER_GROUP_NATIVE_THREAD_DUPLICATED'
             ids.append(sid)
-            phase = 'EXTERNAL_CLI_REGISTRATION'
+            bootstrap_progress('EXTERNAL_CLI_REGISTRATION', index)
             register_cli(index, sid)
-            phase = 'NORMAL_PRETOOL_TRUST'
+            bootstrap_progress('NORMAL_PRETOOL_TRUST', index)
             trust_actual_pretool(index, sid)
+            bootstrap_progress('MCP_STATUS', index)
             status = cli.tool_status(sid)
             assert status['tools_count'] > 0 and not status['tools_error'], 'CURRENT_NATIVE_MCP_NOT_READY'
+        bootstrap_progress('ORIGINAL_FOUR_READY')
         reply(0)
         sequence = 1
         while True:
