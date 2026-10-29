@@ -64,7 +64,7 @@ func newNodePairScopedTLSFixture(t *testing.T) (*hubAccountTCPFixture, hubtransp
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.auth, err = hubauth.NewServiceWithScopedNodeAuthority(f.db, f.ids)
+	f.auth, err = hubauth.NewServiceWithNodeAuthority(f.db, f.ids)
 	if err != nil {
 		t.Fatal(err)
 	}

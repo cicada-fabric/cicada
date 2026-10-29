@@ -73,8 +73,9 @@ const (
 const AppNodeScopedScopeKind = "NODE_V1"
 const AppNodeScopedScopeVersion = 2
 
-// This checkpoint freezes codecs only. A later complete carrier may enable it.
-const AppNodeScopedPublicAvailable = false
+// Hub Nodes mode exposes the qualified carrier. Current caller authority is
+// still checked independently by the authenticated session and Store guards.
+const AppNodeScopedPublicAvailable = true
 
 type AppNodeScopedCapabilities struct {
 	ScopeKind           string   `json:"scope_kind"`

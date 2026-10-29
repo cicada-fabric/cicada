@@ -1,7 +1,7 @@
 {
   "contract_revision": "app-node-authority-node-scoped-v1",
-  "status": "CODEC_ONLY_UNAVAILABLE",
-  "available": false,
+  "status": "HUB_NODES_ONLY",
+  "available": true,
   "scope_kind": "NODE_V1",
   "scope_version": 2,
   "wire_version": 1,

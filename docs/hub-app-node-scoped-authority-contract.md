@@ -1,9 +1,11 @@
 # Finite App authority scoped to an exact Node
 
-Contract: **`app-node-authority-node-scoped-v1`**. This checkpoint freezes
-shared proof/packet codecs and advertises **`available=false`**. It does not
-implement or enable the scoped Store/Hub carrier. Its transactional requirements
-below are implementation obligations, not passing acceptance claims.
+Contract: **`app-node-authority-node-scoped-v1`**. Hub Nodes mode advertises
+**`available=true`** and exposes the scoped Store/Hub carrier through its normal
+constructor. Current caller authority still requires the independent account,
+Owner and finite grant checks below. Source-specific codec, carrier and consumer
+qualification are recorded separately in the
+[validation ledger](hub-app-node-scoped-authority-validation.md).
 
 The existing [App Node v1 contract](hub-app-node-authority-contract.md) and its
 original packets, signatures, heads, provenance, READ behavior and recovery stay
@@ -18,7 +20,7 @@ Scope version 2 is a separate value.
 GET `/v2/owner/app-node-scoped/capabilities` returns
 `AppNodeScopedCapabilities`, format `cicada.app-node-scoped-capabilities.v1`,
 contract revision above, `scope_kind="NODE_V1"`, `scope_version=2`,
-`serve_mode="--hub-nodes-only"`, `available=false`. It lists exactly the five
+`serve_mode="--hub-nodes-only"`, `available=true`. It lists exactly the five
 operations below, profiles `INITIAL_CONFIRM` and `READ_EXISTING`, the existing
 900-second finite lease and 128 KiB original limit. The consumer must first
 authenticate the independently retained Hub and strictly decode an available
@@ -39,7 +41,8 @@ authenticated common result, never an HTTP-status-based pending clear. The
 existing account packet wrapper, fixed handshake route, PQ cryptography and
 identity leaf `AppNodeRequestContext`/constructor input `AppNodeSession` are
 reused. The operation, entire original packet, new scope and proof domains are
-explicitly distinct. No scoped POST handler is enabled at this checkpoint.
+explicitly distinct. The ordinary Hub Nodes composition enables these scoped
+POST handlers; public availability supplies no proof or caller authorization.
 
 `e2ee.OwnerAppNodeScopedScope` is an independent strict DTO: every existing
 identity/session/epoch/transport coordinate plus mandatory `version=2` and
@@ -168,6 +171,7 @@ change adds no Group right or public directory.
 The [scoped NPT contract](node-pair-trust-scoped-contract.md) defines the new
 device request, Owner approval and original Node ACK. App vault entries for v1
 stay untouched; new records are per Node and retain the one global pending gate.
-Actual second-Node enrollment, existing-Network selection, same-Group exchange,
-response-loss/restart, revocation and restore gates remain NOT_RUN at this
-codec-only checkpoint. A same-Node fixture is not second-Node acceptance.
+The original codec-only checkpoint established no actual second-Node,
+existing-Network, same-Group, response-loss/restart, revocation or restore
+acceptance. Later results retain their own source in the validation ledger;
+the availability default does not expand those recorded acceptance scopes.

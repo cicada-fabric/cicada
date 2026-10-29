@@ -2,10 +2,13 @@
 
 Contract **`node-pair-trust-node-scoped-v1`** accompanies
 [Node-scoped finite App authority](hub-app-node-scoped-authority-contract.md).
-This shared-codec checkpoint advertises **`available=false`** and enables no
-scoped pairing POST. The existing [NPT v1](node-pair-trust-contract.md) identifiers,
-packets, EXISTING_BINDING semantics and installed identities remain unchanged.
-Implementing the carrier and both consumers is separate work.
+The normal Hub Nodes composition advertises **`available=true`** and enables
+scoped pairing POSTs when its independently bound native TLS descriptor is
+available. A missing or invalid descriptor still fails discovery closed. The
+existing [NPT v1](node-pair-trust-contract.md) identifiers, packets,
+EXISTING_BINDING semantics and installed identities remain unchanged. Codec,
+carrier and consumer qualification retain their own source in the
+[validation ledger](hub-app-node-scoped-authority-validation.md).
 
 ## Closed formats and version chain
 
@@ -71,7 +74,7 @@ pending original with a newly sealed write. Node and App use the same closed
 reconcile DTO and recovery codec.
 
 Capability format is `cicada.node-pair-trust-scoped.v1`, revision above,
-`scope_kind="NODE_V1"`, `scope_version=2`, `available=false`, exact 12 operations,
+`scope_kind="NODE_V1"`, `scope_version=2`, `available=true`, exact 12 operations,
 modes `INITIAL_CANDIDATE` and `EXISTING_BINDING`, prefix and bound above.
 `DecodeNodePairTrustScopedCapabilities` requires an available exact document;
 it does not authorize a caller. Do not create pending state or send secret

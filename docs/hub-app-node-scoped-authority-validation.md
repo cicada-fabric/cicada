@@ -1,5 +1,75 @@
 # Node-scoped App/NPT producer validation
 
+## 2026-10-29 normal Hub Nodes availability
+
+This default-enablement checkpoint changes the two public scoped availability
+constants, their metadata/contract checks and existing test fixtures. The Node's
+existing auto-profile compatibility check explicitly compares a complete old
+Hub document against `Available=false`, independent of the new default. Other
+metadata, unknown-field refusal, saved-family selection and fresh auto-profile
+rules are unchanged. The normal `NewServiceWithNodeAuthority` used by the Hub Nodes CLI
+already derives its shared scoped admission gate from that constant. No new
+constructor, flag, environment switch, route, protocol identifier, migration or
+Group availability switch is added. Ordinary account/Control compositions keep
+their existing admission guards. NPT discovery still requires the independently
+bound native TLS descriptor. Account login still confers no Root authority.
+
+The strict wire test keeps explicit false-capability refusal. Existing Node
+profile refusal/legacy-fallback fixtures now supply complete false metadata
+explicitly, independent of the current Hub default. The existing real two-Node
+TLS chain uses the ordinary Hub Nodes constructor rather than the qualification
+opt-in. Its original Owner proof, private ACK, global counters, cross-Node
+recovery rejection and cancellation assertions are unchanged.
+
+The required App dependency is Root-reviewed checkpoint
+`f269f207813088aedae0caf95540271ab9fb2d49`, integrated by Root as
+`8d8ccd551516c68084b0f4caf9ed9bbe7a056bbb`. Its own
+`docs/native-app-scoped-validation.md` records 39 normal top-level PASS / 59
+passing events (139.460s), two related real-TLS race PASS (301.578s), three
+disposable Docker PASS (42.849s) and Windows PE cross-build exit 0. These are
+the separately reviewed App results, not reruns by this task. Root review
+SHA-256 is `35dcbbc60541139bb4c718edcefc13540b5d5e77e58b28ac2725244c519880e0`.
+
+Own gates use base `ad1e9445b34828b77a4c7ff36bed030655c140db` plus explicit
+dirty input inventories, not that HEAD alone. Evidence root:
+`/home/zyf/Cicada/.local/evidence/app-node-scoped-enable-20261029-01/`.
+The first 12-file inventory has SHA-256
+`4bad69410d2b9acf1182536437ece1cc715c3ac12dbf8650305d8e044d53e66d`.
+The final 13-file tested inventory, including the separately approved Node
+compatibility correction, has SHA-256
+`5c6331a331056503e1b4c07f3866c0e0575ff9f81ad6a0a9ca3772bf75016b68`.
+
+| Gate | Attributed result |
+| --- | --- |
+| Initial focused normal, first inventory | Wire 9 PASS (0.476s), Server 2 PASS (11.255s), Node profiles 2 PASS / **1 FAIL** (9.693s); wrapper **1**, zero SKIP |
+| Repaired Node profiles only, final inventory | **3 PASS**, zero FAIL/SKIP, 9.965s; wrapper 0 |
+| Related race, final inventory | Node profiles **3 PASS** (209.778s), Server **2 PASS** (59.358s); zero FAIL/SKIP, wrapper 0 |
+| One disposable Docker interop, final inventory | Wire **1 PASS** (0.006s), Node profiles **3 PASS** (9.543s), Server **2 PASS** (11.216s); zero FAIL/SKIP, container exit 0 |
+
+The initial normal FAIL is retained: the old-Hub false document was compared
+against the newly true default. The correction makes only that expected
+availability explicitly false. All three existing profile tests then pass;
+the successful Wire/Server normal packages are not rerun because that Node-only
+production file is outside them. No extra matrix or unrelated Store suite runs.
+The joint Python contract check and `git diff --check` pass.
+
+The disposable gate uses Go 1.27.3 and immutable image
+`sha256:5c3e9b43cfd3bb95c7937462e29d87ada57b481a96fa23ad0eb61778d7a00110`,
+network disabled, UID/GID 1000, read-only source/root/module cache, tmpfs and an
+existing build cache. Exact commands, raw logs and test binary hashes are
+retained under `docker/`; the owned container is absent afterward. Host commands
+and both source manifests are retained alongside it. The combined qualification
+receipt SHA-256 is
+`eaba6ae3d26dbd309e14d31ef3a4b712f1be9f0bab365fc100c11efc5764f7a4`.
+After these gates only this validation document is completed with the final
+results and App dependency; every other reviewed blob remains unchanged from
+the final tested inventory. This task does not rebase onto the App dependency
+or attribute its tests to that later integrated tree.
+
+The earlier records below retain their tested source and disabled availability.
+Schema 70 restore remains UNSUPPORTED. This availability change does not claim
+physical Windows, Android, public HTTPS or a new native Runtime acceptance run.
+
 ## 2026-10-29 disabled Hub carrier checkpoint
 
 The Hub producer now implements the frozen Scope2 authority and NPT contracts

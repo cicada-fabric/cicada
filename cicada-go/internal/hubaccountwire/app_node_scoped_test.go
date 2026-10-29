@@ -192,12 +192,13 @@ func TestAppNodeScopedStatusTargetAndOwnerActor(t *testing.T) {
 	}
 }
 
-func TestAppNodeScopedCapabilitiesStayUnavailableAndStrict(t *testing.T) {
+func TestAppNodeScopedCapabilitiesAvailableAndStrict(t *testing.T) {
 	c := AppNodeScopedContractCapabilities(AppNodeTransportHTTPS)
 	n := NodePairTrustScopedContractCapabilities()
-	if c.Available || n.Available {
-		t.Fatal("contract-only checkpoint enabled a carrier")
+	if !c.Available || !n.Available {
+		t.Fatal("qualified Hub Nodes carrier unavailable")
 	}
+	c.Available = false
 	raw, _ := json.Marshal(c)
 	if _, err := DecodeAppNodeScopedCapabilities(raw); err == nil {
 		t.Fatal("consumer accepted unavailable carrier")
@@ -216,6 +217,11 @@ func TestAppNodeScopedCapabilitiesStayUnavailableAndStrict(t *testing.T) {
 	raw, _ = json.Marshal(n)
 	if _, err := DecodeNodePairTrustScopedCapabilities(raw); err != nil {
 		t.Fatal(err)
+	}
+	n.Available = false
+	raw, _ = json.Marshal(n)
+	if _, err := DecodeNodePairTrustScopedCapabilities(raw); err == nil {
+		t.Fatal("consumer accepted unavailable pairing carrier")
 	}
 	if AppNodeScopedPacketDigest([]byte("synthetic")) == AppNodePacketDigest([]byte("synthetic")) {
 		t.Fatal("authority packet domains overlap")

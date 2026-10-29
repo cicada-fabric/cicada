@@ -9,8 +9,8 @@ import (
 	wire "github.com/cicada-ai/cicada/internal/hubaccountwire"
 )
 
-func TestHubNodeScopedCapabilitiesRemainUnavailable(t *testing.T) {
-	f := newHubNodesTCPFixture(t)
+func TestHubNodeScopedCapabilitiesAvailableAndStrict(t *testing.T) {
+	f, _ := newNodePairTLSFixture(t)
 	for _, path := range []string{wire.AppNodeScopedCapabilitiesPath, wire.NodePairTrustScopedCapabilitiesPath} {
 		status, raw := n3HTTP(t, f, http.MethodGet, path, "", nil)
 		if status != http.StatusOK {
@@ -18,12 +18,12 @@ func TestHubNodeScopedCapabilitiesRemainUnavailable(t *testing.T) {
 		}
 		if path == wire.AppNodeScopedCapabilitiesPath {
 			var c wire.AppNodeScopedCapabilities
-			if json.Unmarshal(raw, &c) != nil || !reflect.DeepEqual(c, wire.AppNodeScopedContractCapabilities(wire.AppNodeTransportLoopbackTest)) {
+			if json.Unmarshal(raw, &c) != nil || !c.Available || !reflect.DeepEqual(c, wire.AppNodeScopedContractCapabilities(wire.AppNodeTransportHTTPS)) {
 				t.Fatal("scoped authority metadata")
 			}
 		} else {
 			var c wire.NodePairTrustScopedCapabilities
-			if json.Unmarshal(raw, &c) != nil || !reflect.DeepEqual(c, wire.NodePairTrustScopedContractCapabilities()) {
+			if json.Unmarshal(raw, &c) != nil || !c.Available || !reflect.DeepEqual(c, wire.NodePairTrustScopedContractCapabilities()) {
 				t.Fatal("scoped NPT metadata")
 			}
 		}
@@ -34,8 +34,8 @@ func TestHubNodeScopedCapabilitiesRemainUnavailable(t *testing.T) {
 	}
 	for _, op := range wire.AppNodeScopedHTTPOperations() {
 		status, _ := n3HTTP(t, f, http.MethodPost, wire.AppNodeScopedHTTPPath(op), "", []byte(`{}`))
-		if status != http.StatusNotFound {
-			t.Fatal("contract-only checkpoint enabled scoped POST")
+		if status != http.StatusForbidden {
+			t.Fatal("available scoped route accepted an unauthenticated packet", status)
 		}
 	}
 }

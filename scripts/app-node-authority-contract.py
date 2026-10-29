@@ -69,7 +69,7 @@ def check_scoped():
     prose = (ROOT / "docs/hub-app-node-scoped-authority-contract.md").read_text()
     npt_prose = (ROOT / "docs/node-pair-trust-scoped-contract.md").read_text()
     assert manifest["contract_revision"] == "app-node-authority-node-scoped-v1"
-    assert manifest["status"] == "CODEC_ONLY_UNAVAILABLE" and not manifest["available"]
+    assert manifest["status"] == "HUB_NODES_ONLY" and manifest["available"]
     assert (manifest["scope_kind"], manifest["scope_version"], manifest["wire_version"], manifest["catalog_count"]) == ("NODE_V1", 2, 1, 55)
     assert manifest["legacy_contract_revision"] == "app-node-authority-v1" and manifest["legacy_scope_version"] == 1
     assert manifest["head_key"] == ["owner_id", "device_id", "authority_node_id"]
@@ -77,8 +77,8 @@ def check_scoped():
     assert (manifest["confirmation_limit"], manifest["read_confirmation_limit"], manifest["runtime_lease_seconds"], manifest["intent_seconds"], manifest["proof_seconds"]) == (1, 0, 900, 60, 300)
     assert manifest["allowed_operations"] == ["nodes.confirm"] and manifest["status_allowed_operations"] == []
     assert manifest["business_operation_prefix"] == "n3s."
-    assert re.search(r"AppNodeScopedPublicAvailable\s*=\s*false", source)
-    assert re.search(r"NodePairTrustScopedPublicAvailable\s*=\s*false", npt)
+    assert re.search(r"AppNodeScopedPublicAvailable\s*=\s*true", source)
+    assert re.search(r"NodePairTrustScopedPublicAvailable\s*=\s*true", npt)
     assert len(manifest["operations"]) == 5
     for row in manifest["operations"]:
         for field in ("operation", "path", "request", "response"):
@@ -101,7 +101,7 @@ def check_scoped():
         assert row["operation"] in npt and row["path"] in npt
     for key in ("format", "packet_format", "code_prefix", "discovery_path"):
         assert meta[key] in npt and meta[key] in npt_prose
-    print("app-node-authority-node-scoped-v1 / scoped NPT codec-only metadata PASS (availability false; carrier acceptance not asserted)")
+    print("app-node-authority-node-scoped-v1 / scoped NPT Hub Nodes metadata PASS (availability true; caller authority and deployment acceptance not asserted)")
 
 
 if __name__ == "__main__":

@@ -19,7 +19,7 @@ const (
 	NodePairTrustScopedRevoked                         = "REVOKED"
 	NodePairTrustScopedFenced                          = "FENCED"
 	NodePairTrustScopedRecovered                       = "RECOVERED"
-	NodePairTrustScopedPublicAvailable                 = false
+	NodePairTrustScopedPublicAvailable                 = true
 	NodePairTrustScopedDescriptorPath                  = "/v2/hub/transport"
 	NodePairTrustScopedCapabilitiesPath                = "/v2/node/pair-trust-scoped/capabilities"
 	OperationNodePairTrustScopedStart                  = "node.pair-trust-scoped.start"

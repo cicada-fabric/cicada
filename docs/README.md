@@ -39,11 +39,12 @@ Pre-submit contact/input UI stays in **v0.2 PLANNED/NOT_RUN**; the
 
 The additive [Node-scoped App authority](hub-app-node-scoped-authority-contract.md)
 and [scoped Node pairing trust](node-pair-trust-scoped-contract.md) freeze
-independent Scope2 shared codecs. Both new capabilities remain false; the
-[producer validation](hub-app-node-scoped-authority-validation.md) now also
-records the disabled Hub carrier, migration 70, shared global guards and
-isolated two-Node TLS qualification. Combined App/Node consumer availability
-and actual second-Node Network/Group integration remain pending.
+independent Scope2 shared codecs. Normal Hub Nodes composition now enables both
+capabilities; scoped NPT discovery also requires its bound native TLS descriptor.
+The [source-specific validation](hub-app-node-scoped-authority-validation.md)
+retains the earlier disabled codec/carrier results and the later default
+availability qualification separately. Public availability does not authorize a
+caller or expand native, physical-device or Network/Group acceptance claims.
 
 The dated checkpoints below retain their original source, artifacts and tested
 scope. Their old “current” descriptions and literal-prompt workflows describe

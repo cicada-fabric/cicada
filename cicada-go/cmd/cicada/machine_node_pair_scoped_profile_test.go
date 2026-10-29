@@ -27,11 +27,16 @@ func TestNodePairScopedUnavailableCreatesNoSecretStateOrPOST(t *testing.T) {
 				if r.Method == http.MethodPost {
 					posts.Add(1)
 				}
-				if r.URL.Path != wire.NodePairTrustScopedCapabilitiesPath || kind == "false" {
+				if r.URL.Path != wire.NodePairTrustScopedCapabilitiesPath {
 					actual.ServeHTTP(w, r)
 					return
 				}
 				switch kind {
+				case "false":
+					c := wire.NodePairTrustScopedContractCapabilities()
+					c.Available = false
+					raw, _ := json.Marshal(c)
+					_, _ = w.Write(raw)
 				case "unknown":
 					w.WriteHeader(http.StatusServiceUnavailable)
 				case "malformed":
@@ -104,6 +109,17 @@ func TestNodePairScopedSavedFamilyCannotBeChangedByFlag(t *testing.T) {
 
 func TestNodePairScopedAutoRecognizesExactUnavailableLegacyHub(t *testing.T) {
 	f := newNodePairLocalFixture(t)
+	actual := f.server.Config.Handler
+	f.server.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == wire.NodePairTrustScopedCapabilitiesPath {
+			c := wire.NodePairTrustScopedContractCapabilities()
+			c.Available = false
+			raw, _ := json.Marshal(c)
+			_, _ = w.Write(raw)
+			return
+		}
+		actual.ServeHTTP(w, r)
+	})
 	err := runMachineAgentWithContext(context.Background(), []string{"--hub-address", f.address, "--state-dir", f.state, "--id", f.node, "--relay-only", "--once"}, nil)
 	if !errors.Is(err, errMachineNodePairPending) {
 		t.Fatal("exact unavailable scoped profile did not select available legacy", err)

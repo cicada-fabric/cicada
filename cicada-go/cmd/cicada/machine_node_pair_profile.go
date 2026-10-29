@@ -180,7 +180,9 @@ func selectMachineNodePairProfile(ctx context.Context, stateDir, nodeID, address
 				return "scoped", text, nil
 			}
 			var unavailable wire.NodePairTrustScopedCapabilities
-			if machineNodePairStrictJSON(raw, &unavailable) != nil || !reflect.DeepEqual(unavailable, wire.NodePairTrustScopedContractCapabilities()) {
+			expected := wire.NodePairTrustScopedContractCapabilities()
+			expected.Available = false
+			if machineNodePairStrictJSON(raw, &unavailable) != nil || !reflect.DeepEqual(unavailable, expected) {
 				return "", "", errMachineNodePairScopedUnavailable
 			}
 		} else if status != http.StatusNotFound {
