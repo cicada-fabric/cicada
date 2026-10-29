@@ -1026,3 +1026,66 @@ and after the gates. This consumer combination is separate from the parent
 Hub gate tree; neither is attributed solely to a dirty HEAD. The combined
 receipt is `owner-groups-reply-current-20261026/receipt.json` in the evidence
 directory above. Fresh complete original-Runtime M1–M8 remains pending.
+
+
+## 2026-10-29 — recovered Complete installs its original Owner head
+
+This producer change is based on `303639d21cc93087bf6fa051f329f95f52f72fb2`
+with the retained dirty source manifests under
+`/home/zyf/Cicada/.local/evidence/owner-groups-head-continuation-fix-20261029-01/`.
+It adds no wire operation, contract revision, identity, external configuration or
+business authority. The final seven-path source manifest is
+`final-v3/manifest.json`, SHA-256
+`861a8d1592ae3aaab0838cf7a65bb43ace95079c1f6cb8f43f018df3da9fe26c`.
+
+The one approved four-original synthetic-native control is retained separately at
+`/home/zyf/Cicada/.local/evidence/owner-groups-head-continuation-control-20261029-01/`.
+Its `result.json` SHA-256 is
+`3893816b61423bf92c5700d52b5bbdd2f8680193a9f054086714d60c716fa16b`.
+The diagnostic reported **CONTROL_RED**: a real five-second Complete cancellation
+followed by another original native's ordinary Describe settled the identical
+Complete receipt without installing its Owner head. A later ordinary maintenance
+batch installed it. This proves the missing local continuation; it does not prove
+the particular 68-second delay or a GC cause in the retained YY0pOo Runtime.
+The diagnostic's test-process PASS means its observation assertions completed;
+it does not turn the product observation green.
+
+Recovery now persists the authenticated response before local installation and
+clears the original pending outbox only after that bounded installation succeeds.
+It uses the original registration and exact Prepare generation/Challenge, existing
+Owner pin and cryptographic grant checks, real current time and monotonic head
+transaction. A cached response needs no additional reconcile RPC after a local
+failure. Unknown evidence, storage failures and canceled budgets retain the
+original packet/response. Only a fully verified historical success independently
+proved expired, superseded or pinned to a revoked Owner key may settle without
+installation; it returns an explicit local terminal error and preserves the
+newer deny/head. Other originals can then continue. Historical time never grants
+current use. The five-second native budget and 30-second Current remain unchanged.
+
+| Validation stage and retained source | Result | Scope |
+| --- | --- | --- |
+| `normal.jsonl`, original `manifest.json` | 23 PASS, 0 FAIL, 0 SKIP; 78.650 s | New real recovery control, existing exact RPC recovery and P0 lifecycle; original composed recovery-plus-Describe assertion. |
+| `race.jsonl`, original `manifest.json` | FAIL; 13 test PASS and 3 test FAIL; 448.972 s; no DATA RACE | The first head was installed 3.759 s after cancellation, before the subsequent B Describe failed its combined budget. Separately, P0 failed because its required early ACTIVE read was not produced. Neither failure is erased or attributed to a race detector finding. |
+| `final/normal.jsonl`, `final/manifest.json` | Recovery test 17 PASS; package FAIL | Recovery and independent later Describe each use their own original five-second operation budget. The new guard's IO assertion incorrectly expected OS error wrapping from the existing string-formatting helper. |
+| `final-v2/guard-normal.jsonl`, `final-v2/manifest.json` | 3 PASS, 0 FAIL, 0 SKIP; 0.027 s | Corrected test-only IO assertion and synchronized transport capture; cancellation/storage failures preserve the original and send no extra RPC. |
+| `final-v2/race.jsonl`, `final-v2/manifest.json` | 20 PASS, 0 FAIL, 0 SKIP; 346.380 s; no DATA RACE | Both complete recovery branches, cached response reentry, wrong/mixed origin, wrong digest/epoch, missing Challenge, expiry, revoked pin and newer deny; no broad P0 race rerun. |
+| `final-v3/late-cancel-normal.jsonl`, final source | 3 PASS, 0 FAIL, 0 SKIP; 15.135 s | The final fail-closed-only delta checks cancellation after historical crypto and immediately before installation. A private test clock cancels at that boundary; the original remains pending. The previous race result remains attributed to v2, not this delta. |
+| `final-v3/docker/test.jsonl`, final source | 28 PASS, 0 FAIL, 0 SKIP; test 78.460 s, container 99.699 s; exit 0 | Latest exact six Go files; real P0 lifecycle/RPC tests plus recovery, cached-response guard and late cancellation. Owned container absence and unchanged source hashes verified. |
+
+The initial unused-import build failure, the fixture sequence-floor rollback
+failure, the original composite race failures and the IO-assertion failure remain
+in their original logs. The fixture correction preserves the already used writer
+sequence while reentering the old cached response. It does not change production
+sequence semantics. Synthetic verification time qualifies only the expiry
+negative; positive installation uses the real clock. Production diagnostic
+observers were removed. No new full Runtime, physical Windows, Android, actual
+24-hour expiry or public HTTPS result is claimed by these producer checks.
+
+The final Docker receipt is `final-v3/docker/receipt.json`, SHA-256
+`e4435cb0fbb4db86cc445733ef9a193aa4eb073d39838a5e3293e259ae9e4ab3`.
+It uses pinned image
+`sha256:5c3e9b43cfd3bb95c7937462e29d87ada57b481a96fa23ad0eb61778d7a00110`,
+network disabled, UID/GID 1000, read-only source and module cache, task-owned
+build cache and disposable tmpfs. The actually executed test binary SHA-256 is
+`2cd4826a799402328aa8c0d355583c2b10fbd78c876f34ea91e55f101026e1f6`.
+The Docker gate is a normal test execution, not another race or Runtime gate.

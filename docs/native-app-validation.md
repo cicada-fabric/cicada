@@ -8631,6 +8631,252 @@ baselines, final four-identity witness, Windows DPAPI/ACL/GUI, Android, physical
 second Node, public HTTPS and actual 24-hour expiry remain **NOT_RUN**. The
 clean-76647a4 M5 **FAIL** and its missing private cause remain recorded separately.
 
+### 2026-10-27 clean 303639d expired-default-witness failure
+
+Root authorized one complete existing `--owner-endpoint-groups` entry from clean
+source/harness `303639d21cc93087bf6fa051f329f95f52f72fb2`, parent budget 90m.
+The six previously delivered QA paths were preserved in stash
+`8b5dd9b0a10188a951e2f0739eab37b33dcc7314` and the external patch before the
+explicit fast-forward; that stash was not popped or discarded. The same 48
+license files were verified byte-for-byte against the prior gate. The command was:
+
+```sh
+CICADA_NATIVE_PAIR_LICENSES_DIR=/home/zyf/Cicada/.local/artifacts/native-ip-complete/run-owner-thread-groups-defdd9d-20261026/payload/licenses \
+bash scripts/test-native-pair.sh --owner-endpoint-groups
+```
+
+`run-20261027T041611Z-YY0pOo` ended **FAIL / exit 1**. Version, CLI compile,
+test compile and vet each exited 0; harness exited 1. M1 **PASS 143.18s**,
+M2 **PASS 477.02s**, M3 **PASS 195.13s**, M4 **FAIL 546.53s**; parent
+1634.42s. M1/M2/M3 emitted 6/6/8 successful facts, and M2's four original
+Group/native-SID ASK/REPLY exchanges were each received once. M3 writer release
+was 7,474ms; Network self was 200 with three identity fields and no business
+capabilities, with business and Leave denied.
+
+The exact first failure was a read-only QA assertion at
+`AFTER_NODE_OWNER_HEAD`, before invoking the actual old-default Node verifier.
+Pre-release DEFAULT/DEFAULT was positively verified at
+`04:43:03.724785354Z`; a refresh positively verified the same source at
+`04:43:03.902968043Z`. That refreshed authenticated Current projection's
+ObservedAt was `04:43:03.742281783Z`, ExpiresAt `04:43:33.742281783Z`.
+The later assertion ran at `04:44:12.029797338Z`, **38.288s after expiry**.
+Its source shape and both modes remained DEFAULT. Expiry is a true failure of
+this required still-current observation, not a successful permanent-head denial.
+It is not a Host actor/tool refusal: the last Host operation was checkpoint 93,
+`m4-before-finite-takeover-reply-receive`, completed before this observation.
+No underlying private issuer error was associated with the failed assertion.
+
+The finite original Complete/520 had operation-ID SHA-256
+`176d350e9bf10d70907e475a040c40a768483e8f3dfba913504cf3bc30f0c3bb`,
+request SHA-256 `e7a847b3dfc2339e3e9715e37fdddcf7d13bc0df03df4fa1f3d601bcd6725669`.
+Its first held attempt was `04:42:59.641731032Z`–`04:43:03.429230620Z`,
+not forwarded. The byte-identical retry began `04:43:03.593636532Z` and,
+after explicit release, returned authenticated HTTP 200/OK at
+`04:43:04.008334645Z`, response SHA-256
+`b87d624fdbaf1676103d3ab41d7bc1bc3dc976d49dd12cdd14a80e969911f4f2`.
+The original step was settled, CompletedAt `04:43:04.077597880Z`.
+The first subsequent peer projection showed sender OWNER/revision 1/epoch 1 at
+`04:43:04.217367295Z`; the last DEFAULT projection was
+`04:43:03.901840776Z`. All 22 peer coordinates fit below the audit limit 128.
+The source then enters local-head observation before the failed old-proof
+assertion. The roughly 68-second refresh-to-assertion interval does not identify
+whether individual SQL reads blocked or repeatedly observed the previous head:
+per-query timing and the actual first local-head persistence time were not
+retained. Root/Hub own the separate production-path diagnosis.
+
+Earlier original negative Complete/434 locally settled in 16,703ms, and lost
+positive Complete/477 after ordinary restart in 1,127ms, each authenticated with
+pending zero/all 15 flags empty and live Node/Hub. Their scopes do not establish
+those same facts at the later failure. Final audit at `04:44:12.559638520Z`
+has pending operation empty and sequence 0; failure-time size, other 15 presence
+flags and process liveness were **NOT_RETAINED**. Protected restart read was
+4,620,104 bytes. Owned state had zero files after cleanup and the container was
+absent. M5–M8, real five minutes, the Renew barrier's actual cold path, both M7
+baselines and final four identities are **NOT_RUN**; Windows DPAPI/ACL/GUI,
+Android, physical second Node, public HTTPS and actual 24-hour expiry remain
+NOT_RUN. The older scoped Runtime/controlled passes and failures are unchanged.
+
+Source and executed-binary snapshots matched. Source manifest SHA-256
+`d9efbdcc93aececd0a8a79ec61d9b91a7e0797c64821811fc5812a5ea03a8309`;
+CLI SHA-256 `79a6af0c3aec6a768b8e7adbfe431a672c8ed7aea89847c27a6ca73599be21b5`;
+test SHA-256 `af2bf9923055b1a265350037cc97ba160452effbea906b5720d4d0e68aef18f7`.
+Exact argv and exits are under
+`~/Cicada/.local/evidence/native-pair-acceptance/run-20261027T041611Z-YY0pOo/`;
+`result.json` SHA-256
+`163be5348a7b9a82ed5b2779299ff2c95eded06eaa9e1f1945a5393b4e680a96`.
+The corresponding artifact audit `owner-groups-protocol-audit/4bc4f4d5a17ec739.json`
+has SHA-256 `bce8bede8dc17842fe133b62127d8be1a3f9766f5fb471102dcd70a7d0da64f0`.
+External read-only observer: 223 closed rows/zero read retries, JSONL SHA-256
+`669738557fcb6918298f6d80fdb04f9d8bff5e603df1efb2284d83bbe4e5fdba`.
+Root's independent review
+`~/Cicada/.local/evidence/local-domain-root/owner-groups-core-combination-20261026T1502/review-YY0pOo-expired-default-witness-failure.json`
+SHA-256 `d04b8d813067c8d1cf0d7f074c2b4f88c6617023a4f1670f796b9ef62f020c8b`
+is retained without repeating its analysis. No automatic rerun or public change
+was made; candidate finalization remains withheld.
+
+### 2026-10-29 QA head-query boundary and security evidence mapping
+
+After the explicit pause/resume, Root authorized only the QA waiting boundary,
+the original YY0pOo record and the existing manual-procedure correction. The
+local-head observer now shares the parent takeover deadline and the unchanged
+same retained DEFAULT Current expiry, choosing their earlier deadline for
+`QueryRowContext`. It checks actual wall time again after SQL before accepting
+an equal head. It emits closed BEGIN/END timestamps, query count/total/max time,
+last safe query classification and head hash/mode/revision, with remaining
+original validity. It does not write state, submit HTTP, generate proof, change
+ObservedAt/ExpiresAt, extend TTL or accept an expired denial. The existing final
+Node verifier and exact expected-head predicate remain required. This makes a
+missed window an explicit earlier failure; it does not fix or diagnose the
+production delay observed in YY0pOo.
+
+Only `^TestN3OwnerGroupsNodeHeadWaitUsesOriginalWindow$` ran after compiling N3:
+**5 PASS events, zero FAIL/SKIP, exit 0**. Its synthetic persistent SQLite
+contains a single original head; a held sole connection deterministically tests
+cancellation of `QueryRowContext` at the parent deadline or original Current
+expiry. It also verifies exact-head success inside the window, equal-head
+failure without SQL after expiry, unchanged database bytes and closed diagnostics
+without raw Hub/Endpoint/Group/policy coordinates. This connection-wait check is
+not a measurement of product head latency, a production fix test or Runtime.
+Pinned disposable Docker used read-only source/module mounts and a serialized
+task-private build cache; compilation exited 0, source snapshots matched, and
+typed inspect confirmed container absence. Dirty 303639d snapshot-file SHA-256
+`2e9c1fc843f49319e3635685dbeced832e69f372048b664d2ec3ab85890ba31d`;
+executed test SHA-256
+`6ceeea601f271737be81da018228667171414ba122baab6db7d2c96831ecacd6`.
+Exact argv, stage exits, log and cleanup proof:
+`~/Cicada/.local/evidence/n2-acceptance/owner-groups-head-window-303639d-01/`;
+`result.json` SHA-256
+`783eedf83b09f821e1748510dc5f6a6029b2cf7f47911b0f2848cd023b69f514`.
+These final receipt paragraphs follow the frozen narrow test; tested Go files
+are unchanged. No complete Runtime or producer suite was rerun by QA.
+
+The former single security-negative NOT_RUN row was too broad. The following
+mapping keeps already executed checks attributed to their actual source and
+scope, without claiming the remaining full security matrix passed:
+
+| Scope already executed | Exact evidence | Limit / remaining observation |
+| --- | --- | --- |
+| Shared-Principal/Network and legacy/global business/Leave ceiling | `TestEndpointGroupsHTTPNetworkActorCannotBorrowPrincipalRightsOrLeaveRegistration`, dirty 529471d source manifest `83107f9f08b7f11e36a91986e7f534fc52b9b464ce07eb84346cfc41cf250cef`, one top/three subcases passed; receipt `owner-groups-network-scheme-529471d-01/result.json`, SHA-256 `46c004c9d66c54d0f66b5c24905fb52626438522a2749482303a4f3b178bd658`, under `~/Cicada/.local/evidence/n2-acceptance/`. Clean 303639d M3 separately passed its eight Runtime facts. | The producer wider-Principal baseline and Runtime's original actor baseline remain separate. Neither is a complete cross-Owner/Node/user/key adversarial matrix. |
+| Issuer refusal/corrupt response/changed native evidence, repeated-read timeout, expired invocation, mutex budget and pending-write refusal | Frozen seven-input final normal-cmd receipt `~/Cicada/.local/evidence/owner-groups-stale-active-retention/final/normal-cmd-receipt.json`, SHA-256 `03c29ebe7484f93b3c52792c193a6a0dbdf164fa6dcb42467449d73810863009`; cases `TestEndpointGroupsUnixIssueDoesNotRetryRefusalsOrChangedIdentity` (forbidden/bad_response/native_changed), `TestEndpointGroupsUnixIssueRepeatedReadTimeoutIsBounded`, `TestEndpointGroupsUnixIssueDoesNotRecoverPendingWrite`, `TestEndpointGroupsIssueExpiredBudgetDoesNotMint`, `TestEndpointGroupsIssueMutexWaitConsumesOriginalBudget`. | Real crypto/TCP/Unix producer evidence; no ticket or write recovery across these specific failed proofs. It does not establish actual App/Hub expired Owner review or every unsupported/mixed Runtime profile. |
+| Stored registration/head/Owner-pin requirements and scope/key/binding/digest corruption | Same manifest `e8393f568d4b460c3bbd8e71ab27e969cda566b51352855d69ebe36cc8463a33`; normal-api receipt SHA-256 `d119e03647ad0d99f795c260760a04983d04b38d3092df285b18a764dd45cbc3`, under that final evidence directory. Exact `TestReadEndpointGroupStoredOwnerHeadRequiresExistingRegistrationHeadAndTrust` and `TestReadEndpointGroupStoredOwnerHeadRejectsScopeHeadAndDigestCorruption` include missing/revoked trust, wrong identity/candidate/Group/binding, malformed head and head-digest mismatch. Focused race and Docker retain their own linked receipts above. | Existing-only nodekeys API guards, not fresh Current authorization or all hostile Hub/App routes. |
+| Read-retirement proof/fence and exact recovery | `TestEndpointGroupsSupersededActiveRetention` replacement/terminal branches in the same normal-cmd receipt: current ACTIVE retained, invalid old/new receipt or wrong Group/missing Complete rejected, 13 pending fences, concurrent before/after snapshots, old exact read EXPIRED without redispatch and changed body CONFLICT, writes/keys/anchor/head retained on reopen. QA Complete/Renew/hold checks have their separately recorded actual receipts above. | Narrow retention/recovery scope; not concurrent Owner add/remove CAS or full Store backup/restore acceptance. |
+| Finite manual expiry has no default fallback | Original 755053b Store/crypto normal/race results retain their attribution to e5d76c2, independently reviewed in `review-e5-finite-expiry-attribution.json`, SHA-256 `349021be87ce67f40a2f08450028674b85ec6e933f0f3c801a12086f7bca900e`, in Root's `owner-groups-core-combination-20261026T1502` evidence. | Deterministic historical Store/crypto boundary; actual 24-hour wall-clock expiry is NOT_RUN. |
+
+Further producer evidence has now been attributed to named cases below. It
+does not turn the preceding narrow scopes into a complete adversarial matrix.
+Completion still requires the actual M1–M8 gate, original four-identity witness,
+real five-minute boundary and cleanup. Windows physical checks remain the
+user's later independent batch. Long-term CICADA/N4/v0.2 targets remain outside
+this checkpoint.
+
+### 2026-10-29 independent security checks and producer continuation handoff
+
+Two additional QA-owned tests use real PQ cryptography, persistent SQLite and
+actual loopback TCP where applicable. Production Hub/App/Node files were not
+changed. Both execute in disposable, isolated pinned Docker environments with
+network disabled, read-only source/module cache, a locked task-private build
+cache and private output/temp mounts. These are Docker-hosted normal checks,
+not two separate host-normal/Docker executions or Runtime acceptance. The
+source baseline is `303639d21cc93087bf6fa051f329f95f52f72fb2` plus the exact
+uncommitted QA files in each snapshot, not bare HEAD and not the producer's
+later continuation delta.
+
+All following QA evidence directories are under
+`~/Cicada/.local/evidence/n2-acceptance/`:
+
+| Independent case | Actual execution and receipt | Scope |
+| --- | --- | --- |
+| `TestEndpointGroupsIndependentAddRemoveSameCASHasSingleEffect` | `owner-groups-security-normal-303639d-01/result.json`, SHA-256 `e6c405c1dcfe81a89085928c0aad8f5ad747ee4114423616df807c2e3f148444`; Store compile exit 0, test exit 0, 1 PASS/0 FAIL/0 SKIP, 1.984s. `store.test` SHA-256 `e118fb67272d595c18e28e2589247f42627c9726766846235d7588291e44e0dc`. | Two separately reviewed/signed Add and Remove intents share one exact expected CAS and race through independent Store handles. Exactly one effect; loser has authenticated `CAS_CONFLICT` and its own consumed review. Actual winner was Remove. Reopen and exact replay retain both receipts; other membership, identity and key snapshots remain unchanged. |
+| `TestEndpointGroupsHTTPValidSourcesCannotBorrowAnotherCallScope` | `owner-groups-security-server-303639d-03/result.json`, SHA-256 `54fe9d9608e93d92aa31e96e6c2af12264e620b0d039a892844bc1e91b56e947`; compile exit 0, test exit 0, one parent plus Node/Network/Group subcases = 4 PASS events/0 FAIL/0 SKIP, 7.657s. `server.test` SHA-256 `3f49472f4e3e70c605fb931bf1f3e91e2380182e251d8bb4cb5132373e368370`. | Both original source domains pass actual Describe and ACTIVE signed grant validation before and after each negative. Correctly signed authenticated requests reuse valid B policy from caller A, known other Network or known other Group; all return HTTP 200 with reversed authenticated route, exact `TARGET_NOT_AUTHORIZED`, no result/effect and byte-identical refusal replay. Persistent business snapshots remain unchanged. |
+
+The HTTP fixture's second Node possession proof goes through the real TCP
+`/v2/nodes/device-code` route. Its exact candidate is approved through existing
+`PreviewNodeControlKeyRequest` / `ConfirmNodeControlKeyRequest` APIs using the
+already enrolled Owner/device, as in the existing Node recovery/TLS fixtures;
+no SQL authority rows are installed. LocalDomain/Group preparation, activation,
+Joins and keys then use real TCP services. This is **not** a second N3 enrollment
+claim: a confirmed App's initial-grant provenance cannot adopt a different Node.
+The code selector uses the SDK's `AppNodeCodeDigest`, whose normalizer and
+`cicada-node-device-code-v1` digest domain match the production Node wrapper.
+The existing fixture asserts that no Control inference instance is created.
+
+Two earlier fixture failures remain retained. The combined `normal-01` process
+exited 2 after the Store PASS: the same App's second INITIAL request returned
+`AUTHORITY_CONFLICT`, and the test incorrectly dereferenced a missing challenge.
+Server-only `server-02` exited 1 before scope subcases: using the displayed
+hyphenated code directly as a digest failed candidate lookup. Its receipt is
+`c32e02ad73e406f21435681ad26b438868adb6d90f345d430f515ab7fb92c25a`.
+Neither failure is a product security-negative PASS. Only the necessary Server
+fixture was corrected and rerun; Store was not repeated. All three source
+snapshots were stable during their own execution and typed inspect proved each
+owned container absent. No second duplicate Docker gate was claimed.
+
+To reproduce the exact Docker commands after applying the supplied tests, run
+from the recorded worktree, with unused task-specific output directories and
+container names. The retained `command.json` includes every mount, digest,
+resource limit, compiler command and selected test; its module mount is read-only:
+
+```bash
+python3 - /absolute/path/to/the/retained/command.json <<'PYRUN'
+import json, subprocess, sys
+raise SystemExit(subprocess.run(json.load(open(sys.argv[1]))).returncode)
+PYRUN
+```
+
+`normal-01/command.json` selects both tests; `server-03/command.json` selects
+only the Server test. Use the full directory names in the table, preserve
+existing evidence and change the `/out` host mount and container name together
+for a new run. The narrow test selectors are also usable with
+`go test -mod=readonly -count=1 -run '^TestEndpointGroupsIndependentAddRemoveSameCASHasSingleEffect$' ./internal/store`
+and
+`go test -mod=readonly -count=1 -run '^TestEndpointGroupsHTTPValidSourcesCannotBorrowAnotherCallScope$' ./internal/server`
+under the same pinned toolchain/isolation. The original two-test patch is
+`owner-groups-security-handoff-303639d-01/qa-two-security-tests.patch`, SHA-256
+`b4580983db6a5ca70f49e7fd8d65d9514a7cc969d59bcfa9fe8ac25eebb415ef`.
+Store file SHA-256 is
+`e8bbfb1694a6ea18da89fb61e848281937ff01e2170213841ca0ade77b7fd154`;
+Server file SHA-256 is
+`1493a1dd0368ad3e0d9335f558527b96bfc1d24efccc007167f9aa41593b1bb3`.
+
+Additional producer checks retain their original source, rather than being
+silently re-labelled as fresh independent 303639d runs:
+
+| Named producer evidence | Retained receipt/source and bounded attribution |
+| --- | --- |
+| `TestEndpointGroupsOwnerNeverBootstrapsTrustFromArrivingProof`, `TestEndpointGroupsOwnerRealCASRejectConsumesReviewWithoutEffects`, `TestEndpointGroupsNodeConcurrentExactCompleteHasOneTransition`, `TestEndpointGroupsOwnerDirectAndReconcileSerializeAcrossStoreHandles`, `TestEndpointGroupsOwnerReviewBoundExpiryAndImmutableCoordinates`, `TestEndpointGroupsOwnerMissingOperationPreservesUncertainty` | Hub core `~/Cicada/.local/evidence/owner-groups-hub-core-20261026T144616Z/receipt.json`, SHA-256 `ca73e07e715067c29e07feb38e20892fca2a932e5f4197a2f3f067dfe695d2b6`, source 755053b. Use successful normal-v2, preserving original normal FAIL. Relevant Owner/business/Node/restore source bytes match 303639d. Missing operation preserves UNKNOWN; it is not successful restored history. |
+| `TestOwnerEndpointGroupsStrictBodiesAndDeviceIsolation`, `TestOwnerEndpointGroupsReviewRejectsSubstitutionAndEarlyTakeover`, `TestOwnerEndpointGroupsPolicyAndRequestStrictNegatives` | Same Hub receipt/source: exact strict DTO/device/review/policy/crypto rejection boundaries. The wire file has only a comment delta at 303639d; this is bounded case attribution, not a new whole-package execution. |
+| `TestEndpointGroupsPrivateRegistrationRejectsScopeAndIdentityReplacement`, `TestEndpointGroupsTrustedForeignOwnerCannotBorrowSameNetworkGroup` | `~/Cicada/.local/evidence/owner-groups-nodekeys-m2-20261026T171047Z/receipt.json`, SHA-256 `cc2952843a3c0da028de5f73d59e72bd89aaeee265beac733e13ec342091c56d`, source 7d46a02 normal/race PASS. Relevant authorization/registration/state/pin-admission bytes match 303639d. Valid trusted foreign Owner chains still deny; registration UID/SID/workspace/binding/epoch substitutions are separate from the new Node/Network/Group RPC checks. |
+| `TestEndpointGroupsConsumedContextRejectsPartialMixedAndLegacyFallback` | `~/Cicada/.local/evidence/owner-groups-node-20261026T141439Z/receipt.json`, SHA-256 `fbf819dcf5751360beb150b5eea7d96d8f676a44d2175a76d28fd86b7c4f31d5`, source 6db7ccb normal/race PASS. Profile/context-test/registration bytes match 303639d, but `local_codex_context.go` changed: do not promote this to current whole-Node validation. |
+| `TestThreadGroupActorNetworkChangeHidesPriorCardsAndRequiresFreshRead`, `TestThreadGroupActorFalseCapabilityAndCancelledReviewCreateNoApply`, `TestThreadGroupActorSDKMaximumFieldsFitRecoveryAndSixteenOldSlots` | `~/Cicada/.local/evidence/n2-app/owner-groups-scope-delta-20261026T135028715061Z/normal-result.json`, SHA-256 `673f88b1cb0c931deb290099191b5af741fb91520eaf3cdd5b5316c7a681ceac`; dirty 27dd52c + manifest `6a05768ea2b5ce03e1a7908008907f5e367376cea0dcb62d4940861409c7eadf`, 18 PASS events/0 FAIL/0 SKIP. Named test functions retain bounded attribution; the entire actor file does not match. The actual SDK PQ original/reconcile/header/record sizes were 107,534 / 305,778 / 19,372 / 403,760 bytes with sixteen old slots, not maximum 32-active/64-row stress. |
+| `TestHubRestoreSchema69RemainsExplicitlyUnreviewed` | The Hub receipt's fail-closed unsupported portable restore check is separate from normal DB reopen/exact receipt replay. It does not establish backup/restore preserving all epochs/denies/history. Schema-69 portable restore remains explicitly unsupported by the contract. |
+
+The producer's separate recovered-Complete continuation correction is recorded
+in `~/Cicada/.local/evidence/owner-groups-head-continuation-fix-20261029-01/final-result.json`,
+SHA-256 `d4da7be93922529be0d19351c0ce7918b845a0c059224a1f3468639be3611090`.
+Its final-v3 source manifest is
+`861a8d1592ae3aaab0838cf7a65bb43ace95079c1f6cb8f43f018df3da9fe26c`.
+Focused final-v2 race passed 20 events (346.380s); final-v3 late-cancel normal
+passed 3 events (15.135s). Final-v3 disposable Docker exited 0, 28 PASS/0 FAIL/0
+SKIP (test 78.460s, overall 99.699s), source stable and owned container absent;
+receipt `final-v3/docker/receipt.json` SHA-256
+`e4435cb0fbb4db86cc445733ef9a193aa4eb073d39838a5e3293e259ae9e4ab3`.
+The original broader race FAIL (13 PASS/3 FAIL, no data race), intermediate
+normal FAIL and the historical YY0pOo Runtime failure remain retained.
+The correction preserves the original five-second native budget and 30-second
+Current TTL, with no new wire operation or key/identity/epoch regeneration.
+It does not retrospectively prove the original 68-second delay's cause.
+
+These producer results, independent two-test results and the five-event QA
+head-query check were executed at their own recorded inputs. Inclusion in one
+reviewable checkpoint is not an already executed combined Runtime. M4's latest
+actual Runtime remains FAIL; M5–M8, real five minutes, Renew cold-path/M7 double
+revocation and final four identities remain **NOT_RUN** on the new combination.
+Windows DPAPI, ACL, GUI, Android/physical device and public HTTPS are **NOT_RUN**
+by this checkpoint. Maximum 32-active/64-row PQ carrier stress is not accepted;
+the existing maximum-field SDK carrier result has only the scope above. No
+portable restore support, capacity feature, shared development Hub or public
+installation change was added or executed.
+
 ### 2026-10-26 user-reported four-Thread Group continuation
 
 Root relayed the user's report that four real native Threads on the same Node
@@ -8929,108 +9175,91 @@ coverage. No Control inference or new grant is needed for the measured identity
 flow.
 
 
-### 连续真机验收步骤：保留当前安装与身份（尚未执行）
+### 连续真机验收步骤：完全清除 Cicada 后全新安装（尚未执行）
 
-这一批步骤用于用户后续一次连续回归；目前全部 **NOT_RUN**，尤其 Windows
-DPAPI、ACL、GUI、键盘/IME 和物理 TUI 表单。保留 Windows 根
-`F:\DOWNLOAD\Cicada-N2`、Linux Node 根 `~/.cicada`，Hub 保持当前 state、TLS
-材料、Owner/设备/Node 密钥与原启动配置。先记下原 Hub/Owner/Node 公共指纹、
-原 A/B SID、工作目录和 Node/Group；证据只存公开元数据、退出码与哈希，
-不粘贴私钥、凭据、完整授权或敏感消息。Linux 输出单独放入本次私有验收目录，
-Windows 输出放入独立的本次验收目录；不要用清空重装替代更新验证。
+按用户最新要求，这一轮从完全清除 Cicada 安装与状态后开始，重新建立 Cicada
+Hub、Owner/App、Node 和协作授权。它不再是旧安装的保留身份更新验证。目前
+所有步骤均 **NOT_RUN**；本文只是操作流程，没有执行任何删除或公网变更。
+Windows DPAPI、ACL、GUI、键盘/IME 和物理 TUI 表单仍须分别实测。
 
-1. **拿完整包并核对。** 使用总控最终交付的完整 ZIP、ZIP SHA-256 和包内
-   `SHA256SUMS`/`BUILD-METADATA.json`/`VALIDATION.json`，先核 ZIP，再解压到本次
-   staging 目录并核成员哈希。Linux 可用 `sha256sum`、`sha256sum -c SHA256SUMS`；
-   Windows 用 `Get-FileHash -Algorithm SHA256` 核对应文件。以最终清单的真实成员
-   路径和摘要为准；Git、软件版本、执行文件摘要及 ZIP 摘要分别记录。
-2. **先只读确认现有组件和启动方式。** Linux 用原已安装 CLI 执行
-   `components list --prefix "$HOME/.cicada"`，再执行
-   `cicada status --user-root "$HOME/.cicada"`，记录其状态/退出码、原组件位置与
-   是否存在受保护的 `node-service.json`。首次 `cicada on` 没有保存配置时，
-   `cicada status` 可能返回配置错误：保留这个结果，结合原启动命令、已知服务配置和 App 的 Node
-   状态只读确认原 ID、名称、state、MCP session/outbox、Hub 地址、interval 与
-   原 Codex 可执行文件。未知值先确认，不能猜测 Hub ExecStart、换 Node、重配
-   Owner 或新建 state。只查看已知属于本安装的进程/服务，不全局 kill/pkill。
-3. **按原文件归属更新组件，保留数据。** `components install` 对不同内容的
-   已安装组件会拒绝，不能当成覆盖更新。先用原启动方式停止对应进程：前台
-   Node 在其原终端正常退出；已由 lifecycle 管理的 Node 才用同根 `cicada off`。
-   已由组件 manifest 管理的 Linux 安装，按 manifest 的保护先
-   `components remove --prefix 原根 --components 原组件`，再用完整新包 CLI 的
-   `components install` 安装回同根、同组件，传入最终清单的 binary/sha256、
-   完整 matching licenses，Node 同时传入包根 `--codex-plugin-assets` 及清单
-   `--codex-plugin-sha256`。remove/install 只处理受归属检查的程序文件；保留
-   原 state/keys，错误就记录并停止该步，不手改 manifest。Hub 若也更新程序，
-   仍按它原有运行方式与原参数启动，不修改其 state 或由验收者编造服务配置。
-   安装本身不得启动 Node、轮换密钥或授予通信权限。
-4. **Windows 程序更新分清实际布局。** 此完整包有 Windows GUI
-   `cicada-app.exe`，没有 Windows `cicada` CLI；GUI 也不接受 `components` 命令。
-   若原来是独立解压程序目录，且不受 `components/app/INSTALL-MANIFEST.json`
-   管理，先正常关窗、备份旧程序文件，再按最终 ZIP 成员更新原程序目录，
-   保留非包文件和全部 protected state；以同一 Windows 用户、原环境和原参数
-   （包括原 `--user-root 'F:\DOWNLOAD\Cicada-N2'`）打开。若实际 EXE 受 App
-   组件 manifest 管理，此包缺少可用 Windows 更新入口，记录这个限制并交总控；
-   不能发明 Windows CLI 命令、直接改归属 manifest 或重置 vault/Owner。
-5. **先前台，再验证 `cicada on`、`cicada off`、`cicada status`。**
-   用更新后的已核 CLI 和只读确认的原参数启动一次前台 Node，核原 Hub/Owner/Node
-   指纹和状态不变；不重复配对。
-   再从其原终端正常退出，确认原 writer 已停止。Linux lifecycle 需要 systemd
-   user manager ≥254。已有 `node-service.json` 时可依次执行：
+完全清除以已知的 **Cicada 旧安装根** 为范围：Windows
+`F:\DOWNLOAD\Cicada-N2` 内属于 Cicada 的旧程序、状态、vault 和密钥（含曾直接
+放在旧根的布局），整个 Node `~/.cicada`，以及 Hub 整个 `/opt/cicada` 旧
+program/state prefix。旧 Hub 的实际 state-dir 曾是 `/opt/cicada/state`，
+因此仅清 `/opt/cicada/state/hub` 会遗留旧状态。停止归属 Cicada 服务/进程后，
+由用户或总控清除上述已知旧安装与专属启动项，再从最终包全新安装；不执行
+未知路径或其他文件的推测性清除。Windows 新根才是
+`F:\DOWNLOAD\Cicada-N2\data`，新 Hub state 才是 `/opt/cicada/state/hub`；
+创建这两个新目录本身不能证明旧 vault/keys 已清。保留 Codex 历史、全局
+Codex daemon、其他插件、Caddy/TLS 配置与源码。**不得删除 `~/Cicada` 工作区，
+不得全局 kill/pkill，也不得用删除 Codex 会话代替清除 Cicada。** 清除前后仅
+记录路径、结果、退出码和公开指纹，不导出私钥、凭据或完整授权。
+
+1. **拿总控最终完整包并核验。** 最终工件尚未由总控交付，以下变量留空，
+   不使用历史候选 ZIP 或替它宣告通过：
 
    ```sh
-   "$NODE_CLI" on --user-root "$HOME/.cicada"
-   "$NODE_CLI" status --user-root "$HOME/.cicada"
-   "$NODE_CLI" off --user-root "$HOME/.cicada"
-   "$NODE_CLI" status --user-root "$HOME/.cicada"
-   "$NODE_CLI" on --user-root "$HOME/.cicada"
+   CICADA_ACCEPTANCE_ZIP=''
+   CICADA_ACCEPTANCE_ZIP_SHA256=''
    ```
 
-   `NODE_CLI` 必须指向本次已核、同根安装后的实际 Node CLI。首次 `cicada on` 若无
-   保存配置，需要 `--codex-bin 原绝对路径 -- 原relay-agent参数`；这些值必须
-   来自上一步已确认的原配置，不在此预填未知部署参数。foreground 冲突必须
-   明确拒绝，不能暗中接管或杀进程。`cicada status` 的 running 是本地进程状态，
-   `hub_online=unknown` 不能当成 Hub 在线或获得业务授权。Windows lifecycle
-   不是该 Linux 功能的实机通过证据。
-6. **恢复原 A/B，并单独确认 Host 交互策略。** 在原 Codex 安装、原工作目录
-   恢复原 A/B SID，不新建替代 Thread，不重新 Join 或审批新 Owner。确认使用
-   同根安装的当前 Cicada plugin/skill，原 Hub/Node/Group/Endpoint 不变。
-   Host 工具执行审批、MCP 表单展示与 Cicada 授权是三回事；按 Host 正常流程
-   审阅本次 Cicada 调用。`approval_policy="never"` 会自动拒绝表单，不能误报
-   为 Hub 拒绝。需要时由用户在对应测试 Thread/私有配置仅允许
-   `granular.mcp_elicitations=true`，保留其他权限策略，reviewer 为 user；不要
-   使用自动审批来替代人类选择，不改无关 Thread 或放宽 Cicada Guard。
-7. **用现有 Cicada skill 做联系人与收发。** 在 A 先要求“只打开当前 Group
-   的联系人选择，不发送”。核 B 的实际名称、允许显示的 Node/完整 workspace、
-   快照状态与短标识，先取消一次，核无新请求/消息；再打开并选择 B，仍核无
-   新请求/消息。随后明确要求向刚选的 B 发本次无敏感内容的测试 ASK，由 B
-   在原 SID 回复，A 核原请求的答复与关联。选择只生成短期引用，发送须独立
-   证明和当前 Guard。Network 仅可用已加入且有 discovery/communication 权限
-   的范围，不能借 Owner inventory 或自动申请新 grant。列表只有首个 64 条
-   bounded page，不是全局搜索，也不能把未出现解释为全目录不存在。
-   自定义 native slash、彩色 composer 引用没有实现；使用 skill/正常表单。
-8. **关 App 后继续，再停启 Node 验证原身份与原结果。** 正常关闭 App 窗口，
-   原 A/B 再完成一轮已授权 ASK/REPLY，确认无需 Control 推理或 App 常驻。用
-   同根 `cicada off`/`cicada on` 后，在原 A/B 按 Host 已有重连入口恢复连接，
-   SID、目录、Node 身份和授权不变。对已有结果只做原请求/原幂等意图的状态核对与精确
-   重试，核一条原结果，不改正文或另发新请求来“修复”。若原结果不确定，
-   保留 UNKNOWN/PENDING 和原操作；未知续租没有 exact receipt 时，不能删
-   pending 文件或反复新 renew 来制造成功。
-9. **显式撤销，核新业务拒绝与历史保留。** 重新打开同一 App protected profile，
-   必要时正常登录同一账户，核原 Owner/设备不变，并确认当前原策略仍有效。
-   完成第 8 步停启恢复后，在原 A 重新打开联系人表单选择 B，核新引用有效且
-   尚未发送，记录这次选择的时间/有效期。不要使用第 7 步跨停启保留的旧引用。
-   在新引用的 120 秒有效期内，立即于 App 显式撤销原本地协作策略，再由原 A
-   使用该新引用和新的幂等意图发新测试请求；要求明确的当前授权拒绝，并核无
-   新增业务请求，同时确认原 Hub/Node 仍正常。引用已过期、不存在，或仅返回
-   `PEER_SELECTION_STALE`，不能计为撤销 Guard 通过；记录为本次验证无效。
-   此时可改用原 A 的本机工具在撤销前已解析的明确 B 目标，另作一次新调用，
-   核真实 Guard 的当前授权拒绝；无需用户搬运 ID，也不能重建权限或重用旧结果。
-   核原有本地历史/已有操作结果仍保留；只用现有历史或 operation status 入口读取。
-   若当前入口拒绝读取，记录原错误并交总控，不重新发送来重建历史。App 关窗
-   或退出登录不是撤销；账户登录也不是 Root，更不自动补 grant。最后记录
-   所有退出码、公开指纹/SID 后缀、请求关联与工件哈希，将实测 FAIL/NOT_RUN
-   分开交付；不要导出凭据或完整敏感消息。
+   总控补齐后先核 ZIP，再解压到本次 staging 目录，按包内
+   `SHA256SUMS`、`BUILD-METADATA.json`、`VALIDATION.json` 核真实成员路径与摘要。
+   Linux 使用 `sha256sum`，Windows 使用 `Get-FileHash -Algorithm SHA256`。
+   Git、软件版本、程序摘要、ZIP 摘要与实机验证状态分别记录。
+2. **停止并清除旧 Cicada。** 正常关闭 Windows App；按所属服务/原终端停止
+   Cicada Hub 与 Node，确认旧 writer 已停止。已由 lifecycle 管理的 Node
+   可先同根 `cicada off`；没有旧配置时用其实际启动方式停机，不猜服务名。
+   清除 Windows 已知旧根 `F:\DOWNLOAD\Cicada-N2` 内归属 Cicada 的旧程序
+   和全部旧状态/keys，而非只删新 `data`；清除整个 Node `~/.cicada`。
+   Hub 在归属服务停止后移除整个旧 `/opt/cicada` Cicada prefix，包括
+   `/opt/cicada/state` 的旧布局和其余旧程序/state，不只清新 `state/hub`。
+   同时移除仅属于这些旧安装的启动项。Caddy、Codex、其他插件、源码以及
+   已知根内非 Cicada 文件原样保留；不盲删其他文件。不把旧 vault、
+   Owner/设备/Node 密钥、grant、pending 或数据库拷回新根。
+3. **从已核包安装全新组件。** Linux 按包清单的实际 CLI、摘要和 matching
+   licenses 安装 Hub/Node；Node 使用完整包的插件资源与清单插件摘要。
+   `components install` 只安装文件，不作为已启动、已绑定或已授权的证据。
+   Windows 使用包内真实 `cicada-app.exe`，新根为
+   `--user-root 'F:\DOWNLOAD\Cicada-N2\data'`；GUI 不接受
+   `components` 命令，不能假设包内存在 Windows CLI。启动参数只使用最终包
+   与现有入口确实支持的参数，不手写 manifest 或伪造服务配置。
+4. **从新 Hub/Owner/Node 重新完成身份流程。** Hub 用空 state 初始化并记录
+   新公开指纹，经可信路径钉住新 Hub 公钥。App 使用新 protected profile
+   完成账户、Owner 证明、设备授权与 Node 绑定；清除前的公钥和凭据不能继续
+   信任新部署。账户登录不等于 Root，UI 也不能补 grant；关闭 Control 推理
+   仍须完成身份流程。新安装建立新的 Cicada 身份，此后步骤才要求这些新身份
+   在重启/撤销前保持不变。Hub 部署操作由总控按本次明确范围执行并留证。
+5. **验证前台与 lifecycle。** 先用本次已核 Node CLI 和新绑定后的实际参数
+   前台启动，记录新 Node/Hub 指纹与 state；正常退出后确认 writer 已停止。
+   若平台满足现有 Linux lifecycle 条件，按新配置完成 `cicada on`、
+   `cicada status`、`cicada off`、`cicada status`、`cicada on`。首次 `on`
+   所需绝对 Codex 路径和 relay-agent 参数来自本次真实安装配置，不恢复旧
+   `node-service.json`。冲突必须明确拒绝；本地 running 或 hub_online=unknown
+   不等于 Hub 在线或业务授权。Windows lifecycle 不能由 Linux 结果代替。
+6. **保留 Codex 历史，重新授权 A/B。** 可恢复原 Codex A/B 历史与工作目录，
+   或使用用户指定的测试 Thread；清除旧 Cicada 后，它们须经本次全新身份与
+   Owner 审批重新注册/Join。记录新的 Cicada Endpoint/Group/绑定基线，不将
+   旧历史内容或旧票据当授权。确认加载本次安装的 Cicada skill/plugin。
+   Host 执行审批、MCP 表单与 Cicada 权限分开验证；测试 Thread 如需展示表单，
+   仅按 Host 正常配置允许 elicitation，保留其他策略，不放宽 Cicada Guard。
+7. **联系人和真实 ASK/REPLY。** 在 A 用现有 Cicada skill 打开当前 Group
+   联系人表单，核 B 的名称、Node/workspace 与快照，先取消一次，确认无请求；
+   再选择 B，仍不应发送。明确发本次合成 ASK，由 B 在指定 SID 回复，A 核
+   原请求关联和各一次接收。选择仅生成短期引用；发送另需证明与当前 Guard。
+   不通过 Owner inventory 借权，不因首个 bounded page 无结果就认定全局不存在。
+8. **关 App、停启 Node，核本次新身份和原结果。** 关 App 后 A/B 继续本次
+   已授权 ASK/REPLY，确认无需 App 常驻或 Control 推理。再按同根生命周期
+   停启 Node，使用 Host 正常重连入口，确认本次建立的 SID/Endpoint/key/epoch
+   和已有结果保持。只按原请求与原幂等意图核状态及精确重试；UNKNOWN/PENDING
+   留住原操作，不删 pending、不新造 renew 或重发正文来制造成功。
+9. **真实撤销与分项交付。** 打开本次 App profile，必要时正常登录；对仍有效
+   的本次策略显式撤销。撤销前取得尚未发送的新联系人引用，在其有效期内发
+   新请求，要求真实当前 Guard 拒绝且无新增业务，并确认服务仍健康。引用
+   自身过期或仅 PEER_SELECTION_STALE 不能算授权撤销通过。保留本次已有历史
+   和结果，关窗/登出不当撤销。分别记录退出码、公开身份、请求关联与工件
+   哈希；Windows DPAPI/ACL/GUI/IME、跨 Owner、两个真实 Node/native Runtime、
+   物理表单与公网 HTTPS 各自有实测才改变 NOT_RUN。
 
-以上是未执行的用户真机程序；当前独立容器/Host-relay结果不覆盖它。跨 Owner
-完整收发、两个真实 Node/native Runtime 跨节点、物理 TUI 选择和 Windows
-DPAPI/ACL/GUI/IME 仍需各自实际执行后记录。
+以上全新安装流程尚未执行，独立容器/Host 结果不能覆盖它。总控交付最终 ZIP
+和摘要后，按此现有流程连续记录，避免另建重复任务书。

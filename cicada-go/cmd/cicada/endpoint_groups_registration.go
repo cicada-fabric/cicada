@@ -93,6 +93,10 @@ func sameEndpointGroupsAnchor(old, current wire.EndpointGroupsRegistrationAnchor
 func (c *machineNodeControlClient) endpointGroupsOriginal(r machineEndpointGroupsRegistration) (machineManagedLocalDomainLease, wire.LocalDomainNodeJoinResult, wire.LocalDomainNodeKeyResult, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	return c.endpointGroupsOriginalLocked(r)
+}
+
+func (c *machineNodeControlClient) endpointGroupsOriginalLocked(r machineEndpointGroupsRegistration) (machineManagedLocalDomainLease, wire.LocalDomainNodeJoinResult, wire.LocalDomainNodeKeyResult, error) {
 	m, ok := c.state.ManagedLocalDomainLeases[r.LeaseID]
 	var joined wire.LocalDomainNodeJoinResult
 	var completed wire.LocalDomainNodeKeyResult

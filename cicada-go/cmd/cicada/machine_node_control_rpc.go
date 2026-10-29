@@ -900,6 +900,20 @@ func (client *machineNodeControlClient) recoverPending(ctx context.Context, toke
 		client.state = previous
 		return err
 	}
+	// Finish local installation before releasing the outbox. Only a separately
+	// proven obsolete historical grant may settle without installation; transient
+	// or unknown failures retain the authenticated response for an exact retry.
+	var localGrantResult error
+	if envelope.OK && operation == wire.OperationEndpointGroupsNodeKeyComplete {
+		if err := client.installRecoveredEndpointGroupGrantLocked(ctx, time.Now); err != nil {
+			var obsolete *endpointGroupsRecoveredGrantObsolete
+			if !errors.As(err, &obsolete) {
+				client.state = previous
+				return err
+			}
+			localGrantResult = err
+		}
+	}
 	if err := client.rememberNativePairReceiptLocked(responsePacket, envelope.Result, envelope.OK, envelope.ErrorCode); err != nil {
 		client.state = previous
 		return err
@@ -928,6 +942,9 @@ func (client *machineNodeControlClient) recoverPending(ctx context.Context, toke
 	if err := client.persistLocked(); err != nil {
 		client.state = previous
 		return err
+	}
+	if localGrantResult != nil {
+		return localGrantResult
 	}
 	if !envelope.OK {
 		if endpointGroupsNodeBusinessOperation(operation) {

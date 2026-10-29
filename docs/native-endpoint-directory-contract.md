@@ -1284,6 +1284,30 @@ attempt; acceptance or claim does not substitute for the Node's verification.
 
 ### Removal, independent renewal and original-packet recovery
 
+A successful recovered Node KeyComplete includes bounded local installation of
+that exact original grant before its pending outbox is released. The Node binds
+the original origin/registration, current retained Owner pin, Node key/epoch and
+exact Prepare generation/Challenge, verifies the complete projection through the
+existing crypto checks, and writes the monotonic Owner head within the caller's
+remaining budget (at most five seconds). No new RPC, identity or authorization
+is created. Historical `ObservedAt` authenticates the old result; actual current
+time is read again immediately before installation. Fresh Current and Hub Guard
+remain independently required for business use; their lifetimes do not change.
+
+The authenticated response is durable before local installation. A crash before
+installation or control-state cleanup retries the same original and response;
+installation is idempotent. Unknown/mixed origins, missing exact evidence,
+I/O failures and canceled budgets retain the pending original for retry. Only
+a fully authenticated historical success independently proved obsolete by an
+exact revoked Owner pin, an expired policy, or a strictly newer stored Owner head
+may settle without installing its grant. A same-epoch newer head must name the
+same policy; a newer epoch may name its replacement. This preserves the newer
+deny/head and original settled receipt, clears the obsolete outbox and returns
+an explicit local terminal result (`OWNER_PIN_REVOKED`, `POLICY_EXPIRED` or
+`SUPERSEDED_HEAD`). These are local recovery classifications, not new wire errors
+or current authorization. Generic policy/conflict errors cannot imply terminal
+obsolescence or justify discarding an unknown pending action.
+
 REMOVE_ENDPOINT withdraws all contributions to only the exact Endpoint/Group edge,
 advances the decision/relation revision and installs the permanent manual deny.
 It invalidates that edge's prior key evidence, selections and new work at the

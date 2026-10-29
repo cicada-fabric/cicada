@@ -93,6 +93,13 @@ func (c *machineNodeControlClient) recoverEndpointGroupsOriginal(ctx context.Con
 		c.mu.Unlock()
 		return originalError
 	}
+	// recoverPending discards unauthenticated cached responses itself. A retained
+	// authenticated response needs only local settlement, never another reconcile
+	// RPC when its budget, storage or installation validation failed.
+	if len(c.state.PendingResponsePacket) > 0 {
+		c.mu.Unlock()
+		return originalError
+	}
 	err := c.reconcileEndpointGroupsLocked(ctx, token)
 	c.mu.Unlock()
 	if err != nil {

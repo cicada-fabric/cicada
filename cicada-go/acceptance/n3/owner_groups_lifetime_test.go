@@ -411,26 +411,16 @@ func verifyOwnerGroupsRetainedDefault(t *testing.T, v *codexProductFixture, peer
 	}
 }
 
-func awaitOwnerGroupsNodeHead(t *testing.T, v *codexProductFixture, endpoint, group string, expected e2ee.EndpointGroupOwnerControl) {
+func awaitOwnerGroupsNodeHead(t *testing.T, v *codexProductFixture, endpoint, group string, expected e2ee.EndpointGroupOwnerControl, takeoverDeadline, currentExpiry time.Time) {
 	t.Helper()
 	db := nodePairReadOnlyDB(t, filepath.Join(ownerGroupsNodeRoot(v), "node-crypto-state.sqlite"))
 	defer db.Close()
-	deadline := time.Now().Add(75 * time.Second)
-	for time.Now().Before(deadline) {
-		var raw []byte
-		err := db.QueryRow(`SELECT head_json FROM node_endpoint_group_heads_v1 WHERE hub_id=? AND endpoint_id=? AND group_id=?`, v.f.cfg.Hub.HubID, endpoint, group).Scan(&raw)
-		var head e2ee.EndpointGroupOwnerControl
-		if err == nil && json.Unmarshal(raw, &head) == nil && head == expected {
-			clear(raw)
-			return
-		}
-		clear(raw)
-		if !v.actualNode.running() {
-			t.Fatal("actual Node stopped before persisting exact completed Owner head")
-		}
-		time.Sleep(20 * time.Millisecond)
+	observe := func(closed map[string]any) {
+		t.Logf("OWNER_GROUPS_NODE_HEAD_WAIT metadata=%s", must(json.Marshal(closed)))
 	}
-	t.Fatal("actual Node did not persist the exact completed Owner head within the original Current window")
+	if err := waitOwnerGroupsNodeHead(db, v.f.cfg.Hub.HubID, endpoint, group, expected, takeoverDeadline, currentExpiry, v.actualNode.running, observe); err != nil {
+		t.Fatalf("actual Node head observation failed within the original Current window: code=%s", err)
+	}
 }
 
 // Refresh only real DEFAULT Current while the normal worker completes the
@@ -443,7 +433,7 @@ func awaitOwnerGroupsDefaultTakeover(t *testing.T, v *codexProductFixture, a, b 
 	for time.Now().Before(deadline) {
 		peer := readOwnerGroupsActualPeerKey(t, v, a, b, group)
 		if peer.Current.Sender.OwnerControl == head {
-			awaitOwnerGroupsNodeHead(t, v, a.Endpoint, group, head)
+			awaitOwnerGroupsNodeHead(t, v, a.Endpoint, group, head, deadline, must(time.Parse(time.RFC3339Nano, previous.Current.ExpiresAt)))
 			verifyOwnerGroupsRetainedDefault(t, v, previous, false)
 			return
 		}
