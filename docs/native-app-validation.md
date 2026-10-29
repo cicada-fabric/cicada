@@ -9560,3 +9560,58 @@ Codex daemon、其他插件、Caddy/TLS 配置与源码。**不得删除 `~/Cica
 
 以上全新安装流程尚未执行，独立容器/Host 结果不能覆盖它。总控交付最终 ZIP
 和摘要后，按此现有流程连续记录，避免另建重复任务书。
+
+### 2026-10-29 frozen-source M7 Owner-key revocation and cold restart failure
+
+Root authorized exactly one unchanged M7-only run on frozen, clean canonical
+source/harness `b754f210cafccc8aec8a2df34498c26bca7c4f69`, including QA
+`0348e335`, bounded state-budget fix `76cca14` and issuer diagnostics `b754f21`.
+The existing 48 license files, Codex **0.164.0**, pinned Go Docker image,
+read-only module cache, exclusive build lock and original 90m limit were reused:
+
+```sh
+CICADA_NATIVE_PAIR_LICENSES_DIR=/home/zyf/Cicada/.local/artifacts/native-ip-complete/run-owner-thread-groups-cea8036-20261029/payload/licenses \
+  bash /home/zyf/Cicada/cicada/scripts/test-native-pair.sh --owner-endpoint-groups-m7
+```
+
+Run `run-20261029T180651Z-daaNpZ` ended **FAIL / exit 1**; M7 took
+**667.33s**, outer execution **697.458027s**. Version, CLI/test compilation and
+vet exited **0**. Main exec `32879` and closed read-only observer `92402` ended;
+no retry or assertion change was made. The first OwnerKey fixture completed all
+four real G1/G2 roundtrips before/after actual App logout, each with original
+Group/native SIDs, correlated ASK/REPLY and native delivery exactly once.
+The previously failing `m7-source-g1` selection passed. The held ASK returned
+`SENT` with a request matching the logged positive Guard. Actual Owner-key
+revocation and writer release occurred **6164ms** after that Guard, within the
+unchanged 10000ms fixture/15000ms product windows.
+
+The failure was `revocation cold check lost the actual owned Node or Hub
+process`, from `restartOwnerGroupsRevokedNode` after restarting the original
+Node and waiting one second. By ordered source flow, the final-delivery and
+both-Group REST refusal assertions preceding restart returned; they have no
+separate success log. Which process exited, its exit code and its raw error are
+**NOT_RETAINED**, so the cause remains unassigned pending Hub review. The cold
+authenticated renewal and final native zero-injection checks were **NOT_RUN**;
+the second independent NodeBinding fixture was **NOT_STARTED**. Neither M7 nor
+the full M1–M8 gate is accepted. Selection diagnostics are empty because the
+selection assertion did not fail. The observer retained **93** closed records,
+**0** read retries and **0** issuer-failure records; absence is not a liveness
+or private-stderr success claim.
+
+Evidence under `~/Cicada/.local/`:
+
+| Artifact | SHA-256 |
+| --- | --- |
+| `evidence/native-pair-acceptance/run-20261029T180651Z-daaNpZ/result.json` | `b214c0d6efa8cfa0d1aca2fa0c6751475c706f3c87edf429f11271bfc457c917` |
+| Same run `source-before.json` = `source-after.json` | `e85d50a11a29423828591f5e59d73c9806328695ddec72f2c87c1763bbfcd614` |
+| Source manifest | `469d174f9116b4b2cefed87fee1c6cc0bc781faf7cfc94f1bb8b23c3afac7313` |
+| `artifacts/native-pair-acceptance/run-20261029T180651Z-daaNpZ/cicada` | `8309ca6c5fcf5e6dfbdd39a7236e408067742cec51424ffde422943409b3a431` |
+| Same run `n3.test` | `40580773919f2244ea6d65a27515fab811e289108734c89da0eb9a12eb09f97a` |
+| Same run `owner-groups-protocol-audit/7cce128f6c35a737.json` (one fixture, 470 traces/26 steps) | `417118b1e9da97a1440828964f9b8071c308197af57f9a4075c136f1d0db96bb` |
+| `evidence/n2-acceptance/owner-groups-m7-b754f210-01/closed-failure.json` | `3b78bd43c3304df2b4825f2a685bfbfb6914690c621946bcd8e430509534d7f3` |
+
+Source and executed binaries remained unchanged; canonical was clean after the
+run, the labeled disposable container was absent and remaining state files were
+**0**. Raw private state/logs were not exported. Windows DPAPI/ACL/GUI, physical
+second Node, public HTTPS, M8 and final original-four closure remain unaccepted;
+same-Node M7 does not cover the separate actual two-Node/native requirement.
