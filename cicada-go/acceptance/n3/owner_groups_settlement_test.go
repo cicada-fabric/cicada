@@ -123,8 +123,11 @@ func ownerGroupsSettlementReady(s ownerGroupsSettlementState, original ownerGrou
 	}
 	diagnostic["response_authenticated"], diagnostic["ok"] = true, reply.OK
 	if original.route.Operation == wire.OperationEndpointGroupsNodeRenew {
-		ready, err := ownerGroupsRenewalReady(s, foundIntent, original, reply)
-		diagnostic["renewal_anchor_consumed"] = ready
+		ready, renewalDiagnostic, err := ownerGroupsRenewalReady(s, foundIntent, original, reply, key, binding)
+		for name, value := range renewalDiagnostic {
+			diagnostic[name] = value
+		}
+		diagnostic["original_registration_converged"] = ready
 		return ready, diagnostic, err
 	}
 	return true, diagnostic, nil

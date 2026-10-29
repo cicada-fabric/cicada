@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/cicada-ai/cicada/internal/e2ee"
+	"github.com/cicada-ai/cicada/internal/fabric"
 	wire "github.com/cicada-ai/cicada/internal/hubaccountwire"
 	"github.com/cicada-ai/cicada/internal/nodekeys"
 	"github.com/cicada-ai/cicada/internal/nodewire"
@@ -21,7 +22,7 @@ import (
 
 // Gate safety only: synthetic registration/state, real PQ packets and TCP.
 // No product lease is renewed and no native Runtime observation is supplied.
-func TestN3OwnerGroupsRenewalSettlementRequiresConsumedOriginalAnchor(t *testing.T) {
+func TestN3OwnerGroupsRenewalSettlementRequiresOriginalRegistrationConvergence(t *testing.T) {
 	node, hub, candidate := must(e2ee.NewIdentity()), must(e2ee.NewIdentity()), must(e2ee.NewIdentity())
 	publicHub := wire.HubIdentity{Contract: "android-hub-v1", HubID: "hub-synthetic", Public: hub.Public(), KeyVersion: 1, Suite: "ML-KEM-768+ML-DSA-65+AES-256-GCM"}
 	binding := nodewire.Binding{HubID: publicHub.HubID, NodeID: "node-synthetic", BindingID: "binding-synthetic", BindingVersion: 1, NodeKeyEpoch: 1,
@@ -62,7 +63,7 @@ func TestN3OwnerGroupsRenewalSettlementRequiresConsumedOriginalAnchor(t *testing
 		return must(nodewire.SealResponse(hub, node.Public(), binding, r, must(json.Marshal(plain))))
 	}
 	response := seal(reverse, result, true)
-	var posts atomic.Int64
+	var posts, followupPosts atomic.Int64
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		posts.Add(1)
 		raw, err := io.ReadAll(r.Body)
@@ -94,7 +95,8 @@ func TestN3OwnerGroupsRenewalSettlementRequiresConsumedOriginalAnchor(t *testing
 		}}}, Registrations: map[string]ownerGroupsSettlementRegistration{anchor.RegistrationDigest: {Anchor: consumed, IntentID: before.IntentID}}}
 	}
 	path := filepath.Join(t.TempDir(), "node-control-state.json")
-	check := func(t *testing.T, state ownerGroupsSettlementState, reference ownerGroupsSettlementReference, ready, failed bool) {
+	check := func(t *testing.T, state ownerGroupsSettlementState, reference ownerGroupsSettlementReference, ready, failed bool) map[string]any {
+		observedPosts := followupPosts.Load()
 		t.Helper()
 		writeJSON(t, path, state)
 		beforeBytes := must(os.ReadFile(path))
@@ -108,7 +110,7 @@ func TestN3OwnerGroupsRenewalSettlementRequiresConsumedOriginalAnchor(t *testing
 		if got != ready || (err != nil) != failed {
 			t.Fatalf("renewal gate ready=%t error_present=%t code=%v", got, err != nil, err)
 		}
-		if !bytes.Equal(beforeBytes, must(os.ReadFile(path))) || posts.Load() != 1 {
+		if !bytes.Equal(beforeBytes, must(os.ReadFile(path))) || posts.Load() != 1 || followupPosts.Load() != observedPosts {
 			t.Fatal("renewal matcher wrote state or dispatched traffic")
 		}
 		closed := must(json.Marshal(diagnostic))
@@ -117,6 +119,7 @@ func TestN3OwnerGroupsRenewalSettlementRequiresConsumedOriginalAnchor(t *testing
 				t.Fatal("renewal matcher exported private coordinates")
 			}
 		}
+		return diagnostic
 	}
 	t.Run("hub_receipt_is_not_local_settlement", func(t *testing.T) {
 		s := makeState()
@@ -126,14 +129,14 @@ func TestN3OwnerGroupsRenewalSettlementRequiresConsumedOriginalAnchor(t *testing
 		s.PendingOperation, s.PendingOperationID, s.PendingSequence, s.PendingPacket = route.Operation, route.OperationID, route.Sequence, request
 		check(t, s, ref, false, false)
 	})
-	t.Run("settled_original_waits_for_consumed_anchor", func(t *testing.T) {
+	t.Run("settled_original_waits_for_registration_progress", func(t *testing.T) {
 		s := makeState()
 		s.Registrations[anchor.RegistrationDigest] = before
 		check(t, s, ref, false, false)
 		delete(s.Registrations, anchor.RegistrationDigest)
 		check(t, s, ref, false, false)
 	})
-	t.Run("original_A_consumed_positive", func(t *testing.T) { check(t, makeState(), ref, true, false) })
+	t.Run("original_A_exact_anchor_converged", func(t *testing.T) { check(t, makeState(), ref, true, false) })
 	t.Run("pending_execution_still_blocks", func(t *testing.T) { s := makeState(); s.PendingWorkerAttempt = 1; check(t, s, ref, false, false) })
 	t.Run("unique_original_intent_required", func(t *testing.T) {
 		s := makeState()
@@ -200,5 +203,165 @@ func TestN3OwnerGroupsRenewalSettlementRequiresConsumedOriginalAnchor(t *testing
 			s.Intents[before.IntentID].Steps[route.OperationID] = step
 			check(t, s, ref, false, true)
 		}
+	})
+	t.Run("local_lease_must_still_be_current", func(t *testing.T) {
+		expired := result
+		expired.Registration.LeaseExpiresAt = now.Add(-30 * time.Second).Format(time.RFC3339Nano)
+		signed := seal(reverse, expired, true)
+		s := makeState()
+		local := s.Registrations[anchor.RegistrationDigest]
+		local.Anchor = expired.Registration
+		s.Registrations[anchor.RegistrationDigest] = local
+		step := s.Intents[before.IntentID].Steps[route.OperationID]
+		step.ResponsePacket = signed
+		s.Intents[before.IntentID].Steps[route.OperationID] = step
+		changed := ref
+		changed.response = signed
+		check(t, s, changed, false, false)
+	})
+	t.Run("later_lease_requires_forwarded_same_source", func(t *testing.T) {
+		later := consumed
+		later.LeaseExpiresAt = now.Add(6 * time.Minute).Format(time.RFC3339Nano)
+		state := func() ownerGroupsSettlementState {
+			s := makeState()
+			s.Registrations[anchor.RegistrationDigest] = ownerGroupsSettlementRegistration{Anchor: later, IntentID: before.IntentID}
+			return s
+		}
+		check(t, state(), ref, false, false) // arbitrary larger scalar alone
+		actor := fabric.Actor{EndpointID: later.Registration.EndpointID, PrincipalID: later.Registration.PrincipalID, NetworkID: later.NetworkID, BindingID: later.BindingID, BindingEpoch: later.BindingEpoch, LeaseOwner: later.LeaseOwner, LeaseExpiresAt: later.LeaseExpiresAt}
+		describeRoute := route
+		describeRoute.Operation, describeRoute.OperationID, describeRoute.Sequence = wire.OperationEndpointGroupsNodeDescribe, "op-synthetic-describe-a", 78
+		describeBody := must(wire.CanonicalEndpointGroupsNodeRequest(describeRoute.Operation, wire.EndpointGroupsNodeDescribe{EndpointID: later.Registration.EndpointID, NetworkID: later.NetworkID, Limit: 64}))
+		describeRequest := must(nodewire.SealRequest(node, hub.Public(), binding, describeRoute, describeBody))
+		describeReverse := describeRoute
+		describeReverse.Direction = nodewire.DirectionResponse
+		describeReverse.SenderKeyID, describeReverse.ReceiverKeyID = describeReverse.ReceiverKeyID, describeReverse.SenderKeyID
+		describeReverse.SenderKeyVersion, describeReverse.ReceiverKeyVersion = describeReverse.ReceiverKeyVersion, describeReverse.SenderKeyVersion
+		described := wire.EndpointGroupsNodeDescribeResult{ContractRevision: wire.OwnerEndpointGroupsContractRevision, Registration: later, Complete: true, ObservedAt: time.Now().UTC().Format(time.RFC3339Nano)}
+		sealDescribe := func(r nodewire.Route, d wire.EndpointGroupsNodeDescribeResult) []byte {
+			return must(nodewire.SealResponse(hub, node.Public(), binding, r, must(json.Marshal(map[string]any{"operation_id": r.OperationID, "sequence": r.Sequence, "ok": true, "result": d}))))
+		}
+		describeResponse := sealDescribe(describeReverse, described)
+		sourceServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			followupPosts.Add(1)
+			if req.URL.Path == "/v2/fabric/heartbeat" && req.Header.Get("Authorization") == "CicadaSession SYNTHETIC_SESSION" {
+				_ = json.NewEncoder(w).Encode(actor)
+				return
+			}
+			raw := must(io.ReadAll(req.Body))
+			if req.URL.Path != "/v2/node/control/rpc" || !bytes.Equal(raw, describeRequest) {
+				w.WriteHeader(403)
+				return
+			}
+			opened, err := nodewire.OpenRequest(hub, node.Public(), binding, raw)
+			if err != nil || opened.Route != describeRoute || !bytes.Equal(opened.Plaintext, describeBody) {
+				w.WriteHeader(403)
+				return
+			}
+			clear(opened.Plaintext)
+			_, _ = w.Write(describeResponse)
+		}))
+		defer sourceServer.Close()
+		proxy := newFaultProxy(t, sourceServer.URL)
+		after := time.Now().UTC().Format(time.RFC3339Nano)
+		hreq := must(http.NewRequest(http.MethodPost, proxy.server.URL+"/v2/fabric/heartbeat", nil))
+		hreq.Header.Set("Authorization", "CicadaSession SYNTHETIC_SESSION")
+		hresp := must(http.DefaultClient.Do(hreq))
+		_, _ = io.Copy(io.Discard, hresp.Body)
+		hresp.Body.Close()
+		if hresp.StatusCode != 200 {
+			t.Fatal("real synthetic session Guard did not accept heartbeat")
+		}
+		heartbeat := proxy.snapshot()[0]
+		dresp := must(http.Post(proxy.server.URL+"/v2/node/control/rpc", "application/json", bytes.NewReader(describeRequest)))
+		_, _ = io.Copy(io.Discard, dresp.Body)
+		dresp.Body.Close()
+		if dresp.StatusCode != 200 {
+			t.Fatal("real PQ Describe source failed")
+		}
+		describe := proxy.snapshot()[1]
+		reference := func(ex exchange) ownerGroupsSettlementReference {
+			r := ref
+			rr := *r.renewal
+			rr.originalRecordedAt = after
+			rr.exchanges = func() []exchange { return []exchange{ex} }
+			r.renewal = &rr
+			return r
+		}
+		t.Run("actual_forwarded_heartbeat", func(t *testing.T) {
+			d := check(t, state(), reference(heartbeat), true, false)
+			if d["renewal_progress_source"] != "FORWARDED_HUB_HEARTBEAT_SESSION_GUARD_NOT_PQ" {
+				t.Fatal("heartbeat evidence mislabeled")
+			}
+		})
+		t.Run("actual_PQ_Describe", func(t *testing.T) {
+			d := check(t, state(), reference(describe), true, false)
+			if d["renewal_progress_source"] != "AUTHENTICATED_NODE_DESCRIBE" {
+				t.Fatal("Describe evidence mislabeled")
+			}
+		})
+		for name, mutate := range map[string]func(*exchange){
+			"not_forwarded":   func(x *exchange) { x.Forwarded = false },
+			"failed_status":   func(x *exchange) { x.Status = 403 },
+			"faulted_source":  func(x *exchange) { x.FaultMode = "synthetic" },
+			"before_original": func(x *exchange) { x.StartedAt = now.Add(-time.Second).Format(time.RFC3339Nano) },
+			"malformed_time":  func(x *exchange) { x.RecordedAt = "invalid" },
+			"wrong_method":    func(x *exchange) { x.Method = http.MethodGet },
+			"wrong_path":      func(x *exchange) { x.Path = "/v2/fabric/whoami" },
+			"request_digest":  func(x *exchange) { x.RequestSHA256 = strings.Repeat("f", 64) },
+			"response_digest": func(x *exchange) { x.ResponseSHA256 = strings.Repeat("f", 64) },
+		} {
+			t.Run(name, func(t *testing.T) { ex := heartbeat; mutate(&ex); check(t, state(), reference(ex), false, false) })
+		}
+		for name, mutate := range map[string]func(*fabric.Actor){
+			"other_endpoint":   func(a *fabric.Actor) { a.EndpointID = "SYNTHETIC_OTHER" },
+			"other_principal":  func(a *fabric.Actor) { a.PrincipalID = "SYNTHETIC_OTHER" },
+			"other_network":    func(a *fabric.Actor) { a.NetworkID = "SYNTHETIC_OTHER" },
+			"other_binding":    func(a *fabric.Actor) { a.BindingID = "SYNTHETIC_OTHER" },
+			"other_epoch":      func(a *fabric.Actor) { a.BindingEpoch++ },
+			"other_writer":     func(a *fabric.Actor) { a.LeaseOwner = "SYNTHETIC_OTHER" },
+			"different_expiry": func(a *fabric.Actor) { a.LeaseExpiresAt = now.Add(7 * time.Minute).Format(time.RFC3339Nano) },
+			"business_group":   func(a *fabric.Actor) { a.GroupID = "SYNTHETIC_GROUP" },
+		} {
+			t.Run(name, func(t *testing.T) {
+				changed := actor
+				mutate(&changed)
+				ex := heartbeat
+				ex.response = must(json.Marshal(changed))
+				ex.ResponseSHA256 = hash(ex.response)
+				check(t, state(), reference(ex), false, false)
+			})
+		}
+		for name, suffix := range map[string]string{"trailing_JSON": "{}", "trailing_garbage": "not-json"} {
+			t.Run(name, func(t *testing.T) {
+				ex := heartbeat
+				ex.response = append(bytes.Clone(ex.response), suffix...)
+				ex.ResponseSHA256 = hash(ex.response)
+				check(t, state(), reference(ex), false, false)
+			})
+		}
+		t.Run("bad_PQ_signature", func(t *testing.T) {
+			ex := describe
+			ex.response = bytes.Clone(ex.response)
+			ex.response[len(ex.response)/2] ^= 1
+			ex.ResponseSHA256 = hash(ex.response)
+			check(t, state(), reference(ex), false, false)
+		})
+		t.Run("PQ_other_registration", func(t *testing.T) {
+			d := described
+			d.Registration.CandidateVersion++
+			ex := describe
+			ex.response = sealDescribe(describeReverse, d)
+			ex.ResponseSHA256 = hash(ex.response)
+			check(t, state(), reference(ex), false, false)
+		})
+		t.Run("PQ_other_route", func(t *testing.T) {
+			r := describeReverse
+			r.Sequence++
+			ex := describe
+			ex.response = sealDescribe(r, described)
+			ex.ResponseSHA256 = hash(ex.response)
+			check(t, state(), reference(ex), false, false)
+		})
 	})
 }

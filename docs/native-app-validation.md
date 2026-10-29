@@ -8877,6 +8877,169 @@ the existing maximum-field SDK carrier result has only the scope above. No
 portable restore support, capacity feature, shared development Hub or public
 installation change was added or executed.
 
+### 2026-10-29 clean cea80367 Runtime failure and registration convergence correction
+
+Root authorized exactly one original complete M1–M8 run after the App build
+released CPU. From clean canonical source **and harness**
+`cea80367ba6d4898335fdbf7ab2763fc9c77c473`, the unchanged entry was:
+
+```bash
+cd /home/zyf/Cicada/cicada
+CICADA_NATIVE_PAIR_LICENSES_DIR=/home/zyf/Cicada/.local/artifacts/native-ip-complete/run-owner-thread-groups-cea8036-20261029/payload/licenses \
+  bash scripts/test-native-pair.sh --owner-endpoint-groups
+```
+
+This independently compiled CLI/App/Node/harness from source; it did not execute
+the candidate ZIP. All 48 new candidate license files matched the prior reviewed
+bytes, `go.mod`/`go.sum` were unchanged from 303639d, and original Codex 0.164.0
+and the pinned Go Docker digest were unchanged. Preflight receipt
+`~/Cicada/.local/evidence/n2-acceptance/owner-groups-cea80367-preflight-01/result.json`
+has SHA-256 `475aa8a49fc0c40fec5ae8d1105784e35781c6dd1015b44ed759e18ca3472a9e`;
+`full-start.json` binds the actual new candidate licenses.
+
+Actual run **`run-20261029T135840Z-hXlWlN`** ended **FAIL / exit 1**, with no
+automatic retry or partial resume. Version, CLI compilation, test compilation
+and vet exited 0; harness exited 1. Under
+`~/Cicada/.local/evidence/native-pair-acceptance/` the run's `result.json` has
+SHA-256 `1d541b623a602eb85cb87b3e77c92e8669e18be090055d65d3de073e929b1027`.
+The stable source/harness snapshot-file hash is
+`d191ff63d19cd11e428beb242a109444910acfe74e003782cc433e9887d45fdf`;
+its source manifest hash is separately
+`bb9052328fec8c6f6bb10aef4522fdadee4b71dcc158634d2058f8097e3479c1`.
+Actual CLI SHA-256 is
+`aeab1e2599b65bef13824a57f48c18858a5505e8064b932aed21b96211b4d9df`;
+`n3.test` SHA-256 is
+`35b8edf7b5fbad8b8588748a19bb962a31e6410068b0de68d352aa3239230327`.
+Both executed binaries were unchanged afterward. Typed inspect proved the owned
+container absent; owned run state contained zero remaining files. The read-only
+closed Host observer retained 253 rows, zero read retries; its JSONL SHA-256 is
+`d6f9620021d82c7be694ad359787b3079ab8edb571352d8f0c9e2912c47867bf`.
+
+| Actual scene | Terminal result | Retained boundary |
+| --- | --- | --- |
+| M1 | PASS 140.83s, six facts | Original App review, pending zero-rights, exact lost response/restart recovery, original identities/keys. |
+| M2 | PASS 470.41s, six facts | Four original native Threads, explicit Group selection and independent grants, four actual correlated communication rounds. |
+| M3 | PASS 192.38s, eight facts | Only D/G1 removed; A/B/C, D/G2 and wider Principal grants unchanged; actual Guard/Network/business/Leave ceilings. |
+| M4 | PASS 618.52s, seven facts | Permanent OWNER mode, exact ACTIVE Complete, finite original review duration and deny across Join/restart. |
+| M5 | FAIL 432.39s | After real cold expiry, Renew/590 settled but the old local exact-expiry observation remained false for its original 75s deadline. |
+| M6–M8 | NOT_RUN | No last-Group, true Owner/Node double revocation, retained-scope final scene or final four-identity witness. |
+
+Parent elapsed time was 2125.74s; outer driver including compile/vet/cleanup was
+2158.292s. M4 crossed the older YY0pOo failure point: the same retained DEFAULT
+Current expired at 14:26:00.654867369Z. Local-head observation began
+14:25:31.167668238Z and ended 14:25:31.169130630Z, one query/1ms, exact OWNER
+revision 1. The actual retained-default verification at 14:25:31.169298075Z was
+**denied with 29.485s still remaining**. Finite Complete/524 and its restart
+replay settled in 116/110ms, with all fifteen pending flags clear, protected
+state 5,616,572 bytes and both services alive. This does not retrospectively
+prove why the older 68-second observation was delayed.
+
+M5 logged actual App-closed/Node-stopped cold observations at 300 and 301
+seconds with `original_boundary_crossed=true`. After restart the original
+`node.endpoint_groups.renew` sequence **590** was forwarded and authenticated
+HTTP 200/OK, then its response was dropped at 14:33:14.281620709Z. The exact
+original packet replay returned the same response at 14:33:14.463154153Z:
+operation SHA-256 `a5e694c011345e7e94e062b722e52f6cdef07f5bb11bf0b1cb41455f705e90b3`,
+request `f3b77106c4d405a978b49d6705452828e736fbcb9f97886f8ae9ac37d0ed2008`,
+response `85ba7fddef2aed2111b0298bfc94e7e5441931f5583bf8e88889fec7b64eca4c`.
+Its original caller-intent SHA-256 is
+`f6c1cfe215b8a8f861ad3a3f281f4fdeb4a5fb8ffc6034f6f9f14ca06c9925f7`;
+the local step completed at 14:33:14.510004197Z. Sixteen retained observations
+show authenticated OK, step present/settled, pending sequence zero and all
+fifteen pending fields false, while `renewal_anchor_consumed=false`. The final
+observation was 14:34:28.242801161Z / 74,860ms, protected state 6,127,134 bytes,
+Hub/Node alive. The original helper then failed at its 75s bound.
+
+The audit under the matching artifacts run,
+`owner-groups-protocol-audit/79e71e37e64258a7.json`, is 688,116 bytes,
+SHA-256 `db4a861e5f307116b02f8647cb872c044881da78a68d0780cb8c11d664eeea90`.
+It retains 52 steps, 1310 trace records and 24 peer coordinates below its
+128-row limit, but not protected registration anchors. Actual pre-Renew,
+response and final local expiry values, final local entry presence and expiry
+comparison direction are **NOT_RETAINED**. Control-flow review establishes
+only two remaining false-without-error branches: local registration absent, or
+present with unchanged immutable fields/caller/State but a different expiry.
+It cannot identify which branch occurred, or infer consumption omission versus
+later legitimate lease advancement. Closed failure receipt and matcher audit
+under the preflight directory are respectively SHA-256
+`d43cde5aeada3fef949e05e7c9f18b9ca3ca922756379672536380ab7e06d8ff` and
+`8c54fe44a037a422c6e5b73c1663be54814f6257463d4d4f7f2583023d37fb9d`.
+
+The cold elapsed observation is a partial fact, not completed M5 acceptance.
+Formal `lease_observations=[]` and `identities=[]` therefore leave
+`actual_lease_boundary_valid=false` and `identities_unchanged=false`; these
+missing final witnesses do not establish that identities mutated. Post-cold G2
+fresh-Guard ASK/REPLY, final lease witness, M6–M8/M7 double baseline and final
+four identities remain unaccepted. Windows DPAPI/ACL/GUI, Android, physical
+second Node, public HTTPS and actual 24-hour expiry remain **NOT_RUN**.
+
+Root then approved one producer control using the existing real TCP/crypto/
+persistent-Store fixture, without a production change or a shortened lease.
+`TestEndpointGroupsRenewRecoveryAllowsLaterHeartbeatLease` proactively renewed
+a live original registration: committed response loss and exact generic recovery
+left the old local expiry; normal authenticated Describe saved the Renew value;
+ordinary session-Guard heartbeat then legitimately advanced the same immutable
+anchor further. Original packet/reply stayed exact and settled, pending empty.
+Its initial normal result at
+`~/Cicada/.local/evidence/owner-groups-renew-progress-control-20261029-01/result.json`
+has SHA-256 `6dba5df937b88676baadd4ad3d4bae0a19242f5fbc99d53a16fad3cfd56432d5`.
+This is a counterexample to permanent exact-expiry equality, **not** a reproduction
+of the missing hXlWlN anchor values or proof of that failure's cause.
+
+The QA-only correction preserves original Renew request/reply authentication,
+full reversed route, original caller/step/receipt, settled state, all fifteen
+pending fences and every immutable anchor field. The same registration must
+have a currently live lease. Exact original response anchor is accepted; a later
+local expiry additionally requires the **identical local anchor/expiry** in a
+later observed source from this run's fixed-origin proxy: either actual forwarded
+HTTP-200 registration heartbeat with the same Endpoint/Principal/Network/
+Binding/epoch/lease owner and no Group/membership rights, or full-route PQ-
+authenticated Node Describe with its validated exact registration. Method/path,
+post-original timestamps, empty fault mode, request/response digests and strict
+DTO/EOF are checked. Heartbeat is explicitly classified as session-Guard transport
+evidence, **not** a new PQ signature. Describe validation uses its actual capture
+time for historical receipt validation; it does not manufacture fresh authority.
+The matcher dispatches no RPC or writes. It reports
+`original_registration_converged`, local presence, old/original/local ISO expiry,
+comparison and closed source/hash/time fields, rather than claiming a particular
+consumer implementation.
+
+One pinned isolated Docker-hosted normal gate over clean canonical cea80367,
+three read-only QA overlays and the producer's frozen control file passed
+**43 PASS events / 0 FAIL / 0 SKIP**, exit 0, 34.443s overall:
+
+| Exact selected test | PASS events including parent/subcases | Actual time |
+| --- | --- | --- |
+| `TestN3OwnerGroupsRenewalSettlementRequiresOriginalRegistrationConvergence` | 36 | Included in 0.272s QA execution |
+| `TestN3OwnerGroupsSettlementRequiresLocalOriginalReceipt` | 6 | Same QA execution |
+| `TestEndpointGroupsRenewRecoveryAllowsLaterHeartbeatLease` | 1 | 3.117s |
+
+Regressions cover earlier/missing/expired registration, wrong original caller,
+negative/changed original, altered key/binding/writer, pending execution, larger
+expiry without evidence, pre-original/unforwarded/faulted/digest-invalid/wrong-
+tuple source, trailing JSON/garbage and malformed/foreign PQ evidence. Positive
+source cases use actual TCP/proxy forwarding and real PQ Describe packets.
+These gate fixtures are synthetic and cannot supply a Runtime fact.
+Evidence `~/Cicada/.local/evidence/n2-acceptance/owner-groups-renew-convergence-cea80367-01/result.json`
+has SHA-256 `9831929102c2fdafacfe11c26fb4bb176911806fc8417ad38e55db121b0e6b64`;
+its retained `command.json`/`overlay.json` reproduce every selected input.
+Tested overlay hashes: renewal helper
+`1b8ee9d08f276a81de7f0e79e94726c8c687327b89a006032d92a44c491ec4ec`,
+settlement helper `6dbe110ffbf077bf726ac297bbb17111e16b539ec4ed5a2154078342f07c7fc4`,
+renewal gate `df567b9ecfe44e6c426a015324bbf2745490de879f608364ccafe344b3ae889f`,
+producer control `a181336a8139dc868d026480a4e0239eb194cc7e91454e0fd24050e03a5dd8f2`.
+Actual QA test binary SHA-256 is
+`ac1d68c2b7f23dd4ef47ec5481cb4266192347f8a0f23ff5eeeca4c14473c199`;
+control binary `b5b1ae2648c827892b517a17597552bfd85f1f5e14bea813330b9029cc9c2d32`.
+Source/overlay snapshots were stable and typed inspect proved container absence.
+There was one Docker QA execution, not duplicate host-normal and Docker QA passes;
+the producer's prior normal control retains its own source above. No new full
+Runtime was launched after this correction. hXlWlN remains **FAIL**. The original
+75s settlement bound, real five minutes and subsequent actual fresh Guard/
+ASK/REPLY are unchanged; the next complete gate requires a new explicit Root
+checkpoint/CPU authorization. No candidate finalization or public deployment
+change occurred.
+
 ### 2026-10-26 user-reported four-Thread Group continuation
 
 Root relayed the user's report that four real native Threads on the same Node
