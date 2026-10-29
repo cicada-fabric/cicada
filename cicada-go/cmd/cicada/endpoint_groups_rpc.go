@@ -84,6 +84,14 @@ func (c *machineNodeControlClient) openEndpointGroupsEnvelopeLocked(original, re
 // Recover the sealed original first. A detached, exact-scope query can settle
 // only that packet; neither a read failure nor uncertainty creates a new action.
 func (c *machineNodeControlClient) recoverEndpointGroupsOriginal(ctx context.Context, token string) error {
+	c.mu.Lock()
+	if endpointGroupsOriginalOperation(c.state.PendingOperation) && len(c.state.PendingPacket) > 0 {
+		if err := c.endpointGroupsPendingCapacityLocked(); err != nil {
+			c.mu.Unlock()
+			return err
+		}
+	}
+	c.mu.Unlock()
 	originalError := c.recoverPending(ctx, token)
 	if originalError == nil {
 		return nil

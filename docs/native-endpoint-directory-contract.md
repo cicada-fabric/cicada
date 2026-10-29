@@ -452,8 +452,25 @@ an old pending packet remains recoverable independently of current availability.
 The existing private 8 MiB Node-Control state stores original intent metadata,
 fixed child operation IDs, prepared bodies and bounded original sealed receipts.
 Receipt retention and clearing the shared outbox use one durable write, including
-startup recovery. There is a 1 MiB completion reserve before a new local packet
-is sent, and a 256 KiB local receipt ceiling. At most 256 mutation intents and
+startup recovery. Ordinary local operations retain their 1 MiB completion
+reserve and 256 KiB local receipt ceiling; other generic operation budgets remain
+unchanged. EndpointGroups Describe, KeyPrepare, KeyComplete and Renew instead
+project the complete lifecycle of their actual prepared state before any POST.
+Admission takes the largest serialized state across normal receipt retention,
+COMPLETED reconciliation (original, actual canonical sealed reconcile request,
+outer response and nested receipt together), and read-only READ_EXPIRED
+settlement (both the last-read fence and local step's diagnostic copies).
+Projection uses the existing 64 KiB original, 224 KiB receipt and 560 KiB
+reconcile-response bounds, including authenticated envelope whitespace. It also
+accounts for JSON/base64 fields, completion time, the file newline, registration
+anchor/authority and local lease metadata growth, and all existing managed-lease
+reservations. Failure before dispatch rolls back the tentative sequence and
+outbox. Every state writer preserves an admitted original's recovery space.
+An unprojectable historical outbox may only be retained under the conservative
+2 MiB reserve; it cannot authorize a recovery POST or replacement operation.
+The total 8 MiB hard limit remains unchanged. No pending/unknown packet or
+current, equal-head ACTIVE response is removed to obtain capacity. Wire/DTO
+formats, receipt bounds and TTLs are unchanged. At most 256 mutation intents and
 64 read intents are active. Expired settled/no-dispatch intents can be collected
 with a monotonically increasing `local_endpoint_admission_floor_ms` in the same
 write; new admissions at or below that floor are refused even after clock
@@ -1234,8 +1251,8 @@ Complete receipt, original identity/anchor, current grants and Owner heads/deny.
 Any pending Node RPC or retained execution state prevents retirement. An exact
 replay of a retired read returns the existing local receipt-expired result
 without network dispatch; changing its body remains a conflict. Retirement
-persists atomically and does not change the 8MiB state bound or 2MiB response
-reservation.
+persists atomically and does not change the 8 MiB hard state bound or original
+operation recovery guarantees.
 
 A settled ACTIVE KeyPrepare response may be retired only within that same
 original registration intent when its authenticated grant and Owner head

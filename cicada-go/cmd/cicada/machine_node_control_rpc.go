@@ -318,6 +318,26 @@ func protectNodeControlLocalFile(path string) error {
 }
 
 func (client *machineNodeControlClient) persistLocked() error {
+	// Other local writers must not consume an admitted original's recovery
+	// space while its shared outbox remains unresolved.
+	if endpointGroupsOriginalOperation(client.state.PendingOperation) && len(client.state.PendingPacket) > 0 {
+		if err := client.endpointGroupsPendingCapacityLocked(); err != nil {
+			if errors.Is(err, errLocalEndpointHistoryFull) {
+				return err
+			}
+			// A damaged historical origin/binding remains a durable fence.
+			// Preserve it with the old conservative reserve; recovery still
+			// rejects its invalid coordinates. Fresh admission below requires
+			// a successful full projection before it can reach any POST.
+			raw, marshalErr := json.Marshal(client.state)
+			if marshalErr != nil {
+				return marshalErr
+			}
+			if len(raw)+1+(2<<20)+managedPairStateReserve(client.state) > maxMachineNodeControlStateBytes {
+				return errLocalEndpointHistoryFull
+			}
+		}
+	}
 	data, err := json.Marshal(client.state)
 	if err != nil {
 		return err
@@ -567,13 +587,20 @@ func (client *machineNodeControlClient) call(ctx context.Context, token, operati
 		client.state.PendingResponsePacket = nil
 		if localCall {
 			client.state.PendingLocalEndpointIntentID = localScope.IntentID
-			if err := client.localEndpointCapacityLocked(); err != nil {
-				client.state = previous
-				return err
+			if !endpointGroupsOriginalOperation(operation) {
+				if err := client.localEndpointCapacityLocked(); err != nil {
+					client.state = previous
+					return err
+				}
 			}
 		}
 		client.state.PendingWorkerID, client.state.PendingWorkerAttempt = machineNodeControlPendingWorker(operation, requestBody)
-		if endpointGroupsNodeBusinessOperation(operation) {
+		if endpointGroupsOriginalOperation(operation) {
+			if err := client.endpointGroupsPendingCapacityLocked(); err != nil {
+				client.state = previous
+				return err
+			}
+		} else if endpointGroupsNodeBusinessOperation(operation) {
 			stateRaw, err := json.Marshal(client.state)
 			if err != nil || len(stateRaw)+(2<<20)+managedPairStateReserve(client.state) >= maxMachineNodeControlStateBytes {
 				client.state = previous
@@ -587,6 +614,10 @@ func (client *machineNodeControlClient) call(ctx context.Context, token, operati
 	} else if client.state.PendingOperation != operation || client.state.PendingPlaintextDigest != plainDigest {
 		return fmt.Errorf("Node-Control operation %q is still awaiting its exact retry; refusing replacement operation %q",
 			client.state.PendingOperation, operation)
+	} else if endpointGroupsOriginalOperation(operation) {
+		if err := client.endpointGroupsPendingCapacityLocked(); err != nil {
+			return err
+		}
 	}
 	var responsePacket []byte
 	fromCache := len(client.state.PendingResponsePacket) > 0
@@ -832,6 +863,11 @@ func (client *machineNodeControlClient) recoverPending(ctx context.Context, toke
 	fromCache := len(responsePacket) > 0
 	var err error
 	if !fromCache {
+		if endpointGroupsOriginalOperation(client.state.PendingOperation) {
+			if err := client.endpointGroupsPendingCapacityLocked(); err != nil {
+				return err
+			}
+		}
 		responsePacket, err = client.postPacket(ctx, token, client.state.PendingPacket)
 		if err != nil {
 			return err

@@ -191,10 +191,9 @@ func (c *machineNodeControlClient) saveEndpointGroupsRegistration(r machineEndpo
 		c.state.EndpointGroupsRegistrations = make(map[string]machineEndpointGroupsRegistration)
 	}
 	c.state.EndpointGroupsRegistrations[id] = r
-	if err := c.localEndpointCapacityLocked(); err != nil {
-		c.state = previous
-		return err
-	}
+	// This installs an already verified projection, without dispatching a new
+	// operation. Its growth was reserved at original admission. persistLocked
+	// enforces the hard limit and preserves any other pending recovery budget.
 	if err := c.persistLocked(); err != nil {
 		c.state = previous
 		return err

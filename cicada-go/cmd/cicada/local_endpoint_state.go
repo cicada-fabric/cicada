@@ -191,6 +191,9 @@ func (client *machineNodeControlClient) retainLocalEndpointIntentAuthenticated(q
 }
 
 func (client *machineNodeControlClient) localEndpointCapacityLocked() error {
+	if endpointGroupsOriginalOperation(client.state.PendingOperation) && len(client.state.PendingPacket) > 0 {
+		return client.endpointGroupsPendingCapacityLocked()
+	}
 	data, err := json.Marshal(client.state)
 	if err != nil {
 		return err
