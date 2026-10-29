@@ -9680,3 +9680,77 @@ separately retained. No historical result is overwritten. The original
 `daaNpZ` failure cause remains NOT_RETAINED and its M7 result remains FAIL.
 This control accepts neither M7, M8, full M1–M8, actual cross-Node/native exchange
 nor Windows DPAPI/ACL/GUI. No complete M7 rerun occurred during this checkpoint.
+
+### 2026-10-29 M7-only independent revocation scoped pass
+
+Root authorized exactly one M7-only run after reviewing `dc4c58d`. Source and
+harness were the same clean, frozen QA worktree at
+`dc4c58d08d1bef79de85ea75b6fa10727d89230c`; tree
+`c23e5fb409b3a41e7ac40db77609cf7e30e088d1` matched then-dev
+`6db90c5bc15dcfc8972b1877057ca1e52683538a`. Exact source attribution also
+includes the recorded generated inputs below, beyond the clean Git HEAD.
+Plugin/producer blobs, Go image,
+Codex 0.164.0, the original 48 licenses, 90m limit and all remaining M7
+assertions were unchanged. Reproduction at that source:
+
+```sh
+CICADA_NATIVE_PAIR_LICENSES_DIR=/home/zyf/Cicada/.local/artifacts/native-ip-complete/run-owner-thread-groups-cea8036-20261029/payload/licenses \
+  bash /home/zyf/Cicada/.worktrees/cicada/n2-acceptance/scripts/test-native-pair.sh --owner-endpoint-groups-m7
+```
+
+`run-20261029T191143Z-BOrXMI` ended **SCOPED_PASS / exit 0**. M7 took
+**1227.16s**, outer execution **1290.98309s**; version, CLI/test compilation,
+harness and vet all exited 0. Main `60150` and observer `6613` ended. Both fresh
+independent OwnerKey/NodeBinding fixtures completed, with six actual native
+ASK/REPLY roundtrips in total, including both Groups after actual App logout.
+Both actual revocations denied both Groups, original-wire cold renewal and
+final native injection. The six original facts validated; neither a second
+fixture nor a cold/final assertion was skipped. Writer windows were
+**6226ms / 5685ms**, below the unchanged 10000ms fixture limit.
+
+The observed cold branches differ: OwnerKey's one-second snapshot had Node and
+Hub RUNNING, unchanged original identity, one actual Relay 401 and an UNKNOWN
+stderr reason with a durable-outbox marker; it used the original liveness
+branch. NodeBinding had Node **EXITED / 1**, Hub RUNNING, unchanged original
+identity, the fixed terminal auth-stop prefix and two actual post-start Relay
+401s; it used the reviewed rejection-exit exception. No result from the narrow
+control is substituted for these actual observations.
+
+Evidence under `~/Cicada/.local/`:
+
+| Artifact | SHA-256 |
+| --- | --- |
+| `evidence/native-pair-acceptance/run-20261029T191143Z-BOrXMI/result.json` | `0f7133b5496bf97372515ed7444f1467efa36b42722d72f8b75a2a0cbfcb653c` |
+| Same run `source-before.json` = `source-after.json` | `50250d7fe63121f19bc303283f665b914ffb93a0ba81b4599f4d4aac772782cb` |
+| Source manifest | `4a67ca89325208f181816aa5ce480d247289f94e65e7e17097b516b3d9db8f4c` |
+| `artifacts/native-pair-acceptance/run-20261029T191143Z-BOrXMI/owner-groups-protocol-audit/6a6a7205794178b2.json` (489 traces/26 steps) | `9a83f2bafb677e18ed9a44ae036a043c76b718442930939c4984234059db0978` |
+| Same run `owner-groups-protocol-audit/757a0cd3de248768.json` (367 traces/26 steps) | `ecc51cce0d01180e22dd40337d1f9709efb3e5f7d9ccb45660dc1ccb0f3642b7` |
+| `evidence/n2-acceptance/owner-groups-m7-dc4c58d-01/closed-pass.json` | `b3c42c9715bb518abddf25e26ac1613598a29990b3fbeb12dfc02694c47e90d5` |
+| Same task `source-input-attribution.json` | `0b008bae76c5c22b084d3fd894aa82628381f37ca6494e77ab42bc4c1dfe2d13` |
+
+CLI `4aa63e025fa5baedcea849357e06a1731abef11310eab5a77ebe14b6c3f19007`
+and test `411f7c96e11cf808a4f753055432a2049eb12a5e078b1da5d1cb34868481ad8a`
+hashes remained stable. The observer retained 166 closed records, zero read
+retries and zero issuer-failure records. The labeled container was absent,
+remaining state files were 0, and the worktree stayed clean at its frozen HEAD
+through terminal sealing. Root independently checked hashes, both audits,
+source/blob correspondence and cleanup, and accepted this **M7_SCOPED_PASS**.
+Of 1756 source inputs, Root verified 1753 tracked inputs against `dc4c58d`,
+with no mismatches or LFS pointers. Three Git-ignored files under
+`cicada-go/internal/server/ui/generated/` matched their actual before/after
+snapshot bytes: `cicada-webcrypto.wasm.gz`
+(`2ea8127a27921c8de48ce01b2e08a7df551fe69cc59685e0c9028e2e089982c8`),
+`panel.manifest.json`
+(`cf47e7026ad05b60cb2e5c538bdbc53015cfa09cd76834d57ea27778a74f92dc`)
+and `wasm_exec.js`
+(`0c949f4996f9a89698e4b5c586de32249c3b69b7baadb64d220073cc04acba14`).
+These three inputs are attributed to the exact snapshot/manifest, not solely
+to HEAD. The task's `source-input-attribution.json` preserves that distinction;
+the original closed-pass receipt is unchanged.
+
+`full_m1_m8_accepted=false`: M5's real lease, M8/final original-four closure and
+the complete parent are not filled by this run. Later Node-consumer source
+`7f0cab2`, actual cross-Node/native exchange, physical second Node, Windows
+DPAPI/ACL/GUI and public HTTPS remain outside this result. Old failures retain
+their original outcome and unknown causes. No automatic full or cross-Node run
+was started.

@@ -562,8 +562,8 @@ historical NOT_RUN below or replace the existing detailed evidence.
 | --- | --- | --- | --- |
 | Finite onboarding, Root separation and local key custody | Existing N2/NPT/Guard checks distinguish account login, Owner proof, Node binding and business authority; identity flow works without Control inference. | Preserve exact scopes; physical custody remains unaccepted until tested. | Reuse existing checks affected by the bounded fix; no new onboarding framework. |
 | Node on/off and original Codex discovery/communication | Existing lifecycle, explicit native registration, nickname/name/ID/contact-form paths and user batches; original managed capabilities retained. | Final repaired-source Runtime and existing user batch. | Reuse source-bound implementation/tests; no new App feature or upstream Codex fork. |
-| App named Groups and exact multi-Group changes | blqDI4 M1–M5 PASS, including real five-minute cold recovery and post-boundary G2 communication. | M6 original C ticket failure is the current automatic blocker. | Hub's minimum core reproduction/fix, then impacted checks and existing disposable gate. |
-| Real authority revoke and retained-scope recovery | Thin M7-only entry reuses the existing independent OwnerKey/NodeBinding baselines; M8 retains the original denied request/outbox. | Latest M7-only daaNpZ FAIL on clean b754f210: original selection and four positive/logout roundtrips passed; actual OwnerKey revoke reached, then the restarted Node/Hub liveness assertion failed. Second baseline/M8/final original-four closure unaccepted. | Resolve the cold-agent lifecycle failure with the responsible producer before another run; retain authenticated renewal and native-injection negatives. M8 still requires actual M3/M4/M6 prerequisites. Final full M1–M8 gate remains mandatory. |
+| App named Groups and exact multi-Group changes | blqDI4 M1–M5 PASS, including real five-minute cold recovery and post-boundary G2 communication. | Last full run stopped at M6's original C ticket failure; repaired-source M6/full parent remain unaccepted. | Run the existing impacted checks/full disposable gate after product source freezes. |
+| Real authority revoke and retained-scope recovery | BOrXMI M7-only SCOPED_PASS on clean dc4c58d (tree equal to dev 6db90c5): both independent OwnerKey/NodeBinding baselines, cold original-wire refusal and final native zero injection. | M8/final original-four/full M1–M8 closure unaccepted. This result does not cover later Node-consumer source 7f0cab2 or the separate actual cross-Node chain. | Preserve the six original M7 facts and retained failures. M8 still requires actual M3/M4/M6 prerequisites; the final full M1–M8 gate remains mandatory. |
 | Communication across two actual Nodes/native processes | Lower-level Owner/Network Group primitives exist, but current App keeps one Node confirmation and does not wire existing-Network selection into local collaboration. | Actual two-Node/native ASK/REPLY unaccepted; same-Node M1–M8 and historical two-registration/MCP lanes do not cover it. | Freeze the multi-Node Hub/App contract, address the real App flow gap, then reuse the existing two-Node topology/entry. No new driver or result is claimed here. |
 | Windows usability and protection | Existing Enter/CJK/copy/user-root/packaging code and source-specific checks; no reimplementation requested. | Existing fresh-install batch plus DPAPI/ACL/GUI/DPI/instance/recovery observations on real Windows. | One necessary final candidate build after production source stabilizes; reuse the current finalizer and user batch. Unexecuted physical checks stay NOT_RUN. |
 | Candidate/source closure | Complete CEA candidate and its 48 reviewed licenses already exist. | Match repaired source, exact package/hash, Runtime evidence and cleanup before finalization. | Keep candidate attribution separate; rebuild only when the final production fix requires it. |
@@ -585,19 +585,20 @@ key rotation or public change is authorized by this index.
 The additive `bash scripts/test-native-pair.sh --owner-endpoint-groups-m7`
 entry reuses the original fixture/transport/build isolation and calls only the
 existing M7 routine; its receipt scope is distinct and `full_m1_m8_accepted`
-is always false. Its first actual attempt is the retained FAIL above, not M7
-acceptance. M8 has no valid independent selector: it requires M3's original
+is always false. Its earlier failed attempts keep their original source and
+outcome. M8 has no valid independent selector: it requires M3's original
 denied packet/outbox, M4's retained Current/selection and M6's same-origin state.
 The original complete parent is unchanged. Future selection failures now retain
 closed return/state evidence before the same fatal assertion; this adds no
 retry, authority, time or product-state write. See the [narrow result and pure
 observability check](native-app-validation.md#2026-10-29-m7-only-pre-revocation-failure-and-closed-diagnostics).
-The [latest frozen-source M7 attempt](native-app-validation.md#2026-10-29-frozen-source-m7-owner-key-revocation-and-cold-restart-failure)
+The [prior frozen-source M7 failure](native-app-validation.md#2026-10-29-frozen-source-m7-owner-key-revocation-and-cold-restart-failure)
 reached actual Owner-key revocation and failed at cold restart; it remains FAIL
 and does not replace the earlier source-bound failures.
 The [separate cold-lifecycle control](native-app-validation.md#2026-10-29-cold-revocation-lifecycle-control)
-now passes with explicit auth-denial exit evidence; the repaired helper still
-requires Root review and a new actual M7 run before any M7 acceptance.
+passed with explicit auth-denial exit evidence. After Root reviewed the helper,
+the [actual M7-only run](native-app-validation.md#2026-10-29-m7-only-independent-revocation-scoped-pass)
+passed both baselines; its acceptance is limited to that exact source and scene.
 
 ### Historical ledger context
 
