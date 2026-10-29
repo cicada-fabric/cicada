@@ -31,13 +31,16 @@ func extensionMetadata(body any) (operation, id, owner, device string, epoch uin
 	if op, id, owner, device, epoch, err := nativePairMetadata(body); err == nil {
 		return op, id, owner, device, epoch, nil
 	}
+	if op, id, owner, device, epoch, err := appNodeScopedMetadata(body); err == nil {
+		return op, id, owner, device, epoch, nil
+	}
 	return appNodeMetadata(body)
 }
 func extensionOperation(op string) bool {
 	if ownerEndpointGroupsOperation(op) {
 		return true
 	}
-	return op == OperationOwnerEndpointRead || op == OperationActivationPrepare || op == OperationActivationComplete || op == OperationActivationStatus || op == OperationAccountReconcile || appNodeOperation(op) || nativePairOperation(op) || localDomainOperation(op)
+	return op == OperationOwnerEndpointRead || op == OperationActivationPrepare || op == OperationActivationComplete || op == OperationActivationStatus || op == OperationAccountReconcile || appNodeOperation(op) || appNodeScopedOperation(op) || nativePairOperation(op) || localDomainOperation(op)
 }
 func validateActivationBinding(b ActivationBinding) error {
 	if b.Format != ActivationFormat || (b.Purpose != PurposeInitialActivation && b.Purpose != PurposeLegacyContinuation) || validateOrigin(b.Origin) != nil || !validID(b.HubID) || !validID(b.AccountID) || !validID(b.OwnerID) || !isHex(b.HubFingerprint, 32) || !isHex(b.ActivationID, 16) || b.SetupEpoch == 0 || b.AccountEpoch == 0 || b.DeviceEpoch == 0 || e2ee.ValidatePublicIdentity(b.OwnerPublic) != nil || e2ee.ValidatePublicIdentity(b.DevicePublic) != nil || b.OwnerPublic.ID == b.DevicePublic.ID || !validDeviceID(b.DeviceID) || !isHex(b.PrepareRequestID, 16) || !isHex(b.PreparePacketDigest, 32) || !isHex(b.GrantDigest, 32) || !reflect.DeepEqual(b.AllowedOperations, ActivationAllowedOperations()) || validateCanonicalTime(b.LeaseExpiresAt) != nil {
@@ -46,6 +49,9 @@ func validateActivationBinding(b ActivationBinding) error {
 	return nil
 }
 func validateExtensionRequest(body any, hub HubIdentity, now time.Time) error {
+	if op, _, _, _, _, err := appNodeScopedMetadata(body); err == nil && appNodeScopedOperation(op) {
+		return validateAppNodeScopedRequest(body, hub, now)
+	}
 	if op, _, _, _, _, err := ownerEndpointGroupsMetadata(body); err == nil && ownerEndpointGroupsOperation(op) {
 		return ValidateOwnerEndpointGroupsRequest(body, hub, now)
 	}
@@ -96,6 +102,9 @@ func validateExtensionRequest(body any, hub HubIdentity, now time.Time) error {
 	return nil
 }
 func validateExtensionResponse(body any, r clientwire.Route) error {
+	if appNodeScopedOperation(r.Operation) {
+		return validateAppNodeScopedResponse(body, r)
+	}
 	if ownerEndpointGroupsOperation(r.Operation) {
 		return validateOwnerEndpointGroupsResponse(body, r)
 	}

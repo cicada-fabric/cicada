@@ -57,7 +57,7 @@ func SealClientRequest(device *e2ee.Identity, hub HubIdentity, body any) ([]byte
 		inner, err = clientwire.SealLocalDomainReconcileRequest(device, hub.Public, binding, route, plaintext)
 	} else if nativePairOperation(route.Operation) || localDomainOperation(route.Operation) || ownerEndpointGroupsOperation(route.Operation) {
 		inner, err = clientwire.SealRequestWithLimits(device, hub.Public, binding, route, plaintext, maxBodyForOperation(route.Operation), innerLimitForOperation(route.Operation))
-	} else if appNodeOperation(route.Operation) {
+	} else if appNodeOperation(route.Operation) || appNodeScopedOperation(route.Operation) {
 		inner, err = clientwire.SealRequestWithLimits(device, hub.Public, binding, route, plaintext, MaxAppNodeBodyBytes, MaxAppNodeInnerPacketBytes)
 	} else if extensionOperation(route.Operation) {
 		inner, err = clientwire.SealRequestWithBodyLimit(device, hub.Public, binding, route, plaintext, MaxActivationBodyBytes)
@@ -116,7 +116,7 @@ func OpenRequestAt(hub *e2ee.Identity, trustedDevice *e2ee.PublicIdentity, bindi
 		opened, err = clientwire.OpenLocalDomainReconcileRequest(hub, packet.SenderPublicIdentity, binding, expectedRoute, inner)
 	} else if nativePairOperation(expectedRoute.Operation) || localDomainOperation(expectedRoute.Operation) || ownerEndpointGroupsOperation(expectedRoute.Operation) {
 		opened, err = clientwire.OpenRequestWithLimits(hub, packet.SenderPublicIdentity, binding, inner, maxBodyForOperation(expectedRoute.Operation), innerLimitForOperation(expectedRoute.Operation))
-	} else if appNodeOperation(expectedRoute.Operation) {
+	} else if appNodeOperation(expectedRoute.Operation) || appNodeScopedOperation(expectedRoute.Operation) {
 		opened, err = clientwire.OpenRequestWithLimits(hub, packet.SenderPublicIdentity, binding, inner, MaxAppNodeBodyBytes, MaxAppNodeInnerPacketBytes)
 	} else if extensionOperation(expectedRoute.Operation) {
 		opened, err = clientwire.OpenRequestWithBodyLimit(hub, packet.SenderPublicIdentity, binding, inner, MaxActivationBodyBytes)
@@ -182,7 +182,7 @@ func SealResponse(hub *e2ee.Identity, device e2ee.PublicIdentity, requestRoute c
 		inner, err = clientwire.SealLocalDomainReconcileResponse(hub, device, binding, route, plaintext)
 	} else if nativePairOperation(route.Operation) || localDomainOperation(route.Operation) || ownerEndpointGroupsOperation(route.Operation) {
 		inner, err = clientwire.SealResponseWithLimits(hub, device, binding, route, plaintext, maxBodyForOperation(route.Operation), innerLimitForOperation(route.Operation))
-	} else if appNodeOperation(route.Operation) {
+	} else if appNodeOperation(route.Operation) || appNodeScopedOperation(route.Operation) {
 		inner, err = clientwire.SealResponseWithLimits(hub, device, binding, route, plaintext, MaxAppNodeBodyBytes, MaxAppNodeInnerPacketBytes)
 	} else if extensionOperation(route.Operation) {
 		inner, err = clientwire.SealResponseWithBodyLimit(hub, device, binding, route, plaintext, MaxActivationBodyBytes)
@@ -247,7 +247,7 @@ func openClientResponsePacket(device *e2ee.Identity, hub HubIdentity, request Pa
 		opened, err = clientwire.OpenLocalDomainReconcileResponse(device, hub.Public, binding, responseRoute(request.Packet.Route), inner)
 	} else if nativePairOperation(request.Packet.Route.Operation) || localDomainOperation(request.Packet.Route.Operation) || ownerEndpointGroupsOperation(request.Packet.Route.Operation) {
 		opened, err = clientwire.OpenResponseWithLimits(device, hub.Public, binding, inner, maxBodyForOperation(request.Packet.Route.Operation), innerLimitForOperation(request.Packet.Route.Operation))
-	} else if appNodeOperation(request.Packet.Route.Operation) {
+	} else if appNodeOperation(request.Packet.Route.Operation) || appNodeScopedOperation(request.Packet.Route.Operation) {
 		opened, err = clientwire.OpenResponseWithLimits(device, hub.Public, binding, inner, MaxAppNodeBodyBytes, MaxAppNodeInnerPacketBytes)
 	} else if extensionOperation(request.Packet.Route.Operation) {
 		opened, err = clientwire.OpenResponseWithBodyLimit(device, hub.Public, binding, inner, MaxActivationBodyBytes)
@@ -322,6 +322,18 @@ func openClientResponsePacket(device *e2ee.Identity, hub HubIdentity, request Pa
 		}
 	case ActivationResult:
 		if value.RequestPacketDigest != ActivationPacketDigest(requestBytes) {
+			return ErrInvalid
+		}
+	case AppNodeScopedChallenge:
+		if value.RequestPacketDigest != AppNodeScopedPacketDigest(requestBytes) || ValidateAppNodeScopedGrantClaims(value.Claims, hub, time.Time{}) != nil {
+			return ErrInvalid
+		}
+	case AppNodeScopedResult:
+		if value.RequestPacketDigest != AppNodeScopedPacketDigest(requestBytes) || validateOpenedAppNodeScopedResult(value, hub) != nil {
+			return ErrInvalid
+		}
+	case AppNodeScopedReconciled:
+		if value.RequestPacketDigest != AppNodeScopedPacketDigest(requestBytes) {
 			return ErrInvalid
 		}
 	case AppNodeChallenge:

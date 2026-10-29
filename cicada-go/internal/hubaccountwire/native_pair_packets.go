@@ -283,6 +283,10 @@ func decodePacketForOperation(raw []byte, expected string) (Packet, error) {
 }
 
 func outerLimitForRoute(r clientwire.Route) int {
+	if appNodeScopedOperation(r.Operation) {
+		return appNodeScopedOuterLimit(r.Operation)
+	}
+
 	if ownerEndpointGroupsOperation(r.Operation) {
 		if r.Operation == OperationOwnerEndpointGroupsReconcile {
 			return MaxOwnerEndpointGroupsReconcilePacketBytes

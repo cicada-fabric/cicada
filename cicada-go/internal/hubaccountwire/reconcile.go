@@ -110,6 +110,9 @@ func validateExtensionDevice(body any, device e2ee.PublicIdentity) error {
 	if op, _, _, _, _, err := nativePairMetadata(body); err == nil && nativePairOperation(op) {
 		return validateNativePairDevice(body, device)
 	}
+	if op, _, _, _, _, err := appNodeScopedMetadata(body); err == nil && appNodeScopedOperation(op) {
+		return validateAppNodeScopedDevice(body, device)
+	}
 	if op, _, _, _, _, err := appNodeMetadata(body); err == nil && appNodeOperation(op) {
 		return validateAppNodeDevice(body, device)
 	}

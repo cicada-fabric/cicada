@@ -333,6 +333,9 @@ func maxBodyForOperation(operation string) int {
 	if nativePairOperation(operation) {
 		return MaxNativePairBodyBytes
 	}
+	if appNodeScopedOperation(operation) {
+		return MaxAppNodeScopedBodyBytes
+	}
 	if appNodeOperation(operation) {
 		return MaxAppNodeBodyBytes
 	}

@@ -112,6 +112,29 @@ func (h *hubNodesHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if path == wire.AppNodeScopedCapabilitiesPath || path == wire.NodePairTrustScopedCapabilitiesPath {
+		if r.Method != http.MethodGet {
+			writeError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+			return
+		}
+		caps, err := h.account.AppNodeCapabilities()
+		if err != nil {
+			writeError(w, http.StatusServiceUnavailable, errors.New("Hub Node metadata unavailable"))
+			return
+		}
+		var metadata any = wire.AppNodeScopedContractCapabilities(caps.TransportPolicy)
+		if path == wire.NodePairTrustScopedCapabilitiesPath {
+			metadata = wire.NodePairTrustScopedContractCapabilities()
+		}
+		raw, err := json.Marshal(metadata)
+		if err != nil || len(raw) > wire.MaxAppNodeScopedCapabilitiesBytes {
+			writeError(w, http.StatusServiceUnavailable, errors.New("Hub Node metadata unavailable"))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(raw)
+		return
+	}
 	if path == wire.AppNodeCapabilitiesPath {
 		if r.Method != http.MethodGet {
 			writeError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))

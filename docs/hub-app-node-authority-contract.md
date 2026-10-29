@@ -1,5 +1,9 @@
 # Finite App authority for one INITIAL Node
 
+The additive [Node-scoped authority contract](hub-app-node-scoped-authority-contract.md)
+freezes an independent Scope2 family with availability false. This v1 contract,
+its heads, original packets and confirmation provenance remain unchanged.
+
 Reviewed contract `app-node-authority-v1`, 2026-10-17, phase
 **HUB_NODES_ONLY — shared helpers, Store and explicit `--hub-nodes-only` service.
 Other modes refuse N3; environment acceptance remains separately scoped.** Root approved this

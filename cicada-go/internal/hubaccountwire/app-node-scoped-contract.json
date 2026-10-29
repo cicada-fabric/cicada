@@ -1,0 +1,145 @@
+{
+  "contract_revision": "app-node-authority-node-scoped-v1",
+  "status": "CODEC_ONLY_UNAVAILABLE",
+  "available": false,
+  "scope_kind": "NODE_V1",
+  "scope_version": 2,
+  "wire_version": 1,
+  "catalog_count": 55,
+  "legacy_contract_revision": "app-node-authority-v1",
+  "legacy_scope_version": 1,
+  "discovery": {
+    "path": "/v2/owner/app-node-scoped/capabilities",
+    "format": "cicada.app-node-scoped-capabilities.v1",
+    "response": "AppNodeScopedCapabilities",
+    "max_bytes": 8192
+  },
+  "head_key": [
+    "owner_id",
+    "device_id",
+    "authority_node_id"
+  ],
+  "global_client_counters": true,
+  "global_pending_limit": 1,
+  "global_reserved_limit": 1,
+  "confirmation_limit": 1,
+  "read_confirmation_limit": 0,
+  "runtime_lease_seconds": 900,
+  "intent_seconds": 60,
+  "proof_seconds": 300,
+  "allowed_operations": [
+    "nodes.confirm"
+  ],
+  "status_allowed_operations": [],
+  "business_operation_prefix": "n3s.",
+  "max_body_bytes": 196608,
+  "max_original_bytes": 131072,
+  "max_proof_bytes": 32768,
+  "max_inner_bytes": 393216,
+  "purposes": [
+    "APP_NODE_SCOPED_INITIAL_PREVIEW",
+    "APP_NODE_SCOPED_STATUS_PREVIEW",
+    "APP_NODE_SCOPED_INITIAL_CONFIRM",
+    "APP_NODE_SCOPED_STATUS_READ"
+  ],
+  "proof_domains": [
+    "cicada/owner/app-node-scoped-preview/v1\u0000",
+    "cicada/owner/app-node-scoped-grant/v1\u0000"
+  ],
+  "operations": [
+    {
+      "operation": "owner.app_node_scoped.prepare",
+      "path": "/v2/owner/app-node-scoped/prepare",
+      "request": "AppNodeScopedPrepare",
+      "response": "AppNodeScopedChallenge"
+    },
+    {
+      "operation": "owner.app_node_scoped.complete",
+      "path": "/v2/owner/app-node-scoped/complete",
+      "request": "AppNodeScopedComplete",
+      "response": "AppNodeScopedResult"
+    },
+    {
+      "operation": "owner.app_node_scoped.status",
+      "path": "/v2/owner/app-node-scoped/status",
+      "request": "AppNodeScopedStatus",
+      "response": "AppNodeScopedResult"
+    },
+    {
+      "operation": "owner.app_node_scoped.cancel",
+      "path": "/v2/owner/app-node-scoped/cancel",
+      "request": "AppNodeScopedCancel",
+      "response": "AppNodeScopedResult"
+    },
+    {
+      "operation": "owner.app_node_scoped.reconcile",
+      "path": "/v2/owner/app-node-scoped/reconcile",
+      "request": "AppNodeScopedReconcile",
+      "response": "AppNodeScopedReconciled"
+    }
+  ],
+  "npt": {
+    "contract_revision": "node-pair-trust-node-scoped-v1",
+    "format": "cicada.node-pair-trust-scoped.v1",
+    "packet_format": "cicada.node-pair-trust-scoped-packet.v1",
+    "packet_version": 1,
+    "scope_version": 2,
+    "owner_proof_version": 2,
+    "owner_purpose": "OWNER_NODE_PAIR_TRUST_SCOPED",
+    "owner_domain": "cicada/owner/node-pair-trust-scoped/v1\u0000",
+    "discovery_path": "/v2/node/pair-trust-scoped/capabilities",
+    "code_prefix": "cicada-npts1.",
+    "code_schema_version": 2,
+    "max_code_bytes": 1536,
+    "operations": [
+      {
+        "operation": "node.pair-trust-scoped.start",
+        "path": "/v2/node/pair-trust-scoped/start"
+      },
+      {
+        "operation": "node.pair-trust-scoped.existing",
+        "path": "/v2/node/pair-trust-scoped/existing"
+      },
+      {
+        "operation": "node.pair-trust-scoped.commit",
+        "path": "/v2/node/pair-trust-scoped/commit"
+      },
+      {
+        "operation": "node.pair-trust-scoped.poll",
+        "path": "/v2/node/pair-trust-scoped/poll"
+      },
+      {
+        "operation": "node.pair-trust-scoped.ack",
+        "path": "/v2/node/pair-trust-scoped/ack"
+      },
+      {
+        "operation": "node.pair-trust-scoped.cancel",
+        "path": "/v2/node/pair-trust-scoped/cancel"
+      },
+      {
+        "operation": "node.pair-trust-scoped.reconcile",
+        "path": "/v2/node/pair-trust-scoped/reconcile"
+      },
+      {
+        "operation": "owner.node-pair-trust-scoped.lookup",
+        "path": "/v2/owner/node-pair-trust-scoped/lookup"
+      },
+      {
+        "operation": "owner.node-pair-trust-scoped.prepare",
+        "path": "/v2/owner/node-pair-trust-scoped/prepare"
+      },
+      {
+        "operation": "owner.node-pair-trust-scoped.complete",
+        "path": "/v2/owner/node-pair-trust-scoped/complete"
+      },
+      {
+        "operation": "owner.node-pair-trust-scoped.status",
+        "path": "/v2/owner/node-pair-trust-scoped/status"
+      },
+      {
+        "operation": "owner.node-pair-trust-scoped.cancel",
+        "path": "/v2/owner/node-pair-trust-scoped/cancel"
+      }
+    ]
+  }
+}

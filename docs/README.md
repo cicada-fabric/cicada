@@ -37,6 +37,13 @@ Pre-submit contact/input UI stays in **v0.2 PLANNED/NOT_RUN**; the
 
 ## Historical checkpoints and reference index
 
+The additive [Node-scoped App authority](hub-app-node-scoped-authority-contract.md)
+and [scoped Node pairing trust](node-pair-trust-scoped-contract.md) freeze
+independent Scope2 shared codecs. Both new capabilities remain false; the
+[producer validation](hub-app-node-scoped-authority-validation.md) covers codecs
+and isolated discovery only. The scoped Store carrier, App/Node consumers and
+actual second-Node integration remain pending.
+
 The dated checkpoints below retain their original source, artifacts and tested
 scope. Their old “current” descriptions and literal-prompt workflows describe
 those checkpoints; use the entry points above for the present implementation.

@@ -1,5 +1,9 @@
 # Node device pairing and independent Owner trust
 
+The additive [Node-scoped NPT contract](node-pair-trust-scoped-contract.md) defines
+independent Scope2 codecs with availability false. This v1 family and its
+EXISTING_BINDING behavior remain unchanged.
+
 Contract revision **node-pair-trust-v1**, format `cicada.node-pair-trust.v1`,
 packet format `cicada.node-pair-trust-packet.v1`. The Node qualification
 checkpoint enables this additive family (`available=true`) for the complete

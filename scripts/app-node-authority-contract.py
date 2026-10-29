@@ -59,7 +59,53 @@ def check():
     print("app-node-authority-v1 Hub Nodes metadata PASS (deployment acceptance not asserted)")
 
 
+def check_scoped():
+    package = ROOT / "cicada-go/internal/hubaccountwire"
+    manifest = json.loads((package / "app-node-scoped-contract.json").read_text())
+    source = "\n".join(p.read_text() for p in package.glob("app_node_scoped_*.go") if not p.name.endswith("_test.go"))
+    source += (ROOT / "cicada-go/internal/e2ee/owner_app_node_scoped_claims.go").read_text()
+    npt = "\n".join(p.read_text() for p in package.glob("node_pair_trust_scoped_*.go") if not p.name.endswith("_test.go"))
+    proof = (ROOT / "cicada-go/internal/e2ee/node_pair_trust_scoped.go").read_text()
+    prose = (ROOT / "docs/hub-app-node-scoped-authority-contract.md").read_text()
+    npt_prose = (ROOT / "docs/node-pair-trust-scoped-contract.md").read_text()
+    assert manifest["contract_revision"] == "app-node-authority-node-scoped-v1"
+    assert manifest["status"] == "CODEC_ONLY_UNAVAILABLE" and not manifest["available"]
+    assert (manifest["scope_kind"], manifest["scope_version"], manifest["wire_version"], manifest["catalog_count"]) == ("NODE_V1", 2, 1, 55)
+    assert manifest["legacy_contract_revision"] == "app-node-authority-v1" and manifest["legacy_scope_version"] == 1
+    assert manifest["head_key"] == ["owner_id", "device_id", "authority_node_id"]
+    assert manifest["global_client_counters"] and manifest["global_pending_limit"] == manifest["global_reserved_limit"] == 1
+    assert (manifest["confirmation_limit"], manifest["read_confirmation_limit"], manifest["runtime_lease_seconds"], manifest["intent_seconds"], manifest["proof_seconds"]) == (1, 0, 900, 60, 300)
+    assert manifest["allowed_operations"] == ["nodes.confirm"] and manifest["status_allowed_operations"] == []
+    assert manifest["business_operation_prefix"] == "n3s."
+    assert re.search(r"AppNodeScopedPublicAvailable\s*=\s*false", source)
+    assert re.search(r"NodePairTrustScopedPublicAvailable\s*=\s*false", npt)
+    assert len(manifest["operations"]) == 5
+    for row in manifest["operations"]:
+        for field in ("operation", "path", "request", "response"):
+            assert row[field] in source and row[field] in prose, row[field]
+        for typ in (row["request"], row["response"]):
+            assert re.search(r"type\s+" + typ + r"\s+struct", source), typ
+    for purpose in manifest["purposes"]:
+        assert purpose in source and purpose in prose
+    for domain in manifest["proof_domains"]:
+        assert domain.replace("\x00", "\\x00") in source
+    meta = manifest["npt"]
+    assert meta["contract_revision"] == "node-pair-trust-node-scoped-v1"
+    assert (meta["packet_version"], meta["scope_version"], meta["owner_proof_version"], meta["code_schema_version"]) == (1, 2, 2, 2)
+    assert meta["code_prefix"] == "cicada-npts1." and meta["max_code_bytes"] == 1536
+    assert re.search(r"MaxNodePairTrustScopedCodeBytes\s*=\s*1536", npt)
+    assert meta["owner_domain"].replace("\x00", "\\x00") in proof
+    assert meta["owner_purpose"] in npt and meta["owner_purpose"] in npt_prose
+    assert len(meta["operations"]) == 12
+    for row in meta["operations"]:
+        assert row["operation"] in npt and row["path"] in npt
+    for key in ("format", "packet_format", "code_prefix", "discovery_path"):
+        assert meta[key] in npt and meta[key] in npt_prose
+    print("app-node-authority-node-scoped-v1 / scoped NPT codec-only metadata PASS (availability false; carrier acceptance not asserted)")
+
+
 if __name__ == "__main__":
     if sys.argv[1:] not in ([], ["check"]):
         raise SystemExit("usage: app-node-authority-contract.py [check]")
     check()
+    check_scoped()
