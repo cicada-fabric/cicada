@@ -178,13 +178,119 @@ def run(output):
         oracle.binaries(artifacts,scratch/'changed.json')
         check('diagnostics_cannot_hide_binary_drift',json.loads((scratch/'before.json').read_text())!=json.loads((scratch/'changed.json').read_text()),True)
 
+    check_cross_node(oracle, check, output)
+
     result = {'scope': 'SYNTHETIC_RECEIPT_ORACLE_ONLY_NOT_PRODUCT', 'status': 'ORACLE_PASS', 'exit_code': 0,
               'product_status': 'NOT_RUN', 'cases': len(checks), 'checks': checks,
               'driver_sha256': hashlib.sha256(source.read_bytes()).hexdigest(),
               'inputs_sha256': hashlib.sha256(oracle.OWNER_GROUPS_INPUTS.read_bytes()).hexdigest(),
+              'cross_node_inputs_sha256': hashlib.sha256(oracle.OWNER_GROUPS_CROSS_INPUTS.read_bytes()).hexdigest(),
               'no_crypto_Hub_Node_App_Host_Docker_or_model_executed': True}
     (output / 'result.json').write_text(json.dumps(result, indent=2, sort_keys=True) + '\n')
     print(f'Synthetic Owner Groups oracle cases={len(checks)} exit=0 product=NOT_RUN evidence={output / "result.json"}')
+
+
+def check_cross_node(oracle, check, output):
+    """Mutation controls for the added scope; no real native execution claims."""
+    parent = oracle.OWNER_GROUPS_CROSS_PARENT
+    facts = [{'test': parent + '/' + c['id'], 'measurement': {'case': c['id'], 'observed': dict.fromkeys(c['observations'], True)}}
+             for c in oracle.owner_groups_cross_inputs()['cases']]
+    expected = {parent} | {f['test'] for f in facts}
+    results, counts = dict.fromkeys(expected, 'pass'), dict.fromkeys(expected, 1)
+    check('SYNTHETIC_cross_facts_NOT_RUNTIME', oracle.valid_owner_groups_cross_facts(facts, results, counts), True)
+    for i, f in enumerate(facts):
+        for field in f['measurement']['observed']:
+            bad = copy.deepcopy(facts)
+            bad[i]['measurement']['observed'][field] = False
+            check('cross_false_' + field, oracle.valid_owner_groups_cross_facts(bad, results, counts), False)
+    check('cross_duplicate_case', oracle.valid_owner_groups_cross_facts(facts[:-1]+facts[:1], results, counts), False)
+    check('cross_absent_terminals', oracle.valid_owner_groups_cross_facts(facts, {}, {}), False)
+    check('cross_duplicate_terminal', oracle.valid_owner_groups_cross_facts(facts, results, {**counts, parent: 2}), False)
+    originals = [{'native_session_id': '00000000-0000-4000-8000-00000000000'+str(i),
+                  'endpoint_id': 'SYNTHETIC_ENDPOINT_'+str(i), 'principal_id': 'SYNTHETIC_PRINCIPAL_'+str(i//4),
+                  'workspace': '/SYNTHETIC_NOT_NATIVE/'+str(i), 'node_id': 'SYNTHETIC_NODE_'+str(i//4),
+                  'binding_id': 'SYNTHETIC_BINDING_'+str(i//4), 'binding_epoch': 1,
+                  'endpoint_public_key_sha256': hashlib.sha256(('SYNTHETIC_NOT_KEY_'+str(i)).encode()).hexdigest()}
+                 for i in range(8)]
+    identities = {'before': originals, 'after_group_operations': copy.deepcopy(originals)}
+    check('SYNTHETIC_cross_eight_NOT_NATIVE', oracle.valid_owner_groups_cross_identities(identities), True)
+    for field in originals[0]:
+        bad = copy.deepcopy(identities)
+        bad['after_group_operations'][0][field] = 2 if field == 'binding_epoch' else 'SYNTHETIC_CHANGED'
+        check('cross_identity_changed_'+field, oracle.valid_owner_groups_cross_identities(bad), False)
+    bad = copy.deepcopy(identities)
+    for side in bad:
+        bad[side] = bad[side][:4]
+    check('four_is_not_eight', oracle.valid_owner_groups_cross_identities(bad), False)
+    bad = copy.deepcopy(identities)
+    for side in bad:
+        for a in bad[side][4:]:
+            a['node_id'] = 'SYNTHETIC_NODE_0'
+    check('same_Node_not_cross_Node', oracle.valid_owner_groups_cross_identities(bad), False)
+    routes = [('cross-forward','C3_BidirectionalNative',0,4,'G'), ('cross-reverse','C3_BidirectionalNative',4,0,'G'),
+              ('cross-App-closed','C4_AppClosedCommunication',0,4,'H'), ('cross-offline-original','C5_OriginalOfflineRecovery',0,4,'G'),
+              ('cross-surviving-H-ab','C7_SurvivingGroupsAndOriginals',0,4,'H'), ('cross-surviving-H-ba','C7_SurvivingGroupsAndOriginals',4,0,'H')]
+    def digest(s):
+        return hashlib.sha256(s.encode()).hexdigest()
+    roundtrips = [{'test': parent+'/'+case, 'measurement': {'label': label, 'source_node_sha256': digest(originals[src]['node_id']),
+                   'target_node_sha256': digest(originals[dst]['node_id']), 'group_sha256': digest('SYNTHETIC_GROUP_'+g),
+                   'request_sha256': digest('SYNTHETIC_REQUEST_'+label), 'native_each_once': True}}
+                  for label,case,src,dst,g in routes]
+    check('SYNTHETIC_cross_routes_NOT_DELIVERY', oracle.valid_owner_groups_cross_roundtrips(roundtrips, identities), True)
+    check('cross_missing_route', oracle.valid_owner_groups_cross_roundtrips(roundtrips[:-1], identities), False)
+    for field, value in [('source_node_sha256',digest('SYNTHETIC_FOREIGN')), ('target_node_sha256',digest('SYNTHETIC_NODE_1')),
+                         ('request_sha256',roundtrips[0]['measurement']['request_sha256']), ('group_sha256',digest('SYNTHETIC_OTHER_GROUP')),
+                         ('native_each_once',1)]:
+        bad = copy.deepcopy(roundtrips)
+        bad[1]['measurement'][field] = value
+        check('cross_wrong_route_'+field, oracle.valid_owner_groups_cross_roundtrips(bad, identities), False)
+    base = {'events': [{'Test': n, 'Action': 'pass'} for n in sorted(expected)], 'facts':facts,
+            'identities':identities, 'roundtrips':roundtrips, 'owned':'false', 'drift':False, 'binary_drift':False, 'bad_stage':None, 'extra':[]}
+    mutations = [('SYNTHETIC_cross_aggregate_NOT_RUNTIME',lambda v:None,0),
+                 ('cross_missing_facts',lambda v:v.update(facts=[]),1), ('cross_missing_eight',lambda v:v.update(identities=None),1),
+                 ('cross_missing_native_route',lambda v:v.update(roundtrips=roundtrips[:-1]),1),
+                 ('cross_skip_not_pass',lambda v:v.update(events=[{'Test':parent,'Action':'skip'}]),1),
+                 ('cross_Docker_unknown',lambda v:v.update(owned='UNKNOWN'),1), ('cross_owned_container',lambda v:v.update(owned='true'),1),
+                 ('cross_source_drift',lambda v:v.update(drift=True),1), ('cross_binary_drift',lambda v:v.update(binary_drift=True),1),
+                 ('cross_truncated_JSON',lambda v:v['extra'].append('{'),1)]
+    for stage in ('version','compile-cli','compile-tests','harness','vet'):
+        mutations.append(('cross_failed_'+stage,lambda v,s=stage:v.update(bad_stage=s),1))
+    for name, mutate, wanted in mutations:
+        value = copy.deepcopy(base)
+        mutate(value)
+        with tempfile.TemporaryDirectory(prefix='SYNTHETIC_CROSS_NOT_RUNTIME-',dir=output) as temp:
+            run, artifacts = Path(temp)/'evidence',Path(temp)/'artifacts'
+            run.mkdir(); artifacts.mkdir()
+            source = {'head':'SYNTHETIC','dirty':False,'harness_head':'SYNTHETIC','harness_dirty':False,
+                      'source_root':'/SYNTHETIC','harness_root':'/SYNTHETIC','manifest_sha256':'0'*64,
+                      'external_runtime_tools':{'codex':{'sha256':oracle.DIRECT_IP_CODEX_SHA256,'version':oracle.DIRECT_IP_CODEX_VERSION}}}
+            for side in ('before','after'):
+                snap = copy.deepcopy(source)
+                if side == 'after' and value['drift']: snap['manifest_sha256']='1'*64
+                (run/('source-'+side+'.json')).write_text(json.dumps(snap))
+            bins = {}
+            for n in ('cicada','n3.test'):
+                raw = ('SYNTHETIC_NOT_EXECUTABLE_'+n).encode()
+                (artifacts/n).write_bytes(raw)
+                bins[n] = {'sha256':hashlib.sha256(raw).hexdigest(),'bytes':len(raw)}
+            for side in ('before','after'):
+                data=copy.deepcopy(bins)
+                if side=='after' and value['binary_drift']: data['n3.test']['sha256']='1'*64
+                (run/('binaries-'+side+'.json')).write_text(json.dumps(data))
+            events=copy.deepcopy(value['events'])
+            for marker, items in [('OWNER_GROUPS_CROSS_FACTS ',value['facts']),('OWNER_GROUPS_CROSS_ROUNDTRIP ',value['roundtrips'])]:
+                events += [{'Test':v['test'],'Action':'output','Output':marker+json.dumps(v['measurement'])} for v in items]
+            if value['identities'] is not None:
+                events.append({'Test':parent+'/C7_SurvivingGroupsAndOriginals','Action':'output','Output':'OWNER_GROUPS_CROSS_IDENTITIES '+json.dumps(value['identities'])})
+            (run/'harness.log').write_text('\n'.join([json.dumps(v) for v in events]+value['extra'])+'\n')
+            for stage in ('version','compile-cli','compile-tests','harness','vet'):
+                (run/(stage+'.exit')).write_text('1' if stage==value['bad_stage'] else '0')
+            with contextlib.redirect_stdout(io.StringIO()):
+                try:
+                    oracle.finish(run,artifacts,'SYNTHETIC_NOT_A_DOCKER_IMAGE',value['owned'],'owner-endpoint-groups-cross-node')
+                except SystemExit as e:
+                    actual=e.code
+            check(name,actual,wanted)
 
 
 if __name__ == '__main__':

@@ -4,6 +4,7 @@ set -euo pipefail
 umask 077
 mode=protocol
 owner_groups_m7_only=0
+owner_groups_cross_node=0
 if [[ $# == 1 && "$1" == --store-regressions ]]; then mode=store
 elif [[ $# == 1 && "$1" == --a3-core ]]; then mode=a3
 elif [[ $# == 1 && "$1" == --a3-http ]]; then mode=a3-http
@@ -29,7 +30,8 @@ elif [[ $# == 1 && "$1" == --direct-ip-tls ]]; then mode=direct-ip-tls
 elif [[ $# == 1 && "$1" == --node-pair-trust ]]; then mode=node-pair-trust
 elif [[ $# == 1 && "$1" == --owner-endpoint-groups ]]; then mode=owner-endpoint-groups
 elif [[ $# == 1 && "$1" == --owner-endpoint-groups-m7 ]]; then mode=owner-endpoint-groups; owner_groups_m7_only=1
-elif [[ $# != 0 ]]; then printf 'Usage: scripts/test-native-pair.sh [--store-regressions|--a3-core|--a3-http|--a3-size-store|--app-owner|--endpoint-security|--endpoint-security-boundaries|--endpoint-security-app-fixture|--endpoint-security-owner-directory|--endpoint-security-owner-directory-recovery|--codex-product-guards|--codex-product-cli|--codex-product-cold|--codex-product-three-stage|--codex-product-other-uid|--codex-product-domain-app|--codex-product-domain-native|--codex-product-peer-form|--codex-product-peer-form-native|--peer-form-network|--peer-form-network-focus|--direct-ip-tls|--node-pair-trust|--owner-endpoint-groups|--owner-endpoint-groups-m7]\n' >&2; exit 2; fi
+elif [[ $# == 1 && "$1" == --owner-endpoint-groups-cross-node ]]; then mode=owner-endpoint-groups; owner_groups_cross_node=1
+elif [[ $# != 0 ]]; then printf 'Usage: scripts/test-native-pair.sh [--store-regressions|--a3-core|--a3-http|--a3-size-store|--app-owner|--endpoint-security|--endpoint-security-boundaries|--endpoint-security-app-fixture|--endpoint-security-owner-directory|--endpoint-security-owner-directory-recovery|--codex-product-guards|--codex-product-cli|--codex-product-cold|--codex-product-three-stage|--codex-product-other-uid|--codex-product-domain-app|--codex-product-domain-native|--codex-product-peer-form|--codex-product-peer-form-native|--peer-form-network|--peer-form-network-focus|--direct-ip-tls|--node-pair-trust|--owner-endpoint-groups|--owner-endpoint-groups-m7|--owner-endpoint-groups-cross-node]\n' >&2; exit 2; fi
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source_root="$repo_root"
 case "$mode" in
@@ -173,6 +175,9 @@ elif [[ "$mode" == codex-product-peer-form* ]]; then
  direct_ip_parameters=(-e CICADA_N3_PEER_FORM=1 -e CICADA_N3_PEER_FORM_PUBLIC_SUMMARY=/state/peer-form-native-public-summary.json)
 elif [[ "$mode" == owner-endpoint-groups ]]; then
  direct_ip_parameters=(-e CICADA_N3_OWNER_ENDPOINT_GROUPS=1)
+ if [[ "$owner_groups_cross_node" == 1 ]]; then
+  direct_ip_parameters=(-e CICADA_N3_OWNER_ENDPOINT_GROUPS_CROSS_NODE=1)
+ fi
 fi
 if [[ "$mode" == codex-product-other-uid ]]; then
  mkdir "$state/other-uid-control"
@@ -338,6 +343,7 @@ else
    selector='^TestN3OwnerEndpointGroupsAcceptance$'
    runtime_timeout=90m
    if [[ "$owner_groups_m7_only" == 1 ]]; then selector='^TestN3OwnerEndpointGroupsM7Only$'; fi
+   if [[ "$owner_groups_cross_node" == 1 ]]; then selector='^TestN3OwnerEndpointGroupsCrossNode$'; fi
   elif [[ "$mode" == node-pair-trust ]]; then
    selector='^TestN3NodePairTrustAcceptance$'
    runtime_timeout=20m
@@ -388,4 +394,5 @@ if docker inspect "$container" >/dev/null 2>&1; then owned=true; fi
 if [[ "$mode" == owner-endpoint-groups ]] && ! docker info >/dev/null 2>&1; then owned=UNKNOWN; fi
 evidence_mode="$mode"
 if [[ "$owner_groups_m7_only" == 1 ]]; then evidence_mode=owner-endpoint-groups-m7; fi
+if [[ "$owner_groups_cross_node" == 1 ]]; then evidence_mode=owner-endpoint-groups-cross-node; fi
 python3 "$repo_root/scripts/native_pair_evidence.py" finish "$evidence" "$artifacts" "$image" "$owned" "$evidence_mode"

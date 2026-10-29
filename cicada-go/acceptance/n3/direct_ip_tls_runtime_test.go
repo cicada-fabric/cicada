@@ -122,7 +122,13 @@ func startDirectIPApp(t *testing.T, dir string) *directIPApp {
 			}
 		}
 	}
-	cmd := exec.Command(must(os.Executable()), "-test.run=^TestN3DirectIPTLSAppProcess$", "-test.timeout=10m")
+	timeout := "10m"
+	if os.Getenv("CICADA_N3_OWNER_ENDPOINT_GROUPS_CROSS_NODE") == "1" {
+		// Match the existing cross-Node parent lifetime while its two real Hosts
+		// run sequentially. This changes no account, consent or policy deadline.
+		timeout = "90m"
+	}
+	cmd := exec.Command(must(os.Executable()), "-test.run=^TestN3DirectIPTLSAppProcess$", "-test.timeout="+timeout)
 	cmd.Env = append(os.Environ(), "CICADA_N3_DIRECT_IP_APP_CHILD=1", "CICADA_N3_DIRECT_IP_APP_DIR="+dir)
 	p := startProcess(t, cmd)
 	awaitMarker(t, p, filepath.Join(dir, "ready.json"))

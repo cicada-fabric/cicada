@@ -634,7 +634,175 @@ def finish_owner_groups(run, artifacts, image, owned, *, m7_only=False):
     raise SystemExit(code)
 
 
+OWNER_GROUPS_CROSS_PARENT = 'TestN3OwnerEndpointGroupsCrossNode'
+OWNER_GROUPS_CROSS_INPUTS = Path(__file__).parent / 'fixtures/native-pair/owner_groups_cross_node_cases.json'
+
+
+def owner_groups_cross_inputs():
+    value = json.loads(OWNER_GROUPS_CROSS_INPUTS.read_text())
+    if (set(value) != {'format', 'contract_revision', 'enrollment_family', 'cases', 'not_run'}
+            or value['format'] != 'cicada.owner-groups-cross-node-cases.v1'
+            or value['contract_revision'] != 'owner-endpoint-groups-v1'
+            or value['enrollment_family'] != 'node-pair-trust-node-scoped-v1'
+            or not isinstance(value['cases'], list) or len(value['cases']) != 7
+            or len({c['id'] for c in value['cases']}) != 7
+            or any(set(c) != {'id', 'observations'} or not c['observations']
+                   or len(c['observations']) != len(set(c['observations'])) for c in value['cases'])):
+        raise ValueError('Cross-Node acceptance inputs changed shape.')
+    return value
+
+
+def valid_owner_groups_cross_facts(facts, results, counts):
+    required = {c['id']: set(c['observations']) for c in owner_groups_cross_inputs()['cases']}
+    expected = {OWNER_GROUPS_CROSS_PARENT} | {OWNER_GROUPS_CROSS_PARENT + '/' + name for name in required}
+    if (set(results) != expected or any(v != 'pass' for v in results.values())
+            or counts != dict.fromkeys(expected, 1) or len(facts) != len(required)):
+        return False
+    seen = set()
+    for item in facts:
+        if not isinstance(item, dict) or set(item) != {'test', 'measurement'}:
+            return False
+        value = item['measurement']
+        if not isinstance(value, dict) or set(value) != {'case', 'observed'}:
+            return False
+        name, observed = value['case'], value['observed']
+        if (not isinstance(name, str) or name not in required or name in seen
+                or item['test'] != OWNER_GROUPS_CROSS_PARENT + '/' + name or not isinstance(observed, dict)
+                or set(observed) != required[name] or any(v is not True for v in observed.values())):
+            return False
+        seen.add(name)
+    return seen == set(required)
+
+
+def valid_owner_groups_cross_identities(value):
+    if not isinstance(value, dict) or set(value) != {'before', 'after_group_operations'}:
+        return False
+    before, after = value['before'], value['after_group_operations']
+    if (not isinstance(before, list) or not isinstance(after, list) or len(before) != 8 or len(after) != 8
+            or any(not isinstance(a, dict) or not isinstance(a.get('node_id'), str) for a in before + after)):
+        return False
+    nodes = {a['node_id'] for a in before}
+    if len(nodes) != 2 or nodes != {a['node_id'] for a in after}:
+        return False
+    bindings = set()
+    for node in nodes:
+        subset = {k: [a for a in v if a['node_id'] == node] for k, v in value.items()}
+        if not valid_owner_groups_identities(subset):
+            return False
+        binding = {a['binding_id'] for a in subset['before']}
+        if len(binding) != 1 or bindings & binding:
+            return False
+        bindings |= binding
+    return all(len({a[k] for a in before}) == 8 for k in
+               ('native_session_id', 'endpoint_id', 'workspace', 'endpoint_public_key_sha256'))
+
+
+def valid_owner_groups_cross_roundtrips(items, identities):
+    wanted = {
+        'cross-forward': ('C3_BidirectionalNative', 0, 4, 'G'),
+        'cross-reverse': ('C3_BidirectionalNative', 4, 0, 'G'),
+        'cross-App-closed': ('C4_AppClosedCommunication', 0, 4, 'H'),
+        'cross-offline-original': ('C5_OriginalOfflineRecovery', 0, 4, 'G'),
+        'cross-surviving-H-ab': ('C7_SurvivingGroupsAndOriginals', 0, 4, 'H'),
+        'cross-surviving-H-ba': ('C7_SurvivingGroupsAndOriginals', 4, 0, 'H')}
+    if not valid_owner_groups_cross_identities(identities) or len(items) != len(wanted):
+        return False
+    originals = identities['before']
+    # Go preserves A0-A3, B0-B3 in this witness. The identities validator itself
+    # is order independent within a Node; route checks bind the actual actors.
+    if len({a['node_id'] for a in originals[:4]}) != 1 or len({a['node_id'] for a in originals[4:]}) != 1:
+        return False
+    fields = {'label', 'source_node_sha256', 'target_node_sha256', 'group_sha256', 'request_sha256', 'native_each_once'}
+    seen, requests, groups = set(), set(), {}
+    for item in items:
+        if not isinstance(item, dict) or set(item) != {'test', 'measurement'}:
+            return False
+        v = item['measurement']
+        if not isinstance(v, dict) or set(v) != fields or not isinstance(v['label'], str) or v['label'] not in wanted or v['label'] in seen:
+            return False
+        case, source, target, group = wanted[v['label']]
+        if (item['test'] != OWNER_GROUPS_CROSS_PARENT + '/' + case or v['native_each_once'] is not True
+                or any(not isinstance(v[k], str) or not re.fullmatch('[0-9a-f]{64}', v[k]) for k in fields - {'label', 'native_each_once'})
+                or v['source_node_sha256'] != hashlib.sha256(originals[source]['node_id'].encode()).hexdigest()
+                or v['target_node_sha256'] != hashlib.sha256(originals[target]['node_id'].encode()).hexdigest()
+                or v['source_node_sha256'] == v['target_node_sha256'] or v['request_sha256'] in requests
+                or group in groups and groups[group] != v['group_sha256']):
+            return False
+        seen.add(v['label'])
+        requests.add(v['request_sha256'])
+        groups[group] = v['group_sha256']
+    return seen == set(wanted) and len(set(groups.values())) == 2
+
+
+def finish_owner_groups_cross_node(run, artifacts, image, owned):
+    """A distinct actual CLI/native scope. It never closes historical M1-M8."""
+    before, after = [json.loads((run / f'source-{side}.json').read_text()) for side in ('before', 'after')]
+    results, counts = terminal_events(run / 'harness.log'), terminal_event_counts(run / 'harness.log')
+    facts, identities, roundtrips, diagnostics = [], [], [], []
+    malformed = False
+    for line in (run / 'harness.log').read_text().splitlines():
+        try:
+            item = json.loads(line)
+            output = item.get('Output', '')
+            if 'OWNER_GROUPS_CROSS_NOT_RUN' in output:
+                diagnostics.append({'test': item.get('Test'), 'reason': 'OWNER_GROUPS_CROSS_NOT_RUN'})
+            for marker, destination in (('OWNER_GROUPS_CROSS_FACTS ', facts), ('OWNER_GROUPS_CROSS_IDENTITIES ', identities),
+                                        ('OWNER_GROUPS_CROSS_ROUNDTRIP ', roundtrips)):
+                if marker in output:
+                    if item.get('Action') != 'output':
+                        malformed = True
+                    destination.append({'test': item.get('Test'), 'measurement': decode_node_pair_measurement(output.split(marker, 1)[1])})
+        except (ValueError, TypeError, AttributeError):
+            malformed = True
+    stages = ('version', 'compile-cli', 'compile-tests', 'harness', 'vet')
+    exits = {n: int((run / (n + '.exit')).read_text()) if (run / (n + '.exit')).exists() else None for n in stages}
+    records = [json.loads((run / f'binaries-{side}.json').read_text()) if (run / f'binaries-{side}.json').exists() else {} for side in ('before', 'after')]
+    stable = set(records[0]) == {'cicada', 'n3.test'} and records[0] == records[1]
+    if stable:
+        stable = all((artifacts / n).is_file() and sha(artifacts / n) == m.get('sha256')
+                     and (artifacts / n).stat().st_size == m.get('bytes') for n, m in records[0].items())
+    tools = before.get('external_runtime_tools', {})
+    codex = tools.get('codex', {})
+    pinned = codex.get('sha256') == DIRECT_IP_CODEX_SHA256 and codex.get('version') == DIRECT_IP_CODEX_VERSION
+    facts_valid = not malformed and valid_owner_groups_cross_facts(facts, results, counts)
+    identity_valid = (len(identities) == 1 and identities[0]['test'] == OWNER_GROUPS_CROSS_PARENT + '/C7_SurvivingGroupsAndOriginals'
+                      and valid_owner_groups_cross_identities(identities[0]['measurement']))
+    roundtrips_valid = identity_valid and valid_owner_groups_cross_roundtrips(roundtrips, identities[0]['measurement'])
+    infrastructure = all(v == 0 for v in exits.values()) and stable and before == after and owned == 'false'
+    passed = infrastructure and pinned and facts_valid and identity_valid and roundtrips_valid and not diagnostics
+    not_run = (infrastructure and not malformed and results == {OWNER_GROUPS_CROSS_PARENT: 'skip'}
+               and counts == {OWNER_GROUPS_CROSS_PARENT: 1} and len(diagnostics) == 1
+               and diagnostics[0]['test'] == OWNER_GROUPS_CROSS_PARENT and not facts and not identities and not roundtrips)
+    code = 0 if passed else 125 if not_run else 1
+    expected = {OWNER_GROUPS_CROSS_PARENT} | {OWNER_GROUPS_CROSS_PARENT + '/' + c['id'] for c in owner_groups_cross_inputs()['cases']}
+    summary = {'scope': 'OWNER_GROUPS_TWO_ACTUAL_NODES_EIGHT_ORIGINAL_NATIVE_THREADS',
+               'enrollment_family': 'node-pair-trust-node-scoped-v1',
+               'status': 'SCOPED_PASS' if passed else 'NOT_RUN' if not_run else 'FAIL', 'exit_code': code, 'exit_codes': exits,
+               'head': before['head'], 'dirty': before['dirty'], 'harness_head': before['harness_head'], 'harness_dirty': before['harness_dirty'],
+               'source_root': before['source_root'], 'harness_root': before['harness_root'],
+               'source_manifest_sha256': before['manifest_sha256'], 'source_stable': before == after,
+               'source_before_sha256': sha(run / 'source-before.json'), 'source_after_sha256': sha(run / 'source-after.json'),
+               'matrix_sha256': sha(OWNER_GROUPS_CROSS_INPUTS), 'tests': results, 'terminal_counts': counts,
+               'facts': facts, 'facts_valid': facts_valid, 'identities': identities, 'eight_original_identities_unchanged': identity_valid,
+               'cross_node_roundtrips': roundtrips, 'cross_node_roundtrips_valid': roundtrips_valid,
+               'runtime_pinned': pinned, 'external_runtime_tools': tools, 'external_codex_package': before.get('external_codex_package'),
+               'external_component_licenses': before.get('external_component_licenses'),
+               'executed_binaries': records, 'executed_binary_hashes_before_after_match': stable,
+               'selection_diagnostics': selection_diagnostic_manifest(artifacts), 'container_absent': owned == 'false',
+               'diagnostics': diagnostics, 'malformed_evidence': malformed, 'full_m1_m8_accepted': False,
+               'docker_image_reference': image, 'docker_image_digest': image.rsplit('@', 1)[-1],
+               'artifacts': {p.name: {'sha256': sha(p), 'bytes': p.stat().st_size} for p in artifacts.iterdir() if p.is_file()},
+               'evidence_sha256': {p.name: sha(p) for p in run.iterdir() if p.is_file() and p.name != 'result.json'},
+               'not_run': sorted(n for n in expected if results.get(n) in (None, 'skip')) + owner_groups_cross_inputs()['not_run'],
+               'private_payloads_exported': False, 'public_deployment_touched': False}
+    save(run / 'result.json', summary)
+    print(f'Native pair {summary["status"]} exit={code} evidence={run / "result.json"}')
+    raise SystemExit(code)
+
+
 def finish(run, artifacts, image, owned, mode='protocol'):
+    if mode == 'owner-endpoint-groups-cross-node':
+        return finish_owner_groups_cross_node(run, artifacts, image, owned)
     if mode == 'owner-endpoint-groups':
         return finish_owner_groups(run, artifacts, image, owned)
     if mode == 'owner-endpoint-groups-m7':

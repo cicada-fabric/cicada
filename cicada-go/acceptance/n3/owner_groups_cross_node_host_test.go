@@ -1,6 +1,7 @@
 package n3_test
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 )
@@ -111,4 +112,7 @@ func (e *ownerGroupsCrossExchange) receiveReply(t *testing.T) {
 	}
 	t.Logf("OWNER_GROUPS_CROSS_NODE_ROUNDTRIP source_node_sha256=%s target_node_sha256=%s request_sha256=%s distinct_nodes=true original_SIDs=true native_each_once=true",
 		hash([]byte(source.identity.NodeID)), hash([]byte(target.identity.NodeID)), hash([]byte(e.request)))
+	t.Log("OWNER_GROUPS_CROSS_ROUNDTRIP " + string(must(json.Marshal(map[string]any{
+		"label": e.label, "source_node_sha256": hash([]byte(source.identity.NodeID)), "target_node_sha256": hash([]byte(target.identity.NodeID)),
+		"group_sha256": hash([]byte(e.group)), "request_sha256": hash([]byte(e.request)), "native_each_once": true}))))
 }

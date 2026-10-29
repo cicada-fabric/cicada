@@ -14,13 +14,13 @@ import (
 	"github.com/cicada-ai/cicada/internal/nodewire"
 )
 
-// Preparation only: there is deliberately no Runtime Test/driver entry until
-// the scoped Hub carrier, actual App consumer and availability are delivered.
 // One existing NPT Hub/App owns both independent actual Node/Host roots.
 type ownerGroupsCrossNodeFixture struct {
+	parent   *testing.T
 	hub      *directIPHub
 	app      *directIPApp
 	original appcore.Snapshot
+	current  appcore.Snapshot
 	nodes    [2]*ownerGroupsCrossNode
 }
 
@@ -50,7 +50,7 @@ func newOwnerGroupsCrossNodeFixture(t *testing.T) *ownerGroupsCrossNodeFixture {
 	t.Helper()
 	hub := newDirectIPHub(t, "127.0.0.1")
 	app, original := hub.activateApp(t)
-	f := &ownerGroupsCrossNodeFixture{hub: hub, app: app, original: original}
+	f := &ownerGroupsCrossNodeFixture{parent: t, hub: hub, app: app, original: original, current: original}
 	for index, tag := range []string{"a", "b"} {
 		root := filepath.Join(hub.dir, "cross-node-"+tag)
 		home := filepath.Join(root, "home")
@@ -88,8 +88,20 @@ func (f *ownerGroupsCrossNodeFixture) action(t *testing.T, action appcore.Action
 	time.Sleep(time.Second) // Preserve the existing real App account rate bucket.
 	reply := f.app.command(t, directIPAppCommand{Action: &action})
 	s := reply.Snapshot
-	if reply.ActionFailed || s.Account.OwnerID != f.original.Account.OwnerID || s.Account.DeviceID != f.original.Account.DeviceID ||
-		s.Account.LocalOwnerKeyID != f.original.Account.LocalOwnerKeyID || s.Hub.Fingerprint != f.original.Hub.Fingerprint || s.Management != appcore.ManagementUnavailable {
+	if reply.ActionFailed || s.Account.AccountID != f.original.Account.AccountID || s.Account.OwnerID != f.original.Account.OwnerID || s.Account.DeviceID != f.original.Account.DeviceID ||
+		s.Account.LocalOwnerKeyID != f.original.Account.LocalOwnerKeyID || s.Account.OwnerFingerprint != f.original.Account.OwnerFingerprint ||
+		s.Account.RootState != f.original.Account.RootState || s.Hub.Fingerprint != f.original.Hub.Fingerprint || s.Hub.HubID != f.original.Hub.HubID ||
+		s.Hub.Origin != f.original.Hub.Origin || !s.Hub.Verified || s.Management != appcore.ManagementUnavailable {
+		phase := "UNKNOWN"
+		switch s.Phase {
+		case appcore.PhaseNeedConnection, appcore.PhaseVerifyingHub, appcore.PhaseConnected, appcore.PhaseLocked,
+			appcore.PhaseClaimChallenge, appcore.PhaseLoginChallenge, appcore.PhaseAccountPending, appcore.PhaseSessionCheck,
+			appcore.PhaseAccountSession, appcore.PhaseOwnerReady, appcore.PhaseActivationPending, appcore.PhaseUnavailable, appcore.PhaseError:
+			phase = string(s.Phase)
+		}
+		t.Logf("OWNER_GROUPS_CROSS_APP_FAILURE action_failed=%t phase=%s app_error_code=%s node_error_code=%s pairing_error_code=%s group_error_code=%s policy_error_code=%s",
+			reply.ActionFailed, phase, ownerGroupsCrossErrorCode(s.ErrorCode), ownerGroupsCrossErrorCode(s.Node.ErrorCode),
+			ownerGroupsCrossPairError(s), ownerGroupsCrossErrorCode(s.ThreadGroups.ErrorCode), ownerGroupsCrossErrorCode(s.LocalCollaboration.ErrorCode))
 		t.Fatalf("actual shared App action failed or changed its original identity: action=%s", action.Kind)
 	}
 	raw := must(json.Marshal(s))
@@ -99,7 +111,42 @@ func (f *ownerGroupsCrossNodeFixture) action(t *testing.T, action appcore.Action
 			t.Fatal("actual shared App snapshot disclosed private pairing material")
 		}
 	}
+	f.current = s
 	return s
+}
+
+// Exact static codes only. Neither arbitrary errors nor a syntactically valid
+// uppercase secret may enter exported diagnostics through a public view field.
+func ownerGroupsCrossErrorCode(code string) string {
+	switch code {
+	case "APP_NODE_PAIRING_UNKNOWN", "APP_NODE_PAIRING_REFUSED", "APP_NODE_PAIRING_EXPIRED", "APP_NODE_PAIRING_UNAVAILABLE",
+		"APP_NODE_PAIRING_STORAGE_FULL", "APP_NODE_PAIRING_CODE_INVALID", "APP_NODE_PAIRING_TRUST_MISMATCH", "APP_NODE_UNAVAILABLE",
+		"APP_THREAD_GROUP_STORAGE_FAILED", "APP_THREAD_GROUP_STORAGE_BUDGET", "UNSUPPORTED_PROFILE", "OWNER_AUTHORITY_REQUIRED",
+		"TARGET_NOT_AUTHORIZED", "REVIEW_EXPIRED", "CAS_CONFLICT", "KEY_NOT_READY", "OWNER_READD_REQUIRED", "ORIGINAL_PACKET_CONFLICT",
+		"OUTCOME_UNCERTAIN", "GROUP_RELATION_LIMIT", "SHARED_MEMBERSHIP_CONFLICT", "CURSOR_STALE", "MANUAL_SOURCE_ALREADY_ACTIVE",
+		"RELATION_PENDING", "READ_EXPIRED", "APP_LOCAL_COLLABORATION_UNAVAILABLE", "APP_LOCAL_COLLABORATION_READ_LIMIT":
+		return code
+	default:
+		return safeAppStartupDiagnostic(appStartupDiagnostic{ErrorCode: code}).ErrorCode
+	}
+}
+
+func ownerGroupsCrossPairError(s appcore.Snapshot) string {
+	if s.Node.Pairing == nil {
+		return ""
+	}
+	return ownerGroupsCrossErrorCode(s.Node.Pairing.ErrorCode)
+}
+
+func TestN3OwnerGroupsCrossDiagnosticRejectsPrivateText(t *testing.T) {
+	for _, private := range []string{"SYNTHETIC_SECRET_UPPERCASE", "SYNTHETIC private code/proof/payload", strings.Repeat("SYNTHETIC_SECRET", 1000)} {
+		if ownerGroupsCrossErrorCode(private) != "OTHER" {
+			t.Fatal("closed cross-Node App diagnostic disclosed an unregistered private value")
+		}
+	}
+	if ownerGroupsCrossErrorCode("APP_NODE_PAIRING_TRUST_MISMATCH") != "APP_NODE_PAIRING_TRUST_MISMATCH" || ownerGroupsCrossErrorCode("") != "" {
+		t.Fatal("closed cross-Node App diagnostic discarded its defined trust refusal or absent code")
+	}
 }
 
 func (n *ownerGroupsCrossNode) start(t *testing.T) {
@@ -113,9 +160,9 @@ func (n *ownerGroupsCrossNode) start(t *testing.T) {
 		"--mcp-outbox-state-file", n.actors.outbox)
 	command.Env = ownerGroupsCrossEnvironment(n.pair.home, n.codexHome)
 	log := must(os.OpenFile(n.privateLog, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600))
-	t.Cleanup(func() { log.Close() })
+	n.shared.parent.Cleanup(func() { log.Close() })
 	command.Stdout, command.Stderr = log, log
-	n.process = &nodeProcess{process: startProcess(t, command), id: n.id, state: n.pair.state}
+	n.process = &nodeProcess{process: startProcess(n.shared.parent, command), id: n.id, state: n.pair.state}
 }
 
 func (n *ownerGroupsCrossNode) readScopedCode(t *testing.T) {
@@ -141,7 +188,7 @@ func (n *ownerGroupsCrossNode) readScopedCode(t *testing.T) {
 	argv := []string{n.pair.binary, "machine", "pairing-code", "--id", n.id, "--state-dir", n.pair.state}
 	n.code = nodePairPrivateTTYCodeText(t, n.root, argv, n.pair.environment, wire.NodePairTrustScopedCodePrefix, wire.MaxNodePairTrustScopedCodeBytes)
 	n.local = must(wire.DecodeNodePairTrustScopedCode(n.code, time.Now().UTC()))
-	t.Cleanup(func() { clear(n.local.OOBSecret); n.code = "" })
+	n.shared.parent.Cleanup(func() { clear(n.local.OOBSecret); n.code = "" })
 	if n.local.AuthorityNodeID != n.id || n.local.Origin != n.shared.hub.descriptor.Claims.Origin ||
 		n.local.HubID != n.shared.hub.descriptor.Claims.Hub.HubID || n.local.HubFingerprint != n.shared.original.Hub.Fingerprint {
 		t.Fatal("actual scoped code changed its original Node or independently trusted Hub")
@@ -194,7 +241,7 @@ func (n *ownerGroupsCrossNode) startHost(t *testing.T, policy appcore.LocalColla
 	n.actors.active = policy
 	_, n.instance = threeStageLivePinAt(t, n.process, n.shared.hub.descriptor.Claims.Origin,
 		filepath.Join(n.pair.userRoot, "mcp", "sessions.json"), n.pair.userRoot, n.actors.outbox, "")
-	n.host, _ = startOwnerGroupsHostAt(t, n.root, n.codexHome, n.process, n.actors)
+	n.host, _ = startOwnerGroupsHostAt(n.shared.parent, n.root, n.codexHome, n.process, n.actors)
 }
 
 func (n *ownerGroupsCrossNode) restartRetained(t *testing.T) {

@@ -1,0 +1,15 @@
+{
+  "format": "cicada.owner-groups-cross-node-cases.v1",
+  "contract_revision": "owner-endpoint-groups-v1",
+  "enrollment_family": "node-pair-trust-node-scoped-v1",
+  "cases": [
+    {"id": "C1_ScopedEnrollmentAndOriginals", "observations": ["one_Hub_Owner_device", "both_scoped_private_ACK", "independent_policies_same_Network", "two_Nodes_eight_original_Threads", "Control_off"]},
+    {"id": "C2_ExplicitOwnerGroups", "observations": ["actual_CREATE_ADD_reviews", "exact_G_A0_A1_B0_H_A0_B0", "all_five_edges_key_ready", "other_originals_no_implicit_edges"]},
+    {"id": "C3_BidirectionalNative", "observations": ["A_to_B_request_reply", "B_to_A_request_reply", "exact_original_native_each_once"]},
+    {"id": "C4_AppClosedCommunication", "observations": ["same_App_closed_normally", "native_request_reply_without_App"]},
+    {"id": "C5_OriginalOfflineRecovery", "observations": ["receiver_armed_before_offline", "one_original_ASK_no_resend", "same_Node_root_key_binding_SIDs", "same_request_reply_native_once", "App_remained_closed"]},
+    {"id": "C6_RemoveOnlyB0G", "observations": ["same_App_profile_explicit_B_selection", "only_B0_G_removed", "fresh_B0_G_definitive_refusal", "native_injection_zero"]},
+    {"id": "C7_SurvivingGroupsAndOriginals", "observations": ["A0_A1_G_survives", "A0_B0_H_bidirectional_survives", "refused_G_still_native_zero", "eight_original_identities_keys_unchanged", "both_Hosts_clean_no_models"]}
+  ],
+  "not_run": ["complete_M1_M8_gate", "Windows_DPAPI", "Windows_ACL", "Windows_GUI", "Android", "physical_second_Node", "public_HTTPS"]
+}
