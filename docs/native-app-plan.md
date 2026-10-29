@@ -595,6 +595,9 @@ observability check](native-app-validation.md#2026-10-29-m7-only-pre-revocation-
 The [latest frozen-source M7 attempt](native-app-validation.md#2026-10-29-frozen-source-m7-owner-key-revocation-and-cold-restart-failure)
 reached actual Owner-key revocation and failed at cold restart; it remains FAIL
 and does not replace the earlier source-bound failures.
+The [separate cold-lifecycle control](native-app-validation.md#2026-10-29-cold-revocation-lifecycle-control)
+now passes with explicit auth-denial exit evidence; the repaired helper still
+requires Root review and a new actual M7 run before any M7 acceptance.
 
 ### Historical ledger context
 

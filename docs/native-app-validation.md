@@ -9615,3 +9615,68 @@ run, the labeled disposable container was absent and remaining state files were
 **0**. Raw private state/logs were not exported. Windows DPAPI/ACL/GUI, physical
 second Node, public HTTPS, M8 and final original-four closure remain unaccepted;
 same-Node M7 does not cover the separate actual two-Node/native requirement.
+
+### 2026-10-29 cold-revocation lifecycle control
+
+Root accepted the existing production auth-rejection stop semantics and
+authorized a bounded QA-only change to `restartOwnerGroupsRevokedNode`. The
+helper records separate Node/Hub process states and completed exit codes, a
+dedicated 0600 private Node stderr file's bounded digest/closed reason, and
+before/after original root, key, credential and immutable binding-leaf digests.
+It never requires the whole mutable state-file digest to remain equal.
+Hub must remain running; identity must remain known and unchanged; panic,
+unknown/other exits and unknown stderr still fail. An exited Node is accepted
+only with **exit 1 + fixed terminal auth-stop prefix + a forwarded original-Node
+HTTP 401/403 whose request started after cold start**. Node-Control packet
+routes additionally match the original Node/binding/epoch. A marker alone,
+earlier warning or unrelated HTTP error grants no exception. The original
+one-second observation, cold wire renewal, final native zero-injection and
+second independent M7 baseline remain in place. Production code is unchanged.
+
+Final control `owner-groups-cold-control-b3134f5-dt4lm3e3` tested clean base
+`b3134f56477cb46c2d2292a18c362e79270e990c` **plus three dirty QA files**, fully
+captured before/after; the build is not attributed solely to that HEAD. It
+reuses actual App approval, real Node processes, TCP Hub and persistent Store
+revocation APIs, with separate fresh OwnerKey/NodeBinding baselines, zero native
+Threads/model calls, pinned Go Docker, the same 48 notices and read-only module
+cache/task build lock. Both normal and race modes observed exit 1, live Hub,
+unchanged original identity and two actual post-start HTTP refusals per baseline.
+Abnormal real CLI exit, stopped actual Hub (retaining valid auth-stop evidence),
+changed key digest, unknown exit, marker without HTTP proof, explicit HTTP 500,
+real panic, oversized/missing/symlink stderr and privacy checks remain negative.
+
+**PASS / exit 0**: normal **10 PASS / 0 FAIL / 0 SKIP**, 18.256s; race
+**10 / 0 / 0**, 84.306s; CLI/test/race compilation and vet exited 0. Total
+122.502s. Source snapshot stayed equal, container was absent and remaining state
+files were 0. Only closed stderr metadata was exported. Reproduction uses the
+recorded pinned Docker mounts/commands in that run's `*.command.json`, with
+fresh task-owned state/output/container paths, and the exact test selector:
+
+```sh
+go test -mod=readonly -c -o /out/n3.test ./acceptance/n3
+go tool test2json -t /out/n3.test -test.v -test.count=1 -test.timeout=6m \
+  '-test.run=^TestN3OwnerGroupsCold(RevocationLifecycleControl|DiagnosticDoesNotAcceptUnknownExit)$'
+go test -mod=readonly -race -c -o /out/n3-race.test ./acceptance/n3
+go tool test2json -t /out/n3-race.test -test.v -test.count=1 -test.timeout=6m \
+  '-test.run=^TestN3OwnerGroupsCold(RevocationLifecycleControl|DiagnosticDoesNotAcceptUnknownExit)$'
+go vet -mod=readonly ./acceptance/n3
+```
+
+Under `~/Cicada/.local/evidence/n2-acceptance/owner-groups-cold-control-b3134f5-dt4lm3e3/`:
+
+| Artifact | SHA-256 |
+| --- | --- |
+| `result.json` | `97518e671f048d3e586cf297a86e2f883921f2cbffa6ba8f56b1f63ec1b0abb4` |
+| `source-before.json` = `source-after.json` | `7f57eb524731763c45d79c299ee4607cf0823e4df072f8f85b5744fdfb930ccb` |
+| `closed-control-projection.json` (four observations, exact code hashes and retained prior results) | `3d0298661b3b8e70c05d9506f66b91fd16d0293e6e95107eaa8088ac6f320f4c` |
+
+Matching task artifacts: CLI `4aa63e025fa5baedcea849357e06a1731abef11310eab5a77ebe14b6c3f19007`,
+normal test `411f7c96e11cf808a4f753055432a2049eb12a5e078b1da5d1cb34868481ad8a`,
+race test `707fcd674ab019ecc221debba98fda2d4d8ba4e9e0493704837b0c1f11848a06`.
+Prior controls `u2byncop`/`odge48hr` retain their unknown-classifier FAIL;
+`d5kbhjzg` retains real-baseline PASS but overall diagnostic-negative FAIL.
+The earlier `uvm90bkf` PASS predates the strengthened Hub-stop negative and is
+separately retained. No historical result is overwritten. The original
+`daaNpZ` failure cause remains NOT_RETAINED and its M7 result remains FAIL.
+This control accepts neither M7, M8, full M1–M8, actual cross-Node/native exchange
+nor Windows DPAPI/ACL/GUI. No complete M7 rerun occurred during this checkpoint.

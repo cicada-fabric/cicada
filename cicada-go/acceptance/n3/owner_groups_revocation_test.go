@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
@@ -106,21 +107,28 @@ func requireOwnerGroupsRevokedRenewal(t *testing.T, v *codexProductFixture, orig
 	}
 }
 
-func restartOwnerGroupsRevokedNode(t *testing.T, v *codexProductFixture, actors nativePeerActors) {
+func restartOwnerGroupsRevokedNode(t *testing.T, v *codexProductFixture, actors nativePeerActors) ownerGroupsColdObservation {
 	t.Helper()
+	original := ownerGroupsColdOriginalIdentity(v, actors.prefix)
 	v.actualNode.kill(t)
+	stderr := must(os.CreateTemp(v.root, "private-owner-groups-cold-node-stderr-*.log"))
+	t.Cleanup(func() { stderr.Close() })
 	command := exec.Command(filepath.Join(actors.prefix, "components/node/bin/cicada"), "machine", "agent", "--relay-only",
 		"--id", v.actualNode.id, "--name", v.actualNode.id, "--control-url", v.f.cfg.Origin, "--state-dir", v.actualNode.state,
 		"--interval", "1s", "--user-root", actors.prefix, "--mcp-session-state-file", v.mcpState, "--mcp-outbox-state-file", actors.outbox)
 	command.Env = append(append([]string(nil), v.environment...), "CICADA_CODEX_BIN=/tools/codex-package/bin/codex")
-	command.Stdout, command.Stderr = actors.log, actors.log
+	command.Stdout, command.Stderr = actors.log, stderr
+	started := time.Now()
 	v.actualNode = &nodeProcess{process: startProcess(v.f.parent, command), id: v.actualNode.id, state: v.actualNode.state}
 	h := time.NewTimer(time.Second)
 	defer h.Stop()
 	<-h.C
-	if !v.actualNode.running() || !v.f.hub.running() {
-		t.Fatal("revocation cold check lost the actual owned Node or Hub process")
+	observed := ownerGroupsObserveCold(v, actors.prefix, stderr.Name(), original, started)
+	t.Logf("OWNER_GROUPS_COLD_PROCESS diagnostic=%s", must(json.Marshal(observed)))
+	if reason := ownerGroupsColdRefusal(observed); reason != "" {
+		t.Fatalf("revocation cold check rejected the actual owned process outcome: reason=%s", reason)
 	}
+	return observed
 }
 
 // Two fresh independent authorized baselines: an Owner-key failure cannot mask
