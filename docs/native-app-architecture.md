@@ -551,11 +551,17 @@ prepare, complete, renew or recover an authorization. Normal Hub capability
 availability, controlled constructor tests, native processes, physical Windows
 and Runtime communication retain their separate acceptance scopes.
 
-Group storage admission checks direct completion, query observation and original
-receipt application as separate phases. After both layers authenticate, the
-exact original receipt is persisted before applying it; a settled query receipt
-can be retired first. The business original and its read-only query remain
-unchanged, so a crash in this transition can repeat the query. An outstanding
+Group storage admission separately checks the new original with the prior
+review, direct completion, and recovery with the original receipt. Apply clears
+the prior review only after the exact original is durable and before POST.
+Recovery authenticates both response layers and persists only the exact original
+receipt before applying it. An authenticated empty terminal observation retires
+only its read-only query; it needs no new outer-response cache. Older saved query
+responses remain readable. The business original stays unchanged and pending
+without an authenticated original outcome; a crash before query retirement can
+repeat the exact read-only query. The unchanged vault and wire bounds still
+apply. See the [scoped budget validation](native-app-scoped-validation.md#app-group-storage-admission-2026-10-29).
+An outstanding
 Owner operation may obtain only an exact selected-Node, grant-free authenticated
 context read when needed to sign reconciliation after restart or login. This
 does not admit a second mutation. Hub-Nodes already supplies Group discovery;

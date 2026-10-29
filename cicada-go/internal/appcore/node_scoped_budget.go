@@ -91,7 +91,17 @@ func (c *nativeController) scopedBudgetPacketSize(p *scopedOriginal, plain int, 
 }
 
 func (c *nativeController) scopedBudgetPlainLimit(p *scopedOriginal) (int, error) {
-	return c.scopedBudgetPlainLimitFor(p, c.scopedResponseLimit(p))
+	return c.scopedBudgetPlainLimitFor(p, c.scopedBudgetReceiptLimit(p))
+}
+
+func (c *nativeController) scopedBudgetReceiptLimit(p *scopedOriginal) int {
+	limit := c.scopedResponseLimit(p)
+	if !p.PairTrust {
+		// OpenAppNodeScopedResponse uses DecodePacket for both layers. Its
+		// existing outer bound also applies to reconcile, below the HTTP cap.
+		limit = min(limit, wire.MaxPacketBytes)
+	}
+	return limit
 }
 
 func (c *nativeController) scopedBudgetPlainLimitFor(p *scopedOriginal, packetLimit int) (int, error) {
@@ -291,7 +301,7 @@ func (c *nativeController) scopedBudgetPhase(p *scopedOriginal, recovered bool) 
 	if !r.Recovery || r.NodeID != p.NodeID || r.PairTrust != p.PairTrust {
 		return nil, appvault.ErrInvalidVault
 	}
-	originalLimit := c.scopedResponseLimit(p)
+	originalLimit := c.scopedBudgetReceiptLimit(p)
 	if recovered {
 		var err error
 		originalLimit, err = c.scopedBudgetRecoveredOriginalLimit(p, r)
@@ -312,7 +322,7 @@ func (c *nativeController) scopedBudgetPhase(p *scopedOriginal, recovered bool) 
 	defer clear(q.Response)
 	clear(r.Response)
 	if recovered {
-		r.Response = make([]byte, max(c.scopedResponseLimit(r), len(r.Response)))
+		r.Response = make([]byte, max(c.scopedBudgetReceiptLimit(r), len(r.Response)))
 	} else {
 		r.Response = nil
 	}

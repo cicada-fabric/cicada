@@ -264,6 +264,30 @@ func (f *scopedAppHTTPFixture) dispatch(a Action) {
 	f.t.Helper()
 	if err := f.c.Dispatch(context.Background(), a); err != nil {
 		s := f.c.Snapshot()
+		if s.ThreadGroups.ErrorCode == "APP_THREAD_GROUP_STORAGE_BUDGET" {
+			f.groupBudgetFailure()
+		}
+		if f.c.scoped.errorCode == "APP_NODE_PAIRING_STORAGE_FULL" && f.c.scoped.flow == nil {
+			q, e := wire.NewAppNodeScopedStatus(f.c.nodeSession(), wire.AppNodeScopedStatusTarget{NodeID: f.c.selectedNodeBinding().NodeID}, "", time.Now().UTC())
+			if e == nil {
+				probe, e := f.c.newScopedOriginal(q, f.c.selectedNodeBinding().NodeID, false)
+				if e == nil {
+					for _, recovered := range []bool{false, true} {
+						u, e := f.c.scopedBudgetPhase(probe, recovered)
+						f.t.Logf("synthetic status budget recovered=%v projection=%v", recovered, e)
+						if e == nil {
+							f.t.Logf("synthetic status budget recovered=%v preflight=%v encoded=%d", recovered, f.c.vault.CheckStateUpdates(u), f.encodedVaultLength(u))
+							for name, raw := range u {
+								f.t.Logf("synthetic status budget namespace=%s rawBytes=%d", name, len(raw))
+								clear(raw)
+							}
+						}
+					}
+					clear(probe.Packet)
+					clear(probe.Body)
+				}
+			}
+		}
 		if f.c.scoped.errorCode == "APP_NODE_PAIRING_STORAGE_FULL" && f.c.scoped.flow != nil && f.c.scoped.flow.Context != nil {
 			flow := f.c.scoped.flow
 			q := wire.NodePairTrustScopedOwnerStatus{Format: wire.NodePairTrustScopedFormat, SessionToken: f.c.session.SessionToken, Scope: flow.Scope, Context: *flow.Context, OOBCommitment: flow.OOB, IssuedAt: f.c.scopedNow()}
@@ -315,6 +339,230 @@ func (f *scopedAppHTTPFixture) dispatch(a Action) {
 			}
 		}
 		f.t.Fatalf("actual scoped Core %s: %v (App=%s Node=%s scoped=%s local=%s)", a.Kind, err, s.ErrorCode, s.Node.ErrorCode, f.c.scoped.errorCode, s.LocalCollaboration.ErrorCode)
+	}
+}
+
+func (f *scopedAppHTTPFixture) nodeDomain(n *scopedAppNodeActor, operation string, body, out any) {
+	f.t.Helper()
+	plain, err := wire.CanonicalLocalDomainNodeRequest(operation, body)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	b := n.binding
+	binding := nodewire.Binding{HubID: b.HubID, NodeID: b.NodeID, BindingID: b.OwnerBindingID, BindingVersion: b.BindingVersion, NodeKeyEpoch: b.NodeKeyEpoch, HubKeyVersion: b.HubNodeControlKeyVersion, NodeKeyVersion: b.NodeKeyVersion, NodeKey: b.NodePublic, HubKey: b.HubNodeControlPublic}
+	id, err := wire.NewRequestID()
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	n.sequence++
+	route := nodewire.Route{Version: nodewire.Version, Direction: nodewire.DirectionRequest, HubID: b.HubID, NodeID: b.NodeID, BindingID: b.OwnerBindingID, BindingVersion: b.BindingVersion, NodeKeyEpoch: b.NodeKeyEpoch, Sequence: n.sequence, OperationID: id, Operation: operation, SenderKeyID: binding.NodeKey.ID, SenderKeyVersion: binding.NodeKeyVersion, ReceiverKeyID: binding.HubKey.ID, ReceiverKeyVersion: binding.HubKeyVersion}
+	packet, err := nodewire.SealRequest(n.key, binding.HubKey, binding, route, plain)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	req, err := http.NewRequest(http.MethodPost, f.origin+"/v2/node/control/rpc", bytes.NewReader(packet))
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Origin", f.origin)
+	req.Header.Set("Authorization", "CicadaNode "+n.token)
+	if err := f.pace(req.Context()); err != nil {
+		f.t.Fatal(err)
+	}
+	response, err := f.client.Do(req)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	defer response.Body.Close()
+	raw, err := io.ReadAll(response.Body)
+	if err != nil || response.StatusCode != 200 {
+		f.t.Fatal("actual Node LocalDomain HTTP", operation, response.StatusCode, err)
+	}
+	opened, err := nodewire.OpenResponse(n.key, binding.HubKey, binding, raw)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	want := route
+	want.Direction = nodewire.DirectionResponse
+	want.SenderKeyID, want.ReceiverKeyID = route.ReceiverKeyID, route.SenderKeyID
+	want.SenderKeyVersion, want.ReceiverKeyVersion = route.ReceiverKeyVersion, route.SenderKeyVersion
+	var reply struct {
+		OK          bool            `json:"ok"`
+		ErrorCode   string          `json:"error_code"`
+		OperationID string          `json:"operation_id"`
+		Sequence    uint64          `json:"sequence"`
+		Result      json.RawMessage `json:"result"`
+	}
+	if opened.Route != want || json.Unmarshal(opened.Plaintext, &reply) != nil || !reply.OK || reply.OperationID != id || reply.Sequence != n.sequence || json.Unmarshal(reply.Result, out) != nil {
+		f.t.Fatal("actual Node LocalDomain reply", operation, reply.ErrorCode)
+	}
+}
+
+func (f *scopedAppHTTPFixture) joinEndpoint(n *scopedAppNodeActor, domain wire.LocalDomainDescription) string {
+	f.t.Helper()
+	selection, err := wire.LocalDomainSelectionForPolicy(domain.Policy)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	attempt, err := wire.NewRequestID()
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	var joined wire.LocalDomainNodeJoinResult
+	f.nodeDomain(n, wire.OperationLocalDomainNodeJoin, wire.LocalDomainNodeJoin{ContractRevision: wire.LocalDomainContractRevision, Selection: selection, LocalUserScope: "uid:1000", AttemptID: attempt, Runtime: "codex", NativeSessionID: "SYNTHETIC-budget-original", Workspace: "/SYNTHETIC-budget-workspace", EndpointName: "SYNTHETIC budget original"}, &joined)
+	key, err := e2ee.NewIdentity()
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	m := joined.Member
+	attestation, err := key.SignEndpointKeyAttestation(m.EndpointID, m.PrincipalID, m.NodeID, m.BindingID, m.BindingEpoch)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	body, err := json.Marshal(map[string]any{"attestation": json.RawMessage(attestation)})
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	req, err := http.NewRequest(http.MethodPost, f.origin+"/v2/fabric/endpoint-keys", bytes.NewReader(body))
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "CicadaSession "+joined.SessionToken)
+	req.Header.Set("Cicada-Group-Scope", domain.Policy.GroupID)
+	req.Header.Set("Content-Type", "application/json")
+	if err = f.pace(req.Context()); err != nil {
+		f.t.Fatal(err)
+	}
+	response, err := f.client.Do(req)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	_, _ = io.Copy(io.Discard, response.Body)
+	_ = response.Body.Close()
+	if response.StatusCode != 200 {
+		f.t.Fatal("actual endpoint key attestation", response.StatusCode)
+	}
+	var challenge wire.LocalDomainKeyChallenge
+	f.nodeDomain(n, wire.OperationLocalDomainNodeKeyPrepare, wire.LocalDomainNodeKeyPrepare{ContractRevision: wire.LocalDomainContractRevision, Selection: selection, MemberID: m.MemberID, ExpectedRevision: m.Revision}, &challenge)
+	proof, err := e2ee.SignLocalDomainEndpointKey(n.key, domain.Policy, challenge.Claims)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	var ready wire.LocalDomainNodeKeyResult
+	f.nodeDomain(n, wire.OperationLocalDomainNodeKeyComplete, wire.LocalDomainNodeKeyComplete{ContractRevision: wire.LocalDomainContractRevision, Selection: selection, MemberID: m.MemberID, ExpectedRevision: m.Revision, ChallengeID: challenge.ChallengeID, NodeProof: proof}, &ready)
+	if _, err = wire.VerifyLocalDomainEndpointKeyGrant(ready.Grant, f.hub, f.c.connection.OwnerID, f.c.owner.Public(), time.Now().UTC()); err != nil {
+		f.t.Fatal("actual endpoint key grant", err)
+	}
+	return m.EndpointID
+}
+
+func (f *scopedAppHTTPFixture) addEndpointToGroup(endpoint, group string) {
+	f.t.Helper()
+	f.dispatch(Action{Kind: ActionReadThreadGroups, ThreadGroups: ThreadGroupAction{GestureID: f.c.Snapshot().ThreadGroups.GestureID}})
+	var selected *GroupThreadView
+	for _, card := range f.c.Snapshot().ThreadGroups.Threads {
+		if card.EndpointID == endpoint {
+			copy := card
+			selected = &copy
+		}
+	}
+	if selected == nil {
+		f.t.Fatal("actual joined endpoint absent from App")
+	}
+	f.dispatch(Action{Kind: ActionReadThreadRelations, ThreadGroups: ThreadGroupAction{GestureID: selected.GestureID, EndpointID: endpoint}})
+	f.dispatch(Action{Kind: ActionReadGroupCandidates, ThreadGroups: ThreadGroupAction{GestureID: f.c.Snapshot().ThreadGroups.Selected.GestureID, EndpointID: endpoint}})
+	gesture := ""
+	for _, card := range f.c.Snapshot().ThreadGroups.Candidates {
+		if card.GroupID == group && card.CanAdd {
+			gesture = card.GestureID
+		}
+	}
+	if gesture == "" {
+		f.t.Fatal("actual Group candidate absent")
+	}
+	f.dispatch(Action{Kind: ActionPrepareThreadGroup, ThreadGroups: ThreadGroupAction{GestureID: gesture, Change: wire.OwnerEndpointGroupsAddEndpoint, EndpointID: endpoint, GroupID: group, Duration: "until_revoked"}})
+	review := f.c.Snapshot().ThreadGroups.Review
+	if review == nil {
+		f.t.Fatal("actual ADD review absent")
+	}
+	applyPath := wire.OwnerEndpointGroupsHTTPPath(wire.OperationOwnerEndpointGroupsApply)
+	f.dropOperation = applyPath
+	if err := f.c.Dispatch(context.Background(), Action{Kind: ActionApplyThreadGroup, ThreadGroups: ThreadGroupAction{GestureID: review.GestureID, Confirm: true}}); err == nil || !f.c.hasThreadGroupPending() {
+		if f.c.Snapshot().ThreadGroups.ErrorCode == "APP_THREAD_GROUP_STORAGE_BUDGET" {
+			f.groupBudgetFailure()
+		}
+		f.t.Fatal("lost ADD response did not retain its policy-sized original", err)
+	}
+	original := bytes.Clone(f.c.threadGroups.original.Packet)
+	defer clear(original)
+	applyCount := f.posts[applyPath]
+	f.restart()
+	if !bytes.Equal(original, f.c.threadGroups.original.Packet) {
+		f.t.Fatal("cold ADD recovery replaced its original")
+	}
+	f.dropOperation = wire.OwnerEndpointGroupsHTTPPath(wire.OperationOwnerEndpointGroupsReconcile)
+	if err := f.c.Dispatch(context.Background(), Action{Kind: ActionRecoverThreadGroup}); err == nil || f.c.threadGroups.recovery == nil || !f.c.hasThreadGroupPending() {
+		f.t.Fatal("lost ADD query response did not retain its exact recovery wrapper", err)
+	}
+	query := bytes.Clone(f.c.threadGroups.recovery.Packet)
+	defer clear(query)
+	f.dispatch(Action{Kind: ActionRecoverThreadGroup})
+	if f.posts[applyPath] != applyCount || !bytes.Equal(original, f.c.threadGroups.original.Packet) || !bytes.Equal(query, f.c.threadGroups.recovery.Packet) {
+		f.t.Fatal("ADD recovery repeated the mutation or replaced original/query bytes")
+	}
+	settled, err := f.c.openThreadGroupResult(f.c.threadGroups.original, f.c.threadGroups.response.Packet, nil)
+	if err != nil || settled.Operation == nil || settled.Operation.State != "COMPLETED" || settled.Operation.Action != wire.OwnerEndpointGroupsAddEndpoint || f.c.hasThreadGroupPending() || f.c.Snapshot().ThreadGroups.Current {
+		f.t.Fatal("cold ADD did not retain its exact authenticated historical receipt", err)
+	}
+}
+
+func (f *scopedAppHTTPFixture) groupBudgetFailure() {
+	g := &f.c.threadGroups
+	if g.reviewOriginal == nil || g.review == nil {
+		return
+	}
+	prepare, err := f.c.threadGroupDTO(g.reviewOriginal, nil)
+	if err != nil {
+		return
+	}
+	scope, err := f.c.localCollaborationActor(context.Background())
+	if err != nil {
+		return
+	}
+	owner, err := f.c.owner.E2EE()
+	if err != nil {
+		return
+	}
+	q, err := wire.NewOwnerEndpointGroupsApply(f.c.nodeSession(), scope, prepare.(wire.OwnerEndpointGroupsPrepareRequest), g.reviewOriginal.Packet, *g.review, owner, time.Now().UTC())
+	if err != nil {
+		return
+	}
+	seed := *g.reviewOriginal
+	seed.Review = g.review
+	original, err := f.c.newThreadGroupRecord(q, &seed)
+	if err != nil {
+		return
+	}
+	recovery, err := f.c.makeThreadGroupRecovery(original, scope)
+	if err != nil {
+		return
+	}
+	for phase := 0; phase < threadGroupBudgetPhaseCount; phase++ {
+		u, err := f.c.threadGroupBudgetPhase(original, recovery, phase, false)
+		if err != nil {
+			f.t.Logf("synthetic Group budget phase=%d encode=%v", phase, err)
+			continue
+		}
+		named := map[string][]byte{}
+		for i, raw := range u {
+			named[threadGroupNamespaces[i]] = raw
+			f.t.Logf("synthetic Group phase=%d slot=%d rawBytes=%d", phase, i, len(raw))
+		}
+		f.t.Logf("synthetic Group budget phase=%d preflight=%v encoded=%d", phase, f.c.preflightThreadGroups(u), f.encodedVaultLength(named))
+		for _, raw := range u {
+			clear(raw)
+		}
 	}
 }
 
@@ -403,6 +651,7 @@ type scopedAppNodeActor struct {
 	secret                    []byte
 	context                   wire.NodePairTrustScopedContext
 	binding                   *e2ee.OwnerAppNodeBinding
+	sequence                  uint64
 }
 
 func (f *scopedAppHTTPFixture) nodeRequest(n *scopedAppNodeActor, operation string, body any) (wire.NodePairTrustScopedResult, []byte, []byte) {
@@ -591,9 +840,19 @@ func (f *scopedAppHTTPFixture) reportNodeUser(n *scopedAppNodeActor) {
 	if opened.Route != want || json.Unmarshal(opened.Plaintext, &result) != nil || !result.OK {
 		f.t.Fatal("actual Node user report verification", result.ErrorCode)
 	}
+	n.sequence = 1
 }
 
 func TestScopedAppRealTLSFreshNodesSwitchAndExistingNetwork(t *testing.T) {
+	exerciseScopedAppNodesAndGroup(t, false)
+}
+
+func TestScopedAppRealTLSTwoNodesEndpointGroupApplyBudget(t *testing.T) {
+	exerciseScopedAppNodesAndGroup(t, true)
+}
+
+func exerciseScopedAppNodesAndGroup(t *testing.T, addEndpoint bool) {
+	t.Helper()
 	f := newScopedAppHTTPFixture(t)
 	ownerID, deviceID := f.c.state.OwnerKeyID, f.c.state.DeviceKeyID
 	a := f.startNode("SYNTHETIC-App-A")
@@ -644,6 +903,10 @@ func TestScopedAppRealTLSFreshNodesSwitchAndExistingNetwork(t *testing.T) {
 	if firstGroupID == "" || f.c.Snapshot().LocalCollaboration.GroupID == "" || f.c.Snapshot().LocalCollaboration.GroupID == firstGroupID {
 		t.Fatal("same Network merged independent Node default Groups")
 	}
+	endpoint := ""
+	if addEndpoint {
+		endpoint = f.joinEndpoint(b, *f.c.localDomain.state.Description)
+	}
 	if !f.c.Snapshot().ThreadGroups.Available {
 		t.Fatal("actual Hub Group discovery was not available")
 	}
@@ -670,6 +933,18 @@ func TestScopedAppRealTLSFreshNodesSwitchAndExistingNetwork(t *testing.T) {
 	if err != nil || settled.Operation == nil || settled.Operation.State != "COMPLETED" || settled.Operation.Action != wire.OwnerEndpointGroupsCreateGroup || !f.c.threadGroups.original.Applied || f.c.Snapshot().ThreadGroups.Current {
 		t.Fatal("scoped actor did not recover the exact completed Group receipt, or made historical cards current", err)
 	}
+	if addEndpoint {
+		f.addEndpointToGroup(endpoint, review.GroupID)
+		if f.c.state.OwnerKeyID != ownerID || f.c.state.DeviceKeyID != deviceID || !reflect.DeepEqual(f.c.selectedNodeBinding(), b.binding) || f.c.node.Client.NextRequest != 3 || f.c.node.Client.NextResponse != 3 {
+			t.Fatal("cold ADD changed Owner/App identity, selected Node or global counters")
+		}
+	}
+	groupOriginal := bytes.Clone(f.c.threadGroups.original.Packet)
+	groupQuery := bytes.Clone(f.c.threadGroups.recovery.Packet)
+	groupReceipt := bytes.Clone(f.c.threadGroups.response.Packet)
+	defer clear(groupOriginal)
+	defer clear(groupQuery)
+	defer clear(groupReceipt)
 	s := f.c.Snapshot()
 	f.dispatch(Action{Kind: ActionSelectSavedNode, NodeSelection: NodeSelectionAction{NodeID: a.binding.NodeID, GestureID: s.Targets.GestureID}})
 	if got := f.c.selectedNodeBinding(); !reflect.DeepEqual(got, a.binding) {
@@ -681,6 +956,9 @@ func TestScopedAppRealTLSFreshNodesSwitchAndExistingNetwork(t *testing.T) {
 	f.dispatch(Action{Kind: ActionRefreshNode})
 	if got := f.c.selectedNodeBinding(); !reflect.DeepEqual(got, a.binding) || f.c.node.Client.NextRequest != 3 || f.c.node.Client.NextResponse != 3 {
 		t.Fatal("returning to A changed binding/global counters")
+	}
+	if !bytes.Equal(groupOriginal, f.c.threadGroups.original.Packet) || !bytes.Equal(groupQuery, f.c.threadGroups.recovery.Packet) || !bytes.Equal(groupReceipt, f.c.threadGroups.response.Packet) {
+		t.Fatal("Node status discarded or changed saved Group original/query/receipt")
 	}
 }
 

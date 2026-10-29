@@ -77,10 +77,10 @@ func (c *nativeController) recoverThreadGroup(ctx context.Context) error {
 			// Keep and retry the exact wrapper; it supplies no original outcome.
 			return c.failThreadGroups("OUTCOME_UNCERTAIN", errThreadGroupUnconfirmed)
 		}
-		g.recoveryResponse, err = c.saveThreadGroupResponse(threadGroupRecoveryResponse, recovery, raw)
-		if err != nil {
-			return err
-		}
+		// The authenticated empty observation settles only this read-only query.
+		// A crash before its retirement retries the exact saved query; no outer
+		// response cache is needed, and the business original remains untouched.
+		return c.retireThreadGroupEmptyQuery()
 	}
 	result, err := c.openThreadGroupResult(recovery, g.recoveryResponse.Packet, original)
 	if err != nil {
@@ -97,20 +97,27 @@ func (c *nativeController) recoverThreadGroup(ctx context.Context) error {
 		return c.acceptThreadGroupRecoveredReceipt(original, result.ReceiptPacket, nested)
 	}
 	if c.threadGroupEmptyTerminalQuery(recovery, result, original) {
-		// This wrapper has an authenticated terminal read outcome, while its
-		// business original remains unknown. Release only the settled wrapper
-		// so a later login can make a fresh query for the same original bytes.
+		return c.retireThreadGroupEmptyQuery()
+	}
+	return c.failThreadGroups("OUTCOME_UNCERTAIN", errThreadGroupUnconfirmed)
+}
+
+func (c *nativeController) retireThreadGroupEmptyQuery() error {
+	g := &c.threadGroups
+	// Retain support for an authenticated response cached by an earlier App.
+	if g.recoveryResponse != nil {
 		if err := c.persistThreadGroupRecord(threadGroupRecoveryResponse, nil); err != nil {
 			return err
 		}
-		if err := c.persistThreadGroupRecord(threadGroupRecovery, nil); err != nil {
-			return err
-		}
-		clear(g.recovery.Packet)
-		clear(g.recovery.DTO)
 		clear(g.recoveryResponse.Packet)
-		g.recovery, g.recoveryResponse = nil, nil
+		g.recoveryResponse = nil
 	}
+	if err := c.persistThreadGroupRecord(threadGroupRecovery, nil); err != nil {
+		return err
+	}
+	clear(g.recovery.Packet)
+	clear(g.recovery.DTO)
+	g.recovery = nil
 	return c.failThreadGroups("OUTCOME_UNCERTAIN", errThreadGroupUnconfirmed)
 }
 

@@ -126,6 +126,63 @@ func TestScopedBudgetMaximumSDKStatus(t *testing.T) {
 		clear(raw)
 	}
 	t.Logf("SDK canonical plaintext=%d real signed response=%d ceiling=%d Node=%d projected=%d", limit, len(response), wire.MaxAppNodeScopedReceiptBytes, len(actual), len(u[scopedNodeNamespace(id)]))
+
+	// Authority reconcile uses the SDK's 384-KiB outer decoder even though
+	// the shared HTTP reader admits 512 KiB for the independent PairTrust family.
+	r, err := c.makeScopedRecovery(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clear(r.Body)
+	defer clear(r.Packet)
+	request, err = wire.DecodePacket(r.Packet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reconciled := wire.AppNodeScopedReconciled{AuthorityNodeID: id, Format: wire.AppNodeScopedReconciledFormat,
+		Origin: c.connection.Origin, HubID: c.hub.HubID, AccountID: c.connection.AccountID, OwnerID: c.connection.OwnerID,
+		DeviceID: c.state.DeviceID, AccountEpoch: c.session.AccountEpoch, DeviceEpoch: c.session.DeviceEpoch,
+		RequestID: r.RequestID, RequestPacketDigest: wire.AppNodeScopedPacketDigest(r.Packet),
+		OriginalKind: wire.AppNodeScopedOriginalAuthority, OriginalOperation: p.Operation, OriginalRequestID: p.RequestID,
+		OriginalPacketDigest: wire.AppNodeScopedPacketDigest(p.Packet), State: wire.AppNodeScopedCompleted,
+		ObservedAt: c.scopedNow(), ReceiptPacket: response}
+	outer, err := wire.SealResponse(f.n2.hubKey, c.device.Public(), request.Packet.Route, reconciled)
+	if err != nil {
+		t.Fatal("maximum nested authority SDK receipt", err)
+	}
+	defer clear(outer)
+	pad := func(maximum int) []byte {
+		t.Helper()
+		h, err := wire.DecodePacket(outer)
+		if err != nil {
+			t.Fatal(err)
+		}
+		encoded := (len(h.Packet.Envelope) + 2) / 3 * 4
+		inner := (maximum - len(outer) + encoded) / 4 * 3
+		h.Packet.Envelope = append(h.Packet.Envelope, bytes.Repeat([]byte{' '}, inner-len(h.Packet.Envelope))...)
+		raw, err := json.Marshal(h)
+		if err != nil || len(raw) > maximum || maximum-len(raw) >= 4 {
+			t.Fatal("authority padded boundary", err)
+		}
+		return raw
+	}
+	maximum := pad(wire.MaxPacketBytes)
+	defer clear(maximum)
+	got, terminal, err := c.openScopedRecovery(r, p, maximum)
+	if err != nil || terminal || !bytes.Equal(got, response) {
+		t.Fatal("SDK outer boundary rejected valid nested authority receipt", err)
+	}
+	oversized := pad(wire.MaxPacketBytes + 4)
+	defer clear(oversized)
+	if _, _, err := c.openScopedRecovery(r, p, oversized); err == nil {
+		t.Fatal("authority SDK accepted an outer response above its own bound")
+	}
+	u = budgetUpdates(t, c, p)
+	frame, err := decodeScopedOriginal(budgetPayload(t, c, scopedWorkspaces[scopedRecoverySlot], u[scopedWorkspaces[scopedRecoverySlot]]))
+	if err != nil || len(frame.Response) != wire.MaxPacketBytes || c.scopedResponseLimit(r) != scopedLocalRecoveryReceiptBytes {
+		t.Fatal("projection differs from SDK boundary or changed HTTP admission", err)
+	}
+	t.Logf("authority_recovery_sdk_outer=%d projected=%d HTTP_reader=%d", len(maximum), len(frame.Response), c.scopedResponseLimit(r))
 }
 
 func budgetPairFlow(t *testing.T) (*nodePairingFixture, *scopedPairFlow) {

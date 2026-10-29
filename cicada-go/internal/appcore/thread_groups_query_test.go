@@ -91,6 +91,49 @@ func TestThreadGroupActorEmptyStatusRequiresExactOriginal(t *testing.T) {
 	}
 }
 
+func TestThreadGroupActorEmptyQueryRetiresOnlyAuthenticatedObservation(t *testing.T) {
+	for _, cached := range []bool{false, true} {
+		t.Run(map[bool]string{false: "fresh", true: "older-app-cache"}[cached], func(t *testing.T) {
+			a := newThreadGroupActor(t)
+			a.prepareCreate()
+			a.drop = wire.OperationOwnerEndpointGroupsApply
+			if a.apply() == nil {
+				t.Fatal("lost apply was successful")
+			}
+			original := bytes.Clone(a.c.threadGroups.original.Packet)
+			defer clear(original)
+			a.queryResult = func(r *wire.OwnerEndpointGroupsResult) {
+				r.ReceiptPacket, r.Operation, r.CurrentRelation, r.CurrentGroup = nil, nil, nil, nil
+				r.State, r.ErrorCode = "COMPLETED", "OUTCOME_UNCERTAIN"
+			}
+			if cached {
+				a.drop = wire.OperationOwnerEndpointGroupsReconcile
+				if a.c.Dispatch(context.Background(), Action{Kind: ActionRecoverThreadGroup}) == nil || a.c.threadGroups.recovery == nil {
+					t.Fatal("lost query did not retain wrapper")
+				}
+				query := a.c.threadGroups.recovery
+				var err error
+				a.c.threadGroups.recoveryResponse, err = a.c.saveThreadGroupResponse(threadGroupRecoveryResponse, query, a.receipts[query.Digest])
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			_, before, _, err := a.c.vault.LoadState(threadGroupNamespaces[threadGroupRecoveryResponse])
+			if err != nil {
+				t.Fatal(err)
+			}
+			if a.c.Dispatch(context.Background(), Action{Kind: ActionRecoverThreadGroup}) == nil || !a.c.hasThreadGroupPending() || !bytes.Equal(original, a.c.threadGroups.original.Packet) || a.c.threadGroups.recovery != nil || a.c.threadGroups.recoveryResponse != nil || a.c.threadGroups.response != nil || a.applyCount != 1 {
+				t.Fatal("empty authenticated query changed the business original or retained observation")
+			}
+			raw, after, _, err := a.c.vault.LoadState(threadGroupNamespaces[threadGroupRecoveryResponse])
+			defer clear(raw)
+			if err != nil || len(raw) != 0 || !cached && before != after || cached && after != before+1 {
+				t.Fatal("fresh query wrote an unnecessary response cache or old cache was not retired")
+			}
+		})
+	}
+}
+
 func TestThreadGroupActorChangedLoginCannotReplaceQueryWithoutMatchingSecurity(t *testing.T) {
 	a := newThreadGroupActor(t)
 	a.prepareCreate()

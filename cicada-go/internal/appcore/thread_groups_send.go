@@ -26,14 +26,21 @@ func threadGroupResponseRecord(request *threadGroupRecord, packet []byte) *threa
 		CreatedAt: "2026-10-26T00:00:00.999999999Z", Packet: packet}
 }
 
-// Direct completion, a query receipt and application of its verified original
-// are different durable phases. The query is an observation, not the business
-// original; its receipt need not coexist with the separately authenticated
-// original receipt. Every phase still checks the actual unchanged vault bounds.
+const (
+	threadGroupBudgetStagedOriginal = iota
+	threadGroupBudgetDirectReceipt
+	threadGroupBudgetRecoveredReceipt
+	threadGroupBudgetPhaseCount
+)
+
+// The prior review coexists with a new original until that original is durable.
+// Apply retires the review before POST. Recovery persists only the independently
+// authenticated original receipt, never a new outer query response. Each actual
+// durable phase still checks the unchanged vault bounds.
 func (c *nativeController) threadGroupBudget(record, recovery *threadGroupRecord) error {
 	current := c.threadGroups.original != nil && bytes.Equal(c.threadGroups.original.Packet, record.Packet)
-	for phase := 0; phase < 3; phase++ {
-		if phase == 0 && current && c.threadGroups.recovery != nil {
+	for phase := 0; phase < threadGroupBudgetPhaseCount; phase++ {
+		if phase == threadGroupBudgetStagedOriginal && current || phase == threadGroupBudgetDirectReceipt && current && c.threadGroups.recovery != nil {
 			continue
 		}
 		updates, err := c.threadGroupBudgetPhase(record, recovery, phase, current)
@@ -68,10 +75,8 @@ func (c *nativeController) threadGroupBudgetPhase(record, recovery *threadGroupR
 	}
 	response := threadGroupResponseRecord(record, make([]byte, wire.MaxOwnerEndpointGroupsPacketBytes))
 	defer clear(response.Packet)
-	if phase != 1 {
+	if phase != threadGroupBudgetStagedOriginal {
 		updates[threadGroupResponse], err = encodeThreadGroupRecord(response)
-	} else if current && c.threadGroups.response != nil {
-		updates[threadGroupResponse], err = encodeThreadGroupRecord(c.threadGroups.response)
 	} else {
 		updates[threadGroupResponse] = nil
 	}
@@ -79,7 +84,7 @@ func (c *nativeController) threadGroupBudgetPhase(record, recovery *threadGroupR
 		return nil, err
 	}
 	updates[threadGroupRecovery], updates[threadGroupRecoveryResponse] = nil, nil
-	if phase != 0 {
+	if phase == threadGroupBudgetRecoveredReceipt {
 		updates[threadGroupRecovery], err = encodeThreadGroupRecord(recovery)
 		if err != nil {
 			return nil, err
@@ -88,20 +93,12 @@ func (c *nativeController) threadGroupBudgetPhase(record, recovery *threadGroupR
 		// this reserve is never transmitted or treated as an authority response.
 		updates[threadGroupRecovery] = append(updates[threadGroupRecovery], make([]byte, 4096)...)
 	}
-	if phase == 1 {
-		outer := threadGroupResponseRecord(recovery, make([]byte, wire.MaxOwnerEndpointGroupsReconcilePacketBytes))
-		updates[threadGroupRecoveryResponse], err = encodeThreadGroupRecord(outer)
-		clear(outer.Packet)
-		if err != nil {
-			return nil, err
-		}
-	}
 	prior, err := c.threadGroupReviewBytes(c.threadGroups.reviewOriginal, c.threadGroups.reviewResponse)
 	if err != nil {
 		return nil, err
 	}
 	updates[threadGroupState] = prior
-	if phase != 1 {
+	if phase != threadGroupBudgetStagedOriginal {
 		var next []byte
 		if record.Route.Operation == wire.OperationOwnerEndpointGroupsPrepare {
 			next, err = c.threadGroupReviewBytes(record, response)
@@ -111,9 +108,9 @@ func (c *nativeController) threadGroupBudgetPhase(record, recovery *threadGroupR
 		if err != nil {
 			return nil, err
 		}
-		// The previous review remains until the new original has committed. Cover
-		// that transition too, including replacement by a smaller final review.
-		if len(next) > len(prior) {
+		// A new apply clears the old review before I/O. For an already durable
+		// original, retain any actual old review left by an interrupted clear.
+		if len(next) > len(prior) || record.Route.Operation == wire.OperationOwnerEndpointGroupsApply && !current {
 			clear(prior)
 			updates[threadGroupState] = next
 		} else {

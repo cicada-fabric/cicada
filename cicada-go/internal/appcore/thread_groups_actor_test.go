@@ -99,6 +99,15 @@ func (a *threadGroupActor) Do(req *http.Request) (*http.Response, error) {
 	if err != nil || !found || decodeErr != nil || !bytes.Equal(record.Packet, raw) {
 		a.t.Fatal("Group POST preceded exact vault persistence")
 	}
+	if route.Operation == wire.OperationOwnerEndpointGroupsApply {
+		rawReview, _, _, err := a.c.vault.LoadState(threadGroupNamespaces[threadGroupState])
+		defer clear(rawReview)
+		var review threadGroupSavedReview
+		_, decodeErr := decodeThreadGroupFrame(rawReview, "CEGS", &review)
+		if err != nil || decodeErr != nil || review.Original != nil || review.Response != nil || a.c.threadGroups.reviewOriginal != nil || a.c.threadGroups.reviewResponse != nil {
+			a.t.Fatal("apply POST preceded durable retirement of the prior review")
+		}
+	}
 	a.posts[route.Operation] = append(a.posts[route.Operation], bytes.Clone(raw))
 	if a.deny == route.Operation {
 		return reply([]byte("synthetic unsigned denial"), 403)
@@ -615,38 +624,68 @@ func TestThreadGroupActorSDKMaximumFieldsFitRecoveryAndSixteenOldSlots(t *testin
 }
 
 func TestThreadGroupActorFutureBudgetRefusesBeforePOSTAndKeepsOpaqueOldState(t *testing.T) {
-	a := newThreadGroupActor(t)
-	a.readAndSelect()
-	a.candidates()
-	name := pairNamespaces[pairOriginalResponseRecord]
-	_, version, _, err := a.c.vault.LoadState(name)
-	if err != nil {
-		t.Fatal(err)
-	}
-	occupied := bytes.Repeat([]byte("synthetic opaque budget occupancy; never a protocol proof"), (1<<20)/56)
-	if len(occupied) > 1<<20 {
-		occupied = occupied[:1<<20]
-	}
-	if _, err := a.c.vault.CompareAndSwapState(name, version, occupied); err != nil {
-		t.Fatal(err)
-	}
-	second := pairNamespaces[pairRecoveryResponseRecord]
-	_, secondVersion, _, err := a.c.vault.LoadState(second)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := a.c.vault.CompareAndSwapState(second, secondVersion, occupied); err != nil {
-		t.Fatal(err)
-	}
-	s := a.c.Snapshot()
-	before := len(a.posts[wire.OperationOwnerEndpointGroupsPrepare])
-	err = a.c.Dispatch(context.Background(), Action{Kind: ActionPrepareThreadGroup, ThreadGroups: ThreadGroupAction{GestureID: s.ThreadGroups.GestureID, Change: "CREATE_GROUP", Name: "Must not leave this App"}})
-	if err == nil || len(a.posts[wire.OperationOwnerEndpointGroupsPrepare]) != before || a.c.hasThreadGroupPending() {
-		t.Fatal("full future budget was checked after POST or invented a pending request")
-	}
-	raw, gotVersion, found, err := a.c.vault.LoadState(name)
-	if err != nil || !found || gotVersion != version+1 || !bytes.Equal(raw, occupied) {
-		t.Fatal("budget failure evicted old opaque state or changed CAS")
+	for _, apply := range []bool{false, true} {
+		t.Run(map[bool]string{false: "prepare", true: "apply"}[apply], func(t *testing.T) {
+			a := newThreadGroupActor(t)
+			if apply {
+				a.prepareCreate()
+			} else {
+				a.readAndSelect()
+				a.candidates()
+			}
+			saved := make(map[string][]byte)
+			versions := make(map[string]uint64)
+			for _, name := range threadGroupNamespaces {
+				raw, version, _, err := a.c.vault.LoadState(name)
+				if err != nil {
+					t.Fatal(err)
+				}
+				saved[name], versions[name] = raw, version
+				defer clear(raw)
+			}
+			name := pairNamespaces[pairOriginalResponseRecord]
+			_, version, _, err := a.c.vault.LoadState(name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			occupied := bytes.Repeat([]byte("synthetic opaque budget occupancy; never a protocol proof"), (1<<20)/56)
+			if len(occupied) > 1<<20 {
+				occupied = occupied[:1<<20]
+			}
+			if _, err := a.c.vault.CompareAndSwapState(name, version, occupied); err != nil {
+				t.Fatal(err)
+			}
+			second := pairNamespaces[pairRecoveryResponseRecord]
+			_, secondVersion, _, err := a.c.vault.LoadState(second)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := a.c.vault.CompareAndSwapState(second, secondVersion, occupied); err != nil {
+				t.Fatal(err)
+			}
+			s := a.c.Snapshot()
+			before := len(a.posts[wire.OperationOwnerEndpointGroupsPrepare]) + len(a.posts[wire.OperationOwnerEndpointGroupsApply])
+			if apply {
+				err = a.apply()
+			} else {
+				err = a.c.Dispatch(context.Background(), Action{Kind: ActionPrepareThreadGroup, ThreadGroups: ThreadGroupAction{GestureID: s.ThreadGroups.GestureID, Change: "CREATE_GROUP", Name: "Must not leave this App"}})
+			}
+			if err == nil || len(a.posts[wire.OperationOwnerEndpointGroupsPrepare])+len(a.posts[wire.OperationOwnerEndpointGroupsApply]) != before || a.c.hasThreadGroupPending() || a.c.Snapshot().ThreadGroups.ErrorCode != "APP_THREAD_GROUP_STORAGE_BUDGET" {
+				t.Fatal("full future budget was checked after POST or invented a pending request")
+			}
+			raw, gotVersion, found, err := a.c.vault.LoadState(name)
+			if err != nil || !found || gotVersion != version+1 || !bytes.Equal(raw, occupied) {
+				t.Fatal("budget failure evicted old opaque state or changed CAS")
+			}
+			clear(raw)
+			for name, want := range saved {
+				raw, version, _, err := a.c.vault.LoadState(name)
+				if err != nil || version != versions[name] || !bytes.Equal(raw, want) {
+					t.Fatal("pre-POST refusal changed a Group original, receipt, recovery or prior review")
+				}
+				clear(raw)
+			}
+		})
 	}
 }
 
