@@ -108,7 +108,11 @@ func (v *view) workspaceRows(s appcore.Snapshot, flow appui.SetupFlow) []layout.
 	switch v.workspacePage {
 	case "devices":
 		if appui.NodeCardVisible(s, appui.Flow(s)) {
-			rows := []layout.Widget{v.sectionCard(v.nodeSection(s))}
+			rows := []layout.Widget{}
+			if len(s.Targets.Nodes) != 0 {
+				rows = append(rows, v.sectionCard(v.targetSelectionSection(s)))
+			}
+			rows = append(rows, v.sectionCard(v.nodeSection(s)))
 			if appui.LocalCollaborationFlow(s, time.Now()).Visible {
 				rows = append(rows, v.sectionCard(v.localCollaborationSection(s)))
 			}

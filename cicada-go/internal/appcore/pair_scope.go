@@ -11,16 +11,25 @@ import (
 )
 
 func (c *nativeController) pairAccountReady() bool {
-	return c.nodeAccountReady() && c.nodeConfirmation != nil && c.nodeConfirmation.Binding.State == "ACTIVE"
+	return c.selectedScopedNode() == nil && c.nodeConfirmation != nil && c.ownerAccountReady()
+}
+
+func (c *nativeController) ownerAccountReady() bool {
+	b := c.selectedNodeBinding()
+	return c.nodeAccountReady() && b != nil && b.State == "ACTIVE"
 }
 
 func (c *nativeController) pairCanStart() bool {
-	return c.pairAccountReady() && !c.storageFault && !c.hasPairPending() && !c.hasNodePending() && !c.hasLocalDomainPending() && !c.hasThreadGroupPending() &&
+	return c.selectedScopedNode() == nil && c.ownerOperationCanStart()
+}
+
+func (c *nativeController) ownerOperationCanStart() bool {
+	return c.ownerAccountReady() && !c.storageFault && !c.scopedBusy() && !c.hasPairPending() && !c.hasNodePending() && !c.hasLocalDomainPending() && !c.hasThreadGroupPending() &&
 		canBeginOperation(c.state.Pending) && c.state.Recovery == nil
 }
 
 func (c *nativeController) pairActor(ctx context.Context) (e2ee.OwnerAppNodeScope, error) {
-	if !c.pairAccountReady() {
+	if !c.pairAccountReady() || c.selectedScopedNode() != nil {
 		return e2ee.OwnerAppNodeScope{}, ErrInvalidAction
 	}
 	if !c.nodeContextChecked || c.node.Context == nil || c.node.Context.Authority.Scope.AccountSessionExpiresAt != c.session.ExpiresAt {

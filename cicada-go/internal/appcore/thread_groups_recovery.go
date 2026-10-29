@@ -1,12 +1,15 @@
 package appcore
 
-import "context"
+import (
+	"context"
+	wire "github.com/cicada-ai/cicada/internal/hubaccountwire"
+)
 
 func (c *nativeController) recoverThreadGroup(ctx context.Context) error {
 	if err := c.ensureThreadGroupsLoaded(); err != nil {
 		return c.failStorage("APP_THREAD_GROUP_STORAGE_FAILED", err)
 	}
-	if !c.hasThreadGroupPending() || !c.pairAccountReady() || c.hasNodePending() || c.nodePairTrustBusy() || !canBeginOperation(c.state.Pending) || c.state.Recovery != nil {
+	if !c.hasThreadGroupPending() || !c.ownerAccountReady() || c.hasNodePending() || c.nodePairTrustBusy() || !canBeginOperation(c.state.Pending) || c.state.Recovery != nil {
 		return ErrInvalidAction
 	}
 	g := &c.threadGroups
@@ -68,6 +71,7 @@ func (c *nativeController) recoverThreadGroup(ctx context.Context) error {
 			if err != nil || !threadGroupResultSettles(original, nested) {
 				return c.failThreadGroups("OUTCOME_UNCERTAIN", errThreadGroupUnconfirmed)
 			}
+			return c.acceptThreadGroupRecoveredReceipt(original, opened.ReceiptPacket, nested)
 		} else if !c.threadGroupEmptyTerminalQuery(recovery, opened, original) {
 			// A nonterminal query cannot become a permanent response cache.
 			// Keep and retry the exact wrapper; it supplies no original outcome.
@@ -90,11 +94,7 @@ func (c *nativeController) recoverThreadGroup(ctx context.Context) error {
 		if !threadGroupResultSettles(original, nested) {
 			return c.failThreadGroups("OUTCOME_UNCERTAIN", errThreadGroupUnconfirmed)
 		}
-		g.response, err = c.saveThreadGroupResponse(threadGroupResponse, original, result.ReceiptPacket)
-		if err != nil {
-			return err
-		}
-		return c.finishThreadGroup(original, nested, false)
+		return c.acceptThreadGroupRecoveredReceipt(original, result.ReceiptPacket, nested)
 	}
 	if c.threadGroupEmptyTerminalQuery(recovery, result, original) {
 		// This wrapper has an authenticated terminal read outcome, while its
@@ -112,4 +112,28 @@ func (c *nativeController) recoverThreadGroup(ctx context.Context) error {
 		g.recovery, g.recoveryResponse = nil, nil
 	}
 	return c.failThreadGroups("OUTCOME_UNCERTAIN", errThreadGroupUnconfirmed)
+}
+
+// The exact original receipt has been authenticated against its own request,
+// after the wrapper authenticated its association. Retiring the settled query
+// observation cannot execute or replace the retained business original. A crash
+// before saving the inner receipt can repeat the same read-only query.
+func (c *nativeController) acceptThreadGroupRecoveredReceipt(original *threadGroupRecord, packet []byte, result *wire.OwnerEndpointGroupsResult) error {
+	g := &c.threadGroups
+	if err := c.threadGroupBudget(original, g.recovery); err != nil {
+		return c.failThreadGroups("APP_THREAD_GROUP_STORAGE_BUDGET", err)
+	}
+	if g.recoveryResponse != nil {
+		if err := c.persistThreadGroupRecord(threadGroupRecoveryResponse, nil); err != nil {
+			return err
+		}
+		clear(g.recoveryResponse.Packet)
+		g.recoveryResponse = nil
+	}
+	response, err := c.saveThreadGroupResponse(threadGroupResponse, original, packet)
+	if err != nil {
+		return err
+	}
+	g.response = response
+	return c.finishThreadGroup(original, result, false)
 }

@@ -24,6 +24,7 @@ func (v *view) localCollaborationSection(s appcore.Snapshot) layout.Widget {
 		d := s.LocalCollaboration
 		if v.localDomainNodeID != s.Node.Binding.NodeID {
 			v.localDomainNodeID = s.Node.Binding.NodeID
+			v.localDomainNetworkChoice.Value = ""
 			v.localDomainNetworkName.SetText(appui.Text(v.locale, "local_collaboration.title"))
 			v.localDomainGroupName.SetText(appui.Text(v.locale, "local_collaboration.title"))
 			v.localDomainNetworkName.MaxLen, v.localDomainGroupName.MaxLen = 128, 128
@@ -68,8 +69,11 @@ func (v *view) localCollaborationSection(s appcore.Snapshot) layout.Widget {
 				})))
 		}
 		if flow.Prepare && (flow.Stage == "unconfigured" || flow.Stage == "expired" || flow.Stage == "revoked") {
-			rows = append(rows, layout.Rigid(v.labelRow(appui.Text(v.locale, "local_collaboration.create_network"))),
-				layout.Rigid(v.editorRow(&v.localDomainNetworkName, appui.Text(v.locale, "local_collaboration.network_name"), false)),
+			rows = append(rows, v.localNetworkChoices(s)...)
+			if v.localDomainNetworkChoice.Value == "" {
+				rows = append(rows, layout.Rigid(v.editorRow(&v.localDomainNetworkName, appui.Text(v.locale, "local_collaboration.network_name"), false)))
+			}
+			rows = append(rows,
 				layout.Rigid(v.disclosure("local-collaboration/prepare", func(gtx layout.Context) layout.Dimensions {
 					return v.editorRow(&v.localDomainGroupName, appui.Text(v.locale, "local_collaboration.group_name"), false)(gtx)
 				})), layout.Rigid(v.labelRow(appui.Text(v.locale, "local_collaboration.until"))))
@@ -79,7 +83,8 @@ func (v *view) localCollaborationSection(s appcore.Snapshot) layout.Widget {
 					return material.RadioButton(v.theme, &v.localDomainExpiry, choice.value, appui.Text(v.locale, "local_collaboration."+choice.key)).Layout(gtx)
 				}))
 			}
-			rows = append(rows, layout.Rigid(v.localCollaborationButton(s, appcore.ActionPrepareLocalCollaboration, "local_collaboration.prepare", validLocalCollaborationName(v.localDomainNetworkName.Text()) && validLocalCollaborationName(v.localDomainGroupName.Text()))))
+			_, selectionValid := appui.LocalCollaborationSelection(s, v.localDomainNetworkChoice.Value, v.localDomainNetworkName.Text(), v.localDomainGroupName.Text(), 0)
+			rows = append(rows, layout.Rigid(v.localCollaborationButton(s, appcore.ActionPrepareLocalCollaboration, "local_collaboration.prepare", selectionValid)))
 		}
 		if flow.Activate {
 			rows = append(rows, layout.Rigid(v.labelRow(appui.Text(v.locale, "local_collaboration.review_body"))),
@@ -120,8 +125,11 @@ func (v *view) localCollaborationButton(s appcore.Snapshot, kind appcore.ActionK
 			input := appcore.LocalCollaborationAction{}
 			switch kind {
 			case appcore.ActionPrepareLocalCollaboration:
-				input.NewNetworkName, input.GroupName = v.localDomainNetworkName.Text(), v.localDomainGroupName.Text()
-				input.ExpiresInHours = map[string]uint64{"day": 24, "week": 168, "month": 720}[v.localDomainExpiry.Value]
+				var valid bool
+				input, valid = appui.LocalCollaborationSelection(s, v.localDomainNetworkChoice.Value, v.localDomainNetworkName.Text(), v.localDomainGroupName.Text(), map[string]uint64{"day": 24, "week": 168, "month": 720}[v.localDomainExpiry.Value])
+				if !valid {
+					return v.button(gtx, button, appui.Text(v.locale, key), false)
+				}
 			case appcore.ActionActivateLocalCollaboration:
 				input.ReviewID, input.ConfirmActivation = s.LocalCollaboration.ReviewID, v.localDomainConsent.Value
 			case appcore.ActionRevokeLocalCollaboration:

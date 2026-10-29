@@ -16,7 +16,9 @@ func TestDevicePairingInputPreservesCaseAndRejectsOverflow(t *testing.T) {
 		{"maximum", strings.Repeat("A", devicePairingInputBytes), strings.Repeat("A", devicePairingInputBytes), true},
 		{"oversized", strings.Repeat("A", devicePairingInputBytes+1), strings.Repeat("A", devicePairingInputBytes+1), false},
 		{"larger-paste", strings.Repeat("A", 2048), strings.Repeat("A", devicePairingInputBytes+1), false},
-		{"byte-limit", strings.Repeat("密", 400), strings.Repeat("密", 400), false},
+		{"byte-limit", strings.Repeat("密", 600), strings.Repeat("密", 600), false},
+		{"scoped-code", "cicada-npts1.AaZz019_SyNtHeTiC", "cicada-npts1.AaZz019_SyNtHeTiC", true},
+		{"legacy-overflow", "cicada-npt1." + strings.Repeat("A", 1024), "cicada-npt1." + strings.Repeat("A", 1024), false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			editor := newDevicePairingEditor()

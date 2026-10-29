@@ -146,7 +146,7 @@ func (c *nativeController) populateThreadGroups(view *Snapshot) {
 	d.Pending, d.AvailabilityKnown, d.Available = c.hasThreadGroupPending(), g.discoveryTried, g.available
 	d.NativeSelfGroups = g.nativeSelfGroups
 	view.ThreadGroups = d
-	if !c.pairAccountReady() {
+	if !c.ownerAccountReady() {
 		return
 	}
 	node, network := c.threadGroupScope()
@@ -157,7 +157,7 @@ func (c *nativeController) populateThreadGroups(view *Snapshot) {
 		d.ThreadsNextCursor, d.CandidatesCursor, d.CapturedAt, d.FreshUntil, d.Outcome = "", "", "", "", ""
 		d.CandidatesLoaded = false
 	}
-	d.NodeID, d.NetworkID, d.NodeName = node, network, c.nodeConfirmation.Binding.NodeName
+	d.NodeID, d.NetworkID, d.NodeName = node, network, c.selectedNodeBinding().NodeName
 	if p := c.localDomain.state.Description; p != nil && p.Policy.NetworkID == network {
 		d.NetworkName = p.Policy.NetworkName
 	}
@@ -205,14 +205,14 @@ func (c *nativeController) populateThreadGroups(view *Snapshot) {
 		}
 	}
 	view.ThreadGroups = d
-	if c.profileRecoveryRequired || c.storageFault || c.nodePairTrustBusy() || !c.pairAccountReady() || network == "" {
+	if c.profileRecoveryRequired || c.storageFault || c.nodePairTrustBusy() || !c.ownerAccountReady() || network == "" {
 		return
 	}
 	if d.Pending {
 		view.AvailableActions = append(view.AvailableActions, ActionRecoverThreadGroup)
 		return
 	}
-	if !c.pairCanStart() {
+	if !c.ownerOperationCanStart() {
 		return
 	}
 	if !d.AvailabilityKnown || d.Available {

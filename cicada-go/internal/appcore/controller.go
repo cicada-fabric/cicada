@@ -106,6 +106,7 @@ type nativeController struct {
 
 	localDomain  localDomainRuntime
 	threadGroups threadGroupsRuntime
+	scoped       scopedNodesRuntime
 }
 
 func NewController(config Config) (Controller, error) {
@@ -171,6 +172,7 @@ func (c *nativeController) Snapshot() Snapshot {
 	expireLocalCollaborationView(&view, c.cfg.Now().UTC())
 	expireOwnerEndpointView(&view, c.cfg.Now().UTC())
 	expireThreadGroupsView(&view, c.cfg.Now().UTC())
+	expireTargetSelectionView(&view, c.cfg.Now().UTC())
 	return view
 }
 
@@ -213,10 +215,29 @@ func (c *nativeController) Dispatch(ctx context.Context, action Action) (dispatc
 		operationCtx, cancel := context.WithCancel(ctx)
 		stop := context.AfterFunc(c.lifetime, cancel)
 		defer func() { stop(); cancel() }()
+		if c.selectedScopedNode() != nil {
+			return c.refreshScopedNodeAutomatically(operationCtx, *action.AutoNodeStatus)
+		}
 		return c.refreshNodeAutomatically(operationCtx, *action.AutoNodeStatus)
 	}
 	if c.storageFault && action.Kind != ActionConnect && action.Kind != ActionResumeProfile && action.Kind != ActionDiscoverProfiles {
 		return c.fail(PhaseError, "APP_STORAGE_RECOVERY_REQUIRED", errors.New("reconnect to recover encrypted App state"))
+	}
+	if action.Kind == ActionSelectSavedNode {
+		// A local choice performs no discovery, session housekeeping or HTTP.
+		return c.selectSavedNode(action.NodeSelection)
+	}
+	if handled, err := c.dispatchScopedNode(ctx, action); handled {
+		if err == nil {
+			c.snapshotMu.Lock()
+			c.snapshot.ErrorCode = ""
+			c.snapshotMu.Unlock()
+			c.publish()
+		}
+		return err
+	}
+	if c.scopedBusy() && (nodeActionKind(action.Kind) || pairActionKind(action.Kind) || localCollaborationActionKind(action.Kind) || threadGroupActionKind(action.Kind) || ownerEndpointActionKind(action.Kind) || action.AutoNodeStatus != nil) {
+		return ErrInvalidAction
 	}
 	c.snapshotMu.Lock()
 	c.snapshot.ErrorCode = ""

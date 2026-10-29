@@ -12,6 +12,13 @@ import (
 )
 
 func (c *nativeController) initializeNode(ctx context.Context) {
+	if c.scopedBusy() {
+		return
+	}
+	if c.selectedScopedNode() != nil {
+		c.initializeScopedNode(ctx)
+		return
+	}
 	if c.hasThreadGroupPending() {
 		return
 	}
@@ -317,7 +324,10 @@ func (c *nativeController) nodeExistingTargetMatches(g e2ee.OwnerAppNodeGrantCla
 }
 
 func (c *nativeController) acceptNodeCounters(result wire.AppNodeResult, fresh bool) error {
-	got := result.Authority.Counters
+	return c.acceptGlobalNodeCounters(result.Authority.Counters, fresh)
+}
+
+func (c *nativeController) acceptGlobalNodeCounters(got wire.AppNodeClientCounters, fresh bool) error {
 	if !fresh {
 		return nil
 	}
@@ -331,7 +341,7 @@ func (c *nativeController) acceptNodeCounters(result wire.AppNodeResult, fresh b
 		c.node.Client = nodeClientState{Initialized: true, Epoch: got.SessionEpoch, NextRequest: got.LastRequestSequence + 1, NextResponse: got.NextResponseSequence}
 		return nil
 	}
-	if c.observesReservedNodeConfirmation(got) {
+	if c.observesReservedNodeConfirmation(got) || c.observesReservedScopedConfirmation(got) {
 		// A status counter is not the exact original receipt. Preserve the
 		// reserved local slot until the independently opened ACK response.
 		return nil

@@ -521,6 +521,7 @@ func (c *nativeController) publish() {
 	c.populateLocalCollaboration(&view)
 	c.populateOwnerEndpoints(&view)
 	c.populateThreadGroups(&view)
+	c.populateTargetSelection(&view)
 	if !c.profileRecoveryRequired {
 		view.AvailableActions = append(view.AvailableActions, c.nodeActions()...)
 		view.AvailableActions = append(view.AvailableActions, c.pairActions()...)
@@ -536,6 +537,7 @@ func (c *nativeController) publish() {
 		}
 		view.AvailableActions = kept
 	}
+	c.populateScopedNode(&view)
 	if c.storageFault {
 		view.Phase = PhaseError
 		view.Account = AccountSnapshot{State: AccountStateUnknown, RootState: RootStateUnknown}
@@ -651,6 +653,8 @@ func cloneSnapshot(source Snapshot) Snapshot {
 	copy.Node = cloneNodeSnapshot(source.Node)
 	copy.OwnerEndpoints.Endpoints = append([]OwnerEndpointView(nil), source.OwnerEndpoints.Endpoints...)
 	copy.ThreadGroups = cloneThreadGroups(source.ThreadGroups)
+	copy.Targets.Nodes = append([]SavedNodeView(nil), source.Targets.Nodes...)
+	copy.Targets.Networks = append([]SavedNetworkView(nil), source.Targets.Networks...)
 	return copy
 }
 

@@ -485,3 +485,78 @@ inspection keep their existing Core guards. Showing a workspace never adds an
 AvailableAction, renews a grant, proves Root or authorizes a Node operation.
 Portable tests and source review cannot establish Windows GUI, DPAPI or ACL
 behavior; new-artifact physical execution remains NOT_RUN until recorded.
+
+## Node-scoped local custody and selection
+
+The App consumes the separate [Scope2 authority](hub-app-node-scoped-authority-contract.md)
+and [scoped pairing](node-pair-trust-scoped-contract.md) codecs without changing
+the original Scope1 grant, device confirmation or pairing records. Both exact
+capability documents must be available under the independently retained Hub TLS
+descriptor before a new ceremony is persisted or its secret is posted. A scoped
+failure never selects the legacy protocol as a fallback. The device code remains
+one masked, case-preserving native input; Owner proof and capsule generation stay
+inside the App.
+
+The original encrypted vault retains the same Owner and App identities. One
+global Client request/response counter pair serves every Node. Each scoped Node
+has its own authority head, grant, immutable initial confirmation and accepted
+pairing evidence. Its namespace contains the full SHA-256 Node-ID digest encoded
+as lowercase unpadded base32 (`app.ns.<52 characters>.v1`, 62 bytes); this fits the
+existing 64-byte namespace validator without truncating the digest. The local
+directory only selects already authenticated bindings and remembers exact
+Network IDs. Labels, directory rows and cached receipts grant no permission.
+
+There are three shared scoped work slots: ceremony, original and reconciliation.
+An original stores the typed request, exact sealed packet and authenticated
+receipt before effects are applied locally. A compact framed encoding keeps
+packet bytes out of JSON base64 nesting. Reconciliation retains the same original
+and uses the frozen SDK's authenticated exact-receipt or permanent-fence result.
+HTTP errors, missing responses and an unsigned absence cannot discard an unknown
+request. Empty retired slots keep their CAS generations. Successful work can
+retire only after the independent Node record retains the verified ACK and the
+global counters have committed exactly once.
+
+The vault admits at most 32 namespaces: the original 21, including tombstones,
+three shared work slots and up to eight scoped Node slots. The existing 1 MiB
+per-record, 4 MiB encoded payload and 8 MiB file bounds remain unchanged. The
+eight-Node and sixteen-Network directory bounds are upper limits, not a promise
+that all authority histories fit the byte budget. Before HTTP, admission checks
+the vault's actual encoding and the retained originals plus possible receipt,
+reconciliation and Node-state growth. A refusal preserves the exact uncertain
+work and requires neither a new key nor expanded storage limits.
+
+Owner completion alone does not install a Node. Installation requires the
+original Node's private ACK, exact candidate/binding validation and, for INITIAL,
+the independently opened original scoped Client confirmation. A restored ACK
+may finish this App's own durably approved ceremony; a newly arriving expired
+code cannot establish first trust. Restarted reviews need fresh Hub/session
+checks and an explicit new consent gesture. Historical receipts cannot restore
+current permission, lower a known head or reset global counters.
+
+Selecting another saved Node is a local operation and invalidates actionable
+Node, LocalDomain and Group views. Every family of uncertain original, prepared
+review, reserved confirmation and retained unknown read blocks selection and a
+second Node ceremony. A saved Network ID is offered only from a settled,
+Owner-approved authenticated policy; the existing Hub preview checks it again.
+Each Node keeps a separate default Group, even when display names match.
+
+LocalDomain and Owner Endpoint Group requests use the SDK's explicit
+`AppNodeScopedOwnerActor` leaf projection from a freshly authenticated scoped
+context, together with the exact ACKed target binding. This projection does not
+convert a grant, confirmation or NPT scope into Scope1 authority. The original
+finite Pair and legacy Owner directory remain tied to their original binding.
+Finite status authorization is renewed only through a separate exact Owner
+review after a permitted terminal state or changed login; background reads never
+prepare, complete, renew or recover an authorization. Normal Hub capability
+availability, controlled constructor tests, native processes, physical Windows
+and Runtime communication retain their separate acceptance scopes.
+
+Group storage admission checks direct completion, query observation and original
+receipt application as separate phases. After both layers authenticate, the
+exact original receipt is persisted before applying it; a settled query receipt
+can be retired first. The business original and its read-only query remain
+unchanged, so a crash in this transition can repeat the query. An outstanding
+Owner operation may obtain only an exact selected-Node, grant-free authenticated
+context read when needed to sign reconciliation after restart or login. This
+does not admit a second mutation. Hub-Nodes already supplies Group discovery;
+the App integration needs no artificial Group capability override.

@@ -48,6 +48,7 @@ type nodeAuthorityState struct {
 	Diagnostics           *wire.AppNodeReconcileResult `json:"diagnostics,omitempty"`
 	OwnerDirectory        *nodeOperation               `json:"owner_directory,omitempty"`
 	OwnerDirectoryUnknown []ownerEndpointUnknownRecord `json:"owner_directory_unknown,omitempty"`
+	Targets               *localTargetDirectory        `json:"local_targets,omitempty"`
 }
 
 type nodeProposal struct {
@@ -178,6 +179,9 @@ func (c *nativeController) loadNodeState() error {
 		c.node.DeviceKeyID != c.state.DeviceKeyID || c.node.OwnerKeyID != c.state.OwnerKeyID || c.node.HighestHead > math.MaxInt64) {
 		return appvault.ErrScopeMismatch
 	}
+	if err := validateLocalTargets(c.node.Targets); err != nil {
+		return err
+	}
 	if p := c.node.Proposal; p != nil {
 		if p.Prepare.Context.Origin != c.connection.Origin || p.Prepare.Context.HubID != c.connection.HubID ||
 			p.Prepare.Context.AccountID != c.connection.AccountID || p.Prepare.Context.OwnerID != c.connection.OwnerID || p.Prepare.Context.DeviceID != c.state.DeviceID ||
@@ -233,6 +237,14 @@ func (c *nativeController) loadNodeState() error {
 		if err != nil || !verified.OK || verified.Binding == nil || !reflect.DeepEqual(*verified.Binding, confirmation.Binding) {
 			return appvault.ErrScopeMismatch
 		}
+	}
+	// Local selections never redirect the immutable legacy confirmation. A new
+	// Node scope needs the separately reviewed Hub contract before it is usable.
+	if err := c.ensureScopedNodesLoaded(); err != nil {
+		return err
+	}
+	if err := c.validateLegacyTargetSelection(); err != nil {
+		return err
 	}
 	if err := c.restoreOwnerDirectory(); err != nil {
 		return err
@@ -303,6 +315,7 @@ func (c *nativeController) validateNodeStoredPacket(p *nodeOperation) error {
 }
 
 func (c *nativeController) clearNodeRuntime() {
+	c.clearScopedRuntime()
 	c.clearNodePairTrust()
 	operations := []*nodeOperation{c.node.Pending, c.nodeRecovery, c.node.OwnerDirectory}
 	for i := range c.node.OwnerDirectoryUnknown {

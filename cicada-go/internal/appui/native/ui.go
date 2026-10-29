@@ -135,6 +135,7 @@ type view struct {
 	localDomainConsent       widget.Bool
 	localDomainRevokeConsent widget.Bool
 	localDomainNodeID        string
+	localDomainNetworkChoice widget.Enum
 	localDomainReviewID      string
 	localDomainStateReviewID string
 	threadGroupsScope        string

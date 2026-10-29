@@ -137,21 +137,22 @@ type CanvasSnapshot struct {
 // Snapshot contains display-safe state only. It never includes passwords,
 // activation codes, private keys, pending ciphertext, session tokens or proofs.
 type Snapshot struct {
-	Phase            Phase                 `json:"phase"`
-	Hub              HubSnapshot           `json:"hub"`
-	Account          AccountSnapshot       `json:"account"`
-	Management       ManagementState       `json:"management"`
-	Canvas           CanvasSnapshot        `json:"canvas"`
-	AvailableActions []ActionKind          `json:"available_actions"`
-	ErrorCode        string                `json:"error_code,omitempty"`
-	Profiles         []ProfileSnapshot     `json:"profiles,omitempty"`
-	Setup            SetupSnapshot         `json:"setup"`
-	Authorization    AuthorizationSnapshot `json:"authorization"`
-	Node             NodeSetupSnapshot     `json:"node"`
-	Pair             PairSetupSnapshot     `json:"pair"`
-	Storage          StorageSnapshot       `json:"storage"`
-	OwnerEndpoints   OwnerEndpointSnapshot `json:"owner_endpoints"`
-	ThreadGroups     ThreadGroupsSnapshot  `json:"thread_groups"`
+	Phase            Phase                   `json:"phase"`
+	Hub              HubSnapshot             `json:"hub"`
+	Account          AccountSnapshot         `json:"account"`
+	Management       ManagementState         `json:"management"`
+	Canvas           CanvasSnapshot          `json:"canvas"`
+	AvailableActions []ActionKind            `json:"available_actions"`
+	ErrorCode        string                  `json:"error_code,omitempty"`
+	Profiles         []ProfileSnapshot       `json:"profiles,omitempty"`
+	Setup            SetupSnapshot           `json:"setup"`
+	Authorization    AuthorizationSnapshot   `json:"authorization"`
+	Node             NodeSetupSnapshot       `json:"node"`
+	Pair             PairSetupSnapshot       `json:"pair"`
+	Storage          StorageSnapshot         `json:"storage"`
+	OwnerEndpoints   OwnerEndpointSnapshot   `json:"owner_endpoints"`
+	ThreadGroups     ThreadGroupsSnapshot    `json:"thread_groups"`
+	Targets          TargetSelectionSnapshot `json:"targets"`
 
 	LocalCollaboration LocalCollaborationSnapshot `json:"local_collaboration"`
 }
@@ -230,6 +231,7 @@ type Action struct {
 	Pair           PairAction
 	OwnerEndpoints OwnerEndpointReadAction
 	ThreadGroups   ThreadGroupAction
+	NodeSelection  NodeSelectionAction
 
 	LocalCollaboration LocalCollaborationAction
 

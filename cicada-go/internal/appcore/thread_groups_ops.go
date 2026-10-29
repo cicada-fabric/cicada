@@ -11,10 +11,10 @@ import (
 )
 
 func (c *nativeController) threadGroupScope() (string, string) {
-	if c.nodeConfirmation == nil {
+	if c.selectedNodeBinding() == nil {
 		return "", ""
 	}
-	node := c.nodeConfirmation.Binding.NodeID
+	node := c.selectedNodeBinding().NodeID
 	if c.hasThreadGroupPending() && c.threadGroups.original.NodeID == node {
 		return node, c.threadGroups.original.NetworkID
 	}
@@ -25,7 +25,7 @@ func (c *nativeController) threadGroupScope() (string, string) {
 }
 
 func (c *nativeController) threadGroupGesture(value any) string {
-	if !c.pairAccountReady() {
+	if !c.ownerAccountReady() {
 		return ""
 	}
 	node, network := c.threadGroupScope()
@@ -42,7 +42,10 @@ func (c *nativeController) threadGroupGesture(value any) string {
 }
 
 func (c *nativeController) initializeThreadGroups(ctx context.Context) {
-	if c.vault == nil || c.device == nil || c.owner == nil || !c.pairAccountReady() || c.nodePairTrustBusy() {
+	if c.scopedBusy() {
+		return
+	}
+	if c.vault == nil || c.device == nil || c.owner == nil || !c.ownerAccountReady() || c.nodePairTrustBusy() {
 		return
 	}
 	if err := c.ensureThreadGroupsLoaded(); err != nil {
@@ -68,7 +71,7 @@ func (c *nativeController) threadGroupsReady(ctx context.Context) error {
 	if err := c.ensureThreadGroupsLoaded(); err != nil {
 		return c.failStorage("APP_THREAD_GROUP_STORAGE_FAILED", err)
 	}
-	if c.hasThreadGroupPending() || !c.pairCanStart() || c.nodePairTrustBusy() {
+	if c.hasThreadGroupPending() || !c.ownerOperationCanStart() || c.nodePairTrustBusy() {
 		return ErrInvalidAction
 	}
 	_, network := c.threadGroupScope()
@@ -151,7 +154,7 @@ func (c *nativeController) prepareThreadGroup(ctx context.Context, input ThreadG
 	}
 	node, network := c.threadGroupScope()
 	body := wire.OwnerEndpointGroupsPrepareBody{Action: input.Change, NodeID: node, NetworkID: network}
-	binding := c.nodeConfirmation.Binding
+	binding := *c.selectedNodeBinding()
 	seed := &threadGroupRecord{NodeID: node, NetworkID: network, Binding: &binding}
 	if policy := c.localDomain.state.Description; policy != nil {
 		seed.LocalUserScope = policy.Policy.LocalUserScope

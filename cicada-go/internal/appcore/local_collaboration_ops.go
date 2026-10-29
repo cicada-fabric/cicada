@@ -14,13 +14,16 @@ import (
 )
 
 func (c *nativeController) localCollaborationNodeID() string {
-	if c.nodeConfirmation != nil {
-		return c.nodeConfirmation.Binding.NodeID
+	if b := c.selectedNodeBinding(); b != nil {
+		return b.NodeID
 	}
 	return ""
 }
 
 func (c *nativeController) localCollaborationActor(ctx context.Context) (e2ee.OwnerAppNodeScope, error) {
+	if c.selectedScopedNode() != nil {
+		return c.scopedOwnerActor(ctx)
+	}
 	if !c.nodeAccountReady() {
 		return e2ee.OwnerAppNodeScope{}, ErrInvalidAction
 	}
@@ -46,7 +49,7 @@ func (c *nativeController) localCollaborationReady(ctx context.Context) error {
 	if err := c.ensureLocalDomainLoaded(); err != nil {
 		return err
 	}
-	if c.hasLocalDomainPending() || c.hasThreadGroupPending() || c.hasPairPending() || c.hasNodePending() || !canBeginOperation(c.state.Pending) || c.state.Recovery != nil || !c.nodeAccountReady() || c.localCollaborationNodeID() == "" {
+	if c.scopedBusy() || c.hasLocalDomainPending() || c.hasThreadGroupPending() || c.hasPairPending() || c.hasNodePending() || !canBeginOperation(c.state.Pending) || c.state.Recovery != nil || !c.nodeAccountReady() || c.localCollaborationNodeID() == "" {
 		return ErrInvalidAction
 	}
 	if !c.localDomain.discoveryTried {
@@ -63,6 +66,9 @@ func (c *nativeController) localCollaborationReady(ctx context.Context) error {
 }
 
 func (c *nativeController) initializeLocalCollaboration(ctx context.Context) {
+	if c.scopedBusy() {
+		return
+	}
 	if c.hasThreadGroupPending() {
 		return
 	}
@@ -98,6 +104,17 @@ func (c *nativeController) prepareLocalCollaboration(ctx context.Context, input 
 	if !view.Current || view.NodeID != c.localCollaborationNodeID() || (view.State != "UNCONFIGURED" && view.State != wire.LocalDomainExpired && view.State != wire.LocalDomainRevoked) || input.ExpiresInHours > 365*24 {
 		return ErrInvalidAction
 	}
+	if input.NetworkID != "" {
+		// A saved label only offers an exact lookup target. The authenticated
+		// Hub preview below must still recheck its live ownership and state.
+		known := false
+		for _, n := range c.localTargets().Networks {
+			known = known || n.NetworkID == input.NetworkID
+		}
+		if !known || input.NewNetworkName != "" {
+			return ErrInvalidAction
+		}
+	}
 	scope, err := c.localCollaborationActor(ctx)
 	if err != nil {
 		return err
@@ -106,7 +123,7 @@ func (c *nativeController) prepareLocalCollaboration(ctx context.Context, input 
 	if input.ExpiresInHours != 0 {
 		end = c.cfg.Now().UTC().Add(time.Duration(input.ExpiresInHours) * time.Hour).Format(time.RFC3339Nano)
 	}
-	target := e2ee.LocalDomainTarget{Node: c.nodeConfirmation.Binding, NetworkID: input.NetworkID, NewNetworkName: input.NewNetworkName, GroupName: input.GroupName, ExpiresAt: end}
+	target := e2ee.LocalDomainTarget{Node: *c.selectedNodeBinding(), NetworkID: input.NetworkID, NewNetworkName: input.NewNetworkName, GroupName: input.GroupName, ExpiresAt: end}
 	owner, err := c.owner.E2EE()
 	if err != nil {
 		return err
@@ -288,11 +305,25 @@ func (c *nativeController) restoreLocalCollaborationReview(description *wire.Loc
 	if err != nil {
 		return err
 	}
-	if c.node.Context == nil || c.session == nil {
+	if c.session == nil {
 		return nil
 	}
-	actor := c.node.Context.Authority.Scope
-	actor.HeadVersion = 0
+	var actor e2ee.OwnerAppNodeScope
+	if n := c.selectedScopedNode(); n != nil {
+		if n.Context == nil || c.scoped.fresh[n.NodeID] != sessionTokenDigest(c.session.SessionToken) || !c.scopedScopeMatches(n.Context.Authority.Scope, true) {
+			return nil
+		}
+		actor, err = wire.AppNodeScopedOwnerActor(n.Context.Authority.Scope, c.hub)
+		if err != nil {
+			return err
+		}
+	} else {
+		if c.node.Context == nil {
+			return nil
+		}
+		actor = c.node.Context.Authority.Scope
+		actor.HeadVersion = 0
+	}
 	if !reflect.DeepEqual(actor, claims.Scope) {
 		return nil
 	}

@@ -33,7 +33,9 @@ const (
 	maxVaultPlainBytes = 4 << 20
 	maxIdentityBytes   = 64 << 10
 	maxStateBytes      = 1 << 20
-	maxStateRecords    = 21
+	// Legacy 21 including tombstones, three shared scoped work records,
+	// and at most eight Node records. Existing byte ceilings still apply.
+	maxStateRecords    = 32
 	maxVaultEntries    = 2
 	maxScopeText       = 256
 	maxWrappedKeyBytes = 4096

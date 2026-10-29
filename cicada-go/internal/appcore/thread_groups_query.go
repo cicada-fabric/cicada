@@ -34,7 +34,7 @@ func (c *nativeController) refreshThreadGroupQuerySession(ctx context.Context) e
 	if bytes.Equal(token, c.session.SessionToken) {
 		return nil // No local timeout or HTTP error can manufacture a new login.
 	}
-	if !c.pairAccountReady() || !c.sessionInspected || c.sessionNeedsCheck {
+	if !c.ownerAccountReady() || !c.sessionInspected || c.sessionNeedsCheck {
 		return ErrInvalidAction
 	}
 	_, proof := threadGroupRequestParts(request)
@@ -44,13 +44,15 @@ func (c *nativeController) refreshThreadGroupQuerySession(ctx context.Context) e
 	}
 	// Always authenticate a current authority scope, even if two logins happen
 	// to have the same deadline. Only session ID and expiry may differ here.
-	if !c.nodeAvailable {
-		if err := c.discoverNodeAvailability(ctx); err != nil {
+	if c.selectedScopedNode() == nil {
+		if !c.nodeAvailable {
+			if err := c.discoverNodeAvailability(ctx); err != nil {
+				return err
+			}
+		}
+		if err := c.refreshNodeContext(ctx); err != nil {
 			return err
 		}
-	}
-	if err := c.refreshNodeContext(ctx); err != nil {
-		return err
 	}
 	scope, err := c.localCollaborationActor(ctx)
 	if err != nil {

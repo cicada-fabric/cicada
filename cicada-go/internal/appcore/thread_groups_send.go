@@ -26,55 +26,102 @@ func threadGroupResponseRecord(request *threadGroupRecord, packet []byte) *threa
 		CreatedAt: "2026-10-26T00:00:00.999999999Z", Packet: packet}
 }
 
-// Reserve space for the exact original, its largest legal response and a real
-// PQ recovery request plus the bounded recovery response. Reserve bytes carry
-// no credentials/authority and are never persisted as protocol responses.
+// Direct completion, a query receipt and application of its verified original
+// are different durable phases. The query is an observation, not the business
+// original; its receipt need not coexist with the separately authenticated
+// original receipt. Every phase still checks the actual unchanged vault bounds.
 func (c *nativeController) threadGroupBudget(record, recovery *threadGroupRecord) error {
-	updates := make(map[int][]byte)
-	defer func() {
+	current := c.threadGroups.original != nil && bytes.Equal(c.threadGroups.original.Packet, record.Packet)
+	for phase := 0; phase < 3; phase++ {
+		if phase == 0 && current && c.threadGroups.recovery != nil {
+			continue
+		}
+		updates, err := c.threadGroupBudgetPhase(record, recovery, phase, current)
+		if err != nil {
+			return err
+		}
+		err = c.preflightThreadGroups(updates)
 		for _, raw := range updates {
 			clear(raw)
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *nativeController) threadGroupBudgetPhase(record, recovery *threadGroupRecord, phase int, current bool) (map[int][]byte, error) {
+	updates := make(map[int][]byte)
+	ok := false
+	defer func() {
+		if !ok {
+			for _, raw := range updates {
+				clear(raw)
+			}
 		}
 	}()
 	var err error
 	updates[threadGroupOriginal], err = encodeThreadGroupRecord(record)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	responseReserve := threadGroupResponseRecord(record, make([]byte, wire.MaxOwnerEndpointGroupsPacketBytes))
-	defer clear(responseReserve.Packet)
-	updates[threadGroupResponse], err = encodeThreadGroupRecord(responseReserve)
-	if err != nil {
-		return err
-	}
-	updates[threadGroupRecovery], err = encodeThreadGroupRecord(recovery)
-	if err != nil {
-		return err
-	}
-	// The retained target/keys are fixed. This bounds growth of canonical UTC
-	// strings and uint64 authority coordinates in a later fresh login wrapper;
-	// no authorization bytes from this reservation are written or transmitted.
-	updates[threadGroupRecovery] = append(updates[threadGroupRecovery], make([]byte, 4096)...)
-	recoveryReserve := threadGroupResponseRecord(recovery, make([]byte, wire.MaxOwnerEndpointGroupsReconcilePacketBytes))
-	defer clear(recoveryReserve.Packet)
-	updates[threadGroupRecoveryResponse], err = encodeThreadGroupRecord(recoveryReserve)
-	if err != nil {
-		return err
-	}
-	if record.Route.Operation == wire.OperationOwnerEndpointGroupsPrepare {
-		updates[threadGroupState], err = c.threadGroupReviewBytes(record, responseReserve)
-	} else if record.Route.Operation == wire.OperationOwnerEndpointGroupsApply {
-		// The exact verified review is already embedded in the new apply
-		// record. Its settled prepare packets can be released after that
-		// apply record commits, before any POST.
-		updates[threadGroupState], err = c.threadGroupReviewBytes(nil, nil)
+	response := threadGroupResponseRecord(record, make([]byte, wire.MaxOwnerEndpointGroupsPacketBytes))
+	defer clear(response.Packet)
+	if phase != 1 {
+		updates[threadGroupResponse], err = encodeThreadGroupRecord(response)
+	} else if current && c.threadGroups.response != nil {
+		updates[threadGroupResponse], err = encodeThreadGroupRecord(c.threadGroups.response)
 	} else {
-		updates[threadGroupState], err = c.threadGroupReviewBytes(c.threadGroups.reviewOriginal, c.threadGroups.reviewResponse)
+		updates[threadGroupResponse] = nil
 	}
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return c.preflightThreadGroups(updates)
+	updates[threadGroupRecovery], updates[threadGroupRecoveryResponse] = nil, nil
+	if phase != 0 {
+		updates[threadGroupRecovery], err = encodeThreadGroupRecord(recovery)
+		if err != nil {
+			return nil, err
+		}
+		// A later authenticated login can grow its canonical time/epoch wrapper;
+		// this reserve is never transmitted or treated as an authority response.
+		updates[threadGroupRecovery] = append(updates[threadGroupRecovery], make([]byte, 4096)...)
+	}
+	if phase == 1 {
+		outer := threadGroupResponseRecord(recovery, make([]byte, wire.MaxOwnerEndpointGroupsReconcilePacketBytes))
+		updates[threadGroupRecoveryResponse], err = encodeThreadGroupRecord(outer)
+		clear(outer.Packet)
+		if err != nil {
+			return nil, err
+		}
+	}
+	prior, err := c.threadGroupReviewBytes(c.threadGroups.reviewOriginal, c.threadGroups.reviewResponse)
+	if err != nil {
+		return nil, err
+	}
+	updates[threadGroupState] = prior
+	if phase != 1 {
+		var next []byte
+		if record.Route.Operation == wire.OperationOwnerEndpointGroupsPrepare {
+			next, err = c.threadGroupReviewBytes(record, response)
+		} else if record.Route.Operation == wire.OperationOwnerEndpointGroupsApply {
+			next, err = c.threadGroupReviewBytes(nil, nil)
+		}
+		if err != nil {
+			return nil, err
+		}
+		// The previous review remains until the new original has committed. Cover
+		// that transition too, including replacement by a smaller final review.
+		if len(next) > len(prior) {
+			clear(prior)
+			updates[threadGroupState] = next
+		} else {
+			clear(next)
+		}
+	}
+	ok = true
+	return updates, nil
 }
 
 func (c *nativeController) makeThreadGroupRecovery(record *threadGroupRecord, scope e2ee.OwnerAppNodeScope) (*threadGroupRecord, error) {
@@ -191,7 +238,7 @@ func (c *nativeController) finishThreadGroup(record *threadGroupRecord, result *
 }
 
 func (c *nativeController) threadGroupRequestCurrent(record *threadGroupRecord) bool {
-	if !c.pairAccountReady() || record.NodeID != c.nodeConfirmation.Binding.NodeID {
+	if !c.ownerAccountReady() || record.NodeID != c.selectedNodeBinding().NodeID {
 		return false
 	}
 	request, err := c.threadGroupDTO(record, nil)
