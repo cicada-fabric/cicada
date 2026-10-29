@@ -124,7 +124,7 @@ func appNodeHead(tx *sql.Tx, owner, device string) (hubAppNodeHead, error) {
 func appNodeGrant(tx *sql.Tx, owner, device, id string) (*hubAppNodeGrant, error) {
 	var g hubAppNodeGrant
 	var raw string
-	err := tx.QueryRow(`SELECT claims_json,state,reason,remaining,provenance_id FROM hub_app_node_grants_v1 WHERE owner_id=? AND device_id=? AND grant_id=?`, owner, device, id).Scan(&raw, &g.state, &g.reason, &g.remaining, &g.provenance)
+	err := tx.QueryRow(`SELECT claims_json,state,reason,remaining,provenance_id FROM hub_app_node_grants_v1 WHERE authority_kind='LEGACY_V1' AND owner_id=? AND device_id=? AND grant_id=?`, owner, device, id).Scan(&raw, &g.state, &g.reason, &g.remaining, &g.provenance)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -167,7 +167,10 @@ func appNodeEffectiveState(tx *sql.Tx, a *hubAppNodeActor, g *hubAppNodeGrant, a
 // Refresh only removes authority. It preserves the published head/provenance
 // and never turns a terminal row into active authority after another login.
 func appNodeRefresh(tx *sql.Tx, a *hubAppNodeActor, at time.Time) error {
-	rows, err := tx.Query(`SELECT grant_id FROM hub_app_node_grants_v1 WHERE owner_id=? AND device_id=? AND state IN('PREPARED','ACTIVE')`, a.scope.OwnerID, a.scope.DeviceID)
+	if err := appNodeScopedRefreshAll(tx, a, at); err != nil {
+		return err
+	}
+	rows, err := tx.Query(`SELECT grant_id FROM hub_app_node_grants_v1 WHERE authority_kind='LEGACY_V1' AND owner_id=? AND device_id=? AND state IN('PREPARED','ACTIVE')`, a.scope.OwnerID, a.scope.DeviceID)
 	if err != nil {
 		return err
 	}

@@ -126,7 +126,7 @@ func TestHubForwardSuccessiveHandoverPreservesOriginalHoldsAndExactPriorRecord(t
 	if _, e = BackupStateDir(source, base); e != nil {
 		t.Fatal(e)
 	}
-	db, e := New(filepath.Join(source, stateDatabaseName))
+	db, e := openSyntheticHubForwardStore(t, filepath.Join(source, stateDatabaseName))
 	if e != nil {
 		t.Fatal(e)
 	}

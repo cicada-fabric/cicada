@@ -21,7 +21,7 @@ const (
 	// CurrentV2SchemaVersion is the highest versioned migration installed by
 	// Store initialization.  It is intentionally independent of the product
 	// version so a binary can refuse a ledger with a changed definition.
-	CurrentV2SchemaVersion = 69
+	CurrentV2SchemaVersion = 70
 
 	v2MigrationRunning = "running"
 	v2MigrationApplied = "applied"
@@ -572,6 +572,7 @@ var v2Migrations = []v2Migration{
 	{Version: 67, ID: "v1.hub.native_tls", Description: "retain immutable public native TLS binding without changing account or Owner authority", Objects: []string{"hub_native_tls_v1", "hub_native_tls_v1_no_delete", "hub_native_tls_v1_no_update"}, Apply: func(s *Store) error { return s.initializeHubNativeTLSSchema() }},
 	{Version: 68, ID: "v1.hub.node_pair_trust", Description: "retain independently proved Node Owner trust, ACK-gated original bindings and reserved exact Client counters", Objects: nodePairTrustSchemaObjects, Apply: func(s *Store) error { return s.initializeHubNodePairTrustSchema() }},
 	{Version:69,ID:"v1.hub.endpoint_groups",Description:"retain original native registrations, permanent Owner control and exact scoped Group delegation/receipts",Objects:endpointGroupsSchemaObjects(),Apply:func(s *Store)error{return s.initializeHubEndpointGroupsSchema()}},
+	{Version: 70, ID: "v1.hub.app_node_scoped", Description: "add exact Node authority namespaces and immutable per-Node heads while preserving shared original counters and pending slots", Objects: appNodeScopedSchemaObjects, Apply: func(s *Store) error { return s.initializeHubAppNodeScopedSchema() }},
 }
 
 // legacyInventoryColumns selects stable columns from the pre-v2 authority

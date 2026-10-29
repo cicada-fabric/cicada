@@ -49,7 +49,7 @@ type nodePairTrustRecord struct {
 
 func nodePairLoad(tx *sql.Tx, id string) (*nodePairTrustRecord, error) {
 	var raw string
-	err := tx.QueryRow(`SELECT record_json FROM hub_node_pair_trust_v1 WHERE attempt_id=?`, id).Scan(&raw)
+	err := tx.QueryRow(`SELECT record_json FROM hub_node_pair_trust_v1 WHERE authority_kind='LEGACY_V1' AND attempt_id=?`, id).Scan(&raw)
 	if err != nil {
 		return nil, err
 	}

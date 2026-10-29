@@ -62,6 +62,9 @@ func (h *hubNodesHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if h.nodePairTrust(w, r) {
 		return
 	}
+	if h.nodePairTrustScoped(w, r) {
+		return
+	}
 	if path == wire.LocalDomainCapabilitiesPath {
 		if r.Method != http.MethodGet {
 			writeError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
@@ -117,14 +120,20 @@ func (h *hubNodesHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
 			return
 		}
-		caps, err := h.account.AppNodeCapabilities()
+		var metadata any
+		var err error
+		if path == wire.NodePairTrustScopedCapabilitiesPath {
+			if r.URL.RawQuery != "" || r.ContentLength != 0 || len(r.TransferEncoding) != 0 || !hubauth.NodePairTrustCredentialsAbsent(r.Header.Get("Authorization"), r.Header.Get("Cookie")) {
+				writeError(w, http.StatusBadRequest, errors.New("public Node pairing metadata request rejected"))
+				return
+			}
+			metadata, err = h.account.NodePairTrustScopedCapabilities()
+		} else {
+			metadata, err = h.account.AppNodeScopedCapabilities()
+		}
 		if err != nil {
 			writeError(w, http.StatusServiceUnavailable, errors.New("Hub Node metadata unavailable"))
 			return
-		}
-		var metadata any = wire.AppNodeScopedContractCapabilities(caps.TransportPolicy)
-		if path == wire.NodePairTrustScopedCapabilitiesPath {
-			metadata = wire.NodePairTrustScopedContractCapabilities()
 		}
 		raw, err := json.Marshal(metadata)
 		if err != nil || len(raw) > wire.MaxAppNodeScopedCapabilitiesBytes {
@@ -134,6 +143,14 @@ func (h *hubNodesHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write(raw)
 		return
+	}
+	if h.account.ScopedNodeAuthorityEnabled() {
+		for _, op := range wire.AppNodeScopedHTTPOperations() {
+			if path == wire.AppNodeScopedHTTPPath(op) {
+				h.base.hubAccount(w, r, op)
+				return
+			}
+		}
 	}
 	if path == wire.AppNodeCapabilitiesPath {
 		if r.Method != http.MethodGet {

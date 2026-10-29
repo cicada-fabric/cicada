@@ -1,4 +1,123 @@
-# Node-scoped App/NPT shared codec validation
+# Node-scoped App/NPT producer validation
+
+## 2026-10-29 disabled Hub carrier checkpoint
+
+The Hub producer now implements the frozen Scope2 authority and NPT contracts
+behind an explicit Go composition opt-in. The normal Hub constructor, Hub CLI
+and both public availability defaults remain **false**. No deployment, CLI
+enable flag, App implementation or Node consumer is changed here. The existing
+wire version 1, operation catalog 55 and software version 0.0.5 are unchanged.
+
+Migration **70** adds immutable `LEGACY_V1`/`NODE_V1` grant and NPT metadata,
+exact `(Owner, App, Node)` heads and a writer guard. It leaves existing claims,
+Owner proofs, original receipts, legacy heads/provenance, account/Owner/App/Node
+identities, public keys and security epochs intact. There is no legacy proof
+conversion or backfill of scoped authority. The original App request/response
+counters, one PREPARED proposal, NPT RESERVED slot, nonce/history ledgers and
+bounded anonymous/read/critical budgets remain shared across namespaces.
+
+Authentication reuses the existing completed N2 provenance, current account
+session, registered App key and Owner proof services. Password login alone
+still produces no Root authority. INITIAL keeps its 15-minute lease and one
+confirmation; READ_EXISTING keeps zero confirmations and the original binding
+provenance. A new namespace cannot revive confirmed or revoked history. Exact
+same-namespace unconfirmed expiry/self-cancel continuation remains possible.
+Only the original Node's private ACK commits its original confirmation, binding,
+global counter movement and both sealed receipts in one transaction.
+
+The per-Node SQL writes require the exact Node/head/grant and one affected row.
+Historical receipt recovery checks the authenticated original Node before any
+cache/fence and remains possible after a later same-Node cancellation. A code
+status whose anonymous candidate was actually collected may settle only as
+READ_EXPIRED without an original receipt; other database errors fail closed.
+
+Source/evidence root:
+`/home/zyf/Cicada/.local/evidence/app-node-scoped-carrier-20261029-01/`.
+This is a dirty producer build based on
+`dceb77716ed936a2fe87cf9928549b026d0c1501`, not a HEAD-only attribution.
+`tested-source-manifest-v1.json` SHA-256
+`87456ca1b3f8e22f6dc811cfc337bb76e5943569a70dad662e8e07401d1ba1b7`
+pins the broad regression and first Docker gate. The final GC read correction
+changes exactly two Store files and one Store test file, recorded by
+`tested-source-manifest-v2.json` SHA-256
+`abf6707edd4cb43caae6fa016581d9cbd66d14cb3116411fca5d3c304532b38c`.
+The affected normal/race/final Docker gates use v2. Later changes touch only
+five pre-existing Store test files for historical schema fixtures, plus this
+validation and README. Production Go source and the selected race/Docker test
+bodies remain identical to v2; these test-only changes are separately recorded
+in the final checkpoint review inventory.
+
+The final gate receipt below records package terminals and skips. Earlier
+development logs, the first single-TLS helper failure and the interrupted
+normal/race harness runs are retained under the same evidence root; none is
+silently promoted to a completed gate.
+
+| Gate and exact source | Top-level results | Package terminal / exit |
+| --- | --- | --- |
+| Broad normal, v1 inventory | 778 PASS, **19 FAIL**, **10 SKIP** | Store FAIL 879.155s; Server PASS 265.616s; Hubauth PASS 1.514s; wrapper **1** |
+| First fixture correction plus GC read, v2 production + two old test fixtures | **7 PASS**, zero FAIL/SKIP | Store PASS 7.360s; wrapper 0 |
+| Remaining historical forward fixtures, v2 production + three old test fixtures | **13 PASS**, zero FAIL/SKIP | Store PASS 44.005s; wrapper 0 |
+| Final affected GC read and actual two-Node TLS normal, v2 inventory | **2 PASS**, zero FAIL/SKIP | Store PASS 0.839s; Server PASS 10.360s; wrapper 0 |
+| Final selected race, v2 inventory | **6 PASS**, zero FAIL/SKIP | Store PASS 140.836s; Server PASS 40.800s; wrapper 0 |
+| First disposable Docker, v1 inventory | **43 PASS**, zero FAIL/SKIP | Store PASS 61.831s; Server PASS 16.980s; container exit 0 |
+| Final affected disposable Docker, v2 inventory | **3 PASS**, zero FAIL/SKIP | Store PASS 2.166s; Server PASS 10.362s; container exit 0 |
+
+The broad normal run retains its FAIL terminal. Five migration tests expected a
+ledger ending at 69; one TLS backup and thirteen forward-restore tests opened a
+current database while asserting the older restore boundary. The fixes add the
+70 ledger expectation and reconstruct real empty schema-68 DDL only in private
+historical fixtures. Their opener refuses any scoped/NPT or newer Group
+authority before removing test DDL. All nineteen original failing tests then
+pass in the two targeted runs above; this is not a rerun or PASS relabel of the
+full suite. Their old restore business assertions remain intact. Three Store
+physical-bind checks and seven Server external Docker/native-fixture checks
+skip in the broad run; none counts as a pass. Exact names and package counts
+are retained in `full-normal-v2-receipt.json`, SHA-256
+`bc9b16abe48a0bca6a6568718c24d937d69a27a809edaf1188f88add026451f9`.
+
+Final normal/race receipts and hashes are in
+`completed-targeted-gates-receipt.json`, SHA-256
+`d84200e8807aca2f47348ed20726b890f16f16e4b7d957f5fdfb56b79d193f7e`.
+The thirteen historical schema-68 checks have their separate
+`historical-restore-receipt.json`, SHA-256
+`67d533aa3fd71b36de16580bebcbcea0748ce3d1a3fd7ec8b60aa3042f8a29d4`.
+Exact host commands are retained in `host-commands.json` and
+`historical-restore-command.json`. No unrelated full-suite repeat follows the
+fixture corrections.
+
+Both Docker gates use immutable image
+`sha256:5c3e9b43cfd3bb95c7937462e29d87ada57b481a96fa23ad0eb61778d7a00110`,
+Go 1.27.3, network disabled, UID/GID 1000, read-only source/root/module cache,
+disposable tmpfs and an existing build cache. Exact commands, source inventory,
+test binary hashes, logs and exit/cleanup receipts remain under `docker/` and
+`docker-v2/`. Both owned containers are absent afterward. Final Docker receipt
+SHA-256 is `44cd7ac8b7bd8a3eb7c0c7fcf0f38d2927f9c8bf33bca02e998b379553e9d789`.
+The joint Python metadata check and `git diff --check` pass; no public contract
+or default availability is changed by this carrier checkpoint.
+
+Real TLS qualification uses an isolated Go Hub handler, an actually activated
+Owner/account/App and two independent synthetic Node keys. Both Nodes complete
+separate Owner approval, local-secret/private ACK and original receipt recovery
+with shared Client sequences 1 then 2. It checks cross-Node cached authority and
+Client reconciliation rejection, unadmitted read rejection in the wrong Node,
+same-Node recovery after cancellation and cancellation of A leaving B active.
+This is not the shipped Hub CLI, an App Runtime, a Node daemon or a Network/Group
+acceptance run. The Store fixtures exercise restart/rollback, concurrent head
+CAS, namespace and candidate-version fences, shared PREPARED/RESERVED guards,
+READ_EXISTING, five security fences and actual anonymous GC read settlement.
+Account/account-device epoch cases explicitly mutate synthetic persisted test
+epochs; Owner-key/device revocation and Client epoch changes use existing Store
+operations.
+
+Database process reopen is covered separately from backup/restore: schema 70
+restore remains **UNSUPPORTED** by the retained reviewed restore-version pin;
+the test verifies refusal and does not claim successful restoration. Actual
+App + two Node daemons + existing Network/Group, shipped CLI scoped enablement,
+native Runtime, physical Windows, Android and public HTTPS remain **NOT_RUN**
+for this producer checkpoint. Combined consumer review must precede availability
+enablement; public discovery is not caller authorization.
+
+## Earlier shared codec checkpoint
 
 2026-10-29 producer checkpoint, **CODEC_ONLY_UNAVAILABLE**. Contracts:
 [finite authority](hub-app-node-scoped-authority-contract.md) and

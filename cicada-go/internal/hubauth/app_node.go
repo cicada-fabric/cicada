@@ -28,6 +28,7 @@ func NewServiceWithNodeAuthority(db *store.Store, ids hubidentity.Set) (*Service
 		return nil, err
 	}
 	s.appNodeAuthority = true
+	s.appNodeScopedAuthority = wire.AppNodeScopedPublicAvailable
 	return s, nil
 }
 
@@ -227,6 +228,9 @@ func (s *Service) HandleAppNodeClient(ctx context.Context, raw []byte) ([]byte, 
 	var p clientwire.Packet
 	if json.Unmarshal(raw, &p) != nil {
 		return nil, ErrAuthentication
+	}
+	if _, _, e := wire.ParseAppNodeScopedBusinessOperationID(p.Route.OperationID); e == nil {
+		return s.HandleAppNodeScopedClient(ctx, raw)
 	}
 	device, err := s.db.GetClientDevice(p.Route.OwnerID, p.Route.DeviceID)
 	if err != nil {

@@ -138,6 +138,20 @@ func nodePairApply(tx *sql.Tx, in HubNodePairTrustInput, r *nodePairTrustRecord)
 
 func nodePairPrepare(tx *sql.Tx, in HubNodePairTrustInput, r *nodePairTrustRecord) error {
 	b := in.Body.(wire.NodePairTrustOwnerPrepare)
+	actor, err := appNodeActor(tx, in.Hub, b.Scope.DeviceID, b.Scope.DevicePublic, b.SessionToken, in.At)
+	if err != nil {
+		return ErrNodePairTrustRejected
+	}
+	if err := appNodeRefresh(tx, actor, in.At); err != nil {
+		return err
+	}
+	var pending int
+	if err := tx.QueryRow(`SELECT count(*) FROM hub_app_node_grants_v1 WHERE owner_id=? AND device_id=? AND state='PREPARED'`, b.Scope.OwnerID, b.Scope.DeviceID).Scan(&pending); err != nil {
+		return err
+	}
+	if pending != 0 {
+		return ErrNodePairTrustACKRequired
+	}
 	if r.Context.Mode == wire.NodePairTrustExisting {
 		if err := nodePairExisting(tx, r.Context); err != nil {
 			return err

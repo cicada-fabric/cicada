@@ -100,6 +100,16 @@ func TestHubNativeTLSBackupPreservesPinAndBundleButRestoreStaysHeld(t *testing.T
 	if err := s.BindHubNativeTLSLocal(p.DescriptorText()); err != nil {
 		t.Fatal(err)
 	}
+	// Exercise the retained empty-v68 restore boundary with real historical
+	// DDL. Current v70 coverage stays unsupported in its separate test.
+	dropSyntheticAppNodeScopedMigration70(t, s)
+	objects := endpointGroupsSchemaObjects()
+	for i := len(objects) - 1; i >= 0; i-- {
+		dropSyntheticMigrationObject(t, s.db, objects[i])
+	}
+	if _, err := s.db.Exec(`DELETE FROM schema_migrations_v2 WHERE version=69`); err != nil {
+		t.Fatal(err)
+	}
 	if err := s.Close(); err != nil {
 		t.Fatal(err)
 	}

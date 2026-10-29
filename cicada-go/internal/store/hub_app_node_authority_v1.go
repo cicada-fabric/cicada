@@ -318,6 +318,9 @@ func appNodeAuthority(tx *sql.Tx, a *hubAppNodeActor, in HubAppNodeAuthorityInpu
 	if a.session == nil {
 		return reject("SESSION_REQUIRED")
 	}
+	if err := nodePairClientSlotGuardTx(tx, c.OwnerID, c.DeviceID, a.counters.SessionEpoch); err != nil {
+		return reject("AUTHORITY_CONFLICT")
+	}
 	h, err := appNodeHead(tx, c.OwnerID, c.DeviceID)
 	if err != nil {
 		return nil, err
@@ -371,6 +374,17 @@ func appNodeAuthority(tx *sql.Tx, a *hubAppNodeActor, in HubAppNodeAuthorityInpu
 			n, e := appNodeCandidate(tx, code, in.Hub, in.NodeControlPublic, in.At)
 			if e != nil {
 				return reject("CANDIDATE_UNAVAILABLE")
+			}
+			allowed, e := appNodeCandidateNamespaceAllowed(tx, n, "LEGACY_V1")
+			if e != nil || !allowed {
+				return reject("CANDIDATE_UNAVAILABLE")
+			}
+			allowed, e = appNodeInitialNamespaceAllowed(tx, c.OwnerID, c.DeviceID, n.NodeID, "LEGACY_V1")
+			if e != nil {
+				return nil, e
+			}
+			if !allowed {
+				return reject("AUTHORITY_CONFLICT")
 			}
 			claims.Purpose, claims.Profile, claims.Candidate, claims.ConfirmationLimit, claims.AllowedOperations = e2ee.OwnerAppNodeGrantPurpose, wire.AppNodeProfileInitial, n, 1, wire.AppNodeAllowedOperations()
 			end, _ := time.Parse(time.RFC3339Nano, n.ExpiresAt)
@@ -435,7 +449,7 @@ func appNodeAuthority(tx *sql.Tx, a *hubAppNodeActor, in HubAppNodeAuthorityInpu
 				return reject("CANDIDATE_CHANGED")
 			}
 		}
-		if _, e = tx.Exec(`UPDATE hub_app_node_grants_v1 SET state='REVOKED',reason='SUPERSEDED' WHERE owner_id=? AND device_id=? AND state='ACTIVE'`, c.OwnerID, c.DeviceID); e != nil {
+		if _, e = tx.Exec(`UPDATE hub_app_node_grants_v1 SET state='REVOKED',reason='SUPERSEDED' WHERE authority_kind='LEGACY_V1' AND owner_id=? AND device_id=? AND state='ACTIVE'`, c.OwnerID, c.DeviceID); e != nil {
 			return nil, e
 		}
 		if _, e = tx.Exec(`UPDATE hub_app_node_grants_v1 SET state='ACTIVE',owner_proof=? WHERE grant_id=? AND state='PREPARED'`, req.OwnerGrant, claims.GrantID); e != nil {
@@ -462,7 +476,7 @@ func appNodeAuthority(tx *sql.Tx, a *hubAppNodeActor, in HubAppNodeAuthorityInpu
 			if _, e = tx.Exec(`UPDATE hub_app_node_heads_v1 SET head_version=head_version+1 WHERE owner_id=? AND device_id=? AND head_version=?`, c.OwnerID, c.DeviceID, h.version); e != nil {
 				return nil, e
 			}
-			if _, e = tx.Exec(`UPDATE hub_app_node_grants_v1 SET state='CANCELLED',reason='HEAD_CANCELLED' WHERE owner_id=? AND device_id=? AND state='PREPARED'`, c.OwnerID, c.DeviceID); e != nil {
+			if _, e = tx.Exec(`UPDATE hub_app_node_grants_v1 SET state='CANCELLED',reason='HEAD_CANCELLED' WHERE authority_kind='LEGACY_V1' AND owner_id=? AND device_id=? AND state='PREPARED'`, c.OwnerID, c.DeviceID); e != nil {
 				return nil, e
 			}
 		}

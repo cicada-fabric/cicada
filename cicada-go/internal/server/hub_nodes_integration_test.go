@@ -70,6 +70,12 @@ func newHubNodesTCPFixture(t *testing.T) *hubAccountTCPFixture {
 
 func n3HTTP(t *testing.T, f *hubAccountTCPFixture, method, path, token string, raw []byte) (int, []byte) {
 	t.Helper()
+	scopedAuthority := false
+	for _, op := range wire.AppNodeScopedHTTPOperations() {
+		if wire.AppNodeScopedHTTPPath(op) == path {
+			scopedAuthority = true
+		}
+	}
 	for attempt := 0; attempt < 100; attempt++ {
 		r, err := http.NewRequest(method, f.http.URL+path, bytes.NewReader(raw))
 		if err != nil {
@@ -93,7 +99,7 @@ func n3HTTP(t *testing.T, f *hubAccountTCPFixture, method, path, token string, r
 		if err != nil {
 			t.Fatal(err)
 		}
-		if response.StatusCode == http.StatusTooManyRequests || (response.StatusCode == http.StatusServiceUnavailable && wire.NodePairTrustHTTPPath(hubauth.NodePairTrustOperationForPath(path)) == path) {
+		if response.StatusCode == http.StatusTooManyRequests || (response.StatusCode == http.StatusServiceUnavailable && (wire.NodePairTrustHTTPPath(hubauth.NodePairTrustOperationForPath(path)) == path || wire.NodePairTrustScopedHTTPPath(hubauth.NodePairTrustScopedOperationForPath(path)) == path || scopedAuthority)) {
 			time.Sleep(25 * time.Millisecond)
 			continue
 		}

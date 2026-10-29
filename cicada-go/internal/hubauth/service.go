@@ -22,14 +22,15 @@ import (
 var ErrBusy = errors.New("Hub account authentication is busy")
 
 type Service struct {
-	db                *store.Store
-	ids               hubidentity.Set
-	admitted, workers chan struct{}
-	rateMu            sync.Mutex
-	tokens            float64
-	last              time.Time
-	requestNow        func() time.Time
-	appNodeAuthority  bool
+	db                     *store.Store
+	ids                    hubidentity.Set
+	admitted, workers      chan struct{}
+	rateMu                 sync.Mutex
+	tokens                 float64
+	last                   time.Time
+	requestNow             func() time.Time
+	appNodeAuthority       bool
+	appNodeScopedAuthority bool
 }
 
 func NewService(db *store.Store, ids hubidentity.Set) (*Service, error) {
@@ -156,6 +157,12 @@ func (s *Service) acquire(ctx context.Context) (func(), error) {
 // Handle keeps packet preflight/current registry checks ahead of expensive PQ
 // work. Tokens, passwords and KEM challenge nonces stay inside sealed bodies.
 func (s *Service) Handle(ctx context.Context, operation string, raw []byte) (response []byte, err error) {
+	if wire.AppNodeScopedHTTPPath(operation) != "" {
+		if !s.ScopedNodeAuthorityEnabled() || len(raw) == 0 || len(raw) > wire.MaxPacketBytes {
+			return nil, ErrAuthentication
+		}
+		return s.handleAppNodeScoped(ctx, operation, raw)
+	}
 	if wire.OwnerEndpointGroupsHTTPPath(operation) != "" {
 		limit := wire.MaxOwnerEndpointGroupsOriginalBytes
 		if operation == wire.OperationOwnerEndpointGroupsReconcile {

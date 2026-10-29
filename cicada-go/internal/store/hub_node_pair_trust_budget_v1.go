@@ -62,16 +62,10 @@ func nodePairGC(tx *sql.Tx, at time.Time) error {
 		return err
 	}
 	for _, id := range ids {
-		r, err := nodePairLoad(tx, id)
-		if err != nil {
+		if err = nodePairExpireAnonymousNamespace(tx, id, at); err != nil {
 			return err
 		}
-		if r.Approval != nil {
-			continue
-		}
-		if err = nodePairExpire(tx, r, wire.NodePairTrustExpired, at); err != nil {
-			return err
-		}
+
 		if _, err = tx.Exec(`DELETE FROM node_control_key_requests_v1 WHERE id=(SELECT candidate_request_id FROM hub_node_pair_trust_v1 WHERE attempt_id=? AND authorized=0) AND state IN('PENDING','EXPIRED','CANCELLED')`, id); err != nil {
 			return err
 		}

@@ -17,6 +17,44 @@ type hubForwardFixture struct {
 	options                            HubRestoreOperationOptions
 }
 
+// Only these private historical restore fixtures use empty v68 authority.
+// Every real Store open still installs current migrations first. Refuse to
+// discard any newer authority before reconstructing the historical test DDL;
+// this is not a production downgrade or schema-70 restore implementation.
+func openSyntheticHubForwardStore(t *testing.T, path string) (*Store, error) {
+	t.Helper()
+	db, err := New(path)
+	if err != nil {
+		return nil, err
+	}
+	t.Cleanup(func() { db.Close() })
+	var authority int
+	if err := db.db.QueryRow(`SELECT (SELECT count(*) FROM hub_app_node_grants_v1 WHERE authority_kind='NODE_V1')+(SELECT count(*) FROM hub_app_node_scoped_heads_v1)+(SELECT count(*) FROM hub_node_pair_trust_v1)+(SELECT count(*) FROM hub_node_pair_trust_slots_v1)+(SELECT count(*) FROM hub_node_pair_trust_receipts_v1)+(SELECT count(*) FROM hub_node_pair_trust_reads_v1)`).Scan(&authority); err != nil || authority != 0 {
+		t.Fatal("historical restore fixture contains scoped/NPT authority", err)
+	}
+	objects := endpointGroupsSchemaObjects()
+	for _, name := range objects {
+		var kind string
+		if err := db.db.QueryRow(`SELECT type FROM sqlite_master WHERE name=?`, name).Scan(&kind); err != nil {
+			t.Fatal("historical restore schema object", err)
+		}
+		if kind == "table" && name != "hub_endpoint_groups_guard_v1" {
+			var count int
+			if err := db.db.QueryRow(`SELECT count(*) FROM "` + name + `"`).Scan(&count); err != nil || count != 0 {
+				t.Fatal("historical restore fixture contains newer Group authority", err)
+			}
+		}
+	}
+	dropSyntheticAppNodeScopedMigration70(t, db)
+	for i := len(objects) - 1; i >= 0; i-- {
+		dropSyntheticMigrationObject(t, db.db, objects[i])
+	}
+	if _, err := db.db.Exec(`DELETE FROM schema_migrations_v2 WHERE version=69`); err != nil {
+		t.Fatal(err)
+	}
+	return db, nil
+}
+
 func newHubForwardFixture(t *testing.T) hubForwardFixture {
 	t.Helper()
 	return newHubForwardFixtureAt(t, t.TempDir())
@@ -34,7 +72,7 @@ func newHubForwardFixtureAt(t *testing.T, parent string) hubForwardFixture {
 	if e := os.Mkdir(f.source, 0700); e != nil {
 		t.Fatal(e)
 	}
-	db, e := New(filepath.Join(f.source, stateDatabaseName))
+	db, e := openSyntheticHubForwardStore(t, filepath.Join(f.source, stateDatabaseName))
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -99,7 +137,7 @@ func newHubForwardFixtureAt(t *testing.T, parent string) hubForwardFixture {
 	if _, e = BackupStateDir(f.source, f.base); e != nil {
 		t.Fatalf("registered SOURCE backup: %v", e)
 	}
-	db, e = New(filepath.Join(f.source, stateDatabaseName))
+	db, e = openSyntheticHubForwardStore(t, filepath.Join(f.source, stateDatabaseName))
 	if e != nil {
 		t.Fatal(e)
 	}

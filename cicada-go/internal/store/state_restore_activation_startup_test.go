@@ -18,7 +18,7 @@ func TestHubForwardRestartAllowsLegitimateProgressButRejectsCopiedPermit(t *test
 	if e != nil {
 		t.Fatal(e)
 	}
-	db, e := New(filepath.Join(f.target, stateDatabaseName))
+	db, e := openSyntheticHubForwardStore(t, filepath.Join(f.target, stateDatabaseName))
 	if e != nil {
 		t.Fatal(e)
 	}
