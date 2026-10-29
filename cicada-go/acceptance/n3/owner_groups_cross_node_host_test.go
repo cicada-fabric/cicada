@@ -45,8 +45,8 @@ func prepareOwnerGroupsCrossExchange(t *testing.T, source, target ownerGroupsCro
 		ownerGroupsSelect(t, actor.node.host, actor.index, label+"-select", group)
 	}
 	e := &ownerGroupsCrossExchange{source: source, target: target, label: label, group: group,
-		question: "SYNTHETIC_CROSS_NODE_QUESTION_" + source.node.host.fixtureScope + "_" + label,
-		answer:   "SYNTHETIC_CROSS_NODE_ANSWER_" + target.node.host.fixtureScope + "_" + label}
+		question: "SYNTHETIC_CROSS_NODE_QUESTION_" + source.node.host.fixtureScope + "_" + target.node.host.fixtureScope + "_" + label,
+		answer:   "SYNTHETIC_CROSS_NODE_ANSWER_" + target.node.host.fixtureScope + "_" + source.node.host.fixtureScope + "_" + label}
 	// Register the expectation on the receiver's own actual Host. This never
 	// POSTs a queue turn; only the real receiving Node may perform delivery.
 	target.node.host.command(t, ownerGroupsHostCommand{Action: "checkpoint", Actor: target.index,

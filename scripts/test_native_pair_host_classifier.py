@@ -194,6 +194,56 @@ class NativeQueueTests(unittest.TestCase):
     def test_original_queue_without_warning_still_works(self):
         self.assertEqual(self.provider.classify_request(self.request(text=self.text(''))), (None, 'native_queue'))
 
+    def test_cross_host_both_directions_keep_exact_receiver_and_foreign_sender(self):
+        # Classifier state only: two independent scopes, no Host or product.
+        # Each request and reply carries both fixture markers. The sender is
+        # the other Host's Endpoint; only the receiver SID belongs to this Host.
+        for direction in ('AB', 'BA'):
+            for kind in ('ask', 'reply'):
+                with self.subTest(direction=direction, kind=kind):
+                    sender, receiver = direction if kind == 'ask' else direction[::-1]
+                    scopes = {'A': 'SYNTHETIC_SCOPE_A', 'B': 'SYNTHETIC_SCOPE_B'}
+                    sids = {'A': '11111111-1111-4111-8111-111111111111',
+                            'B': '22222222-2222-4222-8222-222222222222'}
+                    endpoints = {'A': 'SYNTHETIC_ENDPOINT_A', 'B': 'SYNTHETIC_ENDPOINT_B'}
+                    provider = StaticHostProvider.__new__(StaticHostProvider)
+                    provider.scope, provider.phase = scopes[receiver], None
+                    provider.lock = threading.RLock()
+                    provider.queue_inputs, provider.native_seed_inputs = {}, {}
+                    body = 'SYNTHETIC_CROSS_' + kind + '_' + scopes[sender] + '_' + scopes[receiver]
+                    with self.assertRaisesRegex(AssertionError, '^ACTUAL_QUEUE_EXPECTATION_INVALID$'):
+                        provider.expect_queue('SYNTHETIC_CROSS_' + scopes[sender], sids[receiver],
+                                              endpoints[sender], endpoints[receiver], 'SYNTHETIC_G', kind)
+                    self.assertEqual(provider.queue_inputs, {})
+                    provider.expect_queue(body, sids[receiver], endpoints[sender], endpoints[receiver], 'SYNTHETIC_G', kind)
+                    with self.assertRaisesRegex(AssertionError, '^ACTUAL_QUEUE_EXPECTATION_INVALID$'):
+                        provider.expect_queue(body, sids[receiver], endpoints[sender], endpoints[receiver], 'SYNTHETIC_G', kind)
+                    provider.bind_queue_request(body, 'SYNTHETIC_REQUEST_' + direction)
+                    packet = {'message_id': 'SYNTHETIC_MESSAGE', 'request_id': 'SYNTHETIC_REQUEST_' + direction,
+                              'sender_endpoint_id': endpoints[sender], 'receiver_endpoint_id': endpoints[receiver],
+                              'group_id': 'SYNTHETIC_G', 'body': body}
+                    if kind == 'reply':
+                        packet['reply_to'] = 'SYNTHETIC_ORIGINAL_QUESTION'
+
+                    def incoming(data, sid, header_kind):
+                        header = next(h for h, k in QUEUE_HEADERS.items() if k == header_kind)
+                        text = self.banner + header + '\n' + json.dumps(data, separators=(',', ':'))
+                        return {'client_metadata': {'thread_id': sid, 'turn_id': 'SYNTHETIC_CROSS_TURN'},
+                                'input': [{'role': 'user', 'content': [{'type': 'input_text', 'text': text}]}]}
+
+                    for field in ('sender_endpoint_id', 'receiver_endpoint_id', 'group_id', 'request_id'):
+                        with self.subTest(changed=field):
+                            changed = {**packet, field: 'SYNTHETIC_WRONG_COORDINATE'}
+                            self.assertEqual(provider.classify_request(incoming(changed, sids[receiver], kind)), (None, 'literal'))
+                    self.assertEqual(provider.classify_request(incoming(packet, sids[sender], kind)), (None, 'literal'))
+                    self.assertEqual(provider.classify_request(incoming(packet, sids[receiver], 'reply' if kind == 'ask' else 'ask')), (None, 'literal'))
+                    self.assertEqual(provider.queue_inputs[body]['posts'], 0)
+                    actual = incoming(packet, sids[receiver], kind)
+                    self.assertEqual(provider.classify_request(actual), (None, 'native_queue'))
+                    self.assertEqual(provider.queue_inputs[body]['observed_ids'], {packet['request_id']})
+                    self.assertEqual(provider.queue_inputs[body]['posts'], 1)
+                    self.assertEqual(provider.classify_request(actual), (None, 'literal'))
+
 
 class PrivateCheckpointTests(unittest.TestCase):
     def test_final_path_appears_only_after_complete_serialization(self):

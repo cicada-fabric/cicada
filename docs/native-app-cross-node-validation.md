@@ -264,3 +264,68 @@ The current product blocker remains C2's App budget failure, assigned to its
 owner. Root will integrate that producer fix and this QA adaptation before
 providing a new source freeze for the two actual gates. QA has not started
 another Runtime or modified a production implementation, request or permission.
+
+## Repaired-source cross-Host fixture failure — 2026-10-29
+
+Root froze `64927cbe740f3d01ffc6a68250468394bd4dadb3`, including the App budget
+fix and QA recovery-audit adaptation. QA ran the unchanged existing cross-Node
+gate on clean `task/v01-final-native-runtime`, preserving the old task branches
+and both prior failed receipts. Run `run-20261029T220720Z-1nFg4G` is **FAIL / 1**:
+C1 passes in 314.67 s, C2 passes in 175.14 s, and C3 fails in 31.72 s; parent
+528.51 s. C4–C7 are NOT_RUN. C2's actual Owner reviews, all five key-ready Group
+edges and eight-original relation checks now pass on this source. This scoped
+result does not imply cross-Node native communication.
+
+The exact failure occurs while registering the original receiver expectation,
+before the first ASK: `WAIT_PARENT / ACTUAL_QUEUE_EXPECTATION_INVALID`.
+Its result is
+`~/Cicada/.local/evidence/native-pair-acceptance/run-20261029T220720Z-1nFg4G/result.json`,
+SHA-256 `7ae3c45a940f5f5104e6dd9894735dcb76b17740c575e607f6b4f5c4ffa84ecc`.
+Version, CLI/test compilation and vet all exit 0; harness exits 1. Source
+before/after is stable, snapshot SHA-256
+`89c4423d036c4774fcf6e192e782781f4f272e9a182f82c51da2f0800fe3881a`,
+manifest `5929f8afe96563b84ffde7d03dee0d86f402d8718f1c80cd7bf7659d32e22ef2`.
+The actual CLI remains
+`ad705a083b1b02983ac16bdec53f0110a97b18245f1989f0b220ea798866b21f`;
+test binary is
+`7ed5dafa73c67f77e8f540c30e38a8855542441350ec03f42eb441e5224c776e`.
+Both binary manifests match before/after. The container is absent, private state
+files number zero, and only an empty task-owned `tmp` directory remains. The
+closed observer retains seven records, zero read retries and zero issuer-error
+observations. No original ASK/request or authority is replaced after this failure.
+
+The cause is a QA adapter defect. `codex_domain_host.py:310` intentionally
+requires its own independent fixture scope in each expected body. The original
+cross-Node question included only the source Host marker but was registered on
+the target Host; the reply had the inverse mismatch. The unchanged Host also
+compares the exact receiving SID, message kind, sender/receiver Endpoint, Group,
+request ID and one-post count. A cross-Host sender is valid only when it equals
+the explicitly expected foreign Endpoint; it is not relabeled as the receiver.
+
+Root authorized the minimal fix in the separate
+`task/v01-cross-host-fixture-scopes` worktree, leaving the running frozen tree
+unchanged: both visibly synthetic question/reply bodies now contain both
+independent Host markers. The actual sender/receiver IDs, original native SIDs,
+request correlation, idempotency key, ciphertext checks and exact once checks
+are preserved. No generic Host/provider or production implementation changes.
+
+The existing classifier suite gains one test with both request directions and
+their reverse replies. It exercises the actual `StaticHostProvider` helper
+without starting a server/Host. It rejects the original sender-only marker,
+duplicate expectation, wrong sender/receiver Endpoint, wrong SID, Group,
+request ID, wrong kind and duplicate delivery; each exact foreign-sender case
+is admitted once. All 27 tests pass, exit 0, 0.011 s unittest time. Evidence:
+`~/Cicada/.local/evidence/n2-acceptance/cross-host-scope-64927cb-hksom04w/`, result
+SHA-256 `d147835a4f661ba34febf896023282dcc5704aad9a16fb819fad94b4dc5f4452`.
+This is synthetic classifier qualification only; no new Runtime fact is emitted
+and no previously qualified compilation or complete Runtime was rerun for it.
+
+Following the failed cross gate, QA immediately started the existing full
+`--owner-endpoint-groups` gate as authorized, on the same unchanged `64927cbe`:
+`run-20261029T221657Z-QtqKRp`, live execution handle 4738, observer 92078.
+At this fixture-fix checkpoint it is still running; its result must be recorded
+under its actual source and cannot be inferred from the classifier tests.
+Root requires only a subsequent cross-Node rerun after this QA-only fix; the
+complete-gate result is mapped by exact production-blob equality instead of
+rerunning it solely because synthetic fixture markers changed. That equivalence
+mapping is separate evidence and is not an automatic pass.
