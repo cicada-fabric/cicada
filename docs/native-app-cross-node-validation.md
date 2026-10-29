@@ -1,14 +1,16 @@
 # Two-Node native acceptance entrypoint — 2026-10-29
 
-The actual Runtime gate is **NOT_RUN** at this checkpoint. This record qualifies
-the executable entrypoint, its compilation and the evidence classifier. It does
-not convert the App producer's SDK-actor results, old M7 results or synthetic
-classifier controls into a two-Node native pass.
+At the initial entrypoint checkpoint, the actual Runtime gate was **NOT_RUN**.
+That preparation qualified the executable entrypoint, its compilation and the
+evidence classifier. The later actual failures and QA audit adaptation are
+recorded below. The App producer's SDK-actor results, old M7 results and synthetic
+classifier controls do not establish a two-Node native pass.
 
 The production baseline is Root's frozen
 `5f270726733c10e3335b753c304cdc0f5332acda`, including App checkpoint `8d8ccd5`
-and default scoped capability availability. The QA changes are the commit
-containing this record. No Hub/App/Node production implementation is modified.
+and default scoped capability availability. The QA entrypoint commit is
+`d0e9717e00bdf9f0926152d19f8df8d8baf6aac7`. No Hub/App/Node production
+implementation is modified by QA.
 The enrollment contract revision is the shared value
 `node-pair-trust-node-scoped-v1`; the Group contract remains
 `owner-endpoint-groups-v1`. These are separate from the Git revision, binary
@@ -122,3 +124,143 @@ DPAPI/ACL/GUI/IME, Android, a physical second Node and public HTTPS remain
 **NOT_RUN**. No new production defect is established by compilation or these
 synthetic classifier checks. Prior failures and their original source attribution
 remain unchanged.
+
+## First actual frozen Runtime runs — FAIL, 2026-10-29
+
+This later section records actual execution and supersedes the preparation-only
+NOT_RUN status above for the cases that ran. Root integrated QA `d0e9717` as
+`0d5bfb62f92f7eaed3cba46b9275cbce5617eb1a`; both trees are
+`1f3d3bcb098fdfeb682df315f4777cc253340d9c`. Both gates ran on clean
+`d0e9717e00bdf9f0926152d19f8df8d8baf6aac7`, without source, assertion, timeout,
+policy, permission or request changes between runs. The full gate began
+immediately after the cross-Node gate reached its terminal result, as directed
+by Root. Neither failure was retried.
+
+| Gate | Actual outcome | Retained result |
+| --- | --- | --- |
+| `--owner-endpoint-groups-cross-node` | **FAIL / 1**, parent 346.60 s. C1 passes in 317.22 s with two actual scoped CLI Nodes and two actual four-original-Thread Hosts. C2 fails in 22.27 s at an actual App `ADD_ENDPOINT` APPLY. C3–C7 NOT_RUN. | `~/Cicada/.local/evidence/native-pair-acceptance/run-20261029T211957Z-tU3108/result.json`; SHA-256 `147f7d8a102cc4979bd413e15845f65c9e0461210ce32dfe0d82483a623616d6` |
+| `--owner-endpoint-groups` | **FAIL / 1**, parent 293.43 s. M1 fails in 14.15 s during its first unseen-original Group CREATE recovery audit. M2–M8 NOT_RUN; none of their old results fills this execution. | `~/Cicada/.local/evidence/native-pair-acceptance/run-20261029T212654Z-kWsHgJ/result.json`; SHA-256 `9826cd4bb9a4e610097dc4ff6cbbc7127844fcc38fb326b58f4952f54d875716` |
+
+Both actual runs have version, CLI compilation, test compilation and vet exit
+`0`, with harness exit `1`. Their identical source before/after snapshot SHA-256
+is `d5e69d088ea76d42e0251e0492f0c74b3836986f4f70be0962776e59bdcd4693`;
+the source manifest is
+`23d13bea8c87a92e1c2a259205f69385dacd8f54f1039ff63013fdd99c96debc`.
+Each run's binary before/after hashes match: actual CLI SHA-256
+`ad705a083b1b02983ac16bdec53f0110a97b18245f1989f0b220ea798866b21f`;
+test binary SHA-256
+`169d3e2a499df88a2f1ddb775e67272d0cbece8ff905b9db140ae8b3b26b67ea`.
+These are the executed artifacts; the earlier compile-only CLI hash is not
+substituted for the actual driver's build.
+
+The C2 safe failure diagnostic is:
+
+```text
+action_failed=true phase=OWNER_READY
+app_error_code= node_error_code= pairing_error_code=
+group_error_code=APP_THREAD_GROUP_STORAGE_BUDGET policy_error_code=
+```
+
+The exact failure source is `owner_groups_cross_node_runtime_test.go:202`,
+inside the five-edge ADD loop. It is **not** the first CREATE. The exact loop
+edge was not retained in the closed runtime log and is not inferred from elapsed
+time. Root assigned the observed App budget failure to the App owner for a
+scoped reproduction/fix. No private vault, key, proof, code or payload was
+exported, and QA made no production change or replacement request.
+
+M1's original error is
+`actual App Group packet record is missing or malformed`.
+Its retained protocol audit is
+`owner-groups-protocol-audit/843f1e8f38d9bc34.json`, SHA-256
+`2efd2b3a877d3d73114a7af41996683506c5b21caa3dd797da328d94ce87e030`,
+with 175 traces and 20 steps. The actual original APPLY is held before forward;
+one subsequent reconcile is forwarded and returns HTTP 200. There is no
+recovery business APPLY in that trace.
+
+Read-only source inspection identifies an audit compatibility issue requiring
+Root/App/QA coordination: the new `recoverThreadGroup` nested-receipt branch
+authenticates the query response and directly stores the original inner receipt;
+`acceptThreadGroupRecoveredReceipt` retires any saved query response. The old
+`ownerGroupsOriginalReceipt` postcondition unconditionally loads
+`appcore.endpoint-groups-recovery-response.v1` before verifying the independently
+retained original receipt. The runtime error does not name the failed namespace;
+the private fixture was cleaned normally. This source-derived finding does not
+claim that the original business receipt was absent or that a Hub authorization
+failed. The original strict audit, no-effect fence and exact-receipt assertions
+remain unchanged in this run.
+
+Control records and live handles are retained under
+`~/Cicada/.local/evidence/n2-acceptance/cross-node-d0e9717-01/` and
+`owner-groups-full-d0e9717-01/`. Closed read-only observers recorded two and
+25 Host checkpoints respectively, with zero read retries and zero issuer-error
+observations. The combined `closed-two-gate-receipts.json` SHA-256 is
+`7acc6226818c8b3975c115dd0c4eebde57fe5953d675e4548631df04f7a117c4`.
+Docker remains available; both owned containers are absent. Each task state
+contains zero private files and only an empty `tmp` directory, retained with its
+failed run. No resident/public service was touched. No further Runtime was
+started after these two terminal failures.
+
+Cross-Node communication, App-closed cross-Node communication, original offline
+request/reply recovery, exact B0-G removal, final eight-original identity witness,
+complete M1–M8, Windows DPAPI/ACL/GUI/IME, Android, physical second Node and public
+HTTPS remain **NOT_RUN / unaccepted** on this source. The C1 pass and historical
+M7-only pass cannot fill these missing gates. Later fixes require their own
+source freeze and source-bound validation; these failed receipts stay unchanged.
+
+## QA query-response audit adaptation — no new Runtime
+
+After both gates terminated, Root confirmed the M1 failure as the old QA storage
+assumption and authorized a minimal change to
+`acceptance/n3/owner_groups_vault_audit_test.go`. The actual original recovery
+request must still be in the closed App vault and match the exact real TCP POST:
+method, shared reconcile path, forward/status, packet bytes, captured request
+and response hashes, decoded route, original parent digest and valid DTO all
+remain mandatory. The outer ciphertext comes from that actual captured response
+and is independently authenticated with the existing shared verifier.
+
+The audit additionally requires the obsolete query-response vault slot to be
+retired; a nonempty slot or unknown storage result fails. The actual App must
+independently retain the exact inner receipt in its original response slot,
+byte-for-byte equal to the outer receipt, with the same original parent digest
+and route. The shared verifier then independently authenticates that inner
+receipt against the original APPLY and verifies its permanent no-effect fence
+or precise reviewed COMPLETED effect. No synthetic response or upstream HTTP
+success can supply the missing App acceptance witness. No M1–M8 business action,
+deadline, real five-minute boundary, 75-second barrier or identity assertion is
+changed. The new audit has not yet passed an actual full Runtime gate.
+
+Final helper validation is retained at
+`~/Cicada/.local/evidence/n2-acceptance/owner-groups-query-audit-final-c9a13d2-ndf0akex/`.
+The tested source is documentation-only checkpoint
+`c9a13d261fd2e2e3e8899174cee01589ca7bcd40` plus the recorded dirty QA helper;
+the exact helper SHA-256 is
+`ccb834d1df5086e311f40132b76b5c4b0e363e3d7a9c4341fc688ca4e64329a6`.
+Root requested the final adaptation and both original failures as one checkpoint;
+the unpublished documentation-only checkpoint is retained at
+`task/archive-cross-node-failures-c9a13d2`. No tested source or failed receipt is
+reattributed to the final documentation/QA commit.
+
+| Related check | Result |
+| --- | --- |
+| N3 test compilation | exit 0; 2.241 s |
+| Shared wire test compilation | exit 0; 1.682 s |
+| Existing `TestN3OwnerGroupsSettlementRequiresLocalOriginalReceipt` | exit 0; 0.592 s; six passing test events |
+| Existing `TestOwnerEndpointGroupsRequestReviewAndOriginalRecoveryPQ` and `TestOwnerEndpointGroupsReceiptRemainsOriginalAndUncertainNeverCompletes` | exit 0; 1.038 s; five passing test events |
+| N3 vet | exit 0; 1.010 s |
+| Source before/after | Stable; SHA-256 `852c89f0d21ec1a2ccbb92ce4a0745ff4b3f8548ec4646a03469dd50892afa4e` |
+| Result / manifest | SHA-256 `189363b6101304c6494973bf2a28b01cd3cc81105ff557c8a13d949fd081b062` / `7c021a20f5cd415d0614275002e3746383a423369f1dcd1d4b767ccd1ab4df66` |
+
+These are deterministic helper/real-cryptography/loopback-TCP checks. They run
+no Hub/App/Node/Host process and fill no Runtime case. The pinned disposable
+Docker container is absent, module cache was read-only, the task build cache was
+exclusively locked and its temporary state has zero entries. An earlier helper
+invocation attempted to execute the wire test from Docker's non-executable
+`/tmp`; it failed before executing tests. That infrastructure failure is retained
+unchanged at `owner-groups-query-audit-c9a13d2-iqd1p68h/`. The final invocation
+uses the existing driver's compile-to-`/out` then `test2json` execution pattern;
+no source change or deadline relaxation was needed.
+
+The current product blocker remains C2's App budget failure, assigned to its
+owner. Root will integrate that producer fix and this QA adaptation before
+providing a new source freeze for the two actual gates. QA has not started
+another Runtime or modified a production implementation, request or permission.

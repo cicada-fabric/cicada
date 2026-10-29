@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/json"
+	"net/http"
 	"reflect"
 	"testing"
 	"time"
@@ -83,7 +84,12 @@ func ownerGroupsOriginalReceipt(t *testing.T, v *codexProductFixture, original *
 		t.Fatal("actual App must stop before auditing the accepted recovery receipt")
 	}
 	recovery := ownerGroupsStoredPacketAt(t, v, "appcore.endpoint-groups-recovery.v1")
-	if recovery.DeviceKeyID != original.DeviceKeyID || recovery.Route.Operation != wire.OperationOwnerEndpointGroupsReconcile || recovery.ParentDigest != original.Digest || !bytes.Equal(recovery.packet, wrapper.request) {
+	packet, packetErr := wire.DecodeOwnerEndpointGroupsPacket(recovery.packet)
+	if recovery.DeviceKeyID != original.DeviceKeyID || recovery.Format != "cicada.app-endpoint-groups.request.v1" ||
+		recovery.Route.Operation != wire.OperationOwnerEndpointGroupsReconcile || recovery.ParentDigest != original.Digest ||
+		packetErr != nil || !reflect.DeepEqual(packet.Packet.Route, recovery.Route) || !bytes.Equal(recovery.packet, wrapper.request) ||
+		wrapper.Method != http.MethodPost || wrapper.Path != wire.OwnerEndpointGroupsHTTPPath(wire.OperationOwnerEndpointGroupsReconcile) ||
+		!wrapper.Forwarded || wrapper.Status != http.StatusOK || wrapper.RequestSHA256 != hash(recovery.packet) || wrapper.ResponseSHA256 != hash(wrapper.response) {
 		t.Fatal("actual App recovery replaced its original ciphertext/intent reference")
 	}
 	var recoveryRequest wire.OwnerEndpointGroupsReconcileRequest
@@ -95,12 +101,17 @@ func ownerGroupsOriginalReceipt(t *testing.T, v *codexProductFixture, original *
 		t.Fatal("actual App recovery proof does not bind the exact retained original")
 	}
 	device := ownedAppIdentity(t, v.f, appvault.PurposeAppDevice)
-	acceptedWrapper := ownerGroupsStoredPacketAt(t, v, "appcore.endpoint-groups-recovery-response.v1")
-	if acceptedWrapper.DeviceKeyID != original.DeviceKeyID || acceptedWrapper.ParentDigest != recovery.Digest ||
-		!reflect.DeepEqual(acceptedWrapper.Route, recovery.Route) || !bytes.Equal(acceptedWrapper.packet, wrapper.response) {
-		t.Fatal("actual App did not retain the exact accepted recovery response")
+	// A settled query observation is retired after authenticating its nested
+	// original receipt. Independently authenticate the actual TCP response;
+	// upstream HTTP 200 alone never proves what the stopped App accepted.
+	outer := openOwnerGroupsCapturedResponse(t, v, device, recoveryRequest, recovery.packet, wrapper.response)
+	vault := ownedAppVault(t, v.f)
+	retired, _, _, loadErr := vault.LoadState("appcore.endpoint-groups-recovery-response.v1")
+	closeErr := vault.Close()
+	defer clear(retired)
+	if loadErr != nil || closeErr != nil || len(retired) != 0 {
+		t.Fatal("actual App did not retire its authenticated settled query-response slot")
 	}
-	outer := openOwnerGroupsCapturedResponse(t, v, device, recoveryRequest, recovery.packet, acceptedWrapper.packet)
 	accepted := ownerGroupsStoredPacketAt(t, v, "appcore.endpoint-groups-response.v1")
 	if accepted.DeviceKeyID != original.DeviceKeyID || len(outer.ReceiptPacket) == 0 || !bytes.Equal(accepted.packet, outer.ReceiptPacket) || accepted.ParentDigest != original.Digest ||
 		!reflect.DeepEqual(accepted.Route, original.Route) {

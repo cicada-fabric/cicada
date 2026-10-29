@@ -6,12 +6,18 @@ Its Go implementation remains in `cicada-go`; Android is maintained under
 native Windows acceptance. “App” is the current product name; older Client-facing wire names,
 code and evidence remain attributed to their original contract and source.
 
-Current v0.1 exit status: clean `d4566fcd` completed M1–M5, then failed M6 at
-original C's G2 selection (`CODEX_NODE_TICKET_UNAVAILABLE`). M7/M8 and final
-four-identity closure are unaccepted. A subsequent M7-only attempt failed before
-actual revocation; two-Node native communication also has an App/contract gap.
+Current v0.1 exit status: on clean QA `d0e9717` (same tree as integrated
+`0d5bfb6`), the actual two-Node gate passes C1 with eight original native Threads
+but fails C2 ADD APPLY with `APP_THREAD_GROUP_STORAGE_BUDGET`; C3–C7 are NOT_RUN.
+The following full M1–M8 gate fails M1's protected recovery-record audit;
+M2–M8 are NOT_RUN on that source. The earlier `d4566fcd` M1–M5 pass/M6 failure
+and `dc4c58d` M7-only scoped pass retain their historical source scopes and do
+not fill these gates. Actual cross-Node communication and full closure remain
+unaccepted. App budget is the current product blocker; the authorized QA
+query-response audit adaptation compiles and passes its existing helper checks,
+but has no repaired-source Runtime result yet.
 Use the [short exit index](#current-feedback-and-acceptance-ledger)
-and [source-bound result](native-app-validation.md#2026-10-29-d4566fcd-runtime-m6-ticket-failure).
+and [current source-bound results](native-app-cross-node-validation.md#first-actual-frozen-runtime-runs--fail-2026-10-29).
 
 ## Product boundary
 
@@ -562,15 +568,15 @@ historical NOT_RUN below or replace the existing detailed evidence.
 | --- | --- | --- | --- |
 | Finite onboarding, Root separation and local key custody | Existing N2/NPT/Guard checks distinguish account login, Owner proof, Node binding and business authority; identity flow works without Control inference. | Preserve exact scopes; physical custody remains unaccepted until tested. | Reuse existing checks affected by the bounded fix; no new onboarding framework. |
 | Node on/off and original Codex discovery/communication | Existing lifecycle, explicit native registration, nickname/name/ID/contact-form paths and user batches; original managed capabilities retained. | Final repaired-source Runtime and existing user batch. | Reuse source-bound implementation/tests; no new App feature or upstream Codex fork. |
-| App named Groups and exact multi-Group changes | blqDI4 M1–M5 PASS, including real five-minute cold recovery and post-boundary G2 communication. | Last full run stopped at M6's original C ticket failure; repaired-source M6/full parent remain unaccepted. | Run the existing impacted checks/full disposable gate after product source freezes. |
-| Real authority revoke and retained-scope recovery | BOrXMI M7-only SCOPED_PASS on clean dc4c58d (tree equal to dev 6db90c5): both independent OwnerKey/NodeBinding baselines, cold original-wire refusal and final native zero injection. | M8/final original-four/full M1–M8 closure unaccepted. This result does not cover later Node-consumer source 7f0cab2 or the separate actual cross-Node chain. | Preserve the six original M7 facts and retained failures. M8 still requires actual M3/M4/M6 prerequisites; the final full M1–M8 gate remains mandatory. |
-| Communication across two actual Nodes/native processes | Complete App scoped SDK and default-enabled Hub integrated at frozen production 5f270726. Existing driver now has a seven-case actual CLI/two-Host/eight-original-Thread entrypoint; CLI/test compilation and vet pass, synthetic evidence classifier has 179 passing controls. See [source-scoped entrypoint record](native-app-cross-node-validation.md). | Actual Runtime NOT_RUN; compilation and SDK-actor results do not accept cross-Node native exchange or complete M1–M8. | Root integrates the QA entrypoint, freezes its source, then runs the actual two-Node gate and existing full M1–M8 gate separately. Preserve original identities and all existing failure attribution. |
+| App named Groups and exact multi-Group changes | Historical blqDI4 M1–M5 PASS, including real five-minute cold recovery and post-boundary G2 communication; its M6 ticket failure remains retained. Current clean d0e9717 full run kWsHgJ FAILS M1's protected recovery-record audit after a before-forward APPLY and HTTP-200 reconcile. Root-approved QA adaptation now independently authenticates the real TCP outer, demands its vault slot retired and preserves exact independently stored inner/fence/effect checks; compilation/vet and existing helper checks pass. | M2–M8 NOT_RUN on d0e9717. The old storage assumption caused the retained M1 audit failure; the adapted audit has no actual Runtime pass yet. Full acceptance remains open. | Root freezes the App budget fix plus QA audit adaptation before another complete gate. Preserve exact original packet, nested receipt, permanent no-effect fence and zero business replay checks. |
+| Real authority revoke and retained-scope recovery | Historical BOrXMI M7-only SCOPED_PASS on clean dc4c58d (tree equal to dev 6db90c5): both independent OwnerKey/NodeBinding baselines, cold original-wire refusal and final native zero injection. | M7/M8/final original-four/full M1–M8 closure are NOT_RUN on current d0e9717 because full kWsHgJ stops at M1. The old pass does not cover later Node/App source or the separate actual cross-Node chain. | Preserve the six original M7 facts and retained failures. M8 still requires actual M3/M4/M6 prerequisites; the final full M1–M8 gate remains mandatory. |
+| Communication across two actual Nodes/native processes | QA d0e9717 integrated as same-tree dev 0d5bfb6. Actual two-Node gate tU3108: C1 PASS with two scoped CLI Nodes/eight original native Threads; C2 FAIL on ADD APPLY with APP_THREAD_GROUP_STORAGE_BUDGET. Following full M1–M8 gate kWsHgJ FAILS at M1's protected recovery-record audit. Both sources/binaries stable and containers absent. See [exact source, errors and hashes](native-app-cross-node-validation.md). | C3–C7 and M2–M8 NOT_RUN on this source; actual cross-Node communication and complete M1–M8 remain unaccepted. C2 exact loop edge was not retained; M1 audit/query-slot compatibility is a source-derived finding, not proof of lost original authority. | App owner handles the observed budget defect; Root/App/QA coordinate the recovery-audit storage representation. Preserve both original failures and every assertion. New fixes require a new frozen source before any further Runtime. |
 | Windows usability and protection | Existing Enter/CJK/copy/user-root/packaging code and source-specific checks; no reimplementation requested. | Existing fresh-install batch plus DPAPI/ACL/GUI/DPI/instance/recovery observations on real Windows. | One necessary final candidate build after production source stabilizes; reuse the current finalizer and user batch. Unexecuted physical checks stay NOT_RUN. |
 | Candidate/source closure | Complete CEA candidate and its 48 reviewed licenses already exist. | Match repaired source, exact package/hash, Runtime evidence and cleanup before finalization. | Keep candidate attribution separate; rebuild only when the final production fix requires it. |
 
-Shortest order: **Hub minimum reproduction/fix and multi-Node contract closure →
-relevant existing checks/isolated gate and the separate real two-Node/native
-communication check → one frozen-source full M1–M8 run → necessary final package
+Shortest order: **App bounded Group-budget fix and recovery-audit representation
+agreement → relevant existing deterministic checks → separately frozen actual
+two-Node/native gate and complete M1–M8 gate → necessary final package
 and existing Windows batch → Root closeout**. The separately reviewed M7-only lane
 can uncover its independent revoke failures earlier; it never fills absent full
 parent scenes. Keep the original 90m parent, 75s settlement, real five-minute
