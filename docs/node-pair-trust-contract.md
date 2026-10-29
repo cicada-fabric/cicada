@@ -564,6 +564,26 @@ and use RetainedBinding; a legacy/incomplete state cannot fall back to INITIAL.
 The original advanced descriptor/dial flags remain separate and cannot bypass
 a pending Node pairing marker.
 
+New empty Node roots use `--pairing-profile auto` by default. After descriptor
+authentication, an exact available scoped capability selects the independent
+[scoped NPT family](node-pair-trust-scoped-contract.md). An exact scoped
+`available=false`, or a scoped 404 identifying an old Hub, permits legacy only
+when the legacy capability is itself strictly recognized and available.
+Unknown, malformed, wrong-version or timed-out discovery creates no pairing
+journal/key/credential and sends no secret POST. `--pairing-profile legacy` is a
+bounded compatibility option; `scoped` requires the scoped capability. Both
+modifiers require `--hub-address`. Saved family selection precedes these flags:
+existing v1 records continue as v1, conflicting flags or two family journals
+refuse, and a bound Node with an empty attempt marker is not an empty root.
+No flag clears an unresolved original, changes keys or migrates a binding.
+
+The scoped companion code uses `cicada-npts1.`, compact schema 2, the exact
+Node ID and the 1536-byte bound. `machine pairing-code` selects its explicit
+saved family and displays only the original code through the existing private
+interactive TTY path. Neither family tries the other parser, signature domain,
+route or AAD after a failure. Ordinary users still provide only the Hub address;
+there is no Owner public-key transport step.
+
 `node-pair-trust.sealed.json` lives in the existing Node state subtree. Its outer
 public coordinates are AAD; the entire secret journal is sealed Node-to-itself
 using the original Node-Control key and existing e2ee primitives. State/file
@@ -574,6 +594,15 @@ Missing original key, credential, routing or sealed state never generates a
 replacement. Existing restore quarantine and process locks remain authoritative.
 The new secret-storage ownership guard is verified on Linux; Windows/other
 unavailable ownership mechanisms fail closed pending their own validation.
+
+The scoped family uses `node-pair-trust-scoped.sealed.json` in that same selected
+root, a distinct `cicada.node-pair-scoped-local.v1` envelope and local sealing
+AAD. Its independent typed journal retains S, the capsule's independent X,
+Scope2 Context/approval, original packets, poll delivery, ACK and reconciliation
+receipts. It uses the existing 8 MiB file hard limit, bounded history and private
+file protections; it neither rewrites nor imports the legacy journal. An
+unavailable scoped capability prevents fresh pending packets and secret POSTs,
+while the original saved family, secret and recovery fence remain intact.
 
 Original requests are durably sealed before network I/O. Exact retries retain
 operation/request/attempt IDs and all bytes. An aged request uses fresh reconcile
@@ -607,6 +636,30 @@ this exact saved receipt and current local Owner trust under the original locks.
 A second Agent cannot overwrite live state before acquiring its singleton lock.
 Account login, public capability metadata and Control inference do not supply
 this authority. Later Network/Group/Worker rights still need their own Guards.
+
+For scoped NPT the Node independently verifies local S, exact Node scope,
+approval/capsule and the live first-trust deadline before retaining the local
+Owner trust fact. Owner approval alone leaves ordinary Node admission pending.
+The private ACK is saved before dispatch; ACK/START/reconcile response loss and
+cold restart recover the exact original packet and receipt. Failed local trust
+or persistence preserves the original pending journal. A settled ACKED startup
+uses that original authenticated receipt and current local Owner pin: expiry
+of the old short code/proof or public capability unavailability does not start
+another enrollment. Existing `on/off/status` reads only the original ACKED
+binding/keys and does not change its protocol or perform pairing discovery.
+Scripted codec/consumer transport tests establish none of the separate scoped
+Store carrier, two-Node App, native Runtime, physical-device or public HTTPS
+acceptance gates.
+
+The 2026-10-29 Node consumer qualification covers deterministic legacy/scoped
+selection, private code TTY, S/TTL refusal, exact ACK and START/reconcile loss
+with cold recovery, expired ACKED startup and read-only lifecycle checks;
+focused race and disposable Client interop also pass their stated scopes.
+The initial lifecycle test run under umask `0002` remains a failure: its Go test
+executable was `0775`, which the unchanged executable-permission Guard rejects.
+The original lifecycle source reproduces that refusal; deterministic tests
+under umask `0077` pass without weakening the Guard. Actual isolated user-service
+acceptance remains NOT_RUN, separately from these unit/process fixtures.
 
 `--retry-pairing` is an explicit modifier to `machine agent --hub-address`.
 Without it, termination never automatically replaces S. It first obtains a

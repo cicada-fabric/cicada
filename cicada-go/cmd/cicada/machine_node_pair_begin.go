@@ -20,7 +20,7 @@ import (
 
 // Caller holds original Agent/WriterRoot locks. A candidate is never promoted
 // into the ordinary Hub transport or a bearer-bearing request here.
-func beginMachineNodePair(ctx context.Context, stateDir, nodeID, name, address, expectedOrigin string, explicitOrigin bool) (*machineNodeControlClient, *machineNodePairState, error) {
+func beginMachineNodePair(ctx context.Context, stateDir, nodeID, name, address, expectedOrigin string, explicitOrigin bool, selectedDescriptor ...string) (*machineNodeControlClient, *machineNodePairState, error) {
 	if machineNodePairNoSymlinkPath(machineNodeStateDir(stateDir, nodeID)) != nil {
 		return nil, nil, errMachineNodePairState
 	}
@@ -125,6 +125,9 @@ func beginMachineNodePair(ctx context.Context, stateDir, nodeID, name, address, 
 		if explicitOrigin && expectedOrigin != origin {
 			return nil, nil, hubtransport.ErrOrigin
 		}
+	}
+	if len(selectedDescriptor) > 0 && selectedDescriptor[0] != "" && text != selectedDescriptor[0] {
+		return nil, nil, errMachineNodePairState
 	}
 	if exists {
 		keyPath, _ := machineNodeControlPaths(stateDir, nodeID)

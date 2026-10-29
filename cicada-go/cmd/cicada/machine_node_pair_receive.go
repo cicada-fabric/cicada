@@ -11,12 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cicada-ai/cicada/internal/e2ee"
 	wire "github.com/cicada-ai/cicada/internal/hubaccountwire"
 	"github.com/cicada-ai/cicada/internal/hubtransport"
 	"github.com/cicada-ai/cicada/internal/nodekeys"
-	"github.com/cicada-ai/cicada/internal/nodewire"
-	"github.com/cicada-ai/cicada/internal/pqtls"
 )
 
 var errMachineNodePairIndependentTrust = errors.New("NODE_PAIR_INDEPENDENT_TRUST_REJECTED")
@@ -239,55 +236,7 @@ func installMachineNodePairBinding(stateDir string, client *machineNodeControlCl
 	if e != nil || accepted.State != wire.NodePairTrustACKed || !reflect.DeepEqual(accepted.Binding, s.Binding) || wire.ValidateNodePairTrustAccepted(*s.Context, *s.Approval, *s.Binding) != nil {
 		return errMachineNodePairState
 	}
-	b := *s.Binding
-	if b.NodeID != client.nodeID || !reflect.DeepEqual(b.NodePublic, client.identity.Public()) || hubtransport.MatchNodeControl(d, b.HubID, b.HubNodeControlPublic, b.HubNodeControlKeyVersion, b.HubNodeControlFingerprint) != nil {
-		return errMachineNodePairState
-	}
-	client.mu.Lock()
-	defer client.mu.Unlock()
-	old := cloneMachineNodeControlState(client.state)
-	address, e := retainedMachineNodePairRouting(old, s)
-	if e != nil {
-		return e
-	}
-	if old.BindingID != "" {
-		r := wire.NodePairTrustRetainedBinding{NodeID: old.NodeID, OwnerBindingID: old.BindingID, BindingVersion: old.BindingVersion, NodeKeyID: old.NodeKeyID, NodeKeyVersion: old.NodeKeyVersion, NodeKeyEpoch: old.NodeKeyEpoch, NodeKeyFingerprint: old.NodeKeyFingerprint, HubNodeControlPublic: old.HubPublicIdentity, HubNodeControlKeyVersion: old.HubKeyVersion, HubNodeControlFingerprint: old.HubFingerprint, ApprovedRequestID: old.ApprovedRequestID, ApprovedRequestVersion: uint64(old.ApprovedRequestVersion), ApprovedCandidateDigest: old.ApprovedCandidateDigest, CredentialDigest: machineNodePairCredentialDigest(s)}
-		if wire.MatchNodePairTrustRetainedBinding(r, b, client.identity.Public()) != nil {
-			return errMachineNodePairState
-		}
-	}
-	if old.HubTransportDescriptor != "" && old.HubTransportDescriptor != s.DescriptorText {
-		return errMachineNodePairState
-	}
-	client.state.HubID = b.HubID
-	client.state.HubKeyID = b.HubNodeControlPublic.ID
-	client.state.HubFingerprint = b.HubNodeControlFingerprint
-	client.state.HubKeyVersion = b.HubNodeControlKeyVersion
-	client.state.HubPublicIdentity = b.HubNodeControlPublic
-	client.state.NodeKeyID = b.NodePublic.ID
-	client.state.NodeKeyFingerprint = nodewire.IdentityFingerprint(b.NodePublic)
-	client.state.NodeKeyVersion = b.NodeKeyVersion
-	client.state.BindingID = b.OwnerBindingID
-	client.state.BindingVersion = b.BindingVersion
-	client.state.NodeKeyEpoch = b.NodeKeyEpoch
-	client.state.ApprovedRequestID = b.ApprovedRequestID
-	client.state.ApprovedRequestVersion = int64(b.ApprovedRequestVersion)
-	client.state.ApprovedCandidateDigest = b.ApprovedCandidateDigest
-	client.state.HubCandidateID = ""
-	client.state.HubCandidateFingerprint = ""
-	client.state.HubCandidateVersion = 0
-	client.state.HubCandidateIdentity = e2ee.PublicIdentity{}
-	client.state.PendingPairing = nil
-	client.state.PendingPairingUserCode = ""
-	client.state.PendingPairingURI = ""
-	client.state.HubTransportDescriptor = s.DescriptorText
-	client.state.HubDialAddress = address
-	client.state.NodePairTrustAttemptID = s.AttemptID
-	if e = client.persistLocked(); e != nil {
-		client.state = old
-		return e
-	}
-	return nil
+	return installMachineNodePairValidatedBinding(client, *s.Binding, d, s.DescriptorText, s.DialAddress, s.AttemptID, machineNodePairCredentialDigest(s))
 }
 
 func machineNodePairACKWasFenced(s *machineNodePairState, packet []byte) bool {
@@ -315,6 +264,13 @@ func machineNodePairCredentialDigest(s *machineNodePairState) string {
 }
 
 func requireMachineNodePairAdmission(stateDir, nodeID string) error {
+	profile, err := machineNodePairSavedProfile(stateDir, nodeID)
+	if err != nil {
+		return err
+	}
+	if profile == "scoped" {
+		return requireMachineNodePairScopedAdmission(stateDir, nodeID)
+	}
 	public, exists, e := readMachineNativeState(stateDir, nodeID)
 	if e != nil {
 		return e
@@ -365,14 +321,5 @@ func requireMachineNodePairAdmission(stateDir, nodeID string) error {
 // An ACK proves a binding, not authority to roll back a subsequently verified
 // mutable dial locator. Missing or partial bound routing is not repaired here.
 func retainedMachineNodePairRouting(old machineNodeControlState, s *machineNodePairState) (string, error) {
-	if old.BindingID == "" && old.HubTransportDescriptor == "" && old.HubDialAddress == "" {
-		if pqtls.ValidateIPDialAddress(s.DialAddress) != nil {
-			return "", errMachineNodePairState
-		}
-		return s.DialAddress, nil
-	}
-	if old.BindingID == "" || old.HubTransportDescriptor == "" || old.HubTransportDescriptor != s.DescriptorText || pqtls.ValidateIPDialAddress(old.HubDialAddress) != nil {
-		return "", errMachineNodePairState
-	}
-	return old.HubDialAddress, nil
+	return retainedMachineNodePairBindingRouting(old, s.DescriptorText, s.DialAddress)
 }

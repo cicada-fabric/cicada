@@ -82,7 +82,7 @@ func newNodePairLocalFixture(t *testing.T) nodePairLocalFixture {
 }
 func (f nodePairLocalFixture) pending(t *testing.T) (*machineNodeControlClient, *machineNodePairState) {
 	t.Helper()
-	e := runMachineAgentWithContext(context.Background(), []string{"--hub-address", f.address, "--state-dir", f.state, "--id", f.node, "--name", f.node, "--relay-only", "--once"}, nil)
+	e := runMachineAgentWithContext(context.Background(), []string{"--hub-address", f.address, "--state-dir", f.state, "--id", f.node, "--name", f.node, "--relay-only", "--once", "--pairing-profile", "legacy"}, nil)
 	if !errors.Is(e, errMachineNodePairPending) {
 		t.Fatal("real Node did not wait for Owner", e)
 	}

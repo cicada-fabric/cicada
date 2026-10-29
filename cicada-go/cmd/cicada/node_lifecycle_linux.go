@@ -377,12 +377,7 @@ func requireExistingNodeServiceState(c nodeServiceConfig, s nodeServiceSelection
 		return errNodeServiceConfig
 	}
 	if s.address != "" {
-		pair, err := loadMachineNodePairState(s.state, s.id, client.identity)
-		if err != nil {
-			return errNodeServiceConfig
-		}
-		defer clear(pair.Secret)
-		if pair.Stage != "ACKED" || pair.Binding == nil || client.state.NodePairTrustAttemptID != pair.AttemptID {
+		if machineNodePairACKMarker(s.state, s.id, client) != nil {
 			return errNodeServiceConfig
 		}
 	}

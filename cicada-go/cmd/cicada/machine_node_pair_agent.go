@@ -62,6 +62,21 @@ func machineNodePairingCodeCommand(args []string, output io.Writer) error {
 	if e != nil {
 		return errMachineNodePairState
 	}
+	profile, e := machineNodePairSavedProfile(*stateDir, *id)
+	if e != nil {
+		return e
+	}
+	if profile == "scoped" {
+		s, e := loadMachineNodePairScopedState(*stateDir, *id, identity)
+		if e != nil {
+			return e
+		}
+		defer clear(s.Secret)
+		if s.Stage != wire.NodePairTrustScopedPending && s.Stage != "PINNED" {
+			return errMachineNodePairPending
+		}
+		return machineNodePairScopedDisplayCode(s, output)
+	}
 	s, e := loadMachineNodePairState(*stateDir, *id, identity)
 	if e != nil {
 		return e
@@ -73,7 +88,7 @@ func machineNodePairingCodeCommand(args []string, output io.Writer) error {
 	return machineNodePairDisplayCode(s, output)
 }
 
-func prepareMachineNodePairTrust(parent context.Context, stateDir, nodeID, name, address, expectedOrigin string, explicitOrigin, once, retry bool, output io.Writer, completed *bool) error {
+func prepareMachineNodePairTrust(parent context.Context, stateDir, nodeID, name, address, expectedOrigin string, explicitOrigin, once, retry bool, output io.Writer, completed *bool, profiles ...string) error {
 	if machineNodePairNoSymlinkPath(machineNodeStateDir(stateDir, nodeID)) != nil {
 		return errMachineNodePairState
 	}
@@ -95,7 +110,18 @@ func prepareMachineNodePairTrust(parent context.Context, stateDir, nodeID, name,
 	}
 	ctx, stop := signal.NotifyContext(parent, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	client, s, e := beginMachineNodePair(ctx, stateDir, nodeID, name, address, expectedOrigin, explicitOrigin)
+	requested := "auto"
+	if len(profiles) > 0 {
+		requested = profiles[0]
+	}
+	profile, descriptorText, e := selectMachineNodePairProfile(ctx, stateDir, nodeID, address, expectedOrigin, explicitOrigin, requested)
+	if e != nil {
+		return e
+	}
+	if profile == "scoped" {
+		return runMachineNodePairScopedTrust(ctx, stateDir, nodeID, name, address, expectedOrigin, explicitOrigin, once, retry, output, completed, descriptorText)
+	}
+	client, s, e := beginMachineNodePair(ctx, stateDir, nodeID, name, address, expectedOrigin, explicitOrigin, descriptorText)
 	if e != nil {
 		return e
 	}

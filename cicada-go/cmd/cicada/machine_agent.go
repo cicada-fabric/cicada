@@ -42,6 +42,7 @@ func runMachineAgentWithContext(parent context.Context, args []string, pinned *m
 	pqConfig := flags.String("pqtls-config", strings.TrimSpace(os.Getenv("CICADA_NODE_PQTLS_CONFIG")), "private enrolled Node PQ TLS configuration")
 	hubAddress := flags.String("hub-address", "", "canonical numeric Hub socket for independent Owner pairing")
 	retryPairing := flags.Bool("retry-pairing", false, "explicit new code after authenticated old pairing termination; preserve identities")
+	pairingProfile := flags.String("pairing-profile", "auto", "pairing compatibility: auto, legacy, or scoped; saved protocol is immutable")
 	hubConnectionFile := flags.String("hub-connection-file", "", "independently supplied public native Hub transport descriptor")
 	hubDialAddress := flags.String("hub-dial-address", "", "explicit canonical numeric Hub socket locator")
 	stateDir := flags.String("state-dir", machineAgentStateDir(), "durable Node state directory")
@@ -84,7 +85,7 @@ func runMachineAgentWithContext(parent context.Context, args []string, pinned *m
 		return localNodeConfigError("MCP discovery paths require --user-root")
 	}
 	if *hubsFile != "" {
-		if *hubAddress != "" || *retryPairing || *hubConnectionFile != "" || *hubDialAddress != "" {
+		if *hubAddress != "" || *retryPairing || *pairingProfile != "auto" || *hubConnectionFile != "" || *hubDialAddress != "" {
 			return errors.New("multi-Hub uses per-Hub native transport configuration")
 		}
 		if pinned != nil || *stateRoot == "" || !*relayOnly || *lanDiscovery || len(flags.Args()) != 0 {
@@ -118,6 +119,9 @@ func runMachineAgentWithContext(parent context.Context, args []string, pinned *m
 	if *retryPairing && *hubAddress == "" {
 		return errors.New("--retry-pairing requires the original --hub-address")
 	}
+	if *pairingProfile != "auto" && *hubAddress == "" {
+		return errors.New("--pairing-profile requires --hub-address")
+	}
 	if *hubAddress != "" {
 		if pinned != nil || *hubConnectionFile != "" || *hubDialAddress != "" || *pqConfig != "" {
 			return errors.New("--hub-address requires one original Node state, without alternate transport configuration")
@@ -126,7 +130,7 @@ func runMachineAgentWithContext(parent context.Context, args []string, pinned *m
 		if e != nil {
 			return e
 		}
-		if e = prepareMachineNodePairTrust(parent, *stateDir, *id, *name, *hubAddress, expected, explicitOrigin, *once, *retryPairing, os.Stderr, &pairingCompleted); e != nil {
+		if e = prepareMachineNodePairTrust(parent, *stateDir, *id, *name, *hubAddress, expected, explicitOrigin, *once, *retryPairing, os.Stderr, &pairingCompleted, *pairingProfile); e != nil {
 			return e
 		}
 	}
