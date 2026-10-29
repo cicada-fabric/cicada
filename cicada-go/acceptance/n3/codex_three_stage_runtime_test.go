@@ -217,6 +217,11 @@ func TestN3CodexProductThreeStagePersistentDaemon(t *testing.T) {
 // Parent evidence reads never create an identity, credential or business grant.
 func threeStageLivePin(t *testing.T, v *codexProductFixture, root, outbox, oldInstance string) (json.RawMessage, string) {
 	t.Helper()
+	return threeStageLivePinAt(t, v.actualNode, v.f.cfg.Origin, v.mcpState, root, outbox, oldInstance)
+}
+
+func threeStageLivePinAt(t *testing.T, node *nodeProcess, origin, mcpState, root, outbox, oldInstance string) (json.RawMessage, string) {
+	t.Helper()
 	deadline := time.Now().Add(15 * time.Second)
 	for time.Now().Before(deadline) {
 		paths := must(filepath.Glob(filepath.Join(root, "run/nodes/*.json")))
@@ -255,7 +260,7 @@ func threeStageLivePin(t *testing.T, v *codexProductFixture, root, outbox, oldIn
 							Session string `json:"mcp_session_state_file"`
 							Outbox  string `json:"mcp_outbox_state_file"`
 						}
-						if json.Unmarshal(d.Pin, &pin) != nil || d.Nonce != n || d.Instance != locator.Instance || d.Digest != hash(raw) || pin.Root != root || pin.Origin != v.f.cfg.Origin || pin.Node != v.actualNode.id || pin.Session != v.mcpState || pin.Outbox != outbox {
+						if json.Unmarshal(d.Pin, &pin) != nil || d.Nonce != n || d.Instance != locator.Instance || d.Digest != hash(raw) || pin.Root != root || pin.Origin != origin || pin.Node != node.id || pin.Session != mcpState || pin.Outbox != outbox {
 							t.Fatal("actual live Node description changed its original selected coordinates")
 						}
 						if must(os.Stat(filepath.Join(root, "run/nodes"))).Mode().Perm() != 0700 || must(os.Stat(paths[0])).Mode().Perm() != 0600 {
@@ -270,8 +275,8 @@ func threeStageLivePin(t *testing.T, v *codexProductFixture, root, outbox, oldIn
 				}
 			}
 		}
-		if !v.actualNode.running() {
-			v.actualNode.reportFailure(t)
+		if !node.running() {
+			node.reportFailure(t)
 			t.Fatal("explicit Node exited before live description")
 		}
 		time.Sleep(25 * time.Millisecond)

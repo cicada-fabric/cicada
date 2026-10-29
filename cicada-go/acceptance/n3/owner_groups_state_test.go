@@ -18,10 +18,18 @@ import (
 // even when no business tool is authorized to return a positive whoami card.
 func ownerGroupsStoredIdentities(t *testing.T, v *codexProductFixture, actors nativePeerActors, sids []string) []ownerGroupsIdentity {
 	t.Helper()
-	if len(sids) != 4 || len(actors.workspaces) != 4 {
+	return ownerGroupsStoredIdentitiesAt(t, filepath.Join(v.f.dir, "synthetic-hub", "cicada.sqlite3"),
+		v.actualNode.id, v.actualNode.state, v.f.cfg.Material.OwnerID, actors.workspaces, sids)
+}
+
+// Read-only audit against the actual shared NPT Hub and one exact Node root.
+// The original caller retains its same four-actor oracle and SQL predicates.
+func ownerGroupsStoredIdentitiesAt(t *testing.T, database, nodeID, nodeState, ownerID string, workspaces, sids []string) []ownerGroupsIdentity {
+	t.Helper()
+	if len(sids) != 4 || len(workspaces) != 4 {
 		t.Fatal("identity audit needs the four actual original native Threads")
 	}
-	db := nodePairReadOnlyDB(t, filepath.Join(v.f.dir, "synthetic-hub", "cicada.sqlite3"))
+	db := nodePairReadOnlyDB(t, database)
 	defer db.Close()
 	tx := must(db.BeginTx(context.Background(), &sql.TxOptions{ReadOnly: true}))
 	defer tx.Rollback()
@@ -30,7 +38,7 @@ func ownerGroupsStoredIdentities(t *testing.T, v *codexProductFixture, actors na
 		rows := must(tx.Query(`SELECT e.id,e.principal_id,e.machine_id,e.workspace,c.binding_id,c.binding_epoch,c.public_identity_json
 FROM fabric_endpoints e JOIN endpoint_key_candidates_v2 c ON c.endpoint_id=e.id
 WHERE e.native_session_id=? AND e.machine_id=? AND e.harness='codex' AND c.owner_id=? AND c.node_id=e.machine_id`,
-			sid, v.actualNode.id, v.f.cfg.Material.OwnerID))
+			sid, nodeID, ownerID))
 		var identities []ownerGroupsIdentity
 		for rows.Next() {
 			identity := ownerGroupsIdentity{SID: sid}
@@ -45,7 +53,7 @@ WHERE e.native_session_id=? AND e.machine_id=? AND e.harness='codex' AND c.owner
 			}
 			clear(publicJSON)
 			identity.PublicKeySHA256 = hash(must(json.Marshal(public)))
-			keyRoot := filepath.Join(v.actualNode.state, "nodes", "node-"+url.PathEscape(v.actualNode.id))
+			keyRoot := filepath.Join(nodeState, "nodes", "node-"+url.PathEscape(nodeID))
 			original, err := nodekeys.LoadExisting(keyRoot, identity.Endpoint)
 			if err != nil || !reflect.DeepEqual(original.Public(), public) {
 				t.Fatal("actual Node lost or replaced its original enrolled Endpoint key")
@@ -56,7 +64,7 @@ WHERE e.native_session_id=? AND e.machine_id=? AND e.harness='codex' AND c.owner
 			t.Fatal("original SID no longer has exactly one native registration and enrolled key")
 		}
 		identity := identities[0]
-		if identity.Workspace != actors.workspaces[index] || identity.Endpoint == "" || identity.Principal == "" || identity.BindingID == "" || identity.BindingEpoch == 0 {
+		if identity.Workspace != workspaces[index] || identity.Endpoint == "" || identity.Principal == "" || identity.BindingID == "" || identity.BindingEpoch == 0 {
 			t.Fatal("actual native registration changed its original workspace or binding")
 		}
 		result = append(result, identity)

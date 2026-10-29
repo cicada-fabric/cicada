@@ -83,6 +83,7 @@ type ownerGroupsSelfCard struct {
 
 type ownerGroupsHost struct {
 	fixture      *codexProductFixture
+	node         *nodeProcess
 	workspaces   []string
 	mu           sync.Mutex
 	process      *process
@@ -130,20 +131,29 @@ func publishOwnerGroupsControl(path string, raw []byte) error {
 
 func startOwnerGroupsHost(t *testing.T, v *codexProductFixture, actors nativePeerActors) (*ownerGroupsHost, ownerGroupsHostReply) {
 	t.Helper()
+	h, first := startOwnerGroupsHostAt(t, v.root, v.codexHome, v.actualNode, actors)
+	h.fixture = v
+	return h, first
+}
+
+// Address-only NPT fixtures own their actual Hub/App separately. Reuse the
+// same four-Thread Host without constructing another Hub or a legacy approval.
+func startOwnerGroupsHostAt(t *testing.T, root, codexHome string, node *nodeProcess, actors nativePeerActors) (*ownerGroupsHost, ownerGroupsHostReply) {
+	t.Helper()
 	if len(actors.workspaces) != 4 {
 		t.Fatal("Owner Group runtime requires four actual original native Threads")
 	}
-	control := filepath.Join(v.root, "owner-groups-native-control")
-	config, result := filepath.Join(v.root, "private-owner-groups-native-config.json"), filepath.Join(v.root, "private-owner-groups-native-result.json")
-	writeJSON(t, config, map[string]any{"root": v.root, "workspace": actors.workspaces[0], "workspaces": actors.workspaces,
-		"codex_home": v.codexHome, "environment": actors.environment, "codex_binary": "/tools/codex-package/bin/codex",
+	control := filepath.Join(root, "owner-groups-native-control")
+	config, result := filepath.Join(root, "private-owner-groups-native-config.json"), filepath.Join(root, "private-owner-groups-native-result.json")
+	writeJSON(t, config, map[string]any{"root": root, "workspace": actors.workspaces[0], "workspaces": actors.workspaces,
+		"codex_home": codexHome, "environment": actors.environment, "codex_binary": "/tools/codex-package/bin/codex",
 		"codex_sha256": directIPCodexSHA256, "marketplace": filepath.Join(actors.prefix, "components/node/share/codex"),
 		"step": "owner-groups-native", "persistent_daemon": true, "allow_test_termination": true, "daemon_umask": "0002",
 		"preparation": "none", "selected_root": actors.prefix, "control": control, "result": result,
 		"cicada_sha256": hash(readPrivateBinary(t, filepath.Join(actors.prefix, "components/node/bin/cicada")))})
 	command := exec.Command("/usr/bin/python3", "/qa/scripts/fixtures/native-pair/peer_form_native.py", config)
 	command.Env, command.Dir, command.Stdout, command.Stderr = actors.environment, actors.workspaces[0], actors.log, actors.log
-	h := &ownerGroupsHost{fixture: v, workspaces: append([]string(nil), actors.workspaces...), process: startProcess(t, command), control: control, result: result, sequence: 1}
+	h := &ownerGroupsHost{node: node, workspaces: append([]string(nil), actors.workspaces...), process: startProcess(t, command), control: control, result: result, sequence: 1}
 	first := h.await(t, 0)
 	if len(first.SIDs) != 4 || first.FixtureScope == "" {
 		t.Fatal("actual four-Thread Host bootstrap omitted original identities")
@@ -546,6 +556,8 @@ func (h *ownerGroupsHost) recordSelectionFailure(t *testing.T, actor int, label,
 	path, node, sid, workspace := "", "", "", ""
 	if h.fixture != nil && h.fixture.actualNode != nil {
 		path, node = h.fixture.actualNode.statePath(), h.fixture.actualNode.id
+	} else if h.node != nil {
+		path, node = h.node.statePath(), h.node.id
 	}
 	if actor >= 0 && actor < len(h.originalSIDs) {
 		sid = h.originalSIDs[actor]

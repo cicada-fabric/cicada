@@ -9754,3 +9754,87 @@ the complete parent are not filled by this run. Later Node-consumer source
 DPAPI/ACL/GUI and public HTTPS remain outside this result. Old failures retain
 their original outcome and unknown causes. No automatic full or cross-Node run
 was started.
+
+### 2026-10-29 cross-Node adapter compilation preparation
+
+Root authorized preparation only, reusing existing NPT/N3/Host infrastructure.
+The adapter allocates one actual native-TLS Hub/App and two independent actual
+Node roots, keystores, MCP/outboxes, Codex homes and four original workspaces per
+Host. It uses the delivered `--pairing-profile scoped`, the real private TTY
+code/strict scoped decoder and original ACK/binding/key observations. It does
+not use the legacy `newCodexProductFixture` approval, manual Owner pin, parent
+Owner signer, SQL grant or parser fallback. Actual App actions still go through
+one original App process/counter. No Runtime test or new driver was added.
+
+The existing Host constructor, live local-discovery check, read-only identity
+audit and private TTY mechanics now accept exact fixture coordinates; original
+callers keep their four-Thread, nonce/scope, SQL, private-output and old-family
+decoder assertions. Cross-Host exchange registers queue expectations on the
+receiver's own Host, then uses real ASK/receive/REPLY calls. Expectation setup
+does not deliver a turn. ASK is split from receipt/reply so B may go offline and
+recover the same original request, with same-root/key/binding checks and
+original Host/SID recovery. Bidirectional use and G/H isolation controls remain
+part of the agreed plan, not executed acceptance claims.
+
+An initial compile/vet on `5b94ee8` plus six dirty QA files exited 0. Root then
+delivered Hub carrier `fb2822a19c55c87e7c357dfb4e26700009d26c79`; named stash
+`cb947b2c715bb219b4717eb8ea895fa4acd0d1eb` preserved all six files before the
+authorized task-branch fast-forward. The stash and all earlier task branches/
+stashes remain; restored file bytes matched exactly. Final source is **fb2822a
+plus those six dirty QA files**, with explicit before/after snapshots.
+
+Final evidence:
+`~/Cicada/.local/evidence/n2-acceptance/cross-node-adapter-fb2822a-z8ds8ccm/`.
+Pinned disposable Docker, read-only module cache and exclusive task build cache
+were reused. `go test -mod=readonly -c -o /out/n3.test ./acceptance/n3` exited
+**0** (19.908s); `go vet -mod=readonly ./acceptance/n3` exited **0** (3.104s).
+Total 23.506s; source snapshots stayed equal, container was absent, remaining
+state files were 0. No test binary was executed: **Runtime NOT_RUN**, native
+Threads/model calls/Node processes started **0**.
+
+Source-before/after SHA-256:
+`2ade1476e1af724453b10ba74340962baac9c9e09d105ffe525dc09032011e50`.
+Source manifest SHA-256:
+`4730a2d416230fa873ecc2108f74c5313d8c1ebae1b652d54860f59648132f81`.
+`result.json` SHA-256:
+`11352a9d96e55ef4626c7663cc6ce590ebb8b0fbb7f49793ee89f332deb4f6ba`.
+Compiled test SHA-256:
+`60b4cfbb2a30adbca7b287f0b00378f977487d5064f885225adc03ae55bcf92f`.
+The evidence includes exact pinned Docker commands and source/generated-input
+hashes; compilation is not attributed solely to HEAD or counted as Runtime.
+
+Minimum remaining binding: the complete App scoped second-device review/ACK
+checkpoint, authenticated saved-Node/gesture selection, existing-Network card
+selection and exact Owner Group ADD/remove actions, then Root's CLI default-open
+source notice. WIP App fields are not guessed or emulated. App has supplied its
+frozen public action table,
+but its checkpoint is uncommitted and B's ACK-read budget remains blocked.
+The actual run must still prove both directions, App closed, B offline/same-root recovery and only
+B0-G removed while A0-A1 in G and A0-B0 in H remain positive. Cross-Node Runtime,
+physical second Node, Windows DPAPI/ACL/GUI and public HTTPS remain NOT_RUN.
+
+Root's subsequent environment review confirmed the existing file-install
+helper already rewrote CODEX_HOME to the same Node's `consumer-codex` and fixed
+`CICADA_CODEX_BIN`; the initial-list concern was withdrawn, not classified as a
+production or observed Runtime defect. The prepared fixture now derives Node,
+private-code reader and Host environments explicitly from one bounded source:
+the Node's private HOME/CODEX_HOME and `/tools/codex-package/bin/codex`. It does
+not depend on installer rewrites or inherited developer environment. Both
+Nodes retain separate homes; original M1–M8 assertions, permissions and retries
+are unchanged. Root authorized amending the unpublished preparation checkpoint;
+`c6e5a0f9302db08f453f090aaabe728b7a1fb0e7` remains archived at
+`task/archive-cross-node-c6e5a0f`, with original evidence retained.
+
+Review-source **c6e5a0f plus one dirty QA environment file** compiled and passed
+vet (exit 0/0, 6.385s/1.439s, total 8.290s), without executing any test binary.
+Evidence: `~/Cicada/.local/evidence/n2-acceptance/cross-node-env-review-c6e5a0f-agmpk14q/`;
+source-before/after SHA-256
+`890e13bf75c156213c8fc8077e834c84075ba76dc3a91963514b245a527e928e`,
+manifest SHA-256
+`e3d8ff2ad26112ab7fc45785e170a2b96bca6566449645467903211f4637e0df`,
+result SHA-256
+`fb79b56b55712bb00a9120253f6cbdc529158e956e6f3dff46c116914969b457`,
+compiled test SHA-256
+`a7656eb9d5604ed25e66ca79bc0fe7e7ab38448e80897dc2bf55dadeb43d5382`.
+Container absent, remaining state files 0, **Runtime NOT_RUN** and native
+Threads/model calls 0. No new validation matrix or driver was added.

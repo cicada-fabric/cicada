@@ -20,6 +20,19 @@ import (
 // argv is supplied by the frozen CLI consumer adapter, never a shell command.
 func nodePairPrivateTTYCode(t *testing.T, root string, argv, environment []string) string {
 	t.Helper()
+	code := nodePairPrivateTTYCodeText(t, root, argv, environment, wire.NodePairTrustCodePrefix, wire.MaxNodePairTrustCodeBytes)
+	decoded, err := wire.DecodeNodePairTrustCode(code, time.Now().UTC())
+	clear(decoded.OOBSecret)
+	if err != nil {
+		t.Fatal("actual terminal did not contain one complete canonical current pairing code")
+	}
+	return code
+}
+
+// Capture mechanics are shared; each explicit family has exactly one decoder.
+// No old/new parser fallback, secret reconstruction or outbound request occurs.
+func nodePairPrivateTTYCodeText(t *testing.T, root string, argv, environment []string, prefix string, limit int) string {
+	t.Helper()
 	dir := must(os.MkdirTemp(root, "private-node-code-"))
 	capture := filepath.Join(dir, "terminal.private")
 	config := filepath.Join(dir, "capture-config.json")
@@ -56,17 +69,15 @@ func nodePairPrivateTTYCode(t *testing.T, root string, argv, environment []strin
 	}
 	var code string
 	for _, field := range bytes.Fields(raw) {
-		if !bytes.HasPrefix(field, []byte(wire.NodePairTrustCodePrefix)) {
+		if !bytes.HasPrefix(field, []byte(prefix)) {
 			continue
 		}
-		if code != "" || len(field) > wire.MaxNodePairTrustCodeBytes {
+		if code != "" || len(field) > limit {
 			t.Fatal("actual terminal returned ambiguous or oversized secret pairing material")
 		}
 		code = string(field)
 	}
-	decoded, err := wire.DecodeNodePairTrustCode(code, time.Now().UTC())
-	clear(decoded.OOBSecret)
-	if err != nil || code == "" {
+	if code == "" {
 		t.Fatal("actual terminal did not contain one complete canonical current pairing code")
 	}
 	return code // Only the private actual-App command mailbox receives this text.
@@ -99,6 +110,14 @@ func nodePairRedirectRefusesCode(t *testing.T, argv, environment []string, code 
 	if decodeErr != nil {
 		t.Fatal("redirect refusal fixture lacks a current original private code")
 	}
+	nodePairRedirectRefusesSecret(t, argv, environment, code, wire.NodePairTrustCodePrefix, decoded.OOBSecret)
+}
+
+func nodePairRedirectRefusesSecret(t *testing.T, argv, environment []string, code, prefix string, secret []byte) {
+	t.Helper()
+	if len(argv) == 0 || code == "" || len(secret) != 32 {
+		t.Fatal("redirect refusal fixture lacks its exact decoded private code")
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
@@ -107,10 +126,10 @@ func nodePairRedirectRefusesCode(t *testing.T, argv, environment []string, code 
 	cmd.Stdout, cmd.Stderr = &out, &out
 	err := cmd.Run()
 	defer clear(out.raw)
-	leaked := bytes.Contains(out.raw, []byte(wire.NodePairTrustCodePrefix)) || bytes.Contains(out.raw, []byte(code))
-	for _, secret := range [][]byte{decoded.OOBSecret, []byte(base64.RawURLEncoding.EncodeToString(decoded.OOBSecret)),
-		[]byte(base64.StdEncoding.EncodeToString(decoded.OOBSecret)), []byte(hex.EncodeToString(decoded.OOBSecret))} {
-		leaked = leaked || bytes.Contains(out.raw, secret)
+	leaked := bytes.Contains(out.raw, []byte(prefix)) || bytes.Contains(out.raw, []byte(code))
+	for _, value := range [][]byte{secret, []byte(base64.RawURLEncoding.EncodeToString(secret)),
+		[]byte(base64.StdEncoding.EncodeToString(secret)), []byte(hex.EncodeToString(secret))} {
+		leaked = leaked || bytes.Contains(out.raw, value)
 	}
 	if err == nil || ctx.Err() != nil || out.overflow || leaked {
 		t.Fatal("actual local pairing-code CLI did not refuse redirected secret output")
