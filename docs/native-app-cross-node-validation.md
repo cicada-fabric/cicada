@@ -1,12 +1,35 @@
 # Two-Node native acceptance entrypoint — 2026-10-29
 
+## Current scopes — 2026-10-30
+
+| Actual Runtime source / run | Root-reviewed status |
+| --- | --- |
+| Clean `64927cbe740f3d01ffc6a68250468394bd4dadb3`, QtqKRp | Complete four-Thread M1–M8 and parent PASS; eight facts, real lease boundary and final original-four witness valid. Independent logical-line reclassification is **SCOPED_PASS / 0**, accepted by Root. Original driver FAIL / 1 remains unchanged. |
+| Clean `f9bb826f9e5133296a0c553de266244e7ad7fcdd`, 8b4Xge | Latest complete cross invocation is **FAIL / 1**: C1–C4 PASS, C5 original offline recovery FAIL, C6–C7/final eight witness NOT_RUN. Root independently verified 21 evidence hashes. Product or fixture root cause remains unestablished. |
+
+The full result remains attributed to its actual `64927cbe` source and binaries.
+Root's later combined-source review preserves its business guards and state
+transitions; that review and error/diagnostic qualification are not another full
+Runtime execution. No full rerun was performed for those reviewed changes.
+The full reclassification Root receipt is
+`~/Cicada/.local/evidence/n2-acceptance/frames-bootstrap-final-5d2304f-fgk_5mtf/root-review-a0fb120.json`,
+SHA-256 `b8e3129304bd96ec5947f98eae78c2eb18c45835832a9d6b654c6db33f144cb0`.
+See the [full evidence and original FAIL](#full-runtime-terminal-and-independent-log-reclassification--2026-10-29)
+and [latest cross terminal receipt](#frozen-cross-runtime-terminal--2026-10-30).
+Earlier failures below retain their exact source, result and missing evidence.
+Windows DPAPI/ACL/GUI/IME, actual 24-hour expiry, Android, physical second Node
+and public HTTPS remain NOT_RUN. These are scoped results, not a release or
+all-platform acceptance.
+
+## Initial entrypoint scope
+
 At the initial entrypoint checkpoint, the actual Runtime gate was **NOT_RUN**.
 That preparation qualified the executable entrypoint, its compilation and the
 evidence classifier. The later actual failures and QA audit adaptation are
 recorded below. The App producer's SDK-actor results, old M7 results and synthetic
 classifier controls do not establish a two-Node native pass.
 
-The production baseline is Root's frozen
+The initial production baseline is Root's frozen
 `5f270726733c10e3335b753c304cdc0f5332acda`, including App checkpoint `8d8ccd5`
 and default scoped capability availability. The QA entrypoint commit is
 `d0e9717e00bdf9f0926152d19f8df8d8baf6aac7`. No Hub/App/Node production
@@ -260,10 +283,10 @@ unchanged at `owner-groups-query-audit-c9a13d2-iqd1p68h/`. The final invocation
 uses the existing driver's compile-to-`/out` then `test2json` execution pattern;
 no source change or deadline relaxation was needed.
 
-The current product blocker remains C2's App budget failure, assigned to its
-owner. Root will integrate that producer fix and this QA adaptation before
-providing a new source freeze for the two actual gates. QA has not started
-another Runtime or modified a production implementation, request or permission.
+At this historical `d0e9717` checkpoint, C2's App budget failure was assigned to
+its owner, pending Root's integration of the producer fix and QA adaptation.
+QA had not started another Runtime or modified production, requests or
+permissions. The later scoped results and current C5 failure are recorded below.
 
 ## Repaired-source cross-Host fixture failure — 2026-10-29
 
@@ -457,3 +480,100 @@ helpers. Cross-Node C3–C7 remain unaccepted. Windows DPAPI, ACL, GUI and IME,
 Android, physical second Node and public HTTPS remain NOT_RUN. Final plan/index
 closure waits for Root's review and the actual remaining gate; this record does
 not declare the product or all platforms accepted.
+
+## Frozen cross Runtime terminal — 2026-10-30
+
+Root integrated QA `a0fb120` and Hub's reviewed `7291a777` into clean
+`f9bb826f9e5133296a0c553de266244e7ad7fcdd`, tree
+`45c4add6161a9b1da724b104798bddd5ae2e8660`. QA created the separate
+`task/v01-final-cross-runtime` worktree, retained every old ref/run, verified the
+three ignored generated UI inputs against the full QtqKRp hashes above and
+invoked the existing complete cross selector exactly once. No C1 preflight or
+full M1–M8 rerun was performed. Frozen source and harness are both clean and
+unchanged through execution; this later documentation checkpoint is not its
+tested source.
+
+Run `run-20261029T235843Z-8b4Xge` is **FAIL / 1**, parent 950.48 s:
+
+| Case | Actual terminal result / elapsed |
+| --- | --- |
+| C1 scoped enrollment and originals | PASS / 311.74 s; both scoped private ACKs, two Nodes/eight original native Threads, independent policies in the same Network, one Hub/Owner/device, Control off |
+| C2 explicit Owner Groups | PASS / 174.45 s; actual CREATE/ADD reviews, all five exact G/H edges key-ready, other originals have no implicit edge |
+| C3 bidirectional native | PASS / 209.21 s; both cross-Node G ASK/REPLY directions reach the original native SIDs exactly once |
+| C4 App-closed communication | PASS / 107.30 s; original App closes normally and the H native request/reply completes without App |
+| C5 original offline recovery | FAIL / 140.90 s; exact original request's native queue never reaches one post within the unchanged 75-second barrier |
+| C6 / C7 | NOT_RUN; exact B0-G removal, surviving-scope checks and final eight-original witness not reached |
+
+Version, CLI/test compilation and vet exit 0; harness exits 1. The retained
+result is
+`~/Cicada/.local/evidence/native-pair-acceptance/run-20261029T235843Z-8b4Xge/result.json`,
+SHA-256 `565b798884624ee79b267951ca596b65a2df2eb9e41f4bdeb8b01bf9a1fa0e1d`.
+The original error at `owner_groups_cross_node_runtime_test.go:249` is
+`actual Owner Group Host stopped`, with phase `WAIT_ORIGINAL_NATIVE_QUEUE` and
+code `OWNER_GROUP_EXACT_NATIVE_QUEUE_NOT_ARRIVED`. No malformed evidence is
+reported. There are three completed native roundtrip witnesses, from C3/C4;
+they cannot supply C5 or the absent C7 routes.
+
+C5's one original A0→B0 G ASK returns `SENT`, `retryable=false`. Retained hashes
+are operation
+`450c271ae4702e19c7ef15f90a1dbca6db5bd4275ce580a85345e00e5b6d88c8`,
+request `42bda724feec3b3dab8573ca754668f06b843cd8d66205e0159b866463ee64cc`,
+expected body
+`79a0d2662dd6447c7aaddb29edfad1412e2463f3bcdb7d266d70e9faa51cf784`
+and G `b41a1c84adc3ec4a4d6953394d35fc81693f70b1107d27f564a805d81977557b`.
+The receiver command expects the exact original request hash; both current Group
+selections use that G hash. The fixture's pre-restart exact outbox/target/body
+read and offline zero-injection checks pass. The immutable outbox hash was a
+local variable and is NOT_RETAINED in closed evidence; its post-restart equality
+assertion and the final eight-identity audit are NOT_REACHED. Private DB/state
+is cleaned normally, so no later private-state snapshot is inferred.
+
+Retained Node root/key/binding checks and the retained Host's original-four
+reply checks after Node restart complete before the receiver command. The closed observer then
+retains 74 native-progress records, from `00:13:39.616830Z` through
+`00:14:54.608380Z`, all with exact-body queue posts 0 and provider unclassified
+posts 0. `receive_match` waits for that exact native arrival **before** executing
+`cli.host_call`: the labelled `cicada_receive` was not executed. Its attached
+Host diagnostic is from the preceding operation, not a successful receive.
+ASK `SENT` does not prove native delivery. The minimal established failure is
+absence of the exact native-delivery observation after retained restart; whether
+the product attempted a native write and the product/fixture cause remain
+NOT_DETERMINED. Root assigns the bounded product recovery investigation to the
+Hub owner; QA only records the fixture/evidence boundary. No substitute ASK,
+permission, deadline extension, code change or retry follows this failure.
+
+Source-before/after SHA-256 is
+`feadb56226215008103f6078b5288ee5bc7118c1499876226a05eba775d2c14c`,
+manifest `8754860e207b4075961b21ea65001fabf5fd297dfab39268dc056d85c7c3e682`.
+Actual CLI SHA-256 is
+`b9e381cd3a0258bbd939c2457ff1aa2f18b4f9b1523039b7263592ed6ac67acf`
+(42102066 bytes); actual test binary is
+`11e89782c87a1cbd257079fbba0ca6552daf7ccfacdf1ad02c03db56587c8006`
+(37493060 bytes). Both before/after binary manifests match. The dependency
+cache is read-only and build cache exclusively locked. Docker remains available,
+the exact owned container is independently absent, private state files number
+zero and only an empty `tmp` directory remains. The read-only observer has
+195 records, zero read retries and zero issuer observations.
+
+The external private observer retained its old fields and added only the three
+closed Hub diagnostics: 14 allowed `registration_substage` values, four
+`child_ctx_error` values, and exact-boolean `underlying_deadline`. Its 42
+synthetic filter checks pass, exit 0; old-field output is identical and raw
+private text is not exported. This selfcheck is not a Runtime case. The private
+observer was the only adjusted external template; production and QA source
+remained frozen.
+
+All following receipts are under
+`~/Cicada/.local/evidence/n2-acceptance/cross-final-f9bb826-01/`:
+
+| Receipt | SHA-256 / scope |
+| --- | --- |
+| `freeze-manifest.json` | `83ed4eecba77b5c9bce15ed4f6a93201ffbfe83789a65841bf76c85c1cee6095` |
+| `root-freeze-review.json` | `88f8f728e20a8686db91ec779e77264adf6608cd1bcc4409c64ca36d3f342343`; combined source, three generated inputs, observer and preserved full business branches |
+| `terminal-failure.json` | `b43aefd03fb72a5b7b366be8152ab7b9682b28c98d0a014489ecf558f88748ac`; QA closed evidence and explicit retention limits |
+| `root-review-8b4Xge-failure.json` | `1fa06c42ec97bb395ccfb6f6a2e353adabc00e48ef0f18501b7f97fc3fde91a9`; independent 21-hash/source/binary/cleanup review, FAIL retained |
+
+No new Runtime has started. Any necessary fix and subsequent execution requires
+Root's new review/freeze and the same existing complete cross entrypoint.
+QtqKRp's accepted full scope, all earlier failures and every physical/24-hour
+NOT_RUN boundary remain independently attributed.

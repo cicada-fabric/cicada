@@ -1,6 +1,6 @@
 # CICADA technical documentation
 
-## Current development — 2026-10-26
+## Current development — 2026-10-30
 
 Software **0.0.5 remains unreleased**; **v0.1.0 is the planned first release**.
 The [adopted specification](../CICADA.md) defines the product, while the
@@ -26,9 +26,14 @@ track implementation and remaining acceptance. Current integrated source include
 Use the [current ledger](native-app-plan.md#current-feedback-and-acceptance-ledger),
 [App validation](native-app-validation.md) and
 [Endpoint/Group source validation](native-endpoint-directory-validation.md) for
-the actual passing scopes and retained failures, including the source-bound
-four-Thread M1–M8 Runtime status. Integration, producer checks and candidate
-packaging retain their separate scopes. Independent physical Windows
+the actual passing scopes and retained failures. The
+[current Runtime record](native-app-cross-node-validation.md#current-scopes--2026-10-30)
+separately attributes Root's accepted full M1–M8 scope to actual `64927cbe`
+(QtqKRp, independently reclassified; original driver FAIL retained) and the
+latest actual cross gate to `f9bb826` (8b4Xge: C1–C4 PASS, C5 FAIL, C6–C7
+NOT_RUN). Original offline native recovery is the current unaccepted case;
+its product or fixture cause is not established. Integration, producer checks
+and candidate packaging retain their separate scopes. Independent physical Windows
 DPAPI/ACL/GUI and 24-hour elapsed expiry remain **NOT_RUN**.
 
 Pre-submit contact/input UI stays in **v0.2 PLANNED/NOT_RUN**; the
