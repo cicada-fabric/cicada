@@ -208,3 +208,40 @@ HTTP reader remains 524,288 bytes. Existing PairTrust padding at its separate
 512 KiB boundary remains covered. The composed regression keeps its A→B→A
 selection/status steps after ADD and verifies the saved Group original, query
 and receipt remain byte-for-byte intact.
+
+## Vault record-count test correction (2026-10-30)
+
+The Windows safety builder at frozen candidate source
+`9b6ec2ccba4add5431ab31a9ba7052e4bb6d2f6f` retained one Linux vault failure:
+`TestTwentyOneStateRecordsPreserveOriginalCASAndTombstones` still required 21
+records and rejected a twenty-second namespace, while the adopted scoped-Node
+implementation already permits 32. Its original result remains at
+`~/Cicada/.local/evidence/n2-acceptance/windows-build-20261030T022435Z-Ku5vAo/result.json`,
+SHA-256 `822292db00686108f88518d3fa3974449c49d04cc10e644205e991e820e945bd`.
+That run recorded 41 passing test events and one failure; Windows vet and
+cross-compilation passed, but no accepted safety ZIP was produced.
+
+This test-only checkpoint is based on that same frozen source in independent
+worktree `n2-app-windows-vault-budget-test`. It updates the existing regression
+to retain 16 legacy records, five Group records including a tombstone, three
+shared scoped work records and eight synthetic opaque Node records. All 32
+must fit; a thirty-third namespace must fail both preflight and write without
+changing vault bytes. Reopening checks legacy CAS generations, the known legacy
+update, every added record and the tombstone. The two-key, 1 MiB per-record,
+4 MiB encoded-payload and 8 MiB vault-file bounds stay explicitly asserted.
+
+Pinned Go 1.27.3, offline read-only modules, full Linux `internal/appvault`:
+**PASS**, 17 top-level tests / 42 passing test events, 13.422 seconds, no failures
+or skips. Evidence is
+`~/Cicada/.local/evidence/n2-app/windows-vault-budget-test-9b6-20261030/`;
+`source.json` pins the tested file and original FAIL, and `linux-vault.jsonl`
+retains the real output. The tested input is the frozen base plus the recorded
+test edit; it is not attributed solely to the base commit.
+
+Only this test file and this validation addition change. Tracked production Go
+remains identical to the candidate source; canonical `dev` and the existing
+candidate build/archive stay unchanged. The new clean test commit is a separate
+input for the existing Windows safety builder after Root handoff. Its builder
+rerun and physical Windows GUI/DPAPI/ACL execution are not passing claims of
+this checkpoint. Full actual Runtime sources remain 64927cbe and d4884a5 with
+their separate accepted receipts. No product build or Runtime is repeated.

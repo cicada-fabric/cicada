@@ -8,8 +8,8 @@ import (
 	"testing"
 )
 
-func TestTwentyOneStateRecordsPreserveOriginalCASAndTombstones(t *testing.T) {
-	if maxStateRecords != 21 || maxStateBytes != 1<<20 || maxVaultPlainBytes != 4<<20 || maxVaultFileBytes != 8<<20 || maxVaultEntries != 2 {
+func TestThirtyTwoStateRecordsPreserveOriginalCASAndTombstones(t *testing.T) {
+	if maxStateRecords != 32 || maxStateBytes != 1<<20 || maxVaultPlainBytes != 4<<20 || maxVaultFileBytes != 8<<20 || maxVaultEntries != 2 {
 		t.Fatal("record-count expansion changed another vault budget")
 	}
 	path := filepath.Join(privateTestDir(t), "synthetic-budget.vault")
@@ -24,6 +24,12 @@ func TestTwentyOneStateRecordsPreserveOriginalCASAndTombstones(t *testing.T) {
 		}
 	}
 	names := []string{"appcore.endpoint-groups-original.v1", "appcore.endpoint-groups-response.v1", "appcore.endpoint-groups-recovery.v1", "appcore.endpoint-groups-recovery-response.v1", "appcore.endpoint-groups-state.v1"}
+	// Retain the legacy 21, then the three shared scoped work records and
+	// eight opaque Node records. This exercises storage, not Node authority.
+	names = append(names, "appcore.node-scoped-flow.v1", "appcore.node-scoped-original.v1", "appcore.node-scoped-recovery.v1")
+	for i := 0; i < 8; i++ {
+		names = append(names, fmt.Sprintf("synthetic.scoped.node.%02d", i))
+	}
 	for _, name := range names {
 		if _, err := v.CompareAndSwapState(name, 0, []byte("synthetic opaque original packet")); err != nil {
 			t.Fatal(err)
@@ -38,10 +44,10 @@ func TestTwentyOneStateRecordsPreserveOriginalCASAndTombstones(t *testing.T) {
 	}
 	defer clear(before)
 	if err := v.CheckStateUpdates(map[string][]byte{"synthetic.overflow": {1}}); err == nil {
-		t.Fatal("twenty-second namespace passed the no-write preflight")
+		t.Fatal("thirty-third namespace passed the no-write preflight")
 	}
 	if _, err := v.CompareAndSwapState("synthetic.overflow", 0, []byte{1}); err == nil {
-		t.Fatal("twenty-second namespace was written")
+		t.Fatal("thirty-third namespace was written")
 	}
 	after, err := os.ReadFile(path)
 	if err != nil || !bytes.Equal(before, after) {
@@ -58,6 +64,18 @@ func TestTwentyOneStateRecordsPreserveOriginalCASAndTombstones(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	for i := 0; i < 16; i++ {
+		name := fmt.Sprintf("synthetic.legacy.%02d", i)
+		data, version, found, err := v.LoadState(name)
+		wantVersion, want := uint64(1), []byte("synthetic retained legacy state")
+		if i == 0 {
+			wantVersion, want = 2, []byte("synthetic known namespace update")
+		}
+		if err != nil || !found || version != wantVersion || !bytes.Equal(data, want) {
+			t.Fatal("legacy record/CAS changed", name, err)
+		}
+		clear(data)
+	}
 	for i, name := range names {
 		data, version, found, err := v.LoadState(name)
 		wantVersion, want := uint64(1), []byte("synthetic opaque original packet")
@@ -65,7 +83,7 @@ func TestTwentyOneStateRecordsPreserveOriginalCASAndTombstones(t *testing.T) {
 			wantVersion, want = 2, nil
 		}
 		if err != nil || !found || version != wantVersion || !bytes.Equal(data, want) {
-			t.Fatal("opaque Group packet/CAS/tombstone changed", name, err)
+			t.Fatal("opaque retained record/CAS/tombstone changed", name, err)
 		}
 		clear(data)
 	}
