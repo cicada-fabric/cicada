@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).parent / 'fixtures/native-pair'))
 from codex_domain_host import (NATIVE_TITLE_PREFIX, SHARED_SCOPE_BANNER, QUEUE_HEADERS,
                                StaticHostProvider, observed_operation_status)
 import codex_product_cli
+import peer_form_native
 
 
 class HostClassifierTests(unittest.TestCase):
@@ -243,6 +244,128 @@ class NativeQueueTests(unittest.TestCase):
                     self.assertEqual(provider.queue_inputs[body]['observed_ids'], {packet['request_id']})
                     self.assertEqual(provider.queue_inputs[body]['posts'], 1)
                     self.assertEqual(provider.classify_request(actual), (None, 'literal'))
+
+
+class ReceiverResumeReadinessTests(unittest.TestCase):
+    sid = '11111111-1111-4111-8111-111111111111'
+
+    def client(self, change=None):
+        cli = peer_form_native.PeerFormCLI.__new__(peer_form_native.PeerFormCLI)
+        cli.workspace = Path('/SYNTHETIC/original-workspace')
+        cli.original_daemon = {'synthetic_original_daemon': True}
+        cli.active_form = None
+        cli.native_records = mock.Mock(return_value={self.sid: {}})
+        cli.daemon_identity = mock.Mock(return_value=cli.original_daemon)
+        response = {'thread': {'id': self.sid, 'cwd': str(cli.workspace)},
+                    'approvalPolicy': {'granular': dict(peer_form_native.HOST_FORM_POLICY)},
+                    'approvalsReviewer': 'user'}
+        if change is not None:
+            change(response)
+
+        def rpc(method, params):
+            self.assertEqual(params['threadId'], self.sid)
+            if method == 'thread/resume':
+                self.assertEqual(params, {'threadId': self.sid})
+                return response
+            self.assertEqual(method, 'thread/read', 'readiness cannot create a turn or call an MCP tool')
+            self.assertEqual(params, {'threadId': self.sid, 'includeTurns': False})
+            return {'thread': {'id': self.sid, 'status': {'type': 'idle', 'activeFlags': []}}}
+
+        cli.rpc = mock.Mock(side_effect=rpc)
+        return cli
+
+    def test_original_receiver_resume_only_loads_and_reads_same_sid(self):
+        cli = self.client()
+        cli.resume_original_thread(self.sid)
+        self.assertTrue(cli.host_policy_observed)
+        self.assertEqual([call.args[0] for call in cli.rpc.call_args_list], ['thread/resume', 'thread/read'])
+
+    def test_resume_refuses_changed_identity_workspace_and_approval(self):
+        changes = [lambda r: r['thread'].update(id='SYNTHETIC_FOREIGN_SID'),
+                   lambda r: r['thread'].update(cwd='/SYNTHETIC/foreign-workspace'),
+                   lambda r: r.update(approvalsReviewer='SYNTHETIC_FOREIGN_REVIEWER'),
+                   lambda r: r['approvalPolicy']['granular'].update(mcp_elicitations=False),
+                   lambda r: r['approvalPolicy']['granular'].update(rules=1),
+                   lambda r: r['approvalPolicy']['granular'].update(SYNTHETIC_UNKNOWN=True)]
+        for change in changes:
+            with self.subTest(change=changes.index(change)):
+                cli = self.client(change)
+                with self.assertRaises(AssertionError):
+                    cli.resume_original_thread(self.sid)
+                self.assertEqual([call.args[0] for call in cli.rpc.call_args_list], ['thread/resume'])
+        for field in ('native_records', 'daemon_identity'):
+            cli = self.client()
+            getattr(cli, field).return_value = {}
+            with self.assertRaises(AssertionError):
+                cli.resume_original_thread(self.sid)
+            cli.rpc.assert_not_called()
+
+    def test_resume_rpc_refusal_does_not_retry_or_start_a_turn(self):
+        cli = self.client()
+        cli.rpc.side_effect = RuntimeError('SYNTHETIC_RESUME_REFUSAL')
+        with self.assertRaisesRegex(RuntimeError, '^SYNTHETIC_RESUME_REFUSAL$'):
+            cli.resume_original_thread(self.sid)
+        cli.rpc.assert_called_once_with('thread/resume', {'threadId': self.sid})
+
+    def test_resume_requires_loaded_original_receiver_to_be_idle(self):
+        for status in ('notLoaded', 'systemError'):
+            with self.subTest(status=status):
+                cli = self.client()
+                resume = cli.rpc.side_effect
+
+                def rpc(method, params):
+                    if method == 'thread/read':
+                        return {'thread': {'id': self.sid, 'status': {'type': status}}}
+                    return resume(method, params)
+
+                cli.rpc.side_effect = rpc
+                with self.assertRaisesRegex(AssertionError, '^ACTUAL_HOST_THREAD_STATUS_INVALID$'):
+                    cli.resume_original_thread(self.sid)
+                self.assertEqual([call.args[0] for call in cli.rpc.call_args_list], ['thread/resume', 'thread/read'])
+        cli = self.client()
+        resume = cli.rpc.side_effect
+
+        def active(method, params):
+            if method == 'thread/read':
+                return {'thread': {'id': self.sid, 'status': {'type': 'active', 'activeFlags': []}}}
+            return resume(method, params)
+
+        cli.rpc.side_effect = active
+        with mock.patch.object(peer_form_native.time, 'monotonic', side_effect=(0, 0, 31)), \
+                mock.patch.object(peer_form_native.time, 'sleep'):
+            with self.assertRaisesRegex(AssertionError, '^ACTUAL_HOST_THREAD_NOT_IDLE$'):
+                cli.resume_original_thread(self.sid)
+        self.assertEqual([call.args[0] for call in cli.rpc.call_args_list], ['thread/resume', 'thread/read'])
+
+    def test_host_call_retains_existing_resume_then_tool_prelude(self):
+        cli = self.client()
+        provider = mock.Mock()
+        provider.begin.side_effect = RuntimeError('SYNTHETIC_STOP_BEFORE_TURN_START')
+        with self.assertRaisesRegex(RuntimeError, '^SYNTHETIC_STOP_BEFORE_TURN_START$'):
+            cli.host_call(provider, self.sid, 'synthetic-label', 'cicada_receive', {})
+        self.assertEqual([call.args[0] for call in cli.rpc.call_args_list], ['thread/resume', 'thread/read'])
+        provider.reset_diagnostic.assert_called_once_with()
+        provider.begin.assert_called_once_with('synthetic-label', 'cicada_receive', {}, self.sid)
+
+    def test_no_restart_preserves_barrier_without_readiness_rpc(self):
+        cli = mock.Mock()
+        with mock.patch.object(peer_form_native.time, 'monotonic', return_value=10):
+            self.assertEqual(peer_form_native.owner_groups_receive_deadline(cli, self.sid, 0), 85)
+        cli.resume_original_thread.assert_not_called()
+
+    def test_restart_readiness_uses_original_absolute_75_second_deadline(self):
+        for elapsed in (74.999, 75, 75.001):
+            with self.subTest(elapsed=elapsed):
+                clock = [10]
+                cli = mock.Mock()
+                cli.resume_original_thread.side_effect = lambda sid: clock.__setitem__(0, 10 + elapsed)
+                with mock.patch.object(peer_form_native.time, 'monotonic', side_effect=lambda: clock[0]):
+                    if elapsed < 75:
+                        self.assertEqual(peer_form_native.owner_groups_receive_deadline(cli, self.sid, 1), 85)
+                    else:
+                        with self.assertRaisesRegex(AssertionError, '^OWNER_GROUP_NATIVE_RECEIVER_RESUME_DEADLINE$'):
+                            peer_form_native.owner_groups_receive_deadline(cli, self.sid, 1)
+                cli.resume_original_thread.assert_called_once_with(self.sid)
 
 
 class PrivateCheckpointTests(unittest.TestCase):

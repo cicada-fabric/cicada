@@ -35,6 +35,14 @@ HOST_FORM_POLICY = {'mcp_elicitations': True, 'rules': False, 'sandbox_approval'
                     'skill_approval': False, 'request_permissions': False}
 
 
+def owner_groups_receive_deadline(cli, sid, restarts):
+    deadline = time.monotonic() + 75
+    if restarts > 0:
+        cli.resume_original_thread(sid)
+        assert time.monotonic() < deadline, 'OWNER_GROUP_NATIVE_RECEIVER_RESUME_DEADLINE'
+    return deadline
+
+
 def peer_output_diagnostic(value):
     rows = list(output_objects(value))
     texts = [r['text'] for r in rows if isinstance(r.get('text'), str)]
@@ -162,10 +170,7 @@ class PeerFormCLI(DomainHostCLI):
                 self.notifications.append(reply)
         raise RuntimeError('ACTUAL_DAEMON_RPC_TIMEOUT')
 
-    def host_call(self, provider, sid, label, tool, arguments, form=None):
-        assert self.active_form is None, 'HOST_FORM_OVERLAP'
-        provider.reset_diagnostic()
-        self.peer_diagnostic = None
+    def resume_original_thread(self, sid):
         assert sid in self.native_records(), 'HOST_THREAD_NOT_CREATED_BY_NATIVE_TUI'
         assert self.daemon_identity() == self.original_daemon, 'ORIGINAL_DAEMON_CHANGED'
         resumed = self.rpc('thread/resume', {'threadId': sid})
@@ -179,6 +184,12 @@ class PeerFormCLI(DomainHostCLI):
                 resumed.get('approvalsReviewer') == 'user'), 'HOST_MCP_FORM_POLICY_NOT_EFFECTIVE'
         self.host_policy_observed = True
         self.await_idle(sid)
+
+    def host_call(self, provider, sid, label, tool, arguments, form=None):
+        assert self.active_form is None, 'HOST_FORM_OVERLAP'
+        provider.reset_diagnostic()
+        self.peer_diagnostic = None
+        self.resume_original_thread(sid)
         if form is not None:
             assert tool == 'cicada_select_peer' and form['action'] in ('accept', 'decline', 'cancel'), 'HOST_FORM_ACTION_INVALID'
             self.active_form = {**form, 'sid': sid, 'turn_id': None, 'forms': []}
@@ -491,7 +502,7 @@ enabled = false
                     # Let this exact original native queue turn arrive before
                     # starting more turns on that same SID. SENT is not arrival.
                     phase = 'WAIT_ORIGINAL_NATIVE_QUEUE'
-                    deadline = time.monotonic() + 75
+                    deadline = owner_groups_receive_deadline(cli, ids[actor], restarts)
                     wait_poll = 0
                     while True:
                         with provider.lock:

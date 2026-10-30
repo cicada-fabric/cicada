@@ -646,3 +646,90 @@ Node-only opt-in is retained separately; the final receipt covers that last
 test-file change. No Runtime has started, and no failed original was replaced.
 Root will review this one checkpoint with the Hub diagnostic source before a
 combined freeze and any separately authorized complete C1→C7 invocation.
+
+## Post-restart receiver readiness — preparation only, 2026-10-30
+
+The subsequent complete invocation on clean
+`e3f002608d6b116296d62b7f073671f40774efb5`,
+`run-20261030T010035Z-J7NALh`, is **FAIL / 1**: C1 PASS 320.60 s, C2 PASS
+201.85 s, C3 PASS 207.90 s, C4 PASS 103.74 s, C5 FAIL 145.37 s; parent
+986.50 s. C6–C7/final eight witness are NOT_RUN. The original result remains
+unchanged, SHA-256
+`665074229c692e3bc7035ae035cf5871203b4883a8f6955d3b66cc19bf92d76c`.
+The exact C5 request hash
+`459a1cda16b5bffb380220f06b31fc1c2f284c8a0e76d6ceaa3f3faba4920219`
+joins the receive command's `expected_request_id_sha256`, the ASK reply's
+`request_id_sha256` and the phase samples' `request_id_sha256`.
+Its 27 closed phase records include one each of QUEUE_WAIT, QUEUE_DURABLE,
+WRITER_CLOSED and NATIVE_QUEUE END/NONE. The original exact native body still
+has 74 zero-post observations over the unchanged 75-second barrier; issuer
+records are zero. Accepted/durable evidence does not establish consumption.
+The original receiver `cicada_receive` and reply are not executed.
+
+Actual CLI SHA-256 is
+`4b45a2c5eb358c6122e9dd09b67944f1643c7786f3e84dad128507ed4219213e`
+and actual test binary is
+`02b68b79e41fb3c0580bb4455c63ee7aaca4ce55b4278a6d8b0cc37a9b15fdf9`,
+both stable before/after. Source is stable, snapshot SHA-256
+`39b3f8e5b86270268135a092c3b24e67d49f2d990381712ca467393b325dfc3d`.
+Version, compilations and vet exit 0; harness exits 1. The observer retains
+195 Host records, zero read retries and 45975 phase records, with no rejected
+records or invalid coordinates. Docker is available, the exact container is
+absent, private files number zero and only empty `tmp` remains. The exact-phase
+receipt at `~/Cicada/.local/evidence/n2-acceptance/cross-offline-e3f0026-01/terminal-failure-exact-phase.json`
+has SHA-256
+`b63ccb51594687e628f1ad0415ce7d1335d6cb0b6c39b6a4d324c0236bb3e188`.
+Root independently verified 22 evidence hashes, the exact 27 phase samples,
+74 native-zero observations and cleanup. Its `root-review-J7NALh-failure.json`
+in that same directory has SHA-256
+`6bb92a31846dbd35fdd73692209cee66dac00ef08a499a83fd7af6d12a839917`.
+Neither this failure nor the earlier 8b4Xge failure has an established root cause.
+
+Read-only fixture inspection identifies a missing readiness witness:
+`restart_host` reconnects the daemon and checks original rollout/history files,
+but does not explicitly resume the receiver in the new daemon. Its later
+`host_call` does resume, but `receive_match` first waits for native arrival.
+The full M5 flow instead invokes source and target Host calls before its new
+ASK. The [official App Server documentation](https://learn.chatgpt.com/docs/app-server)
+distinguishes stored reads from loading a thread with resume, and notes that
+required MCP initialization can make resume fail. This supports the lifecycle
+mechanism, not a retrospective proof of either failed run's loaded state or cause.
+
+Root authorized a minimal test-only correction on recording base `e3f0026`.
+The existing `host_call` resume/SID/cwd/original approval-policy/idle prelude is
+extracted unchanged into a shared helper. After a restart, `receive_match`
+restores only its original receiver SID through that helper before waiting for
+the original native queue. The existing parent has already completed Node
+start/live-pin; resume is not attempted while the Node is offline. No new Host
+action, Codex RPC method, turn/start, explicit MCP business call, registration,
+grant, ASK, ciphertext, key or request is introduced. Ordinary MCP initialization
+may occur during resume and is not disabled or bypassed.
+
+The original 75-second absolute deadline is created before resume; readiness
+consumes that same window, and expiry immediately after resume fails. The native
+barrier is not restarted or skipped. Existing RPC/idle/Host/parent bounds remain
+unchanged. `restarts=0` retains the original route. This is an unexecuted Runtime
+fixture prerequisite; it does not qualify accepted-turn daemon-crash recovery or
+turn the retained original failures into passes.
+
+The existing Python suite now has 34 tests (27 retained, seven readiness checks).
+It passes in the same pinned disposable Docker image, exit 0, 0.869 s wrapper /
+0.023 s unittest time. RPC spies admit only original `thread/resume` and
+`thread/read` during readiness. Wrong SID/cwd/approval, missing original records,
+changed daemon, RPC refusal, notLoaded/systemError/non-idle state and exact
+75-second expiry reject without a new turn or tool dispatch. The original
+host-call prelude and zero-restart path are checked separately. These are
+synthetic tests, not a real native Runtime or actual elapsed 75-second run.
+
+Evidence at
+`~/Cicada/.local/evidence/n2-acceptance/cross-receiver-resume-e3f0026-qni_4gso/final-result.json`
+has SHA-256
+`0e71e261e42a4df67027ebaac1b82b5b8cb5c03e231b65e466641be106addb88`.
+Its source is base `e3f0026` plus the two recorded dirty Python files, not HEAD
+alone. Source hashes remain stable, source is mounted read-only, no dependency
+cache is mounted or modified, and the exact Docker container is absent. No
+Hub/App/Node/Host or real Codex process starts, no new Runtime has run, and no
+Go build or prior gate is repeated for this Python-only change. The earlier
+33-test qualification is retained separately. Root reviews this one checkpoint
+before any new combined source freeze; physical/24-hour and all missing cross
+cases retain their existing NOT_RUN boundaries.
