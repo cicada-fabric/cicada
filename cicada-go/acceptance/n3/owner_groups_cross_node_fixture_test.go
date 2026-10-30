@@ -158,7 +158,7 @@ func (n *ownerGroupsCrossNode) start(t *testing.T) {
 		"--hub-address", n.shared.hub.address, "--pairing-profile", "scoped", "--state-dir", n.pair.state, "--interval", "1s",
 		"--user-root", n.pair.userRoot, "--mcp-session-state-file", filepath.Join(n.pair.userRoot, "mcp", "sessions.json"),
 		"--mcp-outbox-state-file", n.actors.outbox)
-	command.Env = ownerGroupsCrossEnvironment(n.pair.home, n.codexHome)
+	command.Env = append(ownerGroupsCrossEnvironment(n.pair.home, n.codexHome), "CICADA_NODE_SEALED_PHASE_DEBUG=1")
 	log := must(os.OpenFile(n.privateLog, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600))
 	n.shared.parent.Cleanup(func() { log.Close() })
 	command.Stdout, command.Stderr = log, log
@@ -244,13 +244,25 @@ func (n *ownerGroupsCrossNode) startHost(t *testing.T, policy appcore.LocalColla
 	n.host, _ = startOwnerGroupsHostAt(n.shared.parent, n.root, n.codexHome, n.process, n.actors)
 }
 
-func (n *ownerGroupsCrossNode) restartRetained(t *testing.T) {
+func (n *ownerGroupsCrossNode) restartRetained(t *testing.T, originalBody string) {
 	t.Helper()
-	if n.bound.BindingID == "" || n.host == nil || n.instance == "" {
+	if n.bound.BindingID == "" || n.host == nil || n.instance == "" || originalBody == "" {
 		t.Fatal("cross-Node restart lacks its original admitted Host and Node")
 	}
 	original, oldInstance := n.bound, n.instance
 	n.process.kill(t)
+	if n.process.running() {
+		t.Fatal("cross-Node Host recovery requires its original receiving Node stopped")
+	}
+	// Keep the original pending ASK offline until its retained Host is ready.
+	// Never stop the daemon after the receiving Node can accept that delivery.
+	recovered := n.host.command(t, ownerGroupsHostCommand{Action: "restart_host"})
+	if n.process.running() {
+		t.Fatal("cross-Node Host recovery restarted its receiving Node")
+	}
+	if count, known := recovered.QueuePosts[originalBody]; !known || count != 0 {
+		t.Fatal("original offline ASK reached native Runtime during Host recovery")
+	}
 	n.start(t) // Same actual executable, ID, scoped journal, state and user root.
 	_, n.instance = threeStageLivePinAt(t, n.process, n.shared.hub.descriptor.Claims.Origin,
 		filepath.Join(n.pair.userRoot, "mcp", "sessions.json"), n.pair.userRoot, n.actors.outbox, oldInstance)
@@ -263,7 +275,6 @@ func (n *ownerGroupsCrossNode) restartRetained(t *testing.T) {
 		t.Fatal("cross-Node restart changed its original root, key or binding")
 	}
 	n.host.node = n.process
-	n.host.command(t, ownerGroupsHostCommand{Action: "restart_host"})
 }
 
 func (n *ownerGroupsCrossNode) identities(t *testing.T) []ownerGroupsIdentity {

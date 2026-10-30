@@ -245,7 +245,7 @@ func TestN3OwnerEndpointGroupsCrossNode(t *testing.T) {
 			t.Fatal("offline original ASK was already injected before the retained restart")
 		}
 		request, operation := e.request, e.operation
-		b.restartRetained(t)
+		b.restartRetained(t, e.question)
 		e.receiveReply(t)
 		if e.request != request || e.operation != operation || immutable != ownerGroupsCrossOutbox(t, e) || f.app.running() || !reflect.DeepEqual(originals[1], b.identities(t)) {
 			t.Fatal("offline recovery replaced its original request, outbox, Node root or native identities")

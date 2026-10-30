@@ -577,3 +577,72 @@ No new Runtime has started. Any necessary fix and subsequent execution requires
 Root's new review/freeze and the same existing complete cross entrypoint.
 QtqKRp's accepted full scope, all earlier failures and every physical/24-hour
 NOT_RUN boundary remain independently attributed.
+
+## C5 offline recovery ordering — preparation only, 2026-10-30
+
+After the terminal 8b4Xge failure, Root authorized a minimal test-only correction
+on recording base `28688c6f911946256b8c53049c09b2d62f71792a`, in the separate
+`task/v01-cross-restart-order` worktree. The original receiving Node is killed
+and checked stopped before the existing `restart_host` command. That command
+keeps the Python coordinator, original four SIDs, provider expectations and
+history while restarting the Codex daemon/proxy. Its complete original-four
+reply must arrive while the Node remains stopped, and the original ASK body's
+known queue count must still be zero. Only then may the original Node start,
+live-pin and original root/key/binding checks proceed. No daemon stop follows
+that live Node. The runtime call supplies its existing `e.question` for the
+zero check, without creating a replacement body or Host interface.
+
+This keeps one original ASK/request/operation/outbox, App closure, unchanged
+75-second native barrier, current final Guard, exact request/reply native once
+checks and final identity/outbox assertions. No writer latch, extra retry,
+authority, product timeout or implementation change is added. The intended
+scope remains an original offline request across same-state Node recovery.
+It does not qualify recovery of an already-accepted native turn interrupted
+by a later daemon crash. The earlier sequence permits that additional window;
+the retained 8b4Xge evidence does not establish that it occurred. Its original
+FAIL and NOT_DETERMINED cause remain unchanged. This new ordering has not run
+an actual Runtime gate.
+
+Root also authorized the existing `CICADA_NODE_SEALED_PHASE_DEBUG=1` opt-in only
+on these disposable cross-Node `start` commands, both initial and restarted.
+The six-field common environment, Host and private-code reader retain their
+original environment. No new product flag or product default is introduced.
+An external private observer extends its existing file reader with a closed
+`NODE_SEALED_PHASE` projection: 23 phase, three state and 11 error enums; only
+hashed coordinates, fixed-key aggregate counts and at most eight correlation
+groups of 32 rows are retained. No per-event payload/raw-error log is exported.
+Observation timestamps are external read times, not product event times.
+The producer's 32-row and original per-loop semantics are unchanged.
+
+The existing 42 issuer controls retain identical projected output. Projection
+checks cover 759 closed enum combinations, 36 unsafe-coordinate records,
+13 malformed/unknown refusals, 480 sample-bound inputs, stream fragmentation
+and duplicate-free rescans. They exit 0 and supply no Runtime fact. The exact
+qualified schema file matches frozen Hub
+`114f79bcde12d732fba013627155745101043f05`, integrated by Root as
+`bc75e6341109d2f269890c97281ebbc918c20d55`; file SHA-256
+`f2018e82058f5240f0f733cc01d6b8b55b8c8d1bcb8dc46877fe60d4bd8e1e2e`.
+That byte mapping does not execute or accept the combined future Runtime.
+
+Final qualification is base `28688c6` plus the recorded two dirty Go test files,
+not HEAD alone. Evidence is retained at
+`~/Cicada/.local/evidence/n2-acceptance/cross-restart-order-28688c6-px8egfm_/`:
+
+| Check / receipt | Result |
+| --- | --- |
+| N3 test compilation | exit 0 / 6.729 s |
+| Existing `TestN3OwnerGroupsControlPublication` | exit 0 / 0.666 s; one top-level PASS, no Hub/App/Node/Host start |
+| N3 vet | exit 0 / 1.468 s |
+| `deterministic-final-result.json` | SHA-256 `83aaca02694d13086ccdc99cc88bf6cf41ec296e2515c400aa621426e6c54074` |
+| `observer-selfcheck-result.json` | SHA-256 `ef7eac0981b22ddd542a3964feac858e86ef742dd5dd627008d1e56f6ff34564` |
+| `phase-schema-frozen-mapping.json` | SHA-256 `38ed24ec3a9e69a4b594e1e07e650adbffd6f7aa3718b496d14ceab14acb40d2` |
+| External observer template | SHA-256 `21ca0e53a5e5ff287e8a21f095764f7f770ff36ded528e3b3a51d78dea9c557d`; retarget only to a fresh Root-frozen run |
+
+The pinned disposable Docker uses a read-only module cache and exclusively
+locked task build cache. Tested Go hashes are stable; the exact container is
+absent and temporary state has zero entries. Three generated UI inputs match
+the original full-run hashes. The earlier successful qualification before the
+Node-only opt-in is retained separately; the final receipt covers that last
+test-file change. No Runtime has started, and no failed original was replaced.
+Root will review this one checkpoint with the Hub diagnostic source before a
+combined freeze and any separately authorized complete C1→C7 invocation.
