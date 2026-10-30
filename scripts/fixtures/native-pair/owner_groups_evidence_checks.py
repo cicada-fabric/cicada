@@ -257,11 +257,20 @@ def check_cross_node(oracle, check, output):
     originals = [{'native_session_id': '00000000-0000-4000-8000-00000000000'+str(i),
                   'endpoint_id': 'SYNTHETIC_ENDPOINT_'+str(i), 'principal_id': 'SYNTHETIC_PRINCIPAL_'+str(i//4),
                   'workspace': '/SYNTHETIC_NOT_NATIVE/'+str(i), 'node_id': 'SYNTHETIC_NODE_'+str(i//4),
-                  'binding_id': 'SYNTHETIC_BINDING_'+str(i//4), 'binding_epoch': 1,
+                  'binding_id': 'SYNTHETIC_SESSION_BINDING_'+str(i), 'binding_epoch': 1,
                   'endpoint_public_key_sha256': hashlib.sha256(('SYNTHETIC_NOT_KEY_'+str(i)).encode()).hexdigest()}
                  for i in range(8)]
     identities = {'before': originals, 'after_group_operations': copy.deepcopy(originals)}
     check('SYNTHETIC_cross_eight_NOT_NATIVE', oracle.valid_owner_groups_cross_identities(identities), True)
+    for name, collapse in (
+            ('cross_collapsed_binding_within_Node', lambda a: a[1].update(binding_id=a[0]['binding_id'])),
+            ('cross_binding_reused_across_Nodes', lambda a: a[4].update(binding_id=a[0]['binding_id'])),
+            ('cross_Node_Control_binding_is_not_SessionBindings',
+             lambda a: [row.update(binding_id='SYNTHETIC_NODE_BINDING_'+str(i//4)) for i, row in enumerate(a)])):
+        bad = copy.deepcopy(identities)
+        for side in bad.values():
+            collapse(side)
+        check(name, oracle.valid_owner_groups_cross_identities(bad), False)
     for field in originals[0]:
         bad = copy.deepcopy(identities)
         bad['after_group_operations'][0][field] = 2 if field == 'binding_epoch' else 'SYNTHETIC_CHANGED'

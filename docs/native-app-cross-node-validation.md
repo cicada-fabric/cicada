@@ -5,7 +5,7 @@
 | Actual Runtime source / run | Root-reviewed status |
 | --- | --- |
 | Clean `64927cbe740f3d01ffc6a68250468394bd4dadb3`, QtqKRp | Complete four-Thread M1–M8 and parent PASS; eight facts, real lease boundary and final original-four witness valid. Independent logical-line reclassification is **SCOPED_PASS / 0**, accepted by Root. Original driver FAIL / 1 remains unchanged. |
-| Clean `f9bb826f9e5133296a0c553de266244e7ad7fcdd`, 8b4Xge | Latest complete cross invocation is **FAIL / 1**: C1–C4 PASS, C5 original offline recovery FAIL, C6–C7/final eight witness NOT_RUN. Root independently verified 21 evidence hashes. Product or fixture root cause remains unestablished. |
+| Clean `d4884a5cb7e86d9e1a3ec22c90ccdf16bd6a1bbd`, kLd5IN | C1–C7 and parent PASS; seven facts, eight unchanged original identities and six native roundtrips. Root accepts sealed **SCOPED_PASS / 0** after the QA-only per-Thread SessionBinding classifier correction. Original raw classifier FAIL / 1 and all earlier execution failures remain unchanged. |
 
 The full result remains attributed to its actual `64927cbe` source and binaries.
 Root's later combined-source review preserves its business guards and state
@@ -15,7 +15,11 @@ The full reclassification Root receipt is
 `~/Cicada/.local/evidence/n2-acceptance/frames-bootstrap-final-5d2304f-fgk_5mtf/root-review-a0fb120.json`,
 SHA-256 `b8e3129304bd96ec5947f98eae78c2eb18c45835832a9d6b654c6db33f144cb0`.
 See the [full evidence and original FAIL](#full-runtime-terminal-and-independent-log-reclassification--2026-10-29)
-and [latest cross terminal receipt](#frozen-cross-runtime-terminal--2026-10-30).
+and [accepted cross reclassification and original FAIL](#cross-sessionbinding-classification--offline-reclassification-2026-10-30).
+The actual cross source is `d4884a5`; its corrected classifier is separately
+identified by source base and SHA-256 below. Root's acceptance receipt is
+`~/Cicada/.local/evidence/n2-acceptance/cross-binding-oracle-d4884a5-06pdhfz5/root-review-kLd5IN-accepted.json`,
+SHA-256 `ad1e077976c7140c4b5e0edfcf5a47e4c1c241fef923765b334c7250786ce66a`.
 Earlier failures below retain their exact source, result and missing evidence.
 Windows DPAPI/ACL/GUI/IME, actual 24-hour expiry, Android, physical second Node
 and public HTTPS remain NOT_RUN. These are scoped results, not a release or
@@ -733,3 +737,89 @@ Go build or prior gate is repeated for this Python-only change. The earlier
 33-test qualification is retained separately. Root reviews this one checkpoint
 before any new combined source freeze; physical/24-hour and all missing cross
 cases retain their existing NOT_RUN boundaries.
+
+## Cross SessionBinding classification — offline reclassification, 2026-10-30
+
+The complete actual run `run-20261030T013842Z-kLd5IN` on clean
+`d4884a5cb7e86d9e1a3ec22c90ccdf16bd6a1bbd` is terminal. C1–C7 and parent
+each PASS once: 317.52, 175.20, 213.07, 103.35, 122.22, 101.55 and 319.16 s;
+parent 1359.11 s. Version, CLI/test compilation, harness and vet all exit 0.
+Seven facts, an eight-original before/after witness and six exact cross-Node
+roundtrips are retained. C5 completes the original offline request/reply without
+a replacement ASK, C6 removes only B0-G and retains native zero for refused work,
+and C7 completes surviving G/H communication and original-eight checks.
+
+The original driver result nevertheless remains **FAIL / 1**, SHA-256
+`0e37ab4e262e3c8be2678ce6e08c4ccd8f4510f2a7240f48c12c1c284b821458`,
+at `~/Cicada/.local/evidence/native-pair-acceptance/run-20261030T013842Z-kLd5IN/result.json`.
+Its facts are valid and evidence is not malformed; identity classification
+rejects, and roundtrip classification consequently short-circuits. The precise
+incorrect predicate requires one shared `binding_id` per Node. The Go witness
+reads `endpoint_key_candidates_v2.c.binding_id` for each original native
+SID/Endpoint/key: these are per-Thread SessionBindings, not Node-Control device
+bindings. Actual data has four unique SessionBindings per Node, eight globally,
+with every original SID/Endpoint/Principal/workspace/Node/binding/epoch/key field
+unchanged before/after. Node-Control independence is separately checked by the
+existing Go fixture; it is not inferred from these SessionBinding IDs.
+
+Root authorized the minimal QA-only correction: require four unique native
+SessionBindings per Node with no reuse across Nodes, retaining the entire
+per-SID exact before/after comparison, all shape/epoch/key checks, eight original
+actors and the original six-route predicate unchanged. The synthetic positive
+fixture now uses eight visibly synthetic SessionBindings. Three added negatives
+reject one collapsed binding within a Node, reuse across Nodes and the erroneous
+Node-Control-shaped shared binding. All 201 oracle checks pass, exit 0, product
+NOT_RUN; no product implementation, Go fixture, protocol, timer or native action
+changes, and no Runtime or unrelated prior gate is repeated.
+
+All 22 original evidence hashes and the raw result were verified, then regular
+evidence files were copied byte-for-byte to a separate `sealed-input` directory.
+The old result is retained there as `original-result.json`; the corrected
+classifier writes a new `result.json` only in that directory. It independently
+returns **SCOPED_PASS / 0**: all seven facts, the original eight identities and
+all six request/route/native-once witnesses validate. The original files, sealed
+copies and actual executed binaries were reverified unchanged after this pass.
+This is offline reclassification of the existing actual run, not a new Runtime.
+Root subsequently accepted its SCOPED_PASS after independently verifying all
+23 original files and sealed copies, 23 new result references, source/binaries,
+cleanup, 201 oracle checks, the two QA file hashes and all seven/eight/six
+witnesses. The original reclassification receipt predates that acceptance and
+retains its original pending field; Root's decision is recorded separately.
+Earlier 8b4Xge/J7NALh failures retain their exact sources and unproven causal
+boundaries.
+
+Evidence is under
+`~/Cicada/.local/evidence/n2-acceptance/cross-binding-oracle-d4884a5-06pdhfz5/`:
+
+| Receipt | SHA-256 / scope |
+| --- | --- |
+| `oracle/result.json` | `215e9ed1b9ff4fd4ffb16afd245d3a0f40d2c7a77424660c47acc1152060f4a1`; 201 synthetic checks, product NOT_RUN |
+| `qualification.json` | `79d00c9431e212c4aa68eb5874b5eb3313903045e41f76780adf7dff09e281e9`; base d4884a5 plus the two recorded dirty QA files |
+| `sealed-input/result.json` | `5283b97ec0500e16279d7510f1b9ad4dc34732cd16557c34e246e649f9cb70f8`; independent SCOPED_PASS / 0 |
+| `reclassification-receipt.json` | `c2df60458a164e7453745c6abfe290f7b3d4307b712f33d586c7a8aed83c32b6`; original/sealed hash inventory, source separation and exact actual binary paths |
+| `root-review-kLd5IN-accepted.json` | `ad1e077976c7140c4b5e0edfcf5a47e4c1c241fef923765b334c7250786ce66a`; independent Root acceptance of actual d4884a5/kLd5IN and sealed SCOPED_PASS |
+
+The corrected classifier SHA-256 is
+`bddd286096d4d6eb7fde6de216df05822d3d94562ae17dd850a0dbdde8df3ec7`.
+The actual Runtime source remains d4884a5; the later QA classifier checkpoint
+must not replace that attribution. Root's independent raw-execution review at
+`~/Cicada/.local/evidence/n2-acceptance/cross-loaded-d4884a5-01/root-raw-execution-review-kLd5IN.json`
+has SHA-256
+`5f9a0c2375b675573aba2e0f0b656d8342db12f35d1e4ef99219dabe0f749cee`.
+It confirms raw execution and the classification mismatch, not acceptance of
+this later classifier change.
+
+Actual CLI and test binaries are respectively
+`4b45a2c5eb358c6122e9dd09b67944f1643c7786f3e84dad128507ed4219213e`
+and `02b68b79e41fb3c0580bb4455c63ee7aaca4ce55b4278a6d8b0cc37a9b15fdf9`,
+in `~/Cicada/.local/artifacts/native-pair-acceptance/run-20261030T013842Z-kLd5IN/`.
+They are the actual driver's outputs, not an auxiliary compilation. Source and
+binary manifests are stable; source snapshot SHA-256 is
+`cdb1fde856c1c569273fd7c74ddcef4e05d7ef52b1b97883a8cb6deb153669d8`.
+Both driver/observer sessions are terminal (1 / 0). The observer retains 204
+Host records, zero read retries and zero issuer observations; the bounded C5
+phase snapshot is retained separately. Docker is available, the exact owned
+container is absent, private state files number zero and only empty `tmp`
+remains. No further Runtime has started. Full QtqKRp stays separately attributed
+to actual 64927cbe; Windows/physical/24-hour and accepted-turn daemon-crash
+recovery are not established by this cross reclassification.

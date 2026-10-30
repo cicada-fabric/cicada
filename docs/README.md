@@ -29,11 +29,13 @@ Use the [current ledger](native-app-plan.md#current-feedback-and-acceptance-ledg
 the actual passing scopes and retained failures. The
 [current Runtime record](native-app-cross-node-validation.md#current-scopes--2026-10-30)
 separately attributes Root's accepted full M1–M8 scope to actual `64927cbe`
-(QtqKRp, independently reclassified; original driver FAIL retained) and the
-latest actual cross gate to `f9bb826` (8b4Xge: C1–C4 PASS, C5 FAIL, C6–C7
-NOT_RUN). Original offline native recovery is the current unaccepted case;
-its product or fixture cause is not established. Integration, producer checks
-and candidate packaging retain their separate scopes. Independent physical Windows
+(QtqKRp) and the accepted C1–C7 cross scope to actual `d4884a5` (kLd5IN:
+seven facts, eight original identities and six native roundtrips). Root accepts
+both independently reclassified **SCOPED_PASS / 0** results; the original
+classifier FAIL results and earlier execution failures remain unchanged.
+The cross classifier correction is QA-only and does not replace its actual
+Runtime source. Integration, producer checks and final App packaging retain
+their separate scopes. Independent physical Windows
 DPAPI/ACL/GUI and 24-hour elapsed expiry remain **NOT_RUN**.
 
 Pre-submit contact/input UI stays in **v0.2 PLANNED/NOT_RUN**; the

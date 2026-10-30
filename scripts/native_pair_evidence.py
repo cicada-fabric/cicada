@@ -738,7 +738,8 @@ def valid_owner_groups_cross_identities(value):
         if not valid_owner_groups_identities(subset):
             return False
         binding = {a['binding_id'] for a in subset['before']}
-        if len(binding) != 1 or bindings & binding:
+        # These are per-Thread SessionBindings, not the Node-Control binding.
+        if len(binding) != 4 or bindings & binding:
             return False
         bindings |= binding
     return all(len({a[k] for a in before}) == 8 for k in

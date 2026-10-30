@@ -11,14 +11,16 @@ Current v0.1 exit status — 2026-10-30: the full QtqKRp Runtime on clean
 final original-four witness. Root accepts the independently reclassified
 **SCOPED_PASS / 0**; the original driver FAIL / 1 from fragmented evidence is
 retained. That actual Runtime remains attributed to `64927cbe`.
-The latest complete cross-Node invocation, 8b4Xge on clean `f9bb826`, is
-**FAIL / 1**: C1–C4 PASS, including bidirectional native communication and a
-native request/reply with App normally closed; C5's original offline recovery
-fails the unchanged 75-second exact native-queue barrier. C6–C7 and final eight
-identities are NOT_RUN. Root verified 21 evidence hashes. The Hub owner has the
-bounded recovery investigation; product or fixture cause is not established.
-Earlier App-budget, recovery-audit, fixture and issuer failures retain their
-original sources and results; they do not replace this current failure.
+Root also accepts the independently reclassified **SCOPED_PASS / 0** cross
+result for kLd5IN on actual clean `d4884a5`: C1–C7 and parent PASS, all seven
+facts, eight unchanged original identities and six exact native roundtrips.
+The raw classifier FAIL / 1 is retained. Its QA-only correction distinguishes
+per-Thread SessionBindings from Node-Control bindings; the classifier's source
+and hash are separate from actual Runtime `d4884a5`. Original offline recovery,
+exact B0-G removal and surviving G/H communication are accepted in this bounded
+scope. Earlier App-budget, recovery-audit, fixture, issuer, 8b4Xge and J7NALh
+failures retain their original sources, results and unproven causal boundaries.
+Final App packaging, existing physical user acceptance and Root closeout remain.
 Windows/physical protection and 24-hour elapsed expiry remain NOT_RUN.
 Use the [short exit index](#current-feedback-and-acceptance-ledger)
 and [current source-bound results](native-app-cross-node-validation.md#current-scopes--2026-10-30).
@@ -361,11 +363,14 @@ The complete four-Thread gate now has a Root-accepted scoped result:
 `run-20261029T221657Z-QtqKRp` on actual clean source/harness `64927cbe` passes
 all eight cases, the real lease witness and final original-four identities.
 The original classifier FAIL remains intact; bounded logical Output reassembly
-independently produces SCOPED_PASS / 0. The later `f9bb826` freeze includes
-reviewed QA and Hub error/diagnostic changes; it is not another full Runtime.
-Its actual cross gate passes C1–C4 and fails C5, with C6–C7 NOT_RUN. See the
+independently produces SCOPED_PASS / 0. The later actual `d4884a5` cross run
+kLd5IN passes C1–C7, seven facts, final eight original identities and six native
+roundtrips. Root accepts its sealed SCOPED_PASS / 0 after the QA-only
+SessionBinding classification correction; the original raw classifier FAIL and
+earlier cross execution failures remain intact. The later sources are not
+another full M1–M8 Runtime. See the
 [accepted full scope](native-app-cross-node-validation.md#full-runtime-terminal-and-independent-log-reclassification--2026-10-29)
-and [current cross failure](native-app-cross-node-validation.md#frozen-cross-runtime-terminal--2026-10-30).
+and [accepted cross scope](native-app-cross-node-validation.md#current-scopes--2026-10-30).
 
 Historical source/harness `d4566fcd969424dc47ab811bfdcfd8c65afc59e2`,
 `run-20261029T151312Z-blqDI4`, **FAIL / exit 1**. M1–M5 passed, including the
@@ -421,8 +426,12 @@ checks, separate from the producer source and from the full Runtime. See
 [the exact commands, hashes and limits](native-app-validation.md#2026-10-29-independent-security-checks-and-producer-continuation-handoff).
 The integrated cea80367 Runtime failure remains historical; the later d4566fcd
 Runtime passed M5 but failed M6 as recorded above. QtqKRp's later complete scoped
-pass does not erase either failure or close the separate C5 cross gate.
-Candidate finalization stays withheld. The [existing manual procedure](native-app-validation.md#连续真机验收步骤完全清除-cicada-后全新安装尚未执行)
+pass does not erase either failure. The subsequent accepted kLd5IN cross scope
+qualifies its original offline Node recovery; accepted-turn daemon-crash and
+physical recovery remain separate. Release and Root closeout await the final App
+package and existing physical batch. With Root's acceptance of the executed gates,
+the package's metadata-only finalizer can run while explicitly retaining
+Windows/physical NOT_RUN. The [existing manual procedure](native-app-validation.md#连续真机验收步骤完全清除-cicada-后全新安装尚未执行)
 now starts by clearing only the designated Cicada installation/state and creating
 fresh Cicada identities; Codex history/daemon/other plugins, Caddy and source are
 preserved. The final ZIP and digest await Root's explicit delivery.
@@ -583,18 +592,19 @@ historical NOT_RUN below or replace the existing detailed evidence.
 | Function | Existing implementation/evidence | Remaining acceptance | Dependency / shortest next step |
 | --- | --- | --- | --- |
 | Finite onboarding, Root separation and local key custody | Existing N2/NPT/Guard checks distinguish account login, Owner proof, Node binding and business authority; identity flow works without Control inference. | Preserve exact scopes; physical custody remains unaccepted until tested. | Reuse existing checks affected by the bounded fix; no new onboarding framework. |
-| Node on/off and original Codex discovery/communication | Existing lifecycle, explicit native registration, nickname/name/ID/contact-form paths and user batches; original managed capabilities retained. QtqKRp qualifies its four-Thread scope; 8b4Xge C1–C4 pass actual two-Node enrollment and native communication. | Cross C5 recovery and C6–C7 remain unaccepted; existing physical user batch remains separate. | Reuse source-bound implementation/tests; no new App feature or upstream Codex fork. |
+| Node on/off and original Codex discovery/communication | Existing lifecycle, explicit native registration, nickname/name/ID/contact-form paths and user batches; original managed capabilities retained. QtqKRp qualifies its four-Thread scope; Root accepts kLd5IN C1–C7 on actual d4884a5, including original offline Node recovery and eight original identities. | Existing physical user batch remains separate; accepted-turn daemon-crash recovery is not established. | Reuse accepted source-bound evidence; final App package and physical batch follow Root's coordination. |
 | App named Groups and exact multi-Group changes | QtqKRp full M1–M8 Runtime on clean 64927cbe passes all cases/parent. The corrected classifier independently verifies eight facts, real lease and final original four; Root accepts SCOPED_PASS / 0. Actual TCP outer authentication, retired query slot, exact original inner/fence/effect checks all remain required. | Four-Thread scoped gate accepted on its actual source; 24-hour elapsed expiry and physical platforms remain NOT_RUN. Original raw classifier FAIL and historical kWsHgJ/blqDI4 failures remain retained. | Preserve source/binary/original-evidence attribution. Do not repeat the full gate solely for QA, documentation or reviewed error/diagnostic changes. |
-| Real authority revoke and retained-scope recovery | QtqKRp M7 passes both independent OwnerKey/NodeBinding baselines; M8 passes after actual M3/M4/M6 prerequisites, with final original-four witness. Historical BOrXMI remains a separate M7-only receipt. | The full scope does not supply cross C5 recovery, C6 exact B0-G removal or C7 final eight-original audit. | Retain the exact six M7 and six M8 facts, cold refusal and native-zero assertions; Root's source-equivalence review is separate from executing a new full Runtime. |
-| Communication across two actual Nodes/native processes | Latest 8b4Xge on clean f9bb826: C1–C4 PASS, including two Nodes/eight original Threads, five key-ready edges, both native G directions and App-closed H native request/reply. C5 FAIL / 140.90s; parent FAIL / 950.48s. Root independently verifies 21 evidence hashes, stable source/binaries and exact container absence. See [source, hashes and evidence limits](native-app-cross-node-validation.md#frozen-cross-runtime-terminal--2026-10-30). | C5 original offline recovery unaccepted; exact native queue stays zero for the unchanged 75-second barrier. C6–C7/final eight witness NOT_RUN. Product or fixture cause not established; ASK SENT does not prove native delivery. | Hub owner exclusively investigates the bounded product recovery chain; QA retains fixture/evidence boundaries. Any necessary fix/checkpoint/retry requires Root review and a new freeze; no new Runtime is started by this ledger. |
+| Real authority revoke and retained-scope recovery | QtqKRp M7 passes both independent OwnerKey/NodeBinding baselines; M8 passes after actual M3/M4/M6 prerequisites, with final original-four witness. Historical BOrXMI remains a separate M7-only receipt. The later kLd5IN separately qualifies C5 original offline recovery, C6 exact B0-G removal and C7 original-eight/surviving scopes. | These two accepted scopes retain their distinct actual sources; accepted-turn daemon-crash, physical and 24-hour recovery/expiry are not inferred. | Retain original revoke/Guard/native-zero assertions and all historical failures; no new full Runtime is needed for this QA-only classification correction. |
+| Communication across two actual Nodes/native processes | kLd5IN on actual clean d4884a5: C1–C7 and parent PASS / 1359.11s; seven facts, eight unchanged original identities and six exact cross-Node native roundtrips. Root accepts the sealed SCOPED_PASS / 0 after independently verifying original/sealed files, source/binaries, cleanup, 201 oracle checks and all witnesses. Original raw classifier FAIL / 1 remains unchanged. See [source, classifier distinction and hashes](native-app-cross-node-validation.md#current-scopes--2026-10-30). | Bounded Linux cross scope accepted. Windows/physical/24-hour and accepted-turn daemon-crash recovery remain outside this result. Earlier 8b4Xge/J7NALh FAILs keep their original sources and undetermined causes. | Integrate this QA classifier/record checkpoint; App owner builds the final package, followed by existing physical acceptance and Root closeout. No further Runtime is started. |
 | Windows usability and protection | Existing Enter/CJK/copy/user-root/packaging code and source-specific checks; no reimplementation requested. | Existing fresh-install batch plus DPAPI/ACL/GUI/DPI/instance/recovery observations on real Windows. | One necessary final candidate build after production source stabilizes; reuse the current finalizer and user batch. Unexecuted physical checks stay NOT_RUN. |
 | Candidate/source closure | Complete CEA candidate and its 48 reviewed licenses already exist. | Match repaired source, exact package/hash, Runtime evidence and cleanup before finalization. | Keep candidate attribution separate; rebuild only when the final production fix requires it. |
 
-Shortest order: **bounded C5 recovery investigation → relevant existing producer
-checks for any necessary fix → Root review/freeze of the existing complete cross
-gate → necessary final package and existing Windows batch → Root closeout**.
-QtqKRp's accepted full scope stays attributed to actual `64927cbe`; the later
-combined freeze's reviewed business-branch equivalence is not a new execution.
+Shortest order: **integrate the accepted QA classifier and records → App owner's
+necessary final package → existing Windows/physical batch → Root closeout**.
+QtqKRp's accepted full scope stays attributed to actual `64927cbe`; kLd5IN's
+accepted cross scope stays attributed to actual `d4884a5`. The corrected
+classifier and later documentation are not new Runtime executions; neither gate
+is repeated for this checkpoint.
 The separate M7-only lane never supplies absent parent scenes. Keep the original
 90m parent, 75s barriers, real five-minute boundary, fresh Guard/ASK/REPLY and
 original four/eight identity requirements.
