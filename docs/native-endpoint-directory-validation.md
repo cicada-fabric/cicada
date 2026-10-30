@@ -1184,3 +1184,80 @@ underlying registration cause. Its closed five-second timing and error enum do
 not prove which check failed. This independent cause-preservation fix does not
 backfill that cause, turn that cross run into PASS, or rerun complete cross/
 M1–M8, physical Windows, Android or public HTTPS acceptance.
+
+## Original ASK cold recovery and opt-in delivery phases — 2026-10-30
+
+Producer base `f9bb826f9e5133296a0c553de266244e7ad7fcdd` plus six Go files
+listed in the private evidence inventory
+`/home/zyf/Cicada/.local/evidence/node-cold-original-ask-20261030-01/diagnostic-source-v2/manifest.json`,
+SHA-256 `b17896f49daa2cda1fad8cc0edf28eeaa342f01ad465647252033a8f8322f27b`.
+Tests qualify those dirty source bytes, not HEAD alone. This validation document
+is added afterward; the six tested Go files remain byte-identical.
+
+The cold producer test reuses actual HTTP Hub/Owner/Node registration and manual
+Group grants, with one legacy-enrolled Node and two synthetic original native
+records. It closes the bridge, context and native-history handle, removes the
+Node-Control process cache, submits one original sealed ASK while offline, then
+reopens the same existing root and runs production `processFabric`. It checks
+the original identities, binding/epoch, ASK and write receipts, exact queue
+arguments, durable `QUEUE_ACCEPTED`, and a second delivery check without another
+ASK or queue invocation. An already completed Prepare's historical Challenge
+response may retire under the existing retention rule; its request and the
+successful Complete remain exact. The standalone corrected cold entry passes
+in 8.179s, with two such retired responses. This is a cold handle/cache test,
+not an OS-process restart or two scoped Node Runtime acceptance.
+
+The existing default-off `CICADA_NODE_SEALED_PHASE_DEBUG=1` observer now covers
+the poll's inbox recovery, journal open, claim/accept stages, reconciliation and
+drain. Poll records omit claim coordinates and do not wrap the context or native
+lifecycle callback. The same-Group drain installs its own observer with existing
+sanitized original IDs and reports authorization, crypto, local context,
+operation scope, writer wait and native queue stages. The existing lifecycle
+callbacks additionally emit `QUEUE_WAIT`, `QUEUE_DURABLE` and `WRITER_CLOSED`
+END records: command wait succeeded, the original writer outcome was durably
+accepted, and that writer closed, respectively. These events do not prove
+native consumption or a provider request. The original callback runs exactly
+once. The 32-record bound applies independently to each poll/drain observer.
+Default-off creates no observer/JSON or callback wrapper; logging failures do
+not change delivery. No new protocol, persistent state read/write, authority, identity,
+timeout, retry, counter or return-path policy is introduced by diagnostics.
+
+| Focused gate | Result |
+| --- | --- |
+| Normal, frozen six-file input | **14 top-level / 25 test PASS**, zero FAIL/SKIP, 25.600s, exit 0 |
+| Necessary race, same input | **8 top-level / 15 test PASS**, zero FAIL/SKIP, 212.245s, exit 0 |
+| Disposable Docker, same normal selection/input | **14 top-level / 25 test PASS**, zero FAIL/SKIP, 25.980s, container exit 0 |
+
+The Docker gate uses Go 1.27.3 and immutable image
+`sha256:5c3e9b43cfd3bb95c7937462e29d87ada57b481a96fa23ad0eb61778d7a00110`,
+network disabled, UID/GID 1000, read-only root/source/module cache and disposable
+tmpfs. Exact owned container
+`2bb84ef00987b01593d937f8764b622be84633cab6cbbda738169671f8f08352`
+is absent afterward. Commands, source copies, binary digest, logs and cleanup
+receipt remain under the evidence root above. Logical witness lines are decoded
+with existing `owner_groups_logical_events`, joining test2json fragments only
+within the same Test/Package through LF. Terminal test actions determine pass;
+a deferred witness with error class NONE is insufficient.
+The qualification receipt has SHA-256
+`3371c9d902171f9b69f5cf23ecfba9fb4427112454db90d3f5684e2db6299b12`;
+the Docker/cleanup receipt has SHA-256
+`a67d9b55c5eca5a5e6de03cc9883910ca4557b339b6a59ea6c1aece8cdc717e5`.
+
+The three initial standalone cold failures remain retained: a plaintext-only
+getter oracle, a missing `fabric_messages` join in the replacement test query,
+and an overly broad assertion against allowed Challenge-response retirement.
+The initial diagnostic normal run also retains its four failed pre-drain
+subcases: its generic test helper performed unrelated identity discovery;
+explicit pinned test context corrected that fixture. None is reclassified as
+a production recovery failure or erased by later passes. The final normal
+selection includes the old Reply refusal cases, exact accepted replay,
+historical writer outcome, busy-writer recovery, observer bounds/privacy,
+logging failure, four pre-drain HTTP failures, actual Group poll/drain callback
+uniqueness and retryable Guard-outage preservation.
+
+Original cross run `run-20261029T235843Z-8b4Xge` remains FAIL at C5 with its
+original source/artifacts and **NOT_DETERMINED** product cause. C1–C4's actual
+Runtime passes remain separately attributed; C6/C7 were not run. This producer
+test does not reproduce that failure, establish two scoped Node/process-loop
+recovery, or qualify actual Codex daemon behavior. No Runtime rerun, App change,
+physical Windows, Android or public HTTPS validation belongs to this checkpoint.

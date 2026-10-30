@@ -197,7 +197,7 @@ func machineRelayConsumerID(machineID string) string {
 	return consumer
 }
 
-func processMachineFabricDeliveriesV2(ctx context.Context, base, machineID string, inbox *nodeinbox.Inbox, stateDirs ...string) error {
+func processMachineFabricDeliveriesV2(ctx context.Context, base, machineID string, inbox *nodeinbox.Inbox, stateDirs ...string) (result error) {
 	if inbox == nil {
 		return errors.New("machine node inbox is required for v2 relay delivery")
 	}
@@ -205,74 +205,103 @@ func processMachineFabricDeliveriesV2(ctx context.Context, base, machineID strin
 	if len(stateDirs) > 0 {
 		stateDir = stateDirs[0]
 	}
+	// This poll observer has no claim coordinates and does not wrap ctx or its
+	// lifecycle callback. Each drain installs its own exact-attempt observer.
+	phaseObserver := newMachineSealedPhaseObserver(ctx, nodeinbox.Claim{}, machineRelayJournalEntry{})
+	defer func() { phaseObserver.finish(result) }()
+	phaseObserver.enter("INBOX_RECOVER")
 	if err := inbox.Recover(ctx); err != nil {
 		return fmt.Errorf("recover machine node inbox: %w", err)
 	}
+	phaseObserver.finish(nil)
+	phaseObserver.enter("JOURNAL_OPEN")
 	journal, err := openMachineRelayJournal(stateDir, machineID)
 	if err != nil {
 		return err
 	}
+	phaseObserver.finish(nil)
 	var sealedPayload struct {
 		Deliveries []fabric.NodeSealedDelivery `json:"deliveries"`
 	}
 	sealedEndpoint := base + "/v2/relay/nodes/" + urlPath(machineID) + "/sealed/claim"
+	phaseObserver.enter("SEALED_CLAIM")
 	if err := machineAPIJSON(ctx, sealedEndpoint, http.MethodPost, map[string]any{
 		"consumer_id": machineRelayConsumerID(machineID), "limit": 50,
 	}, &sealedPayload); err != nil {
 		return fmt.Errorf("claim v2 sealed relay deliveries: %w", err)
 	}
+	phaseObserver.finish(nil)
+	phaseObserver.enter("SEALED_ACCEPT")
 	for _, delivery := range sealedPayload.Deliveries {
 		if err := acceptMachineSealedRelayDelivery(ctx, base, machineID, stateDir, inbox, journal, delivery); err != nil {
 			return err
 		}
 	}
+	phaseObserver.finish(nil)
 	var groupSealedPayload struct {
 		Deliveries []fabric.NodeSealedDelivery `json:"deliveries"`
 	}
 	groupSealedEndpoint := base + "/v2/relay/nodes/" + urlPath(machineID) + "/group/sealed/claim"
+	phaseObserver.enter("GROUP_CLAIM")
 	if err := machineAPIJSON(ctx, groupSealedEndpoint, http.MethodPost, map[string]any{
 		"consumer_id": machineRelayConsumerID(machineID), "limit": 50,
 	}, &groupSealedPayload); err != nil {
 		return fmt.Errorf("claim same-Group sealed relay deliveries: %w", err)
 	}
+	phaseObserver.finish(nil)
+	phaseObserver.enter("GROUP_ACCEPT")
 	for _, delivery := range groupSealedPayload.Deliveries {
 		if err := acceptMachineCrossNodeGroupDelivery(ctx, base, machineID, stateDir, inbox, journal, delivery); err != nil {
 			return err
 		}
 	}
+	phaseObserver.finish(nil)
 	var networkDirectPayload struct {
 		Deliveries []fabric.NetworkDirectDelivery `json:"deliveries"`
 	}
+	phaseObserver.enter("NETWORK_CLAIM")
 	if err := machineAPIJSON(ctx, base+"/v2/fabric/node/networks/direct/claim", http.MethodPost,
 		map[string]any{"node_id": machineID, "consumer_id": machineRelayConsumerID(machineID), "limit": 50},
 		&networkDirectPayload); err != nil {
 		return fmt.Errorf("claim Network direct sealed deliveries: %w", err)
 	}
+	phaseObserver.finish(nil)
+	phaseObserver.enter("NETWORK_ACCEPT")
 	for _, delivery := range networkDirectPayload.Deliveries {
 		if err := acceptMachineNetworkDirectDelivery(ctx, base, machineID, stateDir, inbox, journal, delivery); err != nil {
 			return err
 		}
 	}
+	phaseObserver.finish(nil)
 	var payload struct {
 		Deliveries []fabric.Delivery `json:"deliveries"`
 	}
 	endpoint := base + "/v2/relay/nodes/" + urlPath(machineID) + "/claim"
+	phaseObserver.enter("PLAIN_CLAIM")
 	if err := machineAPIJSON(ctx, endpoint, http.MethodPost, map[string]any{
 		"consumer_id": machineRelayConsumerID(machineID), "limit": 50,
 	}, &payload); err != nil {
 		return fmt.Errorf("claim v2 relay deliveries: %w", err)
 	}
+	phaseObserver.finish(nil)
+	phaseObserver.enter("JOURNAL_RECONCILE")
 	if err := reconcileMachineRelayJournal(ctx, base, machineID, stateDir, inbox, journal); err != nil {
 		return err
 	}
+	phaseObserver.finish(nil)
+	phaseObserver.enter("PLAIN_ACCEPT")
 	for _, delivery := range payload.Deliveries {
 		if err := acceptMachineRelayDelivery(ctx, base, machineID, inbox, journal, delivery); err != nil {
 			return err
 		}
 	}
+	phaseObserver.finish(nil)
+	phaseObserver.enter("JOURNAL_RECONCILE")
 	if err := reconcileMachineRelayJournal(ctx, base, machineID, stateDir, inbox, journal); err != nil {
 		return err
 	}
+	phaseObserver.finish(nil)
+	phaseObserver.enter("INBOX_DRAIN")
 	return drainMachineRelayInbox(ctx, base, machineID, stateDir, inbox, journal)
 }
 

@@ -8,9 +8,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -48,7 +50,7 @@ func TestMachineSealedPhaseDefaultOff(t *testing.T) {
 				observe: func(phase string) { phases = append(phases, phase) },
 			})
 			observedCtx, observer := newMachineSealedPhaseContext(ctx, nodeinbox.Claim{}, machineRelayJournalEntry{})
-			if observer != nil || observedCtx != ctx {
+			if observer != nil || observedCtx != ctx || newMachineSealedPhaseObserver(ctx, nodeinbox.Claim{}, machineRelayJournalEntry{}) != nil {
 				t.Fatal("default-off allocated an observer or replaced context")
 			}
 			observer.enter("CRYPTO_READ")
@@ -133,7 +135,7 @@ func TestMachineSealedPhaseLoggingFailure(t *testing.T) {
 	if err := f.drain(ctx, claim, entry); err != nil {
 		t.Fatal("logging failure changed the original successful drain")
 	}
-	if writer.calls != 14 || nativeDeliveryCount(t, f.process.CounterPath) != 1 {
+	if writer.calls != 17 || nativeDeliveryCount(t, f.process.CounterPath) != 1 {
 		t.Fatal("logging failure changed phase or queue execution count")
 	}
 }
@@ -160,7 +162,8 @@ func TestMachineSealedPhaseLinkDrainOrder(t *testing.T) {
 	}
 	want := []string{"CLAIM_ROUTE:BEGIN", "CLAIM_ROUTE:END", "AUTHORITY_HTTP:BEGIN", "AUTHORITY_HTTP:END",
 		"CRYPTO_READ:BEGIN", "CRYPTO_READ:END", "SEALED_VALIDATE:BEGIN", "LOCAL_CONTEXT:BEGIN", "LOCAL_CONTEXT:END",
-		"SEALED_VALIDATE:END", "OPERATION_SCOPE:BEGIN", "OPERATION_SCOPE:END", "WRITER_WAIT:BEGIN", "WRITER_WAIT:END"}
+		"SEALED_VALIDATE:END", "OPERATION_SCOPE:BEGIN", "OPERATION_SCOPE:END", "WRITER_WAIT:BEGIN", "WRITER_WAIT:END",
+		"QUEUE_WAIT:END", "QUEUE_DURABLE:END", "WRITER_CLOSED:END"}
 	if !reflect.DeepEqual(phases, want) || !reflect.DeepEqual(originalPhases, []string{"writer_wait", "queue_wait_succeeded", "accepted_durable", "accepted_writer_closed"}) {
 		t.Fatalf("unexpected phase order: %v, original %v", phases, originalPhases)
 	}
@@ -186,5 +189,124 @@ func TestMachineSealedPhaseWriterWaitError(t *testing.T) {
 	last := records[len(records)-1]
 	if last.Phase != "WRITER_WAIT" || last.State != "ERROR" || last.ErrorClass != "TIMEOUT" || nativeDeliveryCount(t, f.process.CounterPath) != 0 {
 		t.Fatal("writer wait observation claimed queue execution or lost the timeout")
+	}
+}
+
+func TestMachineSealedPhaseFabricPreDrainFailure(t *testing.T) {
+	t.Setenv("CICADA_NODE_SEALED_PHASE_DEBUG", "1")
+	t.Setenv("CICADA_NODE_TOKEN", "synthetic-phase-token")
+	t.Setenv("CICADA_NODE_TOKEN_FILE", "")
+	paths := []string{
+		"/v2/relay/nodes/synthetic-phase-node/sealed/claim",
+		"/v2/relay/nodes/synthetic-phase-node/group/sealed/claim",
+		"/v2/fabric/node/networks/direct/claim",
+		"/v2/relay/nodes/synthetic-phase-node/claim",
+	}
+	for index, phase := range []string{"SEALED_CLAIM", "GROUP_CLAIM", "NETWORK_CLAIM", "PLAIN_CLAIM"} {
+		t.Run(phase, func(t *testing.T) {
+			var visited []string
+			var visitsMu sync.Mutex
+			hub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				visitsMu.Lock()
+				visited = append(visited, r.URL.Path)
+				visitsMu.Unlock()
+				if r.URL.Path == paths[index] {
+					http.Error(w, "PUBLIC_SYNTHETIC_SECRET", http.StatusServiceUnavailable)
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = io.WriteString(w, `{"deliveries":[]}`)
+			}))
+			defer hub.Close()
+			root := t.TempDir()
+			inbox, err := nodeinbox.Open(machineNodeInboxPath(root, "synthetic-phase-node"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer inbox.Close()
+			var log bytes.Buffer
+			ctx := pinnedNativeTestHubContext(context.Background(), "hub_synthetic_phase", "synthetic-phase-node", root, hub.URL, "synthetic-phase-token")
+			ctx = context.WithValue(ctx, machineSealedPhaseWriterKey{}, &log)
+			err = processPinnedTestMachineFabricDeliveries(ctx, hub.URL, "synthetic-phase-node", inbox, root)
+			visitsMu.Lock()
+			defer visitsMu.Unlock()
+			if !machineAPIHasStatus(err, http.StatusServiceUnavailable) || !reflect.DeepEqual(visited, paths[:index+1]) {
+				t.Fatalf("unexpected original short circuit: error_class=%s visited=%q", machineSealedPhaseError(err), visited)
+			}
+			records := sealedPhaseRecords(t, log.Bytes())
+			last := records[len(records)-1]
+			if last.Phase != phase || last.State != "ERROR" || last.ErrorClass != "UNCLASSIFIED" || bytes.Contains(log.Bytes(), []byte("PUBLIC_SYNTHETIC_SECRET")) {
+				t.Fatal("pre-drain failure lost its closed stage or exposed error text")
+			}
+			for _, record := range records {
+				if record.MessageID != "" || record.RequestID != "" || record.EndpointID != "" || record.AttemptID != "" || record.RemoteAttemptID != "" || record.NativeSID != "" {
+					t.Fatal("poll observer invented claim coordinates")
+				}
+			}
+		})
+	}
+}
+
+func TestMachineSealedPhaseFabricGroupDrain(t *testing.T) {
+	t.Setenv("CICADA_NODE_SEALED_PHASE_DEBUG", "1")
+	f := newNativeDeliveryRelayFixture(t)
+	var log bytes.Buffer
+	ctx := context.WithValue(f.ctx, machineSealedPhaseWriterKey{}, &log)
+	dependencies := machineNativeDeliveryDependencies(ctx)
+	var callbacks []string
+	dependencies.observe = func(phase string) { callbacks = append(callbacks, phase) }
+	ctx = context.WithValue(ctx, machineNativeDeliveryLifecycleKey{}, dependencies)
+	if err := processPinnedTestMachineFabricDeliveries(ctx, f.local.hub.URL, f.local.nodeID, f.inbox, f.local.stateDir); err != nil {
+		t.Fatal("observed original Group drain failed", err)
+	}
+	var poll, drain []machineSealedPhaseRecord
+	for _, record := range sealedPhaseRecords(t, log.Bytes()) {
+		if record.State == "ERROR" || record.ErrorClass != "NONE" {
+			t.Fatal("successful Group delivery was reported as a failure")
+		}
+		if record.MessageID == "" {
+			if record.RequestID != "" || record.EndpointID != "" || record.AttemptID != "" || record.RemoteAttemptID != "" || record.NativeSID != "" {
+				t.Fatal("poll observer borrowed a child claim")
+			}
+			poll = append(poll, record)
+		} else {
+			if record.MessageID != f.messageID || record.EndpointID != f.local.targetMCP.endpointID || record.NativeSID != f.local.nativeB || record.AttemptID == "" || record.RemoteAttemptID == "" {
+				t.Fatal("Group observer lost original claim coordinates")
+			}
+			drain = append(drain, record)
+		}
+	}
+	if len(poll) != 26 || len(drain) == 0 || len(drain) > machineSealedPhaseLimit || poll[len(poll)-1].Phase != "INBOX_DRAIN" || poll[len(poll)-1].State != "END" {
+		t.Fatal("poll and exact-attempt phase lifecycles are incomplete")
+	}
+	var queuePhases []string
+	for _, record := range drain {
+		if record.Phase == "QUEUE_WAIT" || record.Phase == "QUEUE_DURABLE" || record.Phase == "WRITER_CLOSED" {
+			queuePhases = append(queuePhases, record.Phase+":"+record.State)
+		}
+	}
+	if !reflect.DeepEqual(queuePhases, []string{"QUEUE_WAIT:END", "QUEUE_DURABLE:END", "WRITER_CLOSED:END"}) || !reflect.DeepEqual(callbacks, []string{"writer_wait", "queue_wait_succeeded", "accepted_durable", "accepted_writer_closed"}) || nativeDeliveryCount(t, f.process.CounterPath) != 1 {
+		t.Fatal("poll/drain duplicated a callback or confused writer wait with accepted queue")
+	}
+}
+
+func TestMachineSealedPhaseGroupAuthorityFailure(t *testing.T) {
+	t.Setenv("CICADA_NODE_SEALED_PHASE_DEBUG", "1")
+	f := newNativeDeliveryRelayFixture(t)
+	claim, entry := f.claim(t)
+	f.guardUnavailable.Store(true)
+	var log bytes.Buffer
+	ctx := context.WithValue(f.ctx, machineSealedPhaseWriterKey{}, &log)
+	if err := f.drain(ctx, claim, entry); !machineAPIHasStatus(err, http.StatusServiceUnavailable) {
+		t.Fatal("diagnostics changed the original retryable authority failure")
+	}
+	records := sealedPhaseRecords(t, log.Bytes())
+	last := records[len(records)-1]
+	if last.Phase != "AUTHORITY_HTTP" || last.State != "ERROR" || last.ErrorClass != "UNCLASSIFIED" || nativeDeliveryCount(t, f.process.CounterPath) != 0 {
+		t.Fatal("authority outage was mistaken for a native queue attempt")
+	}
+	delivery, err := f.inbox.Get(f.ctx, claim.MessageID)
+	if err != nil || delivery.State != nodeinbox.NODE_RECEIVED || delivery.ConsumerID != "" || f.journal.entry(claim.MessageID) == nil {
+		t.Fatal("observed temporary failure lost its original recoverable claim")
 	}
 }

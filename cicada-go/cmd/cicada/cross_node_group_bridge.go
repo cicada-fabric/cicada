@@ -918,16 +918,23 @@ func verifyCrossNodeGroupDeliveryAuthorization(machineID string, delivery fabric
 
 func openMachineCrossNodeGroupDelivery(ctx context.Context, stateDir, machineID string,
 	delivery fabric.NodeSealedDelivery, authorization crossNodeGroupDeliveryAuthorization) (machineSealedOpenResult, error) {
-	if err := endpointGroupsLocalNativeOnline(ctx, stateDir, machineID, authorization.Receiver.EndpointID, authorization.Receiver.BindingID, authorization.Receiver.BindingEpoch, authorization.EndpointGroupCurrent); err != nil {
-		return machineSealedOpenResult{}, err
+	phaseObserver := machineSealedPhaseFrom(ctx)
+	phaseObserver.emit("LOCAL_CONTEXT", "BEGIN", "NONE")
+	onlineErr := endpointGroupsLocalNativeOnline(ctx, stateDir, machineID, authorization.Receiver.EndpointID, authorization.Receiver.BindingID, authorization.Receiver.BindingEpoch, authorization.EndpointGroupCurrent)
+	phaseObserver.end("LOCAL_CONTEXT", onlineErr)
+	if onlineErr != nil {
+		return machineSealedOpenResult{}, onlineErr
 	}
 	if err := verifyCrossNodeGroupDeliveryAuthorization(machineID, delivery, authorization); err != nil {
 		return machineSealedOpenResult{}, err
 	}
-	if _, err := recordMachineNativeContextMetadata(ctx, delivery.Harness, delivery.NativeSessionID,
+	phaseObserver.emit("LOCAL_CONTEXT", "BEGIN", "NONE")
+	_, contextErr := recordMachineNativeContextMetadata(ctx, delivery.Harness, delivery.NativeSessionID,
 		authorization.EndpointID, authorization.BindingID, authorization.BindingEpoch,
-		authorization.NativeContextScope); err != nil {
-		return machineSealedOpenResult{}, fmt.Errorf("check current native context before opening same-Group ciphertext: %w", err)
+		authorization.NativeContextScope)
+	phaseObserver.end("LOCAL_CONTEXT", contextErr)
+	if contextErr != nil {
+		return machineSealedOpenResult{}, fmt.Errorf("check current native context before opening same-Group ciphertext: %w", contextErr)
 	}
 	if len(delivery.Ciphertext) == 0 || machineSealedCiphertextDigest(delivery.Ciphertext) != delivery.Digest {
 		return machineSealedOpenResult{}, errors.New("same-Group sealed ciphertext digest is invalid")
@@ -1149,17 +1156,23 @@ func recoverMachineCrossNodeGroupInboxSave(ctx context.Context, base, stateDir, 
 func drainMachineCrossNodeGroupRelayClaim(ctx context.Context, base, machineID, stateDir string,
 	inbox *nodeinbox.Inbox, journal *machineRelayJournal, claim nodeinbox.Claim,
 	entry machineRelayJournalEntry) (result error) {
+	ctx, phaseObserver := newMachineSealedPhaseContext(ctx, claim, entry)
 	injectionBegan, disposed := false, false
 	defer func() {
 		if !injectionBegan && !disposed {
 			result = errors.Join(result, abandonMachineNativeClaim(ctx, inbox, claim))
 		}
 	}()
+	// Observe the original failure before claim cleanup joins any further error.
+	defer func() { phaseObserver.finish(result) }()
+	phaseObserver.enter("OPERATION_SCOPE")
 	operation, err := machineRelayNativeOperation(ctx, claim, entry)
 	if err != nil {
 		return err
 	}
+	phaseObserver.finish(nil)
 	reject := func() error {
+		phaseObserver.reject()
 		err := rejectMachineNativeUnexecuted(ctx, claim.SessionID, operation, func(rejectCtx context.Context) error {
 			return rejectMachineRelayClaimBeforeInjection(rejectCtx, base, machineID, inbox, journal, claim, entry,
 				"current same-Group authorization or local trust verification failed")
@@ -1178,6 +1191,7 @@ func drainMachineCrossNodeGroupRelayClaim(ctx context.Context, base, machineID, 
 		return err
 	}
 
+	phaseObserver.enter("CLAIM_ROUTE")
 	delivery, err := machineSealedDeliveryFromJournal(machineID, entry)
 	if err != nil {
 		return err
@@ -1187,8 +1201,11 @@ func drainMachineCrossNodeGroupRelayClaim(ctx context.Context, base, machineID, 
 		claim.SessionID != entry.SessionID || claim.BindingEpoch != entry.BindingEpoch {
 		return errors.New("local same-Group inbox claim does not match its durable route")
 	}
+	phaseObserver.finish(nil)
+	phaseObserver.enter("AUTHORITY_HTTP")
 	authorization, err := fetchCrossNodeGroupDeliveryAuthorization(ctx, base, machineID,
 		entry.MessageID, entry.AttemptID)
+	phaseObserver.finish(err)
 	if err != nil {
 		if machineAPIHasStatus(err, http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound, http.StatusBadRequest, http.StatusConflict,
 			http.StatusGone, http.StatusUnprocessableEntity) {
@@ -1196,6 +1213,7 @@ func drainMachineCrossNodeGroupRelayClaim(ctx context.Context, base, machineID, 
 		}
 		return fmt.Errorf("recheck current same-Group authorization for %s: %w", entry.MessageID, err)
 	}
+	phaseObserver.enter("CRYPTO_READ")
 	state, err := nodekeys.OpenCryptoState(machineNodeStateDir(stateDir, machineID))
 	if err != nil {
 		return fmt.Errorf("open Node crypto state for same-Group message %s: %w", entry.MessageID, err)
@@ -1205,16 +1223,27 @@ func drainMachineCrossNodeGroupRelayClaim(ctx context.Context, base, machineID, 
 	closeErr := state.Close()
 	if readErr != nil || closeErr != nil || inbound.Digest != entry.Digest ||
 		machineSealedCiphertextDigest(inbound.Envelope) != entry.Digest {
+		if readErr != nil {
+			phaseObserver.finish(readErr)
+		} else if closeErr != nil {
+			phaseObserver.finish(closeErr)
+		}
 		return reject()
 	}
 	delivery.Ciphertext = inbound.Envelope
+	phaseObserver.finish(nil)
+	phaseObserver.enter("SEALED_VALIDATE")
 	opened, err := openMachineCrossNodeGroupDelivery(ctx, stateDir, machineID, delivery, *authorization)
 	if err != nil || !opened.Duplicate || !bytes.Equal(opened.Plaintext, claim.Payload) {
+		if err != nil {
+			phaseObserver.finish(err)
+		}
 		return reject()
 	}
 	if entry.Harness != "codex" {
 		return reject()
 	}
+	phaseObserver.finish(nil)
 	var pairQueueAuthorization *crossNodeGroupDeliveryAuthorization
 	var pairQueueMessage nodekeys.NativePairMessage
 	var domainQueueAuthorization *crossNodeGroupDeliveryAuthorization
@@ -1228,17 +1257,21 @@ func drainMachineCrossNodeGroupRelayClaim(ctx context.Context, base, machineID, 
 	}()
 	queueErr := runMachineNativeDelivery(queueParent, claim.SessionID, operation,
 		func(queueCtx context.Context) (string, []nodeinbox.NativeContextScopeInput, error) {
+			phaseObserver.finish(nil) // The physical writer was acquired.
 			// The physical writer is already held. Refresh the exact attempt's Hub
 			// Guard after any lock wait, then compare all cryptographically verified
 			// evidence; a previously valid cached authorization is not sufficient.
+			phaseObserver.enter("AUTHORITY_HTTP")
 			current, err := fetchCrossNodeGroupDeliveryAuthorization(queueCtx, base, machineID,
 				entry.MessageID, entry.AttemptID)
+			phaseObserver.finish(err)
 			if err != nil {
 				if definitiveMachineWakeAuthorizationFailure(err) {
 					return "", nil, &machineNativeDeliveryDeniedError{cause: err}
 				}
 				return "", nil, fmt.Errorf("current same-Group authorization after writer wait: %w", err)
 			}
+			phaseObserver.enter("SEALED_VALIDATE")
 			if err := verifyCrossNodeGroupDeliveryAuthorization(machineID, delivery, *current); err != nil ||
 				!sameNativePairDeliveryAuthority(*authorization, *current) {
 				return "", nil, &machineNativeDeliveryDeniedError{cause: errors.New("same-Group authority changed before native admission")}
@@ -1275,6 +1308,8 @@ func drainMachineCrossNodeGroupRelayClaim(ctx context.Context, base, machineID, 
 				machineNativeOwnerTrust{ownerID: crossNodeGroupManifest(current.Receiver).OwnerID, keyID: crossNodeGroupManifest(current.Receiver).OwnerKeyID}); err != nil {
 				return "", nil, err
 			}
+			phaseObserver.finish(nil)
+			phaseObserver.enter("LOCAL_CONTEXT")
 			scope, err := machineNativeContextScopeFromMetadata(queueCtx, delivery.Harness, claim.SessionID,
 				current.EndpointID, current.BindingID, current.BindingEpoch, current.NativeContextScope)
 			if err != nil {
@@ -1291,6 +1326,8 @@ func drainMachineCrossNodeGroupRelayClaim(ctx context.Context, base, machineID, 
 			if decision.SharedMemoryRisk {
 				prompt = "CICADA_CONTEXT_SCOPE_SHARED_MEMORY_RISK: this native session is known to have been used in multiple authorized scopes. Do not infer isolation or erase earlier context.\n" + prompt
 			}
+			phaseObserver.finish(nil)
+			phaseObserver.enter("NATIVE_QUEUE")
 			return prompt, []nodeinbox.NativeContextScopeInput{scope}, nil
 		}, func(queueCtx context.Context) error {
 			if domainQueueAuthorization != nil {
@@ -1312,6 +1349,7 @@ func drainMachineCrossNodeGroupRelayClaim(ctx context.Context, base, machineID, 
 			}
 			return err
 		})
+	phaseObserver.finish(queueErr)
 	// runMachineNativeDelivery has closed the writer here. Completion and
 	// recovery acquire it again to verify the durable outcome.
 	if queueErr != nil {

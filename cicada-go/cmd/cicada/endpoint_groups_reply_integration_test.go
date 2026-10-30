@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -18,9 +19,11 @@ import (
 	"github.com/cicada-ai/cicada/internal/store"
 )
 
-// Reuse the real Hub/Owner/Node enrollment fixture. No scripted authorization,
-// replacement Endpoint key, direct SQL grant or native subprocess is involved.
-func TestEndpointGroupsRealHTTPReplyReachesOriginalNodeInbox(t *testing.T) {
+// Real Hub/Owner/Node registration and manual Group grants shared by the reply
+// and cold-recovery tests. The caller releases the managed-worker lock before
+// closing or restarting the bridge; cleanup also releases it on a failed setup.
+func newEndpointGroupsReplyFixture(t *testing.T) (*nativePairTCPConsumerFixture, [2]machineEndpointGroupsRegistration, string, func()) {
+	t.Helper()
 	f := newNativePeerTCPConsumerFixture(t, false)
 	domain := activateLocalDomainConsumer(t, f)
 	for i := range f.native {
@@ -32,7 +35,10 @@ func TestEndpointGroupsRealHTTPReplyReachesOriginalNodeInbox(t *testing.T) {
 	// Serialize with the existing managed worker while exercising its actual
 	// Describe/key-completion implementation against the real HTTP producer.
 	f.bridge.endpointGroupsMu.Lock()
-	defer f.bridge.endpointGroupsMu.Unlock()
+	lockedBridge := f.bridge
+	var once sync.Once
+	unlock := func() { once.Do(lockedBridge.endpointGroupsMu.Unlock) }
+	t.Cleanup(unlock)
 	var registrations [2]machineEndpointGroupsRegistration
 	for i := range registrations {
 		r, _, err := f.client.endpointGroupsRegistrationCandidate(f.native[i], f.workspace)
@@ -106,6 +112,14 @@ func TestEndpointGroupsRealHTTPReplyReachesOriginalNodeInbox(t *testing.T) {
 		}
 		registrations[i] = r
 	}
+	return f, registrations, group, unlock
+}
+
+// Reuse the real Hub/Owner/Node enrollment fixture. No scripted authorization,
+// replacement Endpoint key, direct SQL grant or native subprocess is involved.
+func TestEndpointGroupsRealHTTPReplyReachesOriginalNodeInbox(t *testing.T) {
+	f, registrations, group, unlock := newEndpointGroupsReplyFixture(t)
+	defer unlock()
 	state, err := nodekeys.OpenCryptoState(machineNodeStateDir(f.nodeRoot, f.nodeID))
 	if err != nil {
 		t.Fatal(err)

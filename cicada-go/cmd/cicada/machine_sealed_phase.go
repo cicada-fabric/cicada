@@ -30,7 +30,7 @@ type machineSealedPhaseRecord struct {
 	ErrorClass      string `json:"error_class"`
 }
 
-// One synchronous drain owns this observer. It has no queue, retained payload,
+// One synchronous poll or drain owns this observer. It has no queue, retained payload,
 // retry or file output. IDs are bounded identifiers, never arbitrary log text.
 type machineSealedPhaseObserver struct {
 	writer io.Writer
@@ -51,22 +51,29 @@ func machineSealedPhaseID(id string) string {
 	return id
 }
 
-func newMachineSealedPhaseContext(ctx context.Context, claim nodeinbox.Claim, entry machineRelayJournalEntry) (context.Context, *machineSealedPhaseObserver) {
+func newMachineSealedPhaseObserver(ctx context.Context, claim nodeinbox.Claim, entry machineRelayJournalEntry) *machineSealedPhaseObserver {
 	// Read the opt-in once per attempt. The default path creates no observer or
 	// JSON buffer, and does not wrap the existing lifecycle callback.
 	if os.Getenv("CICADA_NODE_SEALED_PHASE_DEBUG") != "1" {
-		return ctx, nil
+		return nil
 	}
 	writer, _ := ctx.Value(machineSealedPhaseWriterKey{}).(io.Writer)
 	if writer == nil {
 		writer = os.Stderr
 	}
-	observer := &machineSealedPhaseObserver{writer: writer, record: machineSealedPhaseRecord{
+	return &machineSealedPhaseObserver{writer: writer, record: machineSealedPhaseRecord{
 		Event: "NODE_SEALED_PHASE", MessageID: machineSealedPhaseID(claim.MessageID),
 		RequestID: machineSealedPhaseID(entry.RequestID), EndpointID: machineSealedPhaseID(claim.EndpointID),
 		AttemptID: machineSealedPhaseID(claim.AttemptID), NativeSID: machineSealedPhaseID(claim.SessionID),
 		RemoteAttemptID: machineSealedPhaseID(entry.AttemptID),
 	}}
+}
+
+func newMachineSealedPhaseContext(ctx context.Context, claim nodeinbox.Claim, entry machineRelayJournalEntry) (context.Context, *machineSealedPhaseObserver) {
+	observer := newMachineSealedPhaseObserver(ctx, claim, entry)
+	if observer == nil {
+		return ctx, nil
+	}
 	ctx = context.WithValue(ctx, machineSealedPhaseKey{}, observer)
 	dependencies := machineNativeDeliveryDependencies(ctx)
 	previous := dependencies.observe
@@ -74,8 +81,15 @@ func newMachineSealedPhaseContext(ctx context.Context, claim nodeinbox.Claim, en
 		if previous != nil {
 			previous(phase)
 		}
-		if phase == "writer_wait" {
+		switch phase {
+		case "writer_wait":
 			observer.enter("WRITER_WAIT")
+		case "queue_wait_succeeded":
+			observer.emit("QUEUE_WAIT", "END", "NONE")
+		case "accepted_durable":
+			observer.emit("QUEUE_DURABLE", "END", "NONE")
+		case "accepted_writer_closed":
+			observer.emit("WRITER_CLOSED", "END", "NONE")
 		}
 	}
 	return context.WithValue(ctx, machineNativeDeliveryLifecycleKey{}, dependencies), observer
@@ -120,7 +134,9 @@ func (o *machineSealedPhaseObserver) emit(phase, state, errorClass string) {
 		return
 	}
 	switch phase {
-	case "CLAIM_ROUTE", "AUTHORITY_HTTP", "CRYPTO_READ", "SEALED_VALIDATE", "LOCAL_CONTEXT", "OPERATION_SCOPE", "WRITER_WAIT":
+	case "CLAIM_ROUTE", "AUTHORITY_HTTP", "CRYPTO_READ", "SEALED_VALIDATE", "LOCAL_CONTEXT", "OPERATION_SCOPE", "WRITER_WAIT",
+		"INBOX_RECOVER", "JOURNAL_OPEN", "SEALED_CLAIM", "SEALED_ACCEPT", "GROUP_CLAIM", "GROUP_ACCEPT", "NETWORK_CLAIM", "NETWORK_ACCEPT", "PLAIN_CLAIM", "PLAIN_ACCEPT", "JOURNAL_RECONCILE", "INBOX_DRAIN",
+		"NATIVE_QUEUE", "QUEUE_WAIT", "QUEUE_DURABLE", "WRITER_CLOSED":
 	default:
 		return
 	}
