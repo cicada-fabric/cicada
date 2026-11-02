@@ -9492,16 +9492,34 @@ Codex daemon、其他插件、Caddy/TLS 配置与源码。**不得删除 `~/Cica
 不得全局 kill/pkill，也不得用删除 Codex 会话代替清除 Cicada。** 清除前后仅
 记录路径、结果、退出码和公开指纹，不导出私钥、凭据或完整授权。
 
-1. **拿总控最终完整包并核验。** 最终工件尚未由总控交付，以下变量留空，
-   不使用历史候选 ZIP 或替它宣告通过：
+1. **拿总控最终完整包并核验。** 最终完整包与独立 Windows 安全 helper 已就绪。
+   以下是工作区内的实际工件路径；复制到实机后按实际本地路径核验同一摘要：
 
    ```sh
-   CICADA_ACCEPTANCE_ZIP=''
-   CICADA_ACCEPTANCE_ZIP_SHA256=''
+   CICADA_ACCEPTANCE_ZIP='/home/zyf/Cicada/.local/artifacts/native-ip-complete/run-owner-thread-groups-9b6ec2c-20261030/Cicada-0.0.5-owner-thread-groups-9b6ec2cc.zip'
+   CICADA_ACCEPTANCE_ZIP_SHA256='bde21e14fae264ff93526743d984c6d3f2ea81ce4a0866bc50b6ff8163f802d9'
+   CICADA_WINDOWS_SECURITY_ZIP='/home/zyf/Cicada/.local/artifacts/n2-acceptance/windows-build-20261030T023513Z-Z6o4w4.zip'
+   CICADA_WINDOWS_SECURITY_ZIP_SHA256='95eb70ad155c9dedf682438503e317c666ec51bf52537f1b9bbff403648533b7'
    ```
 
-   总控补齐后先核 ZIP，再解压到本次 staging 目录，按包内
+   完整包软件版本为 `0.0.5`，产品源为
+   `9b6ec2ccba4add5431ab31a9ba7052e4bb6d2f6f`。既有 metadata-only finalizer
+   执行一次、退出码 0；原 candidate 保留，程序未重编译。总控已核最终 ZIP
+   的 59 个成员、CRC、字节、模式与摘要，仅三份元数据改变；交付回执
+   `root-delivery-review.json` 的 SHA-256 为
+   `9bb1e242075ee5145730a969eab9900bcca8e1a96fa446a827998d5e900f876b`。
+
+   安全 helper 的独立源为 `42b40528cfebb9798cf16e1dd5592323378c4771`，
+   相对产品源只修既有测试与验收记录，生产 Go 未变；它不是重建的产品包。
+   `Z6o4w4` 四个 builder lane 均退出 0，Linux 42 pass / 0 fail / 0 skip，
+   总控接受五成员安全包的 **BUILD_ONLY** scope。原 `Ku5vAo` 构建 FAIL 保留。
+   Windows native、跨用户 DPAPI、ACL、GUI 与实机流程仍为 **NOT_RUN**。
+   后续测试/文档集成不改变上述两个工件的实际源；full QtqKRp 的 `64927cbe`
+   与 cross kLd5IN 的 `d4884a5` 仍是独立源编译 Runtime，不能算这些交付程序的执行。
+
+   先核两个 ZIP，再分别解压到本次 staging 目录。完整包按包内
    `SHA256SUMS`、`BUILD-METADATA.json`、`VALIDATION.json` 核真实成员路径与摘要。
+   安全 helper 按其自身清单与既有 runner 执行，并单独记录 Windows 结果。
    Linux 使用 `sha256sum`，Windows 使用 `Get-FileHash -Algorithm SHA256`。
    Git、软件版本、程序摘要、ZIP 摘要与实机验证状态分别记录。
 2. **停止并清除旧 Cicada。** 正常关闭 Windows App；按所属服务/原终端停止
@@ -9558,8 +9576,8 @@ Codex daemon、其他插件、Caddy/TLS 配置与源码。**不得删除 `~/Cica
    哈希；Windows DPAPI/ACL/GUI/IME、跨 Owner、两个真实 Node/native Runtime、
    物理表单与公网 HTTPS 各自有实测才改变 NOT_RUN。
 
-以上全新安装流程尚未执行，独立容器/Host 结果不能覆盖它。总控交付最终 ZIP
-和摘要后，按此现有流程连续记录，避免另建重复任务书。
+以上全新安装流程尚未执行，独立容器/Host 结果不能覆盖它。完整包与安全 helper
+的路径、摘要已在步骤 1 填齐，待用户按此现有流程连续实机记录。
 
 ### 2026-10-29 frozen-source M7 Owner-key revocation and cold restart failure
 
