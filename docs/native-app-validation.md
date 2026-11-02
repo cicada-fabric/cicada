@@ -9472,35 +9472,64 @@ coverage. No Control inference or new grant is needed for the measured identity
 flow.
 
 
-### 连续真机验收步骤：完全清除 Cicada 后全新安装（尚未执行）
+<a id="连续真机验收步骤完全清除-cicada-后全新安装尚未执行"></a>
+
+### 连续真机验收步骤：完全清除 Cicada 后全新安装（本批分项记录）
 
 按用户最新要求，这一轮从完全清除 Cicada 安装与状态后开始，重新建立 Cicada
-Hub、Owner/App、Node 和协作授权。它不再是旧安装的保留身份更新验证。目前
-所有步骤均 **NOT_RUN**；本文只是操作流程，没有执行任何删除或公网变更。
-Windows DPAPI、ACL、GUI、键盘/IME 和物理 TUI 表单仍须分别实测。
+Hub、Owner/App、Node 和协作授权。它不再是旧安装的保留身份更新验证。本批按
+下面的分项状态记录；不能把用户报告、版本观察与独立验收混为同一个 PASS。
 
-完全清除以已知的 **Cicada 旧安装根** 为范围：Windows
-`F:\DOWNLOAD\Cicada-N2` 内属于 Cicada 的旧程序、状态、vault 和密钥（含曾直接
-放在旧根的布局），整个 Node `~/.cicada`，以及 Hub 整个 `/opt/cicada` 旧
-program/state prefix。旧 Hub 的实际 state-dir 曾是 `/opt/cicada/state`，
-因此仅清 `/opt/cicada/state/hub` 会遗留旧状态。停止归属 Cicada 服务/进程后，
-由用户或总控清除上述已知旧安装与专属启动项，再从最终包全新安装；不执行
-未知路径或其他文件的推测性清除。Windows 新根才是
-`F:\DOWNLOAD\Cicada-N2\data`，新 Hub state 才是 `/opt/cicada/state/hub`；
-创建这两个新目录本身不能证明旧 vault/keys 已清。保留 Codex 历史、全局
-Codex daemon、其他插件、Caddy/TLS 配置与源码。**不得删除 `~/Cicada` 工作区，
-不得全局 kill/pkill，也不得用删除 Codex 会话代替清除 Cicada。** 清除前后仅
-记录路径、结果、退出码和公开指纹，不导出私钥、凭据或完整授权。
+| 本批项目 | 当前状态与证据范围 |
+| --- | --- |
+| Hub 绑定 | **USER_REPORTED_PASS**：总控转述用户已确认绑定成功；本次文档没有独立复跑 |
+| gpu1 本地 Codex | 总控已观察本地 `codex --version` 为 **0.166.0**；这是版本信息，不是 native Runtime 验收通过 |
+| gpu1 Cicada 安装清理 | Hub 执行线程已完成；总控 26 项独立复核 **PASS_READY_FOR_USER_MANUAL_INSTALL**，未代装、未启动 |
+| gpu1 用户手动安装与 Node 启动 | **NOT_RUN**；下一步由用户从已传输的原始 ZIP 手动安装 |
+| Windows Enter、DPAPI、ACL、GUI/IME 专项 | **NOT_RUN**；不从 Hub 绑定报告推断 |
+| 本批 Node lifecycle、A/B ASK/REPLY、撤销及 24 小时到期 | **NOT_RUN**，待对应实测记录 |
 
-1. **拿总控最终完整包并核验。** 最终完整包与独立 Windows 安全 helper 已就绪。
-   以下是工作区内的实际工件路径；复制到实机后按实际本地路径核验同一摘要：
+当前 Hub 入口是 **`198.200.58.176:8787`**；`198.200.39.92` 仅保留为历史地址。
+IP 变化不触发安装包、服务、Hub/Owner 身份或密钥重建。本批 Hub 已绑定，
+gpu1 清理也已完成，后续由用户继续手动安装，不重复 gpu1 或 Hub/App 清理、
+setup 或签发。
+本文修订本身没有执行清理、安装、测试或公网变更。
 
-   ```sh
-   CICADA_ACCEPTANCE_ZIP='/home/zyf/Cicada/.local/artifacts/native-ip-complete/run-owner-thread-groups-9b6ec2c-20261030/Cicada-0.0.5-owner-thread-groups-9b6ec2cc.zip'
-   CICADA_ACCEPTANCE_ZIP_SHA256='bde21e14fae264ff93526743d984c6d3f2ea81ce4a0866bc50b6ff8163f802d9'
-   CICADA_WINDOWS_SECURITY_ZIP='/home/zyf/Cicada/.local/artifacts/n2-acceptance/windows-build-20261030T023513Z-Z6o4w4.zip'
-   CICADA_WINDOWS_SECURITY_ZIP_SHA256='95eb70ad155c9dedf682438503e317c666ec51bf52537f1b9bbff403648533b7'
-   ```
+本轮程序目录与用户数据目录分开；各平台运行用户的数据根统一为其 `~/.cicada`：
+
+| 运行环境 | 程序/下载目录 | 本轮用户数据根与实际子目录 |
+| --- | --- | --- |
+| Windows App | ZIP 下载在 `F:\DOWNLOAD\`；程序解压后在 `F:\DOWNLOAD\Cicada\package` | `$env:USERPROFILE\.cicada`；vault 在其 `app\vaults` 下 |
+| 普通用户的 Node（本轮 `zyf`） | `~/.cicada/components/node` | `~/.cicada`，包含 Node state、MCP 和 outbox |
+| Hub 实际运行用户 | `/opt/cicada` | `~/.cicada`；state 在 `state/hub`，另有 `workspace`、`private`、`public` |
+
+Linux 命令用 `CicadaHome="$HOME/.cicada"`，由当前运行用户的 shell 展开绝对
+路径，不硬编码某个用户的 home。当前 gpu1 下载目录为 `~/Downloads/Cicada`，
+解压目标为其 `package` 子目录，与用户数据根分开。旧 `rak` 的
+`~/cicada-incoming/Cicada-v01.zip` 仅是历史上传记录，不作本次重装输入。
+
+`F:\DOWNLOAD\Cicada-N2` 仅是待清理的旧 Cicada 安装根，不再用于下载、程序或
+新数据。旧 Hub 的实际 state-dir 曾是 `/opt/cicada/state`；清理旧 prefix
+仍须覆盖它，但本轮新数据不再放入 `/opt/cicada`。Hub 的 setup、签发和启动
+须使用下面一致的显式 state/workspace 配置，不能把旧默认路径当成已迁移。
+停止归属 Cicada 的服务/进程后，由用户或总控按步骤 2 清理已知旧安装与数据，
+保留 Codex 历史、全局 Codex daemon、其他插件、Caddy/TLS 配置与源码。
+**不得删除 `~/Cicada` 工作区，不得全局 kill/pkill，也不得用删除 Codex 会话
+代替清除 Cicada。** 清除前后仅记录路径、结果、退出码和公开指纹，不导出
+私钥、凭据或完整授权。历史验收记录中的实际路径仍保持原样。
+
+1. **拿总控交付的原始产品 ZIP 并核验。** 当前统一文件名为
+   `Cicada-0.0.5-owner-thread-groups-9b6ec2cc.zip`。Windows 下载文件在
+   `F:\DOWNLOAD\`，由用户 scp 到 `gpu1:~/Downloads/Cicada/` 后手动解压、
+   安装来模拟真实使用；gpu1 不从开发工作区的 artifact 目录取程序或直接安装。
+
+   下表只保留原始完整包与独立安全 helper 的交付来源，不作为本批安装路径；
+   本批传输的原始产品 ZIP 应匹配完整包一行的同一 SHA-256。
+
+   | 来源工件 | 原始路径 | SHA-256 |
+   | --- | --- | --- |
+   | 产品 `9b6ec2c` 完整包 | `/home/zyf/Cicada/.local/artifacts/native-ip-complete/run-owner-thread-groups-9b6ec2c-20261030/Cicada-0.0.5-owner-thread-groups-9b6ec2cc.zip` | `bde21e14fae264ff93526743d984c6d3f2ea81ce4a0866bc50b6ff8163f802d9` |
+   | 独立 `42b4052` 安全 helper | `/home/zyf/Cicada/.local/artifacts/n2-acceptance/windows-build-20261030T023513Z-Z6o4w4.zip` | `95eb70ad155c9dedf682438503e317c666ec51bf52537f1b9bbff403648533b7` |
 
    完整包软件版本为 `0.0.5`，产品源为
    `9b6ec2ccba4add5431ab31a9ba7052e4bb6d2f6f`。既有 metadata-only finalizer
@@ -9513,45 +9542,234 @@ Codex daemon、其他插件、Caddy/TLS 配置与源码。**不得删除 `~/Cica
    相对产品源只修既有测试与验收记录，生产 Go 未变；它不是重建的产品包。
    `Z6o4w4` 四个 builder lane 均退出 0，Linux 42 pass / 0 fail / 0 skip，
    总控接受五成员安全包的 **BUILD_ONLY** scope。原 `Ku5vAo` 构建 FAIL 保留。
-   Windows native、跨用户 DPAPI、ACL、GUI 与实机流程仍为 **NOT_RUN**。
+   Windows native、跨用户 DPAPI、ACL、GUI 专项仍为 **NOT_RUN**；本批 Hub
+   绑定的 USER_REPORTED_PASS 单独记录在上表。
    后续测试/文档集成不改变上述两个工件的实际源；full QtqKRp 的 `64927cbe`
    与 cross kLd5IN 的 `d4884a5` 仍是独立源编译 Runtime，不能算这些交付程序的执行。
 
-   先核两个 ZIP，再分别解压到本次 staging 目录。完整包按包内
+   总控已核原始产品 ZIP 的 59 个成员没有额外 `package/` 前缀。
+   `package` 是本轮选定的解压目标目录；解压后按其中
    `SHA256SUMS`、`BUILD-METADATA.json`、`VALIDATION.json` 核真实成员路径与摘要。
    安全 helper 按其自身清单与既有 runner 执行，并单独记录 Windows 结果。
    Linux 使用 `sha256sum`，Windows 使用 `Get-FileHash -Algorithm SHA256`。
    Git、软件版本、程序摘要、ZIP 摘要与实机验证状态分别记录。
-2. **停止并清除旧 Cicada。** 正常关闭 Windows App；按所属服务/原终端停止
+
+   Windows 向 SSH 目标 `gpu1` 上传时，先看目标用户 home 所在磁盘，
+   保留原始文件名，传输前后都须匹配完整包摘要
+   `bde21e14fae264ff93526743d984c6d3f2ea81ce4a0866bc50b6ff8163f802d9`。
+
+   ```powershell
+   Get-FileHash -LiteralPath 'F:\DOWNLOAD\Cicada-0.0.5-owner-thread-groups-9b6ec2cc.zip' -Algorithm SHA256
+   ssh gpu1 'df -h "$HOME"'
+   ssh gpu1 'mkdir -p "$HOME/Downloads/Cicada"'
+   scp 'F:\DOWNLOAD\Cicada-0.0.5-owner-thread-groups-9b6ec2cc.zip' 'gpu1:~/Downloads/Cicada/'
+   ssh gpu1 'sha256sum "$HOME/Downloads/Cicada/Cicada-0.0.5-owner-thread-groups-9b6ec2cc.zip"'
+   ```
+
+   磁盘、上传或摘要任一失败就停在本步骤。用户在 gpu1 核对上述摘要后，
+   用 Python 标准库将根级 ZIP 解压到 `~/Downloads/Cicada/package`，
+   其 CLI 即该目录的 `cicada`。再进入此解压目录执行后续安装命令：
+
+   ```sh
+   CicadaDownload="$HOME/Downloads/Cicada"
+   CicadaStage="$CicadaDownload/package"
+   python3 -m zipfile -e "$CicadaDownload/Cicada-0.0.5-owner-thread-groups-9b6ec2cc.zip" "$CicadaStage"
+   chmod 0700 "$CicadaStage/cicada"
+   cd "$CicadaStage"
+   ```
+2. **停止并清除旧 Cicada。** 本批 gpu1 清理已由 Hub 执行线程完成，总控
+   26 项独立复核为 **PASS_READY_FOR_USER_MANUAL_INSTALL**；当前直接继续
+   步骤 3 的用户手动安装，不重跑本步。已清用户根、Cicada 插件/cache、两个
+   旧 hook state 及精确 PATH 行，无 writer/FD/unit；其他 7 个插件、非 Cicada
+   config、Codex 账户历史与源码 Git 保留。未代装或启动 Node。
+
+   回执目录为 `~/Cicada/.local/evidence/gpu1-cicada-uninstall-20261103/`：
+   `cleanup-receipt.json` SHA-256
+   `04ee886b119d7390a3403e9a0f403076f30762bb66bc1e5307e4bcfb7aa94a99`；
+   `root-review.json` SHA-256
+   `7a1c9194e976d93461afc59fd726ee90ffdd7b60b2a2378344a83ce5c731f81c`。
+   本次文档线程只记录交接，没有执行删除、安装或测试。
+
+   下面保留首次全新安装的分平台清理命令。本批 Hub 已绑定，跳过已完成的
+   Hub/App 清理，不重复删除其已建立的状态或身份。首次清理时正常关闭
+   Windows App；按所属服务/原终端停止
    Cicada Hub 与 Node，确认旧 writer 已停止。已由 lifecycle 管理的 Node
-   可先同根 `cicada off`；没有旧配置时用其实际启动方式停机，不猜服务名。
-   清除 Windows 已知旧根 `F:\DOWNLOAD\Cicada-N2` 内归属 Cicada 的旧程序
-   和全部旧状态/keys，而非只删新 `data`；清除整个 Node `~/.cicada`。
-   Hub 在归属服务停止后移除整个旧 `/opt/cicada` Cicada prefix，包括
-   `/opt/cicada/state` 的旧布局和其余旧程序/state，不只清新 `state/hub`。
-   同时移除仅属于这些旧安装的启动项。Caddy、Codex、其他插件、源码以及
-   已知根内非 Cicada 文件原样保留；不盲删其他文件。不把旧 vault、
-   Owner/设备/Node 密钥、grant、pending 或数据库拷回新根。
+   先用旧 CLI 执行 `cicada off --user-root "$HOME/.cicada"`；没有旧配置时
+   用其实际启动方式停机，不猜服务名。以下命令在各自机器、对应用户下执行，
+   且只在前述停止完成后执行。
+
+   Windows PowerShell：保留 `F:\DOWNLOAD\` 中本轮已下载的 ZIP，清理
+   用户数据及仅属于 Cicada 的旧 `Cicada-N2` 安装目录。
+
+   ```powershell
+   $CicadaUserRoot = Join-Path $env:USERPROFILE '.cicada'
+   if (Get-Process -Name 'cicada-app' -ErrorAction SilentlyContinue) {
+       throw '请先正常关闭 Cicada App'
+   }
+   foreach ($CicadaOldRoot in @($CicadaUserRoot, 'F:\DOWNLOAD\Cicada-N2')) {
+       if (Test-Path -LiteralPath $CicadaOldRoot) {
+           Remove-Item -LiteralPath $CicadaOldRoot -Recurse -Force -ErrorAction Stop
+       }
+   }
+   ```
+
+   Node 终端，以普通用户 `zyf` 执行：
+
+   ```sh
+   test "$(id -un)" = zyf || exit 1
+   CicadaHome="$HOME/.cicada"
+   rm -rf -- "$CicadaHome" || exit 1
+   ```
+
+   Hub 数据在实际 Hub 运行用户的终端清理；`$HOME` 取该用户的 home，不从
+   另一个账号复制绝对路径。
+
+   ```sh
+   CicadaHome="$HOME/.cicada"
+   rm -rf -- "$CicadaHome" || exit 1
+   ```
+
+   旧程序 prefix 另由具有安装管理权限的身份清理；其历史
+   `/opt/cicada/state` 随旧 prefix 一并移除，不当成本轮新数据根：
+
+   ```sh
+   rm -rf -- /opt/cicada || exit 1
+   ```
+
+   同时移除仅属于旧 Cicada 安装的启动项和旧路径覆盖。Caddy、Codex、其他
+   插件、源码及非 Cicada 文件原样保留；不盲删其他目录。不把旧 vault、
+   Owner/设备/Node 密钥、grant、pending 或数据库拷回本轮数据根。
 3. **从已核包安装全新组件。** Linux 按包清单的实际 CLI、摘要和 matching
    licenses 安装 Hub/Node；Node 使用完整包的插件资源与清单插件摘要。
-   `components install` 只安装文件，不作为已启动、已绑定或已授权的证据。
-   Windows 使用包内真实 `cicada-app.exe`，新根为
-   `--user-root 'F:\DOWNLOAD\Cicada-N2\data'`；GUI 不接受
-   `components` 命令，不能假设包内存在 Windows CLI。启动参数只使用最终包
-   与现有入口确实支持的参数，不手写 manifest 或伪造服务配置。
+   本批 Hub 绑定已由用户报告成功，下面的 Hub 安装段仅保留首次流程参考，
+   当前不重装 Hub。gpu1 用户从原始 ZIP 的解压目标 `~/Downloads/Cicada/package`
+   手动安装 Node，不将开发 artifact 目录当作 `CicadaStage`，也不由文档线程代装。
+   在各自机器步骤 1 已核验的 Linux 解压目录内执行；`CicadaStage` 指当前
+   解压目录，不是用户数据根。Hub 程序由具有安装权限的身份写入 `/opt/cicada`；
+   本命令只安装文件，后续数据创建与运行仍使用实际 Hub 用户：
+
+   ```sh
+   CicadaStage="$(pwd -P)"
+   "$CicadaStage/cicada" components install --prefix /opt/cicada --components hub \
+     --binary "$CicadaStage/cicada" \
+     --sha256 bd4ba5ca61e49c0b5b1fe9b92f58eddae89c09298e8377d57d87fbaf3163f7cf \
+     --licenses "$CicadaStage/licenses"
+   ```
+
+   Node 另以普通用户 `zyf` 安装到自己的根，并带同包插件资源：
+
+   ```sh
+   test "$(id -un)" = zyf || exit 1
+   CicadaHome="$HOME/.cicada"
+   CicadaStage="$(pwd -P)"
+   "$CicadaStage/cicada" components install --prefix "$CicadaHome" --components node \
+     --binary "$CicadaStage/cicada" \
+     --sha256 bd4ba5ca61e49c0b5b1fe9b92f58eddae89c09298e8377d57d87fbaf3163f7cf \
+     --licenses "$CicadaStage/licenses" \
+     --codex-plugin-assets "$CicadaStage" \
+     --codex-plugin-sha256 20ec04693dec525f481f8954a5035de8647ae98381c168bd23e9c65a22025527
+   ```
+
+   安装后 CLI 分别为 `/opt/cicada/components/hub/bin/cicada` 和
+   `~/.cicada/components/node/bin/cicada`。`components install` 只安装
+   文件，不作为已启动、已绑定或已授权的证据；出错先停在该步骤，不继续初始化。
+
+   Windows PowerShell 将已核完整包解压到本轮程序目录：
+
+   ```powershell
+   Expand-Archive -LiteralPath 'F:\DOWNLOAD\Cicada-0.0.5-owner-thread-groups-9b6ec2cc.zip' -DestinationPath 'F:\DOWNLOAD\Cicada\package' -Force -ErrorAction Stop
+   ```
+
+   App 用户数据默认已是 `$env:USERPROFILE\.cicada`，无需改代码或重建；下步
+   显式传入同一数据根以避免旧启动参数干扰。GUI 不接受 `components` 命令，
+   不能假设包内存在 Windows CLI。不手写 manifest 或伪造服务配置。
 4. **从新 Hub/Owner/Node 重新完成身份流程。** Hub 用空 state 初始化并记录
    新公开指纹，经可信路径钉住新 Hub 公钥。App 使用新 protected profile
    完成账户、Owner 证明、设备授权与 Node 绑定；清除前的公钥和凭据不能继续
    信任新部署。账户登录不等于 Root，UI 也不能补 grant；关闭 Control 推理
    仍须完成身份流程。新安装建立新的 Cicada 身份，此后步骤才要求这些新身份
    在重启/撤销前保持不变。Hub 部署操作由总控按本次明确范围执行并留证。
+   当前 App/Node 填写的 Hub 地址统一为 `198.200.58.176:8787`。
+   **本批用户已报告 Hub 绑定成功，以下 Hub setup、签发及 unit 生成是首次
+   流程参考，本批跳过，不重新生成身份或激活材料。** 首次流程由 Hub 的实际
+   运行用户在自己的空数据根执行一次 setup、签发和前台启动：
+
+   ```sh
+   CicadaHome="$HOME/.cicada"
+   install -d -m 0700 "$CicadaHome" "$CicadaHome/state/hub" "$CicadaHome/workspace" "$CicadaHome/private" "$CicadaHome/public"
+   export CICADA_WORKSPACE_ROOT="$CicadaHome/workspace"
+   /opt/cicada/components/hub/bin/cicada hub setup --native-tls \
+     --owner-label 'New installation Owner' \
+     --state-dir "$CicadaHome/state/hub" --workspace-root "$CicadaHome/workspace" \
+     --public-config "$CicadaHome/public/hub-connection.json"
+   /opt/cicada/components/hub/bin/cicada hub activation-issue --native-tls \
+     --purpose initial --state-dir "$CicadaHome/state/hub" \
+     --code-file "$CicadaHome/private/initial-bootstrap.txt"
+   /opt/cicada/components/hub/bin/cicada serve --hub-nodes-only --native-tls \
+     --state-dir "$CicadaHome/state/hub" --host 0.0.0.0 --port 8787
+   ```
+
+   如改用 systemd，先正常结束上述前台 writer。在实际 Hub 运行用户的 shell
+   生成下面的待安装 unit，再由有权限的服务管理员按原服务流程安装到
+   `/etc/systemd/system/cicada-hub.service` 并启动，保持同一用户与数据根。
+   此处使用未加引号的 heredoc，生成文件前展开绝对路径；unit 中不写 literal
+   `~`、`$HOME` 或 `$CicadaHome`。
+
+   ```sh
+   CicadaHome="$HOME/.cicada"
+   CicadaHubUser="$(id -un)"
+   cat > "$CicadaHome/private/cicada-hub.service" <<EOF
+   [Unit]
+   Description=Cicada Hub
+   Wants=network-online.target
+   After=network-online.target
+
+   [Service]
+   Type=simple
+   User=$CicadaHubUser
+   WorkingDirectory=$CicadaHome/workspace
+   Environment="CICADA_WORKSPACE_ROOT=$CicadaHome/workspace"
+   ExecStart=/opt/cicada/components/hub/bin/cicada serve --hub-nodes-only --native-tls --state-dir "$CicadaHome/state/hub" --host 0.0.0.0 --port 8787
+   Restart=on-failure
+   UMask=0077
+
+   [Install]
+   WantedBy=multi-user.target
+   EOF
+   ```
+
+   同根配置必须随实际服务启动保留。通过可信本地通道私下取得该次完整的一用
+   bootstrap wrapper，不能把私有 code 文件或其内容收进验收记录。Hub 就绪后，
+   在 Windows PowerShell 启动本轮 App，再按现有界面完成新身份流程：
+
+   ```powershell
+   & 'F:\DOWNLOAD\Cicada\package\cicada-app.exe' --user-root (Join-Path $env:USERPROFILE '.cicada')
+   ```
+
+   实际 vault 应位于 `$env:USERPROFILE\.cicada\app\vaults`，下载/程序目录
+   不承载用户数据，也不再传 `Cicada-N2` 或其 `data` 作为 `--user-root`。
 5. **验证前台与 lifecycle。** 先用本次已核 Node CLI 和新绑定后的实际参数
    前台启动，记录新 Node/Hub 指纹与 state；正常退出后确认 writer 已停止。
+   本批 gpu1 的本地 `codex --version` 已观察为 `0.166.0`，继续使用该机实际
+   Codex 路径与原账户，不因旧 Runtime 工件使用 `0.164.0` 而降级或替换。
+   历史 Runtime 的版本、二进制与结果保持原归属，不算作 `0.166.0` 的互操作
+   验收；本次文档没有再次运行版本命令或 Runtime。
    若平台满足现有 Linux lifecycle 条件，按新配置完成 `cicada on`、
    `cicada status`、`cicada off`、`cicada status`、`cicada on`。首次 `on`
    所需绝对 Codex 路径和 relay-agent 参数来自本次真实安装配置，不恢复旧
    `node-service.json`。冲突必须明确拒绝；本地 running 或 hub_online=unknown
-   不等于 Hub 在线或业务授权。Windows lifecycle 不能由 Linux 结果代替。
+   不等于 Hub 在线或业务授权。已按本轮真实参数完成首次 `on` 后，后续同根
+   lifecycle 命令在普通用户 `zyf` 下执行：
+
+   ```sh
+   CicadaHome="$HOME/.cicada"
+   "$CicadaHome/components/node/bin/cicada" status --user-root "$CicadaHome"
+   "$CicadaHome/components/node/bin/cicada" off --user-root "$CicadaHome"
+   "$CicadaHome/components/node/bin/cicada" status --user-root "$CicadaHome"
+   "$CicadaHome/components/node/bin/cicada" on --user-root "$CicadaHome"
+   ```
+
+   Windows lifecycle 不能由 Linux 结果代替。
 6. **保留 Codex 历史，重新授权 A/B。** 可恢复原 Codex A/B 历史与工作目录，
    或使用用户指定的测试 Thread；清除旧 Cicada 后，它们须经本次全新身份与
    Owner 审批重新注册/Join。记录新的 Cicada Endpoint/Group/绑定基线，不将
@@ -9576,8 +9794,10 @@ Codex daemon、其他插件、Caddy/TLS 配置与源码。**不得删除 `~/Cica
    哈希；Windows DPAPI/ACL/GUI/IME、跨 Owner、两个真实 Node/native Runtime、
    物理表单与公网 HTTPS 各自有实测才改变 NOT_RUN。
 
-以上全新安装流程尚未执行，独立容器/Host 结果不能覆盖它。完整包与安全 helper
-的路径、摘要已在步骤 1 填齐，待用户按此现有流程连续实机记录。
+本批已开始分项记录：Hub 绑定只记 USER_REPORTED_PASS；gpu1 清理为
+PASS_READY_FOR_USER_MANUAL_INSTALL，下一步由用户从原始 ZIP 手动安装，
+尚不记安装或启动 PASS。其余项目依上表状态推进，
+不由独立容器/Host 的历史结果覆盖，也不重跑已完成的 Hub/App 初始化。
 
 ### 2026-10-29 frozen-source M7 Owner-key revocation and cold restart failure
 
