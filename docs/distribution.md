@@ -344,6 +344,14 @@ binding/version, Node/Hub key pins/versions/epoch, and native descriptor/dial
 before handing it to service control; do not print credential or sealed contents.
 Local service readiness and Hub online observations remain separate.
 
+The [2026-11-03 scoped verification](native-app-validation.md#2026-11-03-root-verification-of-scope2-node-first-on)
+passed the actual Node CLI's Scope2 approval/private ACK/local-state handoff and
+an isolated real user service's on/status/off/on/off on source `7fa5634`.
+Independent disposable Client Docker interop also passed on that source.
+These synthetic-fixture results do not revive an existing EXPIRED attempt or
+establish the user's real Node readiness. A real expired attempt still needs
+the explicit new-code/Owner-approval flow above, followed by local readiness.
+
 The unit is `cicada-node-<first-16-bytes-of-SHA256>.service`, with SHA-256 input
 `decimal-effective-UID + NUL + canonical-root + NUL + Node-ID`. The service
 description is `Cicada managed Node <SHA256-of-exact-config-bytes>`;

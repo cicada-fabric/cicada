@@ -10508,7 +10508,48 @@ one actual Scope2 Node approval/private ACK, Node public ready state, matching
 App ACK/binding, foreground shutdown, then actual on/status/off/on/off with
 managed PIDs and original binding/attempt/key/credential invariants. Codex is a
 zero-model executable placeholder; no native Runtime acceptance is claimed.
-The entry compiled successfully but is **NOT_RUN by this producer**. Root owns
-its one final execution and disposable Docker gate after integration; any result
-must retain its own source/artifact/fixture attribution. No user's real Node,
-service, sealed journal, credentials or public Hub was changed here.
+At producer handoff the entry had compiled successfully and was **NOT_RUN by
+the producer**. Root's subsequent actual-service and disposable Docker results
+are recorded separately below, retaining their source/artifact attribution.
+No user's real Node, service, sealed journal, credentials or public Hub was
+changed by the producer work.
+
+### 2026-11-03 Root verification of Scope2 Node first-on
+
+Root independently ran `TestScopedAppActualNodeCLIFirstOnOffOn` against exact
+source `7fa56346ad299cff2dd7d82cf4a3cf4d20cce131`: **SCOPED_PASS**, exit 0,
+**15.994 seconds, no skip**. The production App SDK and real TLS Hub handler
+approved one actual Node CLI's private PTY code; the original Node verified and
+ACKed it, persisted its local binding/pins/native transport, and agreed with
+the App's authenticated ACK result. After foreground shutdown, the uniquely
+owned real systemd user service passed **on/status/off/on/off**, with managed
+PID/restart checks and unchanged original binding/attempt/key/credential.
+Only synthetic identities and fixture roots were used. The user's real gpu1
+Node public-state hash remained unchanged.
+
+- Actual CLI SHA-256: `3811a24a4e0d5f42376dd8352603c2f8b6903b62415c9155cfa86eef94d9d3d0`.
+- Tagged test binary SHA-256: `fa5cacef98a2b72bae718b2f2b200a9ecfaebf2e548c9b1cb213867a4cd55ca3`.
+- Evidence root: `/home/zyf/Cicada/.local/evidence/v01-node-ready-root-20261103/actual-cli-service/`.
+- `result.json` SHA-256: `9103dcf05182b57732bf3c2c7d8719b14aff76895df5a35c6c453c894b4dd2b2`.
+- `test.log` SHA-256: `620ab89bb1b9c88febca3822369e8bb904f72b087f06ced64b994f171b5c89e4`, verified against the receipt.
+
+Root's independent disposable **Client Docker interop PASS**, exit 0, used
+clean source `7fa56346ad299cff2dd7d82cf4a3cf4d20cce131`, standard Hub image
+`sha256:03dbff6bd8258788a6a54dfe289349106d72a1adb1f99ac0de4fa5e19810b541`
+and test image
+`sha256:8cd9153c929d9f7f67713209a04f5dc47176a872b6af1efe32b3ec16acf249ff`.
+Smoke, headless SDK, Owner bootstrap and recovery-fault checks each passed;
+owned-resource cleanup is **CONFIRMED**. This is independent Client/TCP
+qualification, not a second Scope2 lifecycle or native Runtime result.
+`/home/zyf/Cicada/.local/evidence/v01-node-ready-root-20261103/client-interop/result.json`
+SHA-256 is `1a0b7b54847e38977c5636f07aad27288fac283c8718a59fd8563271fd145bd6`.
+
+The producer's RED/GREEN and compile-only records above remain unchanged.
+These fixture passes do **not** revive the user's old EXPIRED attempt, establish
+its missing local binding/pins/transport, or turn the earlier pairing-screen
+observation into local service readiness. Actual user first-on remains pending:
+the user must explicitly retry for a new code and Owner approval, then wait for
+the original Node's local readiness before service handoff. Real native Runtime,
+Windows physical/DPAPI/ACL, Android, A/B/MCP and public HTTPS remain **NOT_RUN**
+for this scoped verification. This documentation follow-up reruns no test and
+changes no implementation, service, identity or deployment.

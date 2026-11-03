@@ -1131,6 +1131,12 @@ Root froze lifecycle v1 for Hub implementation: Linux-native
 for an **already paired, single-Hub, relay-only** Node.
 First on supplies `--codex-bin ABS -- <original machine agent arguments>`;
 Hub pairing confirmation alone does not satisfy the [local ACK/binding/pins/transport handoff](distribution.md); incomplete local admission returns `NODE_SERVICE_PAIRING_NOT_READY`.
+The [2026-11-03 Root verification](native-app-validation.md#2026-11-03-root-verification-of-scope2-node-first-on)
+on `7fa5634` passed one actual Scope2 Node CLI/private ACK/local-ready handoff
+and real isolated user-service on/status/off/on/off; independent Client Docker
+interop passed separately. This closes that bounded synthetic-fixture gap.
+User-device readiness, the old EXPIRED attempt, Windows and native Runtime
+retain their separate status; a real retry still requires a new code/approval.
 Hub alone writes `ROOT/node-service.json` at mode 0600, retaining the fixed
 executable, original Node/state/MCP/Hub selection. Later on reuses that config
 and rejects drift. The systemd **user transient unit** is scoped by UID/root/ID;
