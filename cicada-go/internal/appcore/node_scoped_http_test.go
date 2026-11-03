@@ -46,6 +46,7 @@ type scopedAppHTTPFixture struct {
 	root, origin, dial, descriptorText string
 	posts                              map[string]int
 	dropOperation                      string
+	refuseOperation                    string
 	dropHTTPStatus                     int
 	droppedPacket                      []byte
 	nextPost                           time.Time
@@ -239,6 +240,14 @@ func (p *scopedAppHTTPProbe) Do(req *http.Request) (*http.Response, error) {
 	}
 	if err := p.f.pace(req.Context()); err != nil {
 		return nil, err
+	}
+	if req.URL.Path == p.f.refuseOperation {
+		// An unauthenticated intermediary refusal before the Hub sees the
+		// already persisted original. Reconciliation must fence that exact
+		// packet rather than treating HTTP 403 as a remote attempt outcome.
+		p.f.refuseOperation = ""
+		p.f.droppedPacket = bytes.Clone(raw)
+		return &http.Response{StatusCode: http.StatusForbidden, Body: io.NopCloser(strings.NewReader(`{"error":"SYNTHETIC pre-Hub refusal"}`)), Request: req}, nil
 	}
 	response, err := p.client.Do(req)
 	if err == nil && response.StatusCode != http.StatusOK {
@@ -1351,5 +1360,62 @@ func TestScopedAppRealTLSQueryFenceMustObserveACKBeforeCleanup(t *testing.T) {
 				t.Fatal("live attempt was not ended safely before unlock")
 			}
 		})
+	}
+}
+
+func TestScopedAppRealTLSFinishAfterReloginObservesOriginalGrant(t *testing.T) {
+	f := newScopedAppHTTPFixture(t)
+	n := f.startNode("SYNTHETIC-relogin-cleanup")
+	f.approveNode(n) // The original Node deliberately does not ACK.
+	owner, device, counters := f.c.state.OwnerKeyID, f.c.state.DeviceKeyID, f.c.node.Client
+	grant := f.c.scoped.flow.Challenge.Claims.GrantID
+	f.dispatch(Action{Kind: ActionLogout})
+	f.dispatch(Action{Kind: ActionLogin, Username: "synthetic-scoped-app", Password: n2SyntheticPassword})
+	s := f.c.Snapshot()
+	err := f.c.Dispatch(context.Background(), Action{Kind: ActionCancelNodePairing, NodePairingReviewID: s.Node.Pairing.ReviewID})
+	flow := f.c.scoped.flow
+	if err != nil || flow == nil || !flow.CleanupComplete || f.c.Snapshot().Targets.Locked {
+		state := ""
+		if record := f.c.scopedNode(n.context.AuthorityNodeID); record != nil && record.Current != nil {
+			state = record.Current.Authority.State
+		}
+		t.Fatalf("fresh-session finish must authenticate original grant terminal: err=%v stage=%s cleanup=%v pending=%v grantState=%s error=%s", err, flow.Stage, flow.CleanupComplete, f.c.scopedPending(), state, flow.LastError)
+	}
+	if f.posts[wire.AppNodeScopedHTTPPath(wire.OperationAppNodeScopedCancel)] != 0 || !scopedCleanupGrantSettled(f.c.scopedNode(n.context.AuthorityNodeID), grant) {
+		t.Fatal("fresh login cleanup canceled an already terminal grant instead of authenticating it")
+	}
+	if owner != f.c.state.OwnerKeyID || device != f.c.state.DeviceKeyID || counters != f.c.node.Client || f.c.selectedNodeBinding() != nil || f.c.scoped.flow.Challenge.Claims.GrantID != grant {
+		t.Fatal("cleanup replaced identities/grant/counters or manufactured admission")
+	}
+}
+
+func TestScopedAppRealTLSFencedFinishAfterReloginKeepsOriginal(t *testing.T) {
+	f := newScopedAppHTTPFixture(t)
+	n := f.startNode("SYNTHETIC-fenced-relogin-cleanup")
+	f.approveNode(n)
+	owner, device, counters := f.c.state.OwnerKeyID, f.c.state.DeviceKeyID, f.c.node.Client
+	grant := f.c.scoped.flow.Challenge.Claims.GrantID
+	cancelPath := wire.NodePairTrustScopedHTTPPath(wire.OperationOwnerNodePairTrustScopedCancel)
+	f.refuseOperation = cancelPath
+	s := f.c.Snapshot()
+	if f.c.Dispatch(context.Background(), Action{Kind: ActionCancelNodePairing, NodePairingReviewID: s.Node.Pairing.ReviewID}) == nil || !f.c.scopedPending() {
+		t.Fatal("pre-Hub refusal discarded uncertain Owner original")
+	}
+	original := cloneScopedOriginal(f.c.scoped.original)
+	defer func() { clear(original.Packet); clear(original.Body); clear(original.Response) }()
+	f.dispatch(Action{Kind: ActionLogout})
+	f.dispatch(Action{Kind: ActionLogin, Username: "synthetic-scoped-app", Password: n2SyntheticPassword})
+	f.restart()
+	pending := f.c.scoped.original
+	if pending == nil || !bytes.Equal(pending.Packet, original.Packet) || !bytes.Equal(pending.Body, original.Body) || !bytes.Equal(pending.Packet, f.droppedPacket) || pending.RequestID != original.RequestID || pending.Applied || !f.c.Snapshot().Targets.Locked {
+		t.Fatal("relogin/reopen replaced uncertain Owner original or unlocked targets")
+	}
+	f.dispatch(Action{Kind: ActionRecoverNodePairing})
+	flow := f.c.scoped.flow
+	if flow == nil || !flow.CleanupComplete || f.c.Snapshot().Targets.Locked || f.c.scopedPending() || f.posts[cancelPath] != 2 || f.posts[wire.NodePairTrustScopedHTTPPath(wire.OperationNodePairTrustScopedReconcile)] != 1 {
+		t.Fatal("real Hub request fence failed to authenticate attempt and exact grant cleanup")
+	}
+	if !scopedCleanupGrantSettled(f.c.scopedNode(n.context.AuthorityNodeID), grant) || f.posts[wire.AppNodeScopedHTTPPath(wire.OperationAppNodeScopedCancel)] != 0 || owner != f.c.state.OwnerKeyID || device != f.c.state.DeviceKeyID || counters != f.c.node.Client || f.c.selectedNodeBinding() != nil {
+		t.Fatal("fenced cleanup replaced identity/counters, canceled old terminal grant or admitted Node")
 	}
 }

@@ -308,6 +308,19 @@ func (c *nativeController) finishScopedCancellation(ctx context.Context) error {
 		if n == nil {
 			return wire.ErrInvalid
 		}
+		if !scopedCleanupGrantSettled(n, f.Challenge.Claims.GrantID) {
+			// A previous login's grant may already be SESSION_ENDED/EXPIRED.
+			// Authenticate that exact grant before attempting a current-session
+			// cancellation; a refusal or an old local ACTIVE snapshot cannot
+			// establish its terminal outcome.
+			q, err := wire.NewAppNodeScopedStatus(c.nodeSession(), wire.AppNodeScopedStatusTarget{NodeID: f.NodeID}, f.Challenge.Claims.GrantID, c.cfg.Now().UTC())
+			if err != nil {
+				return err
+			}
+			if err := c.sendScopedNew(ctx, q, f.NodeID, false); err != nil {
+				return err
+			}
+		}
 		head := f.Challenge.Claims.ExpectedHeadVersion
 		if n.Grant != nil && n.Grant.Claims.GrantID == f.Challenge.Claims.GrantID {
 			head = n.Grant.Claims.Scope.HeadVersion

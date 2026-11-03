@@ -75,7 +75,7 @@ func (v *view) devicePairingRows(s appcore.Snapshot) []layout.Widget {
 			return layout.Flex{Axis: layout.Vertical}.Layout(gtx, v.publicFieldRows("device-pairing/", fields)...)
 		}))
 	}
-	if p.ErrorCode != "" && flow.Stage != "cleanup" && flow.Stage != "recovery" {
+	if p.ErrorCode != "" {
 		rows = append(rows, v.labelRow(appui.ErrorText(v.locale, p.ErrorCode)))
 	}
 	if flow.Primary != "" {
