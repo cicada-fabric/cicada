@@ -10397,11 +10397,53 @@ client protocol scope only; the old `873a390` receipts retain their old source.
 No 75-second, producer normal/race, M1/C1, separate product package build or
 Runtime matrix was repeated. Delivery-binary execution pointers remain empty.
 
-The actual user's Hub branch, >10-minute expired Context and anonymous-GC
-outcome remain unresolved pending the requested read-only query output.
-Root has requested those results; this is not pending operation permission. QA did not query or alter the real Hub, physical vault,
-keys, packets or deployment. The `46e3b45` package's user GUI retest and
-independent physical Windows DPAPI/ACL/GUI remain **NOT_RUN**. A passing
+At this checkpoint the actual Hub branch, >10-minute Context and GC outcome
+were pending read-only query output; the subsequent SQL and physical result
+are recorded in the follow-up below. QA did not query or alter the real Hub, physical vault,
+keys, packets or deployment. The `46e3b45` user GUI retest was NOT_RUN at that
+handoff and subsequently failed; independent Windows DPAPI/ACL/GUI remain
+**NOT_RUN**. A passing
 fresh-Context producer case or client protocol Docker suite cannot close the
 original real-Hub/long-expiry failure. Keep both USER_REPORTED_FAIL observations
 open until the affected path has itemized evidence.
+
+### 2026-11-03 cold Finish and retained Lookup follow-up
+
+**USER_REPORTED_FAIL remains open on `46e3b45`**: only Finish is shown, but the
+message asks for Recover; the user cannot advance. Prior `48b6c78`/`c17a783`
+scoped PASS records are unchanged and did not qualify this cold state.
+User-provided SQL found two retained EXPIRED pairing rows (authorized 0/1) and
+one persisted ACTIVE grant: no missing/GC for those rows, no proof of current
+grant validity or exact App-original binding. Root's SQL receipt is
+`run-pairing-finish-46e3b45-20261103/evidence/operator-read-only-sql-20261103.json`
+under the existing complete-package artifacts, SHA-256
+`f5331197fcd8e25a7de6119e14fd44090319660177a8d18723112d50fc9278a1`.
+
+App's real-TLS cold RED: pre-Hub refusal of Owner Status → real reconcile
+FENCED/Applied, CancelRequested=false → Logout/Login → vault reopen → Finish.
+The pending-false busy flow skips startup discovery, so available=false rejects
+Finish locally before any POST. Unlike the earlier pending-true cold recovery,
+no Recover action runs discovery first. The existing nil-Context test only
+checked actions then restored Context; it did not drive this cold Finish.
+Separately, cleanup Stage labeled a Refresh primary as Finish, and UNKNOWN
+copy always required Recover even when that action was unavailable.
+
+| Evidence / next fix | Result and limit |
+| --- | --- |
+| `pairing-cold-finish-20261103/red-cold.jsonl` under `n2-app` evidence | Actual producer assertion RED 9.5s / package 9.507s, available=false, pending=false, FENCED, extraPOSTs=0; SHA-256 `2d2d29ce96de14cb1cf51c2d6540cdbfa9b591239ac42a46b84bc02f448fd45d`. QA reviewed read-only, did not repeat it. |
+| `red-expired-lookup-real.jsonl` | New producer gap case `TestScopedAppRealTLSExpiredLookupRestoresHandleWithoutApproval`: real 75-second nil-Context lookup fence and actual deadline, assertion RED 78.36s / package 78.365s; SHA-256 `fe2d656e5914e1aa993c200405435e9541c41992f72e48cdb09218d2d980e02c`. This is not a repeat of the earlier independent 75-second matrix or >10-minute physical acceptance. |
+| `red-terminal-lookup.jsonl` / `red-ui.jsonl` | Separate modeled App-clock apply beyond a real CANCELLED Context: RED 5.228s, SHA-256 `d87d425be571985cbda2db572c32291501cac3024f43010fa849642e62d28790`. Portable Refresh-only projection assertion RED: SHA-256 `f1c359223cb309ad076d0d9664d279e78bc345a0af192c7384ca988833d37377`. Neither is natural elapsed expiry. |
+| App frozen `c386726efb13fcd35ff705d20037b322431f0807`, parent `c17a783` | Discovery before cold Finish; full original Context/OOB match at Context.IssuedAt only for authenticated terminal EXPIRED/CANCELLED/REVOKED lookup observation, no renewed consent; actual-Primary labels and neutral UNKNOWN copy. Seven changed-file hashes match `source-final.json`, SHA-256 `ce90ec992edb589d744e02ee2bf385edeaa70b4d055a1bc287911982dcdf3ea6`. |
+| Producer GREEN | Core four top-level targets PASS / 112.081s (`green-core.jsonl`, SHA-256 `ff262673b7148f5be5d49965f8276f4b65850cb4ecdd9f19d6a6476e8890f188`); final portable UI nine top-level targets PASS (`green-ui-final.jsonl`, SHA-256 `bfe55fd7977f7c7598262c2d44fa7aa1769b552816be245225692c1432011d4c`). Only the two new race targets PASS / 197.392s (`race-new.jsonl`, SHA-256 `63e137e0a930827c2147f2a3d765f977cdfb7df93351092f32666aaa599d0072`). Final producer `qualification.json` SHA-256 `31526b058bdf5798a52a41cdc25bb9e8a12b77246f2052edda9b9964cb0a501d`; Windows native test cross-compilation exit 0, execution NOT_RUN. QA reviews only. |
+| Independent integration | Root-authorized single existing client Docker gate on clean `c386726`: **SCOPED_PASS / 0**, 184.83s; four top-level targets / seven pass events, zero fail/skip. Output `v01-pairing-recovery-qa/cold-c386726-20261103T111051Z-v_m7qtqu` under task evidence; QA `result.json` SHA-256 `633bdc5a93fc669e47032c0b5735ee1d45f96a951c75c6c48e6dd109b69f6f33`, original `client-interop/result.json` SHA-256 `6c596044394e2c1967e83e694efa2662a5e7554105316f5fccf740ff3757fef5`. |
+| Source / exact cleanup | Clean source before/after identical, SHA-256 `5276a472ea783bcdcea53474711d386b0f321ebb54e4302fdace29bd3c1792c2`; build source fingerprint `17bd1e60352fd18a9087c3d9c7324be876882f25b818ede4994333acdb860f21`. `client-interop/cleanup.json` SHA-256 `af6bc64b8e2c49f9d35adf0eebb513ff4fb7ab84fd1de2b2f1a6b608aa8c2774`: CONFIRMED, three containers/two task image references/private scratch rechecked EXACT_ABSENT. Original image IDs and test events remain in the child receipt; no executed-delivery-binary pointer. |
+
+The actual argv remains in `command.json`: the unchanged existing
+`scripts/test-client-hub-interop.sh --suite client`, with a fresh private
+`CICADA_INTEROP_OUTPUT`; pinned/resource/cache boundaries are as above. No
+producer/old-75-second/M1/C1 matrix was repeated by QA.
+
+QA owns only these two documents. No Hub deployment, real vault/key, new driver
+or test was changed. The newest package's physical GUI retest, independent
+DPAPI/ACL and native Runtime remain NOT_RUN; producer or Docker PASS cannot
+close the user's failure without the affected-path feedback.

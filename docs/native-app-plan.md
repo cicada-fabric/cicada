@@ -50,8 +50,10 @@ the single clean-source client Docker interop also passed. The subsequent
 not advance Saved FENCED / APP_NODE_PAIRING_UNKNOWN. The old scoped PASS did
 not cover this branch. App's `46e3b45` adds exact old-grant observation after
 relogin; producer normal/race checks pass. The single client Docker gate on
-clean `46e3b45` is SCOPED_PASS / 0; the new physical retest remains NOT_RUN.
-Historical attribution is retained.
+clean `46e3b45` is SCOPED_PASS / 0; its later physical retest is
+**USER_REPORTED_FAIL**: only Finish is shown while the text asks for Recover.
+The [cold-Finish follow-up](native-app-validation.md#2026-11-03-cold-finish-and-retained-lookup-follow-up)
+records the new initialization gap; prior passing sources remain attributed.
 Use the [short exit index](#current-feedback-and-acceptance-ledger)
 and [current source-bound results](native-app-cross-node-validation.md#current-scopes--2026-10-30).
 
@@ -713,13 +715,21 @@ two new real-TLS cases cover actual Logout/Login and a before-Hub refusal,
 original packet reconciliation and vault reopen. They remain within the
 original Context lifetime. Six normal targets and two selected race targets
 pass; Windows native test cross-compilation exits 0, execution NOT_RUN.
-The >10-minute Context/anonymous-GC branch and actual Hub state are unresolved
-pending the requested read-only query output. No real state or
-deployment has been changed. Root froze
+User-provided read-only SQL found the two pairing rows retained and EXPIRED
+(authorized 0/1), and one persisted ACTIVE grant. Missing/GC is excluded for
+those rows; this is not fresh grant status or an exact App-original mapping.
+The later `46e3b45` physical Finish retest failed. No real state or deployment
+was changed by QA. Root froze
 `46e3b45626a6e7bc6807ae4f973d7d433d94a53b`; its single existing client Docker
 gate passed / 0 in 186.296s with confirmed exact cleanup. That protocol gate
 does not establish the real-Hub/long-expiry outcome. Do not repeat
 75-second/M1/C1/Runtime matrices.
+The bounded App checkpoint `c386726` addresses capability discovery before a cold Finish,
+retained expired Lookup as observation, actual-Primary button labels and
+neutral UNKNOWN feedback; the real recovery page keeps its Recover guidance. Producer evidence and the single frozen-source
+client gate stay separate from the still-open physical failure. The clean
+`c386726` client gate passed / 0 in 184.83s with exact cleanup; the new physical
+GUI retest remains NOT_RUN.
 
 ### v0.1 exit index — 2026-11-03
 
