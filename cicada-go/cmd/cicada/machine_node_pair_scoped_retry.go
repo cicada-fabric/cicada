@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -49,18 +50,19 @@ func verifyMachineNodePairScopedPrevious(stateDir string, client *machineNodeCon
 		return e
 	}
 	defer clear(old.Secret)
-	if digest != s.PreviousAttemptDigest || old.AttemptID != oldAttempt || old.DescriptorText != s.DescriptorText || old.DialAddress != s.DialAddress || old.StartOperation != s.StartOperation || machineNodePairScopedCredentialDigest(old) != machineNodePairScopedCredentialDigest(s) || !machineNodePairScopedTerminalRetry(old, client.identity) {
+	if digest != s.PreviousAttemptDigest || old.AttemptID != oldAttempt || old.DescriptorText != s.DescriptorText || old.DialAddress != s.DialAddress || old.StartOperation != s.StartOperation || machineNodePairScopedCredentialDigest(old) != machineNodePairScopedCredentialDigest(s) || !machineNodePairScopedRetryArchiveSource(old, s, client.identity) {
 		return errMachineNodePairState
 	}
 	return nil
 }
 
-// An explicit new-code action first observes an authenticated current terminal
-// attempt. It preserves original identities/transport/credential and archives
-// every uncertain old original. It never revives an old attempt or its deadline.
+// An explicit new-code action first observes current state. An unavailable read
+// permits only the separate strict local unaccepted-INITIAL abandonment path.
+// Original evidence and identities survive; no old attempt/deadline is revived.
 func retryMachineNodePairScoped(ctx context.Context, stateDir, name string, client *machineNodeControlClient, s *machineNodePairScopedState, d hubtransport.Descriptor, httpClient *http.Client) (*machineNodePairScopedState, error) {
+	var localAbandonment *machineNodePairScopedLocalAbandonment
 	if s.Stage == wire.NodePairTrustScopedACKed {
-		return nil, errMachineNodePairPending
+		return nil, fmt.Errorf("NODE_PAIR_RETRY_REFUSED_ACKED: recover the original binding: %w", errMachineNodePairPending)
 	}
 	if s.TrustAcceptedAt != "" && machineNodePairScopedCurrentTrust(stateDir, s) != nil {
 		return nil, errMachineNodePairState
@@ -114,27 +116,37 @@ func retryMachineNodePairScoped(ctx context.Context, stateDir, name string, clie
 		}
 		raw, e := machineNodePairScopedPOST(ctx, httpClient, d.Claims.Origin, wire.OperationNodePairTrustScopedPoll, s.RetryPollPacket)
 		if e != nil {
-			return nil, e
-		}
-		r, e := wire.OpenNodePairTrustScopedResponse(client.identity, d.Claims.Hub, s.RetryPollPacket, raw, *s.RetryPollBody)
-		if e != nil {
-			return nil, errMachineNodePairPending
-		}
-		if r.Binding != nil || (r.State != wire.NodePairTrustScopedExpired && r.State != wire.NodePairTrustScopedCancelled && r.State != wire.NodePairTrustScopedRevoked) || (r.ErrorCode != "" && r.ErrorCode != r.State) {
-			// A completed observation is not an uncertain mutation. The next
-			// explicit retry action must observe current state with a new read ID.
-			s.RetryPollPacket = nil
-			s.RetryPollBody = nil
-			s.RetryTerminalReceipt = nil
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+			if !errors.Is(e, errMachineNodePairPending) {
+				return nil, e
+			}
+			localAbandonment, e = machineNodePairScopedLocalAbandon(stateDir, client, s, time.Now().UTC())
+			if e != nil {
+				return nil, e
+			}
+		} else {
+			r, e := wire.OpenNodePairTrustScopedResponse(client.identity, d.Claims.Hub, s.RetryPollPacket, raw, *s.RetryPollBody)
+			if e != nil {
+				return nil, fmt.Errorf("NODE_PAIR_RETRY_RESPONSE_INVALID: retain original evidence: %w", errMachineNodePairPending)
+			}
+			if r.Binding != nil || (r.State != wire.NodePairTrustScopedExpired && r.State != wire.NodePairTrustScopedCancelled && r.State != wire.NodePairTrustScopedRevoked) || (r.ErrorCode != "" && r.ErrorCode != r.State) {
+				// A completed observation is not an uncertain mutation. The next
+				// explicit retry action must observe current state with a new read ID.
+				s.RetryPollPacket = nil
+				s.RetryPollBody = nil
+				s.RetryTerminalReceipt = nil
+				if e = saveMachineNodePairScopedState(stateDir, client.identity, s); e != nil {
+					return nil, e
+				}
+				return nil, fmt.Errorf("NODE_PAIR_RETRY_REFUSED_AUTHENTICATED_%s: no new attempt; reconcile the original outcome: %w", r.State, errMachineNodePairPending)
+			}
+			s.RetryTerminalReceipt = raw
+			s.Stage = r.State
 			if e = saveMachineNodePairScopedState(stateDir, client.identity, s); e != nil {
 				return nil, e
 			}
-			return nil, errMachineNodePairPending
-		}
-		s.RetryTerminalReceipt = raw
-		s.Stage = r.State
-		if e = saveMachineNodePairScopedState(stateDir, client.identity, s); e != nil {
-			return nil, e
 		}
 	}
 	archive := machineNodePairScopedArchivePath(stateDir, s.NodeID, s.AttemptID)
@@ -159,7 +171,7 @@ func retryMachineNodePairScoped(ctx context.Context, stateDir, name string, clie
 			clear(prior)
 			return nil, e
 		}
-		valid := old.AttemptID == s.AttemptID && old.DescriptorText == s.DescriptorText && machineNodePairScopedTerminalRetry(old, client.identity)
+		valid := machineNodePairScopedSameOriginal(old, s) && (localAbandonment == nil && machineNodePairScopedTerminalRetry(old, client.identity) || localAbandonment != nil && machineNodePairScopedAbandonReason(old, client.identity, time.Now().UTC()) == "")
 		clear(old.Secret)
 		if !valid {
 			clear(prior)
@@ -183,6 +195,7 @@ func retryMachineNodePairScoped(ctx context.Context, stateDir, name string, clie
 	}
 	next.PreviousAttemptID = s.AttemptID
 	next.PreviousAttemptDigest = priorDigest
+	next.PreviousLocalAbandonment = localAbandonment
 	if e = saveMachineNodePairScopedState(stateDir, client.identity, next); e != nil {
 		clear(next.Secret)
 		return nil, e

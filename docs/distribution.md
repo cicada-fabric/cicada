@@ -344,6 +344,16 @@ binding/version, Node/Hub key pins/versions/epoch, and native descriptor/dial
 before handing it to service control; do not print credential or sealed contents.
 Local service readiness and Hub online observations remain separate.
 
+If Hub retention has removed the old anonymous attempt, the same explicit
+foreground retry can use the strict scoped
+[local unaccepted-INITIAL abandonment](node-pair-trust-scoped-contract.md#local-abandonment-of-an-unaccepted-initial--2026-11-03)
+path. This preserves the raw sealed archive and original keys/token/transport;
+it does not establish a Hub terminal result or recover missing ACK/pins. Only a
+saved EXPIRED, elapsed, fully matching INITIAL with no admission or uncertain
+work qualifies. A `NODE_PAIR_RETRY_REFUSED_*` result means preserve the original
+state and reconcile it; do not delete state or regenerate keys. A new intent
+still needs a new private code, Owner approval and original Node ACK.
+
 The [2026-11-03 scoped verification](native-app-validation.md#2026-11-03-root-verification-of-scope2-node-first-on)
 passed the actual Node CLI's Scope2 approval/private ACK/local-state handoff and
 an isolated real user service's on/status/off/on/off on source `7fa5634`.

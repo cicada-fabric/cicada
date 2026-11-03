@@ -2,6 +2,7 @@ package store
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -73,6 +74,30 @@ func TestNodePairScopedStoreACKGatesGlobalCountersAndSurvivesReopen(t *testing.T
 	}
 	if _, err := wire.OpenAppNodeScopedConfirmationResponse(f.device, f.hub, grant, p.confirmation.Packet, view.ConfirmationResponse, 1); err != nil {
 		t.Fatal("App lost original confirmation response", err)
+	}
+}
+
+func TestNodePairScopedStoreAnonymousGCRejectsFreshOriginalPoll(t *testing.T) {
+	p := newNPTScopedStoreFixture(t)
+	f := p.f
+	at := f.now.Add(11 * time.Minute)
+	q := wire.NodePairTrustScopedPoll{Format: wire.NodePairTrustScopedFormat, Context: p.context, OOBCommitment: p.o, IssuedAt: appNodeStamp(at)}
+	terminal, _ := p.call(t, p.input(t, wire.OperationNodePairTrustScopedPoll, q, f.node, at), f.node)
+	if terminal.State != wire.NodePairTrustScopedExpired || terminal.ErrorCode != "" {
+		t.Fatal("real Store did not authenticate ordinary expired Poll")
+	}
+	at = f.now.Add(21 * time.Minute)
+	q.IssuedAt = appNodeStamp(at)
+	in := p.input(t, wire.OperationNodePairTrustScopedPoll, q, f.node, at)
+	in.Now = func() time.Time { return at }
+	if _, err := f.db.ProcessHubNodePairTrustScoped(in); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatal("real anonymous GC did not reject the fresh old-context Poll", err)
+	}
+	// Failure rolls back the writer, so this is reproducible even if the row
+	// remains physically present. No HTTP refusal is a terminal proof.
+	var count int
+	if err := f.db.db.QueryRow(`SELECT count(*) FROM hub_node_pair_trust_v1 WHERE attempt_id=? AND state='EXPIRED' AND authorized=0`, p.context.AttemptID).Scan(&count); err != nil || count != 1 {
+		t.Fatal("failed observation did not preserve preexisting expired evidence")
 	}
 }
 

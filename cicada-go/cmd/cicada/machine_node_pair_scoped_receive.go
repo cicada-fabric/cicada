@@ -129,6 +129,7 @@ func applyMachineNodePairScopedResult(stateDir string, client *machineNodeContro
 	}()
 	op := s.PendingOperation
 	original := append([]byte(nil), s.PendingPacket...)
+	originalBody := append([]byte(nil), s.PendingBody...)
 	body, e := machineNodePairScopedTypedBody(op, s.PendingBody)
 	if e != nil {
 		return e
@@ -213,6 +214,9 @@ func applyMachineNodePairScopedResult(stateDir string, client *machineNodeContro
 				return e
 			}
 		case wire.NodePairTrustScopedExpired, wire.NodePairTrustScopedCancelled, wire.NodePairTrustScopedRevoked, wire.NodePairTrustScopedFenced:
+			if r.State != wire.NodePairTrustScopedFenced {
+				s.TerminalOriginal = &machineNodePairScopedTerminalOriginal{Operation: op, Packet: original, Body: originalBody, Receipt: append([]byte(nil), receipt...), State: r.State, ErrorCode: r.ErrorCode}
+			}
 			s.Stage = r.State
 		default:
 			return errMachineNodePairState

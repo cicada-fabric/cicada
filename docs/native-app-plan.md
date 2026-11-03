@@ -1137,7 +1137,14 @@ and real isolated user-service on/status/off/on/off; independent Client Docker
 interop passed separately. This closes that bounded synthetic-fixture gap.
 User-device readiness, the old EXPIRED attempt, Windows and native Runtime
 retain their separate status; a real retry still requires a new code/approval.
-Hub alone writes `ROOT/node-service.json` at mode 0600, retaining the fixed
+The Node-only [local unaccepted-INITIAL abandonment contract](node-pair-trust-scoped-contract.md#local-abandonment-of-an-unaccepted-initial--2026-11-03)
+now handles explicit retries when bounded anonymous Hub retention rejects the
+old Poll, under strict no-admission/no-ACK/no-uncertainty checks. It archives the
+exact old sealed bytes, keeps original identities and requires fresh approval
+plus original Node ACK. Local elapsed time/Stage/HTTP errors are not Hub proofs.
+Producer deterministic results and remaining actual CLI/service, Docker and
+user-device limits are [recorded separately](native-app-validation.md#2026-11-03-node-local-abandonment-of-unaccepted-initial).
+The Node CLI writes local `ROOT/node-service.json` at mode 0600, retaining the fixed
 executable, original Node/state/MCP/Hub selection. Later on reuses that config
 and rejects drift. The systemd **user transient unit** is scoped by UID/root/ID;
 there is no enable, lingering, sudo, boot/login autostart or new Owner approval.

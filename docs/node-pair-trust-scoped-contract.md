@@ -21,10 +21,10 @@ The explicit `legacy` argument and retained legacy journals refuse with
 `NODE_PAIR_PROTOCOL_UNSUPPORTED`, preserving their original bytes and identities.
 There is no automatic migration, identity reset or compatibility switch.
 
-`machine pairing-code` displays only an original scoped code. The existing
-scoped `--retry-pairing` action still first authenticates old terminal state,
-archives the old evidence, then creates a new attempt using the same original
-keys, credential and transport. Authenticated EXPIRED/CANCELLED/REVOKED terminal
+`machine pairing-code` displays only an original scoped code. Explicit scoped
+`--retry-pairing` first observes the original attempt, archives its evidence,
+then creates a new attempt using the same original keys, credential and
+transport under the rules below. Authenticated EXPIRED/CANCELLED/REVOKED terminal
 errors direct the operator to run the same command with `--retry-pairing`;
 FENCED/UNKNOWN errors do not recommend creating a new code. ACKED startup/on uses its saved verified binding
 without reopening enrollment or depending on an expired short code. The
@@ -33,6 +33,45 @@ native TLS Hub. Old NPT public POSTs return HTTP 410 before body consumption;
 the frozen internal codec/Store and test-only legacy consumer runner remain for
 historical proof checks, not current admission. Account/Client wire and the
 underlying Node-Control primitives are outside this change.
+
+### Local abandonment of an unaccepted INITIAL — 2026-11-03
+
+The normal retry requires a fresh authenticated EXPIRED/CANCELLED/REVOKED
+observation. An old anonymous attempt can outlive Hub's bounded retention:
+Store GC runs before lookup, so even an original signed Poll may receive an
+HTTP refusal. An HTTP failure, elapsed local deadline or saved Stage is not a
+Hub terminal or no-effect proof. Hub GC, admission and public wire stay unchanged.
+
+Only the explicit foreground retry may locally abandon an unaccepted INITIAL
+when its original Poll fails with HTTP/network pending, its saved Stage is
+EXPIRED and its original deadline has passed. Scoped capability failure,
+cancelled context, HTTP 200 invalid receipt, and fresh authenticated ACKED,
+nonterminal or FENCED results refuse. Local UNKNOWN/FENCED/ACKED and
+EXISTING_BINDING also refuse this path. Normal authenticated terminal retry is
+retained independently.
+
+Eligibility requires the exact retained Start/Context, original Node key,
+credential, descriptor, candidate/selector digests and S/OOB commitment. There
+must be no approval, Owner proof/capsule/pin, binding, ACK or ACK history,
+fenced original, pending mutation or reconciliation. The public state must
+contain only its original Version/NodeID/HubOrigin/Attempt coordinates with
+sequence zero; partial public pins, responses and other pending/positive fields
+refuse. Any existing Node crypto SQLite file or sidecar conservatively refuses,
+without opening or repairing it. A closed `NODE_PAIR_RETRY_REFUSED_*` diagnostic
+retains the original evidence for reconciliation.
+
+The exact raw sealed old journal is archived unchanged, linked by
+PreviousAttemptID and its digest. A separate **local journal only**
+`previous_local_abandonment` records kind `LOCAL_UNACCEPTED_INITIAL`, local time
+and the old Context digest. It is never a terminal receipt or no-effect fence.
+Reusing an existing archive requires the same complete immutable original,
+including StartBody, Context, S/OOB, NodeID, descriptor, dial and credential.
+Cold recovery verifies the protected archive/link and restores the same new
+intent after a public-marker write loss. The original Node keys, credential,
+descriptor and INITIAL mode are preserved; only an explicit action creates a
+new attempt and S. Fresh Owner approval and the original Node's private ACK are
+still required before any local admission. Ordinary terminal Poll handling also
+retains its exact request/body/receipt, including an empty ErrorCode.
 
 ## Closed formats and version chain
 

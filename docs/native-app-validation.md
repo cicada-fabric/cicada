@@ -10553,3 +10553,67 @@ the original Node's local readiness before service handoff. Real native Runtime,
 Windows physical/DPAPI/ACL, Android, A/B/MCP and public HTTPS remain **NOT_RUN**
 for this scoped verification. This documentation follow-up reruns no test and
 changes no implementation, service, identity or deployment.
+
+### 2026-11-03 Node local abandonment of unaccepted INITIAL
+
+This Node-only checkpoint is based on parent
+`927bd05b153f22e54cae8cb8b27456e585137d3d` with dirty source explicitly
+inventoried in `final-source.json`; it is not attributed solely to that HEAD.
+The [scoped local-abandonment contract](node-pair-trust-scoped-contract.md#local-abandonment-of-an-unaccepted-initial--2026-11-03)
+adds a separate protected local marker, preserving the old raw sealed journal,
+original identity/credential/transport and normal authenticated terminal retry.
+It does not change Hub GC, public wire, App implementation or authorization.
+The ordinary terminal Poll now preserves its exact request/body/receipt even
+when ErrorCode is empty, and cold-read validation authenticates that evidence.
+
+The cause and recovery are tested as two distinct layers. A real production
+Store/crypto fixture uses fixed At/Now inputs: at eleven minutes the original
+Poll authenticates EXPIRED with empty ErrorCode; at twenty-one minutes GC
+precedes lookup and Process returns `sql.ErrNoRows`. The failed writer rolls
+back, so the expired row remains physically present. No SQL state rewrite or
+wall-clock wait is used. The Node crypto/TLS fixture separately models the
+resulting HTTP 403; its expired original times are visibly synthetic. That
+HTTP failure supplies no Hub terminal or no-effect authority proof.
+
+Baseline RED retained the Store PASS and two Node failures: the old generic
+pending response blocked local abandonment and obscured uncertain-ACK refusal.
+An intermediate negative-fixture run also failed because its custom handler
+intercepted the capability GET; that log is retained, and the corrected fixture
+passes capabilities separately and gives each authenticated-result subcase an
+independent root/identity. No production Guard was weakened to fix the fixture.
+
+Final deterministic qualification: **11 top-level / 42 terminal PASS, 0 FAIL,
+0 SKIP**, Go 1.27.3, offline existing modules, umask 0077, GOMAXPROCS=2.
+`cmd/cicada` took 16.137 seconds and `internal/store` 0.762 seconds. The exact
+selector is recorded in `qualification.json`; it includes the real GC case,
+HTTP refusal/local archive/cold marker recovery, original key/token invariants,
+normal authenticated terminal retry and original ACK-loss cold reopen.
+Closed negatives cover UNKNOWN/FENCED/ACKED/EXISTING, live deadline,
+approval/proof/capsule/pin/ACK/uncertain/fenced history, mismatched original
+commitments, partial public pins and pending responses/sequences, marker
+tampering and different archive originals. Cancellation, false capability,
+HTTP 200 bad receipt and fresh authenticated PENDING/FENCED/ACKED all preserve
+the original attempt and create no archive/new intent. A new local intent
+still waits for fresh Owner approval and the original Node's private ACK.
+
+At this checkpoint's source freeze, the focused race command was **RUNNING**,
+not an aggregate PASS: archive HTTP capture, cancellation and authenticated
+PENDING/FENCED/ACKED subcases had completed without a reported race. Its
+remaining bad-receipt/unavailable subcases and package terminal result belong
+to the subsequent Root QA record. No additional race campaign is authorized.
+
+Evidence is under
+`/home/zyf/Cicada/.local/evidence/v01-node-local-abandon-20261103-01/`:
+`red.log`/`red-source.json`, retained intermediate `green-1.log`,
+`green-final.log` (fixture failure), `green-final-2.log`, and final
+`final-deterministic.log`/`final-source.json`/`qualification.json`.
+The receipt binds log hashes, exact final Go file hashes and test results;
+the later commit receipt binds this checkpoint without rewriting old evidence.
+
+Actual new-source CLI/App/private-ACK/service handoff and disposable Docker
+interop are **NOT_RUN by this producer** and remain Root-owned gates. The
+earlier clean `7fa5634` actual service/Docker passes above keep their original
+source attribution. User-device recovery, real native Runtime, Windows
+DPAPI/ACL/GUI, Android, A/B/MCP and public HTTPS remain **NOT_RUN** for this
+checkpoint. No installed binary, real Node state/service, key or deployment
+was modified; the user's old EXPIRED attempt has not been declared recovered.

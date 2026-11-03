@@ -674,6 +674,14 @@ The old attempt/deadlines remain immutable. PreviousAttemptID plus the exact
 archive digest recovers a crash between new sealed-state and public-marker
 writes, without generating yet another secret.
 
+The current scoped consumer additionally supports the narrow
+[local abandonment of an unaccepted INITIAL](node-pair-trust-scoped-contract.md#local-abandonment-of-an-unaccepted-initial--2026-11-03)
+after an expired anonymous attempt is no longer queryable. Its separate local
+marker is not a Hub terminal/no-effect proof. It requires no admission, pin,
+ACK/history or uncertain mutation and preserves the exact sealed evidence and
+original identity. UNKNOWN/FENCED/ACKED, EXISTING_BINDING, unavailable discovery
+and invalid/authenticated nonterminal responses do not enter that path.
+
 If no Context ever arrived, explicit retry first reconciles the retained START.
 RECOVERED restores its actual Context, then observes actual terminal state. If
 all actually sent START originals have authenticated no-effect fences, the
