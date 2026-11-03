@@ -54,6 +54,12 @@ clean `46e3b45` is SCOPED_PASS / 0; its later physical retest is
 **USER_REPORTED_FAIL**: only Finish is shown while the text asks for Recover.
 The [cold-Finish follow-up](native-app-validation.md#2026-11-03-cold-finish-and-retained-lookup-follow-up)
 records the new initialization gap; prior passing sources remain attributed.
+The subsequent `c386726` package retest is **USER_REPORTED_PASS** for pairing
+recovery/Node connection: after Root clarified the initial reply, the user
+confirmed Devices shows GPU1 Node connected. This limited physical checkpoint
+is [recorded separately](native-app-validation.md#2026-11-03-user-confirmed-gpu1-node-connected);
+DPAPI/ACL, exact old-request continuity, background lifecycle and A/B communication
+are not accepted by that report. The earlier failures remain historical evidence.
 Use the [short exit index](#current-feedback-and-acceptance-ledger)
 and [current source-bound results](native-app-cross-node-validation.md#current-scopes--2026-10-30).
 
@@ -727,9 +733,12 @@ does not establish the real-Hub/long-expiry outcome. Do not repeat
 The bounded App checkpoint `c386726` addresses capability discovery before a cold Finish,
 retained expired Lookup as observation, actual-Primary button labels and
 neutral UNKNOWN feedback; the real recovery page keeps its Recover guidance. Producer evidence and the single frozen-source
-client gate stay separate from the still-open physical failure. The clean
-`c386726` client gate passed / 0 in 184.83s with exact cleanup; the new physical
-GUI retest remains NOT_RUN.
+client gate retain their independent sources. The clean `c386726` client gate
+passed / 0 in 184.83s with exact cleanup. The user subsequently confirmed GPU1
+Node connected on the Devices page: **USER_REPORTED_PASS** for this pairing
+recovery/connection step only. Independent Windows DPAPI/ACL and original-packet
+continuity remain unaccepted; background lifecycle and A/B communication have
+separate acceptance.
 
 ### v0.1 exit index — 2026-11-03
 

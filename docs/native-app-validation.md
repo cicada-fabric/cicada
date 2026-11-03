@@ -9484,7 +9484,8 @@ Hub、Owner/App、Node 和协作授权。它不再是旧安装的保留身份更
 | --- | --- |
 | Hub 绑定 | **USER_REPORTED_PASS**：总控转述用户已确认绑定成功；本次文档没有独立复跑 |
 | 本批 Node 配对恢复 | **USER_REPORTED_FAIL**：EXPIRED / stale APP_NODE_PAIRING_UNKNOWN、targets Locked 且无操作按钮；后续限定修复与新回归见本文末尾记录，不抹去先前 Hub 绑定报告 |
-| 新版 `873a390` Finish 复测 | **USER_REPORTED_FAIL**：按钮出现但无推进，Saved FENCED / APP_NODE_PAIRING_UNKNOWN；后续 `46e3b45` 重登清理修复保留独立来源，实机闭环仍未通过 |
+| 新版 `873a390` Finish 复测 | **USER_REPORTED_FAIL**：按钮出现但无推进，Saved FENCED / APP_NODE_PAIRING_UNKNOWN；保留当时失败，后续源的用户连接报告见本文末尾 |
+| 新版 `c386726` GPU1 Node 连接复测 | **USER_REPORTED_PASS**：用户经总控追问明确确认 Devices 页面 GPU1 Node 已连接；仅配对恢复/连接步骤，不扩大到独立保护、原件连续性、后台或 A/B 验收 |
 | gpu1 本地 Codex | 总控已观察本地 `codex --version` 为 **0.166.0**；这是版本信息，不是 native Runtime 验收通过 |
 | gpu1 Cicada 安装清理 | Hub 执行线程已完成；总控 26 项独立复核 **PASS_READY_FOR_USER_MANUAL_INSTALL**，未代装、未启动 |
 | gpu1 用户手动安装与 Node 启动 | **NOT_RUN**；下一步由用户从已传输的原始 ZIP 手动安装 |
@@ -10409,7 +10410,7 @@ open until the affected path has itemized evidence.
 
 ### 2026-11-03 cold Finish and retained Lookup follow-up
 
-**USER_REPORTED_FAIL remains open on `46e3b45`**: only Finish is shown, but the
+**USER_REPORTED_FAIL on `46e3b45`, retained as historical failure**: only Finish is shown, but the
 message asks for Recover; the user cannot advance. Prior `48b6c78`/`c17a783`
 scoped PASS records are unchanged and did not qualify this cold state.
 User-provided SQL found two retained EXPIRED pairing rows (authorized 0/1) and
@@ -10444,6 +10445,24 @@ The actual argv remains in `command.json`: the unchanged existing
 producer/old-75-second/M1/C1 matrix was repeated by QA.
 
 QA owns only these two documents. No Hub deployment, real vault/key, new driver
-or test was changed. The newest package's physical GUI retest, independent
-DPAPI/ACL and native Runtime remain NOT_RUN; producer or Docker PASS cannot
-close the user's failure without the affected-path feedback.
+or test was changed. At this handoff the newest package's physical retest was
+NOT_RUN; the subsequent user-confirmed connection is recorded below. Independent
+DPAPI/ACL and native Runtime remain NOT_RUN; producer/Docker PASS and the user
+report retain their separate scopes.
+
+### 2026-11-03 user-confirmed GPU1 Node connected
+
+**USER_REPORTED_PASS — pairing recovery / Node connection only**, using the new
+`c386726efb13fcd35ff705d20037b322431f0807` package. The user first reported
+“OK连接成功”; Root explicitly clarified the endpoint of the operation, and the
+user confirmed **Devices → GPU1 Node is connected**, rather than merely reaching
+the code-input page. This is the user's physical observation relayed by Root,
+not an independently executed QA GUI test. The earlier `873a390`/`46e3b45`
+USER_REPORTED_FAIL observations and all original RED/PASS receipts remain intact.
+
+This report closes the user-observed pairing-recovery/connection step. It does
+not independently establish the exact old original packet/receipt/counter
+continuity, Windows DPAPI/ACL, background on/off behavior, or A/B/MCP communication.
+Those retain separate statuses and follow-up. No new gate, test, package build,
+Hub/Node deployment or real key/state change was performed for this documentation
+checkpoint; the existing producer and client Docker evidence retains its source.
