@@ -9484,6 +9484,7 @@ Hub、Owner/App、Node 和协作授权。它不再是旧安装的保留身份更
 | --- | --- |
 | Hub 绑定 | **USER_REPORTED_PASS**：总控转述用户已确认绑定成功；本次文档没有独立复跑 |
 | 本批 Node 配对恢复 | **USER_REPORTED_FAIL**：EXPIRED / stale APP_NODE_PAIRING_UNKNOWN、targets Locked 且无操作按钮；后续限定修复与新回归见本文末尾记录，不抹去先前 Hub 绑定报告 |
+| 新版 `873a390` Finish 复测 | **USER_REPORTED_FAIL**：按钮出现但无推进，Saved FENCED / APP_NODE_PAIRING_UNKNOWN；后续 `46e3b45` 重登清理修复保留独立来源，实机闭环仍未通过 |
 | gpu1 本地 Codex | 总控已观察本地 `codex --version` 为 **0.166.0**；这是版本信息，不是 native Runtime 验收通过 |
 | gpu1 Cicada 安装清理 | Hub 执行线程已完成；总控 26 项独立复核 **PASS_READY_FOR_USER_MANUAL_INSTALL**，未代装、未启动 |
 | gpu1 用户手动安装与 Node 启动 | **NOT_RUN**；下一步由用户从已传输的原始 ZIP 手动安装 |
@@ -10293,9 +10294,9 @@ go test -mod=readonly -count=1 -timeout=60s ./internal/appui -run '^TestPairingC
 CICADA_INTEROP_OUTPUT="$(mktemp -d "$HOME/Cicada/.local/evidence/v01-pairing-recovery-qa/replay-client.XXXXXX")" bash scripts/test-client-hub-interop.sh --suite client
 ```
 
-For the user's current EXPIRED page, use Root's new
-`Cicada-0.0.5-device-pairing-873a3904.zip` delivery after Root verifies its final
-hash. Keep the existing `$env:USERPROFILE\.cicada` state; do not replace keys or
+The following was this checkpoint's physical retest procedure for
+`Cicada-0.0.5-device-pairing-873a3904.zip`; the subsequent actual retest failed
+as recorded below, so this is not a current success claim. Keep the existing `$env:USERPROFILE\.cicada` state; do not replace keys or
 clear pending recovery to make this test pass. Open the updated App from
 `F:\DOWNLOAD\Cicada\package\cicada-app.exe`, log into the original account if
 required, then use the offered original recovery/check/finish action. Record
@@ -10309,3 +10310,98 @@ SDK actors are not native Node/Runtime. Full M1–M8/C1–C7 were not rerun; the
 accepted `64927cbe`/`d4884a5` sources and prior `9b6ec2c`/`42b4052` artifacts
 remain distinct. The original physical USER_REPORTED_FAIL remains open pending
 that itemized user retest.
+
+### 2026-11-03 Finish after relogin regression
+
+The later user test of the delivered `873a390` GUI is
+**USER_REPORTED_FAIL**: Finish is rendered but does not advance the pairing.
+Root relayed Saved FENCED / APP_NODE_PAIRING_UNKNOWN with the retained
+approve-before `2026-11-03T07:09:53.217219916Z`, observed around 09:15 UTC.
+This is a new physical observation, not an independent QA execution or proof
+of the entire trigger sequence. It does not erase the earlier no-button failure
+or the historical `48b6c78` source-bound SCOPED_PASS receipt.
+
+The 75-second independent case covered a different ordering: it first obtained
+an authenticated EXPIRED, then lost an **already committed AppNodeScopedCancel**
+receipt and performed real Logout/Login/vault reopen. It did not begin from an
+uncommitted Owner request FENCED before fresh-session Finish. The previous
+producer request-fence case also canceled immediately, without session change
+or a long-expired Context. Thus neither passing scope qualified this failure.
+
+App owns the minimal fix, frozen as
+`46e3b45626a6e7bc6807ae4f973d7d433d94a53b`, parent
+`48b6c783ff5d647cd1d7e622d313059d57583c81`. The Store requires Cancel's grant
+account session to be current; after relogin, the old grant can already be
+SESSION_ENDED while Core's saved observation is ACTIVE. Blind Cancel returns
+AUTHORITY_CONFLICT and cannot establish cleanup. The 13-line Core addition
+first makes a genuine read of the **exact original GrantID** after the attempt
+is authenticated terminal and no original is uncertain. Verified grant terminal
+permits cleanup; a live grant still uses the existing cancellation. A separate
+native UI line displays the existing translated error on cleanup/recovery.
+There are no new wire/Hub rules, FENCED terminal inference or head/scope bypass.
+
+Producer evidence is under
+`~/Cicada/.local/evidence/n2-app/pairing-relogin-20261103/`.
+QA reviewed the records and file hashes read-only; it did not rerun these cases.
+
+| Producer record | Actual result and boundary |
+| --- | --- |
+| `red-relogin.jsonl` | Assertion RED before production changes: actual approve without ACK → Logout/Login → Finish; APP_NODE_PAIRING_REFUSED, stage REVOKED, cleanup=false, pending=false and local grant ACTIVE. Test 8.56s / package 8.567s; fresh Context, not long expiry. SHA-256 `2e10cd11e45b81353d5cf90ecef3d40ca7f0ec43a0d670a16ff53f03b995fb6b`. |
+| `red-receipt.json` | Base `48b6c78`, production_changed=false, retained complete test-file copy hash and original log hash; SHA-256 `e96dc9890cee1474957b1752aa9a759da155c82df2d5c0c5065fcb4e54d0ef40`. |
+| `green-targeted.jsonl` | Six top-level normal targets PASS, package 57.285s, zero fail/skip. Includes four retained cleanup/ACK/review/request-fence targets and the two new tests below. SHA-256 `814c833dd49e026a0f054a7b4ca2debc2f0a7624b693fee275cb6cd237fe74c7`. |
+| `TestScopedAppRealTLSFinishAfterReloginObservesOriginalGrant` | Normal PASS 8.62s; same real logout/login ordering as RED. Authenticated original-grant terminal, no App-grant Cancel, no admission or identity/counter replacement. |
+| `TestScopedAppRealTLSFencedFinishAfterReloginKeepsOriginal` | Normal PASS 10.31s. Refuse the already persisted Owner cancel **before Hub forwarding**, real Logout/Login and vault reopen, then real Hub reconciliation fences the original; same attempt cleanup follows. Packet/body/RequestID survive cold recovery; two observed cancel-path calls include the refused first call, one reconcile, zero App-grant Cancel. HTTP 403 itself grants no terminal inference. Context is still within its lifetime. |
+| `race-targeted.jsonl` | Only the two new targets: PASS 77.3s / 89.98s, package 168.326s, zero fail/skip. SHA-256 `24a4fa25e44dfd39b8eff8572025530607d56ff93cb1880f924a1cc5e13caebc`. This is Go race instrumentation, not an actual Node ACK race or native Runtime. |
+| Windows native test cross-compilation | Exit 0, windows/amd64 test executable SHA-256 `309442904e00a6f923b399a8493c3a450d113def3414bcc840e5e39df6839fb7`; execution, GUI/DPAPI/ACL **NOT_RUN**. |
+
+`source-final.json` SHA-256
+`a88df563b1c2a796a931b7a3be9d595b5f50a03b76f06ec62a95ac5f2507d405`
+pins the three changed files; QA compared their bytes and found all hashes
+matched. `qualification.json` SHA-256
+`d323f16139e18918deb78b58586fc18961b5b711329270fcd9cc2541d14ac5bd`
+records the final clean producer commit, unchanged global Git identity, original
+RED, normal/race results and compile-only boundary. This is producer evidence
+with independent read-only review, not a new QA execution of the scoped matrix.
+
+Root froze `46e3b45` in clean detached worktree
+`~/Cicada/.worktrees/cicada/v01-pairing-finish-46e3b45` for **one** existing
+`scripts/test-client-hub-interop.sh --suite client` run. The QA run started at
+`2026-11-03T09:38:42Z`, PID 219956, output
+`~/Cicada/.local/evidence/v01-pairing-recovery-qa/finish-46e3b45-20261103T093842Z-0gdwjhkj/`.
+The gate finished **SCOPED_PASS / 0** in 186.296s. The existing four top-level
+Smoke/RecoveryFixture/HeadlessOperator/OwnerBootstrap tests all PASS; seven pass
+events, zero fail/skip. Source before/after is identical and clean, SHA-256
+`65ba991fc7e1ba7c92d56db353cbae8d9deccd3291aa91cc3da7564af8d6a691`.
+The receipts in that run directory are:
+
+| Artifact | SHA-256 / verified result |
+| --- | --- |
+| `result.json` | `815da2fb900db674dcad44aa27933653543eac29731b04d03762d95b225f7eef` — QA wrapper SCOPED_PASS / 0, actual script exit 0. |
+| `client-interop/result.json` | `4feef2d8a0dc124eaab6c3f52d761d521662187606e52af63224f5bea47f6487` — original existing-script PASS / 0. |
+| `client-interop/cleanup.json` | `89319c3becb2e1f4678a3b7908f2eeeb08ef3e091fc0c9cf36c90c717c75d9e6` — CONFIRMED; three owned containers, two task image references and private scratch independently rechecked EXACT_ABSENT. |
+| `client-interop/test.log` | `11937b6f69af2b18b5500055413f5b6b82703708d1471283dc6c319b48cb04c0` — four top-level / seven terminal pass events. |
+
+The Hub image ID is
+`sha256:a65866aa76f43d474d4e95b628849e8e8944bd315ac9749b3f5139ccf56cd49c`;
+the test image ID is
+`sha256:916ad948e2711a7ef1709f61c743f587d28345ca1f5ee23b72c22e9920fd54ab`.
+The clean build source fingerprint is
+`4e438f2bd7a33855af756f5f7871cfb9592545792d4c5b48a700727b8cc84ff8`.
+The original argv is retained in `command.json`; to reproduce, run the same
+existing `scripts/test-client-hub-interop.sh --suite client` at the agreed frozen
+source with a fresh `CICADA_INTEROP_OUTPUT`, as in the isolated command above.
+Pinned builder/runtime, task labels, loopback TCP, persistent SQLite, resource
+bounds and owned cleanup remain those of the existing script. No shared Hub
+or writable shared dependency cache was used. This new gate qualifies its
+client protocol scope only; the old `873a390` receipts retain their old source.
+No 75-second, producer normal/race, M1/C1, separate product package build or
+Runtime matrix was repeated. Delivery-binary execution pointers remain empty.
+
+The actual user's Hub branch, >10-minute expired Context and anonymous-GC
+outcome remain unresolved pending the requested read-only query output.
+Root has requested those results; this is not pending operation permission. QA did not query or alter the real Hub, physical vault,
+keys, packets or deployment. The `46e3b45` package's user GUI retest and
+independent physical Windows DPAPI/ACL/GUI remain **NOT_RUN**. A passing
+fresh-Context producer case or client protocol Docker suite cannot close the
+original real-Hub/long-expiry failure. Keep both USER_REPORTED_FAIL observations
+open until the affected path has itemized evidence.

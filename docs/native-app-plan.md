@@ -45,8 +45,13 @@ The subsequent pairing recovery regression is USER_REPORTED_FAIL: the App showed
 EXPIRED with stale APP_NODE_PAIRING_UNKNOWN, Locked targets and no recovery
 button. Its [scoped remediation matrix](#scoped-pairing-terminal-recovery-matrix--2026-11-03)
 has bounded **SCOPED_PASS / 0** on frozen `873a390` plus the isolated QA test;
-the single clean-source client Docker interop also passed. The user's physical
-page retest is still NOT_RUN. Historical Runtime/package attribution is retained.
+the single clean-source client Docker interop also passed. The subsequent
+`873a390` physical retest is **USER_REPORTED_FAIL**: Finish is visible but does
+not advance Saved FENCED / APP_NODE_PAIRING_UNKNOWN. The old scoped PASS did
+not cover this branch. App's `46e3b45` adds exact old-grant observation after
+relogin; producer normal/race checks pass. The single client Docker gate on
+clean `46e3b45` is SCOPED_PASS / 0; the new physical retest remains NOT_RUN.
+Historical attribution is retained.
 Use the [short exit index](#current-feedback-and-acceptance-ledger)
 and [current source-bound results](native-app-cross-node-validation.md#current-scopes--2026-10-30).
 
@@ -698,6 +703,23 @@ The failure facts and reuse limitations are recorded in the
 [preparation log](native-app-validation.md#2026-11-03-scoped-pairing-terminal-recovery-preparation);
 [final scoped execution](native-app-validation.md#2026-11-03-frozen-pairing-recovery-independent-acceptance)
 records commands, original failures, hashes, cleanup and the current-page retest.
+
+The later [Finish-after-relogin regression](native-app-validation.md#2026-11-03-finish-after-relogin-regression)
+keeps the new physical failure separate from the `48b6c78` QA checkpoint.
+The 75-second case first authenticated EXPIRED and lost an already committed
+App-grant cancellation receipt before relogin; it did not test an original
+Owner request FENCED before a fresh-session Finish. On `46e3b45`, the producer's
+two new real-TLS cases cover actual Logout/Login and a before-Hub refusal,
+original packet reconciliation and vault reopen. They remain within the
+original Context lifetime. Six normal targets and two selected race targets
+pass; Windows native test cross-compilation exits 0, execution NOT_RUN.
+The >10-minute Context/anonymous-GC branch and actual Hub state are unresolved
+pending the requested read-only query output. No real state or
+deployment has been changed. Root froze
+`46e3b45626a6e7bc6807ae4f973d7d433d94a53b`; its single existing client Docker
+gate passed / 0 in 186.296s with confirmed exact cleanup. That protocol gate
+does not establish the real-Hub/long-expiry outcome. Do not repeat
+75-second/M1/C1/Runtime matrices.
 
 ### v0.1 exit index — 2026-11-03
 
