@@ -10671,3 +10671,52 @@ Windows physical DPAPI/ACL/GUI, real native AI Runtime, Android, A/B/MCP and
 public HTTPS/Hub remain **NOT_RUN** for this checkpoint. Root performed no
 resident deployment. This QA documentation checkpoint reruns no test and
 changes no Go source, installed program, identity, grant or service.
+
+### 2026-11-03 User expired retry and background Node follow-up
+
+This later user-controlled follow-up uses the delivered `2337f7d` Node and
+keeps the preceding producer and clean synthetic-fixture results attributed
+to their original scopes. The user reported **PASS** for requesting a new
+private code after the old expiry, completing approval and the original Node's
+private ACK. Root's read-only observations found the local binding, Hub/Node
+pins and native transport persisted, with the saved current Hub dial address.
+No private code, credential, key, sealed journal or sensitive payload is
+included in this record. The new code/approval does not renew the old deadline.
+
+The first background startup remains **FAIL**: unit
+`cicada-node-33a26966fc1f5cbc0d782680b9e93293.service`, invocation
+`6e6e785b80a04f3ea346374cdb2ef054`, ran from 14:11:03 to 14:11:13 UTC and exited
+1 with `publish local Node discovery: context deadline exceeded`. Root
+correlated the current invocation rather than attributing older journal
+addresses to it. No code or configuration replacement is claimed as a fix.
+
+The user retried the same saved `on`/`status` configuration and reported
+**RUNNING**, PID `332280`. Root independently confirmed through local read-only
+status/systemd inspection: **running**, exact unit **active/running**, same
+MainPID `332280`, Result=success, invocation
+`bcee3272fb924abfa22caa528219fded` starting at **14:18:28 UTC**. Root found no
+error in that current invocation's journal at the time of inspection.
+This is an independently observed local background-process success, not an
+independent replay of the user-controlled pairing sequence or an elapsed
+reliability/Hub-online acceptance run. The producer did not start, stop or
+change the real service or state to obtain these observations.
+
+Read-only source review found that publication applies the same 3-second
+budget as the consumer's discovery probes to directory checks, atomic-file
+preparation and durable sync; `on` separately waits up to 8 seconds for exact
+local readiness. A delayed filesystem operation or scheduling gap can exhaust
+the publication budget. This is a source weakness, **not a proven cause** of
+the recorded failure. Root's nearby private ext4 sync probe was fast; neither
+that probe nor the successful retry establishes the original timing cause.
+The planned controlled-delay reproduction and budget change were stopped
+before any Go or test edit: **CONTROLLED_REPRO_NOT_RUN / NOT_IMPLEMENTED**.
+The existing lifecycle plan retains this narrow item; no new taskbook, package,
+public protocol or authorization change was introduced.
+
+App experience is deferred to later user feedback. Plugin/MCP, A/B, physical
+Windows and real native Runtime acceptance **for this delivered-package
+follow-up** remain **NOT_RUN**; prior accepted Runtime scopes keep their source
+attribution. Root continues the separate plugin acceptance guidance. This
+documentation checkpoint records user reports and Root's read-only local
+observations, runs no new test, and changes only this validation and the
+existing plan.

@@ -33,8 +33,9 @@ other unmeasured physical cases. The old IP remains historical; an IP change
 does not rebuild the package, service, identities or keys. gpu1's local
 `codex --version` is observed as `0.166.0`; historical Runtime `0.164.0` remains
 attributed to its own execution. gpu1 cleanup is complete with Root's 26-check
-PASS_READY_FOR_USER_MANUAL_INSTALL review; installation and Node startup are
-NOT_RUN. The user now installs manually from the transferred original ZIP.
+PASS_READY_FOR_USER_MANUAL_INSTALL review; installation and Node startup were
+NOT_RUN at that review. The subsequent user-controlled Node retry and startup
+are recorded below. The user installs manually from the transferred original ZIP.
 Development artifact directories are provenance only, not installation inputs.
 Windows ZIP downloads are in `F:\DOWNLOAD\`, programs unpack to
 `F:\DOWNLOAD\Cicada\package`, and data uses the running user's `~/.cicada` on
@@ -60,6 +61,14 @@ confirmed Devices shows GPU1 Node connected. This limited physical checkpoint
 is [recorded separately](native-app-validation.md#2026-11-03-user-confirmed-gpu1-node-connected);
 DPAPI/ACL, exact old-request continuity, background lifecycle and A/B communication
 are not accepted by that report. The earlier failures remain historical evidence.
+The later delivered `2337f7d` follow-up is **USER_REPORTED_PASS** for a new
+private code after expiry, approval/private ACK and background Node startup
+after retry. Root independently observed `status=running`, PID `332280`, and
+the exact systemd unit active/running with Result=success from 14:18:28 UTC.
+The first startup's discovery-publication timeout remains a failure; no budget
+fix or new package was needed for the successful retry. App experience is
+deferred; plugin/MCP, A/B and physical Windows acceptance of this package remain
+NOT_RUN. See the [source-bound follow-up](native-app-validation.md#2026-11-03-user-expired-retry-and-background-node-follow-up).
 Use the [short exit index](#current-feedback-and-acceptance-ledger)
 and [current source-bound results](native-app-cross-node-validation.md#current-scopes--2026-10-30).
 
@@ -1135,8 +1144,9 @@ The [2026-11-03 Root verification](native-app-validation.md#2026-11-03-root-veri
 on `7fa5634` passed one actual Scope2 Node CLI/private ACK/local-ready handoff
 and real isolated user-service on/status/off/on/off; independent Client Docker
 interop passed separately. This closes that bounded synthetic-fixture gap.
-User-device readiness, the old EXPIRED attempt, Windows and native Runtime
-retain their separate status; a real retry still requires a new code/approval.
+Those fixture results retain their separate source; user-controlled expiry
+retry and background readiness have a later observation below. Windows and
+native Runtime acceptance remain separate.
 The Node-only [local unaccepted-INITIAL abandonment contract](node-pair-trust-scoped-contract.md#local-abandonment-of-an-unaccepted-initial--2026-11-03)
 now handles explicit retries when bounded anonymous Hub retention rejects the
 old Poll, under strict no-admission/no-ACK/no-uncertainty checks. It archives the
@@ -1150,8 +1160,21 @@ passes the delivered CLI's fresh synthetic INITIAL/App/private ACK/local-ready
 handoff, real user-service on/status/off/on/off and independent disposable
 Client Docker interop with confirmed cleanup. The actual CLI fixture does not
 exercise old-attempt GC; that regression retains its two producer layers.
-The user's old expired attempt/first-on, Windows and native Runtime remain
-NOT_RUN; the fixture result does not recover the user's original state.
+At that fixture gate, user expired-attempt recovery/first-on remained NOT_RUN.
+The [later user follow-up](native-app-validation.md#2026-11-03-user-expired-retry-and-background-node-follow-up)
+now records USER_REPORTED_PASS for explicit new-code/approval/private ACK and
+background startup after retry. Root independently confirmed the running
+process and exact unit; this is a current local observation, separate from the
+earlier synthetic fixture and from plugin/Hub business acceptance.
+The first startup's `publish local Node discovery: context deadline exceeded`
+remains recorded. Track the source weakness in this existing lifecycle item:
+durable publication currently shares the consumer's 3-second budget, while
+`on` has an 8-second readiness window. A publisher following Node-parent
+cancellation and a separate bounded startup window remain **NOT_IMPLEMENTED /
+CONTROLLED_REPRO_NOT_RUN**; no budget code, new test or package was made in
+this follow-up. The root cause of the first timeout is unproven. App experience
+is deferred; this package's plugin/MCP, A/B, Windows and native Runtime
+acceptance remain NOT_RUN.
 The Node CLI writes local `ROOT/node-service.json` at mode 0600, retaining the fixed
 executable, original Node/state/MCP/Hub selection. Later on reuses that config
 and rejects drift. The systemd **user transient unit** is scoped by UID/root/ID;
