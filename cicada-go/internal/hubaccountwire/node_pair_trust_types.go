@@ -19,7 +19,7 @@ const (
 	NodePairTrustRevoked                         = "REVOKED"
 	NodePairTrustFenced                          = "FENCED"
 	NodePairTrustRecovered                       = "RECOVERED"
-	NodePairTrustPublicAvailable                 = true
+	NodePairTrustPublicAvailable                 = false // Frozen historical codec; current enrollment is Node-scoped only.
 	NodePairTrustDescriptorPath                  = "/v2/hub/transport"
 	NodePairTrustCapabilitiesPath                = "/v2/node/pair-trust/capabilities"
 	OperationNodePairTrustStart                  = "node.pair-trust.start"

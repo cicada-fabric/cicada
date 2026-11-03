@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -61,6 +62,22 @@ func newNodePairLocalFixture(t *testing.T) nodePairLocalFixture {
 		if hubauth.NodePairTrustOperationForPath(r.URL.Path) != "" && (r.Header.Get("Authorization") != "" || r.Header.Get("Cookie") != "") {
 			t.Error("preproof pairing sent a credential header")
 		}
+		// Historical private-consumer fixtures exercise the frozen service/Store
+		// directly. The normal public handler rejects this retired HTTP family.
+		if op := hubauth.NodePairTrustOperationForPath(r.URL.Path); op != "" {
+			raw, err := io.ReadAll(io.LimitReader(r.Body, wire.MaxNodePairTrustReconcilePacketBytes+1))
+			if err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			receipt, err := auth.HandleNodePairTrust(r.Context(), op, raw)
+			if err != nil {
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
+			_, _ = w.Write(receipt)
+			return
+		}
 		handler.ServeHTTP(w, r)
 	}))
 	f.server.TLS = f.native.profile.TLSConfig()
@@ -82,7 +99,7 @@ func newNodePairLocalFixture(t *testing.T) nodePairLocalFixture {
 }
 func (f nodePairLocalFixture) pending(t *testing.T) (*machineNodeControlClient, *machineNodePairState) {
 	t.Helper()
-	e := runMachineAgentWithContext(context.Background(), []string{"--hub-address", f.address, "--state-dir", f.state, "--id", f.node, "--name", f.node, "--relay-only", "--once", "--pairing-profile", "legacy"}, nil)
+	e := runMachineNodePairLegacyFixture(context.Background(), f.state, f.node, f.node, f.address, "", false, true, false, io.Discard, nil, f.native.text)
 	if !errors.Is(e, errMachineNodePairPending) {
 		t.Fatal("real Node did not wait for Owner", e)
 	}

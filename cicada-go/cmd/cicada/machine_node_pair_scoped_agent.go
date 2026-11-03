@@ -70,7 +70,9 @@ func runMachineNodePairScopedTrust(ctx context.Context, stateDir, nodeID, name, 
 			return nil
 		}
 		switch s.Stage {
-		case wire.NodePairTrustScopedExpired, wire.NodePairTrustScopedCancelled, wire.NodePairTrustScopedRevoked, wire.NodePairTrustScopedFenced, "UNKNOWN":
+		case wire.NodePairTrustScopedExpired, wire.NodePairTrustScopedCancelled, wire.NodePairTrustScopedRevoked:
+			return fmt.Errorf("Node pairing is %s; original identity and pending evidence retained. Run the same command with --retry-pairing to request a new device code.", s.Stage)
+		case wire.NodePairTrustScopedFenced, "UNKNOWN":
 			return fmt.Errorf("Node pairing is %s; original identity and pending evidence retained", s.Stage)
 		}
 		if s.PendingOperation == "" {

@@ -6,9 +6,33 @@ The normal Hub Nodes composition advertises **`available=true`** and enables
 scoped pairing POSTs when its independently bound native TLS descriptor is
 available. A missing or invalid descriptor still fails discovery closed. The
 existing [NPT v1](node-pair-trust-contract.md) identifiers, packets,
-EXISTING_BINDING semantics and installed identities remain unchanged. Codec,
+EXISTING_BINDING proof semantics and installed identities remain unchanged;
+that obsolete family's public availability is false and its public POSTs are
+closed. Codec,
 carrier and consumer qualification retain their own source in the
 [validation ledger](hub-app-node-scoped-authority-validation.md).
+
+## One current enrollment entry
+
+The address-only Node CLI requires these exact available scoped capabilities.
+`auto` and `scoped` are equivalent current-only arguments; an unavailable, 404,
+malformed or timed-out scoped response never probes or selects legacy pairing.
+The explicit `legacy` argument and retained legacy journals refuse with
+`NODE_PAIR_PROTOCOL_UNSUPPORTED`, preserving their original bytes and identities.
+There is no automatic migration, identity reset or compatibility switch.
+
+`machine pairing-code` displays only an original scoped code. The existing
+scoped `--retry-pairing` action still first authenticates old terminal state,
+archives the old evidence, then creates a new attempt using the same original
+keys, credential and transport. Authenticated EXPIRED/CANCELLED/REVOKED terminal
+errors direct the operator to run the same command with `--retry-pairing`;
+FENCED/UNKNOWN errors do not recommend creating a new code. ACKED startup/on uses its saved verified binding
+without reopening enrollment or depending on an expired short code. The
+shared public descriptor and current scoped POSTs remain available on a valid
+native TLS Hub. Old NPT public POSTs return HTTP 410 before body consumption;
+the frozen internal codec/Store and test-only legacy consumer runner remain for
+historical proof checks, not current admission. Account/Client wire and the
+underlying Node-Control primitives are outside this change.
 
 ## Closed formats and version chain
 
@@ -132,3 +156,31 @@ Legacy/new cross-namespace INITIAL reuse, per-Node head CAS, original-response
 loss/restart, revocation and restoration require carrier tests before enabling
 availability. The codec tests do not establish actual Node CLI, App, Android,
 native Runtime, physical Windows or public HTTPS acceptance.
+
+## Current-only producer qualification — 2026-11-03
+
+The current-only Hub/CLI checkpoint retains the old codec and Store proofs,
+but replaces the obsolete public TLS approval walkthrough with
+`TestNodePairTrustRetiredRealTLSPublicOperationsReject`: all twelve historical
+POSTs return HTTP 410 through real native TLS, and credential headers remain
+refused. `TestNodePairCurrentOnlyPublicAdmission` separately proves rejection
+before reading a body. The current scoped real-TLS two-Node approval/ACK and
+original receipt test remains positive.
+
+Producer qualification selected all `TestNodePair*` tests in
+`internal/hubaccountwire`, `internal/server` and `cmd/cicada`, plus server
+`TestHubNodeScoped*` and `TestHubNodes*`: **42 top-level / 102 total terminal
+PASS, 0 FAIL, 0 SKIP** (Go 1.27.3, offline modules, umask 0077).
+The exact command, source inventory and logical test2json receipt are retained
+under `/home/zyf/Cicada/.local/evidence/v01-current-pairing-20261103-01/retirement-closure/`;
+`qualification.json` SHA-256 is
+`e63311baf1da7b34a448711da801e3635c62cf973c6c5bf9ddfd07f947e10ef9`.
+The preceding receipts remain attributed to their original tested source.
+
+Root explicitly authorized preserving draft `3b492bdbad8a6d662dbc95cd8921c9c30dcfe56d`
+at `archive/v01-current-pairing-3b492bd` and amending this unpublished checkpoint
+to include the directly affected retirement tests. The final commit receipt
+records that old-to-new mapping; this does not rewrite historical validation.
+Final App integration and disposable Docker interop belong to Root/QA after
+integration. No producer race, real native Runtime, Windows/Android device or
+public HTTPS acceptance is claimed by this result.

@@ -15,7 +15,8 @@ import (
 	"github.com/cicada-ai/cicada/internal/hubtransport"
 )
 
-var errMachineNodePairScopedUnavailable = errors.New("NODE_PAIR_SCOPED_UNAVAILABLE: no scoped pairing operation issued")
+var errMachineNodePairScopedUnavailable = errors.New("NODE_PAIR_SCOPED_UNAVAILABLE: Hub must support current Node-scoped pairing; no pairing operation issued")
+var errMachineNodePairLegacyUnsupported = errors.New("NODE_PAIR_PROTOCOL_UNSUPPORTED: only current Node-scoped pairing is supported; retained identity and evidence were not changed")
 
 // File names select a family before decoding. Neither a failed parser nor a
 // missing journal permits trying another family or replacing an enrolled Node.
@@ -81,13 +82,8 @@ func machineNodePairACKMarker(stateDir, nodeID string, client *machineNodeContro
 		}
 		defer clear(s.Secret)
 		binding, stage, attempt = s.Binding, s.Stage, s.AttemptID
-	} else if profile == "legacy" {
-		s, err := loadMachineNodePairState(stateDir, nodeID, client.identity)
-		if err != nil {
-			return err
-		}
-		defer clear(s.Secret)
-		binding, stage, attempt = s.Binding, s.Stage, s.AttemptID
+	} else {
+		return errMachineNodePairLegacyUnsupported
 	}
 	s := client.state
 	if stage != "ACKED" || binding == nil || attempt != s.NodePairTrustAttemptID ||
@@ -100,30 +96,25 @@ func machineNodePairACKMarker(stateDir, nodeID string, client *machineNodeContro
 }
 
 // Caller holds the existing Agent/WriterRoot locks. Public discovery is bound
-// to one descriptor before either family may initialize a secret journal.
+// to one descriptor before the current scoped family may initialize a journal.
+// "auto" remains an argument alias for saved service argv, never negotiation.
 func selectMachineNodePairProfile(ctx context.Context, stateDir, nodeID, address, expectedOrigin string, explicitOrigin bool, requested string) (string, string, error) {
-	if requested != "auto" && requested != "legacy" && requested != "scoped" {
-		return "", "", errMachineNodePairState
+	if requested != "auto" && requested != "scoped" {
+		return "", "", errMachineNodePairLegacyUnsupported
 	}
 	saved, err := machineNodePairSavedProfile(stateDir, nodeID)
 	if err != nil {
 		return "", "", err
 	}
+	if saved == "legacy" {
+		return "", "", errMachineNodePairLegacyUnsupported
+	}
 	old, exists, err := readMachineNativeState(stateDir, nodeID)
 	if err != nil || saved == "" && old.NodePairTrustAttemptID != "" {
 		return "", "", errMachineNodePairState
 	}
-	if saved == "legacy" || saved == "" && exists {
-		if requested == "scoped" || saved == "" && old.BindingID == "" {
-			return "", "", errMachineNodePairState
-		}
-		if saved == "legacy" {
-			return "legacy", "", nil // original v1 continuation never probes v2
-		}
-		requested = "legacy"
-	}
-	if saved == "scoped" && requested == "legacy" {
-		return "", "", errMachineNodePairState
+	if saved == "" && exists {
+		return "", "", errMachineNodePairLegacyUnsupported
 	}
 	var text string
 	if saved == "scoped" {
@@ -146,14 +137,11 @@ func selectMachineNodePairProfile(ctx context.Context, stateDir, nodeID, address
 			return "", "", errMachineNodePairState
 		}
 		text = s.DescriptorText
-		requested = "scoped"
 		// ACKED startup uses the original verified binding and current pin;
 		// its old short code, proof and public availability are not enrollment.
 		if s.Stage == wire.NodePairTrustScopedACKed {
 			return "scoped", text, nil
 		}
-	} else if exists {
-		text = old.HubTransportDescriptor
 	} else {
 		candidate, err := hubtransport.DiscoverCandidate(ctx, address)
 		if err != nil {
@@ -170,32 +158,8 @@ func selectMachineNodePairProfile(ctx context.Context, stateDir, nodeID, address
 		return "", "", err
 	}
 	defer client.CloseIdleConnections()
-	if requested != "legacy" {
-		raw, status, err := machineNodePairCapabilitiesGET(ctx, client, d.Claims.Origin, wire.NodePairTrustScopedCapabilitiesPath)
-		if err != nil {
-			return "", "", err
-		}
-		if status == http.StatusOK {
-			if _, err := wire.DecodeNodePairTrustScopedCapabilities(raw); err == nil {
-				return "scoped", text, nil
-			}
-			var unavailable wire.NodePairTrustScopedCapabilities
-			expected := wire.NodePairTrustScopedContractCapabilities()
-			expected.Available = false
-			if machineNodePairStrictJSON(raw, &unavailable) != nil || !reflect.DeepEqual(unavailable, expected) {
-				return "", "", errMachineNodePairScopedUnavailable
-			}
-		} else if status != http.StatusNotFound {
-			return "", "", errMachineNodePairScopedUnavailable
-		}
-		if requested == "scoped" {
-			return "", "", errMachineNodePairScopedUnavailable
-		}
+	if err := machineNodePairScopedAvailable(ctx, client, d.Claims.Origin); err != nil {
+		return "", "", err
 	}
-	raw, status, err := machineNodePairCapabilitiesGET(ctx, client, d.Claims.Origin, wire.NodePairTrustCapabilitiesPath)
-	var legacy wire.NodePairTrustCapabilities
-	if err != nil || status != http.StatusOK || machineNodePairStrictJSON(raw, &legacy) != nil || !legacy.Available || !reflect.DeepEqual(legacy, wire.NodePairTrustContractCapabilities()) {
-		return "", "", errMachineNodePairScopedUnavailable
-	}
-	return "legacy", text, nil
+	return "scoped", text, nil
 }

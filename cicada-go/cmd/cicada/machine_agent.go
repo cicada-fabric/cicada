@@ -42,7 +42,7 @@ func runMachineAgentWithContext(parent context.Context, args []string, pinned *m
 	pqConfig := flags.String("pqtls-config", strings.TrimSpace(os.Getenv("CICADA_NODE_PQTLS_CONFIG")), "private enrolled Node PQ TLS configuration")
 	hubAddress := flags.String("hub-address", "", "canonical numeric Hub socket for independent Owner pairing")
 	retryPairing := flags.Bool("retry-pairing", false, "explicit new code after authenticated old pairing termination; preserve identities")
-	pairingProfile := flags.String("pairing-profile", "auto", "pairing compatibility: auto, legacy, or scoped; saved protocol is immutable")
+	pairingProfile := flags.String("pairing-profile", "auto", "current Node-scoped pairing only; auto and scoped are equivalent, with no fallback")
 	hubConnectionFile := flags.String("hub-connection-file", "", "independently supplied public native Hub transport descriptor")
 	hubDialAddress := flags.String("hub-dial-address", "", "explicit canonical numeric Hub socket locator")
 	stateDir := flags.String("state-dir", machineAgentStateDir(), "durable Node state directory")
@@ -57,6 +57,9 @@ func runMachineAgentWithContext(parent context.Context, args []string, pinned *m
 	}
 	if len(flags.Args()) != 0 {
 		return errors.New("unexpected machine agent arguments")
+	}
+	if *pairingProfile != "auto" && *pairingProfile != "scoped" {
+		return errMachineNodePairLegacyUnsupported
 	}
 	if *userRoot != "" {
 		if _, err := apppaths.ResolveUserRoot(*userRoot); err != nil {

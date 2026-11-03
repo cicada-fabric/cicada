@@ -1,14 +1,15 @@
 # Node device pairing and independent Owner trust
 
-The additive [Node-scoped NPT contract](node-pair-trust-scoped-contract.md) defines
-independent Scope2 codecs with availability false. This v1 family and its
-EXISTING_BINDING behavior remain unchanged.
+Current Node enrollment uses only the
+[Node-scoped NPT contract](node-pair-trust-scoped-contract.md), whose normal Hub
+Nodes composition advertises availability true. This document retains the
+frozen historical v1 codec and its exact-original proof semantics.
 
 Contract revision **node-pair-trust-v1**, format `cicada.node-pair-trust.v1`,
-packet format `cicada.node-pair-trust-packet.v1`. The Node qualification
-checkpoint enables this additive family (`available=true`) for the complete
-App/Node qualification gate. Availability describes the implemented carrier,
-not caller authorization or a claim that final physical acceptance has passed.
+packet format `cicada.node-pair-trust-packet.v1`. This obsolete family's public
+capability is now `available=false`; public POSTs return HTTP 410 before reading
+a secret-bearing body. Its contract inventory has no current CLI or code
+display entry. Internal codec/Store qualification is not public admission.
 Shared and Hub checkpoint records below retain their historical availability
 and tested-source attribution. C0 installation registration stays disabled. Frozen Client wire 1,
 client-hub-v1.6.5/catalog 55, N2, app-node-authority-v1, native-pair-v1 and
@@ -16,10 +17,11 @@ installation-registration-v1.1 retain their existing identifiers and purposes.
 In particular, this change enables no C0 registration carrier, admission key,
 parent registration, App2 or generic role framework.
 
-## User flow and independent trust
+## Historical v1 flow and independent trust
 
-The default intended command is `cicada machine agent --hub-address IP:port`
-with the existing Node ID/state/user-root options. The address is one canonical
+The current command `cicada machine agent --hub-address IP:port` uses only the
+scoped contract above with the original Node ID/state/user-root options.
+The historical v1 flow below is retained as protocol evidence. The address is one canonical
 numeric IPv4:port or [IPv6]:port; it is not the logical application origin.
 The Node discovers only candidate public Hub/TLS information, requests its
 actual Node-Control candidate, then displays one secret pairing code. The
@@ -564,23 +566,21 @@ and use RetainedBinding; a legacy/incomplete state cannot fall back to INITIAL.
 The original advanced descriptor/dial flags remain separate and cannot bypass
 a pending Node pairing marker.
 
-New empty Node roots use `--pairing-profile auto` by default. After descriptor
-authentication, an exact available scoped capability selects the independent
-[scoped NPT family](node-pair-trust-scoped-contract.md). An exact scoped
-`available=false`, or a scoped 404 identifying an old Hub, permits legacy only
-when the legacy capability is itself strictly recognized and available.
-Unknown, malformed, wrong-version or timed-out discovery creates no pairing
-journal/key/credential and sends no secret POST. `--pairing-profile legacy` is a
-bounded compatibility option; `scoped` requires the scoped capability. Both
-modifiers require `--hub-address`. Saved family selection precedes these flags:
-existing v1 records continue as v1, conflicting flags or two family journals
-refuse, and a bound Node with an empty attempt marker is not an empty root.
-No flag clears an unresolved original, changes keys or migrates a binding.
+`--pairing-profile auto` remains a spelling alias for current scoped pairing,
+including saved service arguments. It performs no legacy negotiation.
+Unavailable, missing, malformed, wrong-version or timed-out scoped discovery
+refuses with no legacy capability probe, pairing journal/key/credential or
+secret POST. Explicit `legacy` is unsupported. A retained v1 journal or a bound
+state without its scoped journal refuses unchanged; it is not an empty root
+and cannot be silently migrated. Ambiguous two-family journals still refuse.
+Current scoped ACKED startup and explicit retry retain their original binding,
+keys, credential, descriptor and evidence rules. No flag clears an unresolved
+original or regenerates identity to bypass proof.
 
 The scoped companion code uses `cicada-npts1.`, compact schema 2, the exact
-Node ID and the 1536-byte bound. `machine pairing-code` selects its explicit
-saved family and displays only the original code through the existing private
-interactive TTY path. Neither family tries the other parser, signature domain,
+Node ID and the 1536-byte bound. `machine pairing-code` displays only an original
+scoped code through the existing private interactive TTY path and rejects a
+retained v1 journal. The current entry never tries the other parser, signature domain,
 route or AAD after a failure. Ordinary users still provide only the Hub address;
 there is no Owner public-key transport step.
 

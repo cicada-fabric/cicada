@@ -137,7 +137,7 @@ func TestNodePairTrustIndependentCodeCapsuleACKAndOriginalPacket(t *testing.T) {
 			t.Fatal("secret diagnostic escaped redaction")
 		}
 	}
-	if InstallationPublicAvailable || !NodePairTrustPublicAvailable || InstallationContractRevision != "installation-registration-v1.1" {
+	if InstallationPublicAvailable || NodePairTrustPublicAvailable || !NodePairTrustScopedPublicAvailable || InstallationContractRevision != "installation-registration-v1.1" {
 		t.Fatal("Node qualification or frozen C0 availability drift")
 	}
 }

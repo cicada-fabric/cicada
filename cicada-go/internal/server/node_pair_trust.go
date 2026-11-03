@@ -41,6 +41,13 @@ func (h *hubNodesHandler) nodePairTrust(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusBadRequest, errors.New("Node pairing request rejected"))
 		return true
 	}
+	// Keep frozen codecs and historical Store receipts; obsolete public
+	// enrollment is unavailable before reading any secret-bearing body.
+	caps, err := h.account.NodePairTrustCapabilities()
+	if err != nil || !caps.Available {
+		writeError(w, http.StatusGone, errors.New("NODE_PAIR_PROTOCOL_UNSUPPORTED: current Node-scoped pairing required"))
+		return true
+	}
 	if origin := r.Header.Get("Origin"); origin != "" {
 		expected, err := h.account.ExpectedOrigin()
 		if err != nil || expected != origin {

@@ -2,9 +2,7 @@ package main
 
 import (
 	"bytes"
-	"crypto/sha256"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"os"
@@ -152,11 +150,6 @@ func TestNodePairLocalTTYEnforcesConsoleAndNoLogFallback(t *testing.T) {
 	if e := machineNodePairingCodeCommand([]string{"--id", f.node, "--state-dir", f.state}, &logs); e == nil || logs.Len() != 0 {
 		t.Fatal("companion log fallback exposed a secret")
 	}
-	code, e := wire.EncodeNodePairTrustCode(*s.Context, s.Selector, s.Secret)
-	if e != nil {
-		t.Fatal(e)
-	}
-	expected := sha256.Sum256([]byte(code))
 	script := `import errno,hashlib,json,os,pty,subprocess,sys
 master,slave=pty.openpty()
 env=dict(os.environ,CICADA_SYNTHETIC_PAIR_CODE_HELPER='1',CICADA_SYNTHETIC_PAIR_NODE=sys.argv[2],CICADA_SYNTHETIC_PAIR_STATE=sys.argv[3])
@@ -186,8 +179,8 @@ print(json.dumps(dict(status=status,lines=len(lines),codes=len(codes),digest=has
 		Status, Lines, Codes int
 		Digest               string
 	}
-	if json.Unmarshal(raw, &result) != nil || result.Status != 0 || result.Lines != 1 || result.Codes != 1 || result.Digest != hex.EncodeToString(expected[:]) {
-		t.Fatal("actual TTY did not display exactly the retained one code")
+	if json.Unmarshal(raw, &result) != nil || result.Status == 0 || result.Codes != 0 || result.Digest != "" {
+		t.Fatal("current companion displayed a retained legacy code")
 	}
 }
 

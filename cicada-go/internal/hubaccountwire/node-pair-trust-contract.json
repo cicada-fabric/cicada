@@ -3,9 +3,9 @@
   "format": "cicada.node-pair-trust.v1",
   "packet_format": "cicada.node-pair-trust-packet.v1",
   "code_prefix": "cicada-npt1.",
-  "available": true,
-  "default_cli_flag": "--hub-address",
-  "secret_code_cli": "machine pairing-code",
+  "available": false,
+  "default_cli_flag": "",
+  "secret_code_cli": "",
   "operations": [
     "node.pair-trust.start",
     "node.pair-trust.existing",

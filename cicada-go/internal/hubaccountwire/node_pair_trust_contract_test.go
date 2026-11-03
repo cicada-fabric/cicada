@@ -19,6 +19,8 @@ func TestNodePairTrustClosedContractInventory(t *testing.T) {
 		Packet               string              `json:"packet_format"`
 		Code                 string              `json:"code_prefix"`
 		Available            bool                `json:"available"`
+		DefaultCLIFlag       string              `json:"default_cli_flag"`
+		SecretCodeCLI        string              `json:"secret_code_cli"`
 		Operations           []string            `json:"operations"`
 		Fields               map[string][]string `json:"fields"`
 		CodeMax              int                 `json:"max_code_bytes"`
@@ -35,6 +37,9 @@ func TestNodePairTrustClosedContractInventory(t *testing.T) {
 	}
 	if json.Unmarshal(raw, &m) != nil || m.Revision != NodePairTrustContractRevision || m.Format != NodePairTrustFormat || m.Packet != NodePairTrustPacketFormat || m.Code != NodePairTrustCodePrefix || m.Available != NodePairTrustPublicAvailable || NodePairTrustContractCapabilities().Available != NodePairTrustPublicAvailable || m.CodeMax != MaxNodePairTrustCodeBytes || m.ReceiptMax != MaxNodePairTrustOriginalReceiptBytes || m.ReconcileResponseMax != MaxNodePairTrustReconcileResponsePacketBytes {
 		t.Fatal("contract inventory drift")
+	}
+	if m.Available || m.DefaultCLIFlag != "" || m.SecretCodeCLI != "" || !NodePairTrustScopedContractCapabilities().Available {
+		t.Fatal("only current Node-scoped pairing may be advertised")
 	}
 	if !m.CancelReceipt || !m.FenceOriginalOnly || !m.RetainedExisting || !m.RetainedTrusted || !m.ExplicitRetry || !m.UncommittedNodeOnly || !reflect.DeepEqual(m.Observations, []string{OperationNodePairTrustPoll, OperationNodePairTrustCancel, OperationOwnerNodePairTrustStatus, OperationOwnerNodePairTrustCancel}) || !reflect.DeepEqual(m.CancelTerminals, []string{NodePairTrustCancelled, NodePairTrustExpired, NodePairTrustRevoked, NodePairTrustFenced, NodePairTrustACKed}) {
 		t.Fatal("observation, terminal receipt or original-only fence contract drift")
