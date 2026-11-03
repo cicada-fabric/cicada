@@ -1000,10 +1000,23 @@ func TestScopedAppRealTLSFreshNodesSwitchOnly(t *testing.T) {
 	if !reflect.DeepEqual(f.c.selectedNodeBinding(), a.binding) || f.c.node.Client.NextRequest != 3 || f.c.node.Client.NextResponse != 3 {
 		t.Fatal("A to B to A lost original binding/counters")
 	}
+
+	for _, stage := range []string{wire.NodePairTrustScopedExpired, wire.NodePairTrustScopedACKed} {
+		f.c.scoped.flow = &scopedPairFlow{NodeID: b.binding.NodeID, Stage: stage, CleanupComplete: stage == wire.NodePairTrustScopedExpired}
+		f.c.publish()
+		projected := f.c.Snapshot()
+		if projected.Node.Pairing == nil || projected.Node.Pairing.NodeID != a.binding.NodeID || projected.Node.Pairing.State != wire.NodePairTrustScopedACKed || projected.Targets.Locked || containsAction(projected.AvailableActions, ActionCancelNodePairing) {
+			t.Fatal("old settled B flow obscured selected A")
+		}
+	}
+	f.c.scoped.flow = nil
 }
 
 func TestScopedAppRealTLSDefaultHubMatchesPublishedAvailability(t *testing.T) {
 	f := newScopedAppHTTPFixtureMode(t, false)
+	if p := f.c.Snapshot().Node.Pairing; p == nil || p.Available != f.c.scoped.available || p.Availability != f.c.scoped.availability {
+		t.Fatal("new-code page used legacy capability instead of current discovery")
+	}
 	before, err := json.Marshal(f.c.node)
 	if err != nil {
 		t.Fatal(err)
@@ -1199,5 +1212,144 @@ func TestScopedAppRealTLSApprovedNodeACKNeedsNoOnlineApp(t *testing.T) {
 	f.dispatch(Action{Kind: ActionRefreshNodePairing})
 	if !reflect.DeepEqual(f.c.selectedNodeBinding(), n.binding) || f.c.scopedBusy() || f.c.node.Client.NextRequest != 2 || f.c.node.Client.NextResponse != 2 {
 		t.Fatal("offline original Node ACK did not restore exact selection/counters")
+	}
+}
+
+func TestScopedAppRealTLSFinishPairingRecoversOriginalGrantCancel(t *testing.T) {
+	f := newScopedAppHTTPFixture(t)
+	n := f.startNode("SYNTHETIC-terminal-cleanup")
+	f.approveNode(n)
+	owner, device, counters := f.c.state.OwnerKeyID, f.c.state.DeviceKeyID, f.c.node.Client
+	path := wire.AppNodeScopedHTTPPath(wire.OperationAppNodeScopedCancel)
+	f.dropOperation, f.dropHTTPStatus = path, http.StatusForbidden
+	review := f.c.Snapshot().Node.Pairing.ReviewID
+	if f.c.Dispatch(context.Background(), Action{Kind: ActionCancelNodePairing, NodePairingReviewID: review}) == nil || !f.c.scopedPending() {
+		t.Fatal("lost grant-cancel result did not keep original")
+	}
+	original := bytes.Clone(f.c.scoped.original.Packet)
+	defer clear(original)
+	s := f.c.Snapshot()
+	if !s.Targets.Locked || !containsAction(s.AvailableActions, ActionRecoverNodePairing) || containsAction(s.AvailableActions, ActionReviewNodePairing) {
+		t.Fatal("unknown cleanup lost recovery or unlocked new enrollment")
+	}
+	f.restart()
+	if !bytes.Equal(original, f.c.scoped.original.Packet) {
+		t.Fatal("cold cleanup replaced original")
+	}
+	f.dispatch(Action{Kind: ActionRecoverNodePairing})
+	s = f.c.Snapshot()
+	if !f.c.scoped.flow.CleanupComplete || s.Targets.Locked || !containsAction(s.AvailableActions, ActionReviewNodePairing) || f.posts[path] != 1 || !bytes.Equal(original, f.c.scoped.original.Packet) {
+		t.Fatal("recovered terminal grant did not finish once and unlock explicit review")
+	}
+	if owner != f.c.state.OwnerKeyID || device != f.c.state.DeviceKeyID || counters != f.c.node.Client || f.c.selectedNodeBinding() != nil {
+		t.Fatal("cleanup changed identities/counters or manufactured a binding")
+	}
+	next := f.startNode("SYNTHETIC-next-code")
+	f.dispatch(Action{Kind: ActionReviewNodePairing, DevicePairingCode: next.code})
+	if f.c.Snapshot().Node.Pairing.State != "REVIEW" {
+		t.Fatal("cleaned ceremony did not accept current new code")
+	}
+}
+
+func TestScopedAppRealTLSTerminalSnapshotOffersFinishAndACKWins(t *testing.T) {
+	f := newScopedAppHTTPFixture(t)
+	n := f.startNode("SYNTHETIC-terminal-view")
+	f.approveNode(n)
+	// Snapshot-only terminal projection; the ACK race uses the real saved approval.
+	f.c.scoped.flow.Stage = wire.NodePairTrustScopedExpired
+	f.c.scoped.flow.LastError = "APP_NODE_PAIRING_UNKNOWN"
+	f.c.publish()
+	s := f.c.Snapshot()
+	if !s.Targets.Locked || !containsAction(s.AvailableActions, ActionCancelNodePairing) || !containsAction(s.AvailableActions, ActionRefreshNodePairing) || containsAction(s.AvailableActions, ActionReviewNodePairing) {
+		t.Fatal("real Core snapshot hid terminal cleanup or allowed a new code")
+	}
+	context := f.c.scoped.flow.Context
+	f.c.scoped.flow.Context = nil
+	f.c.scoped.flow.Stage = wire.NodePairTrustScopedFenced
+	f.c.publish()
+	withoutContext := f.c.Snapshot()
+	if containsAction(withoutContext.AvailableActions, ActionCancelNodePairing) || !containsAction(withoutContext.AvailableActions, ActionRefreshNodePairing) || !withoutContext.Targets.Locked {
+		t.Fatal("context-free request fence advertised an impossible cancel or unlocked selection")
+	}
+	f.c.scoped.flow.Context = context
+	f.c.scoped.flow.Stage = wire.NodePairTrustScopedOwnerApproved
+	f.c.publish()
+	f.ackNode(n)
+	f.dispatch(Action{Kind: ActionCancelNodePairing, NodePairingReviewID: f.c.Snapshot().Node.Pairing.ReviewID})
+	if f.c.selectedNodeBinding() == nil || !reflect.DeepEqual(f.c.selectedNodeBinding(), n.binding) || f.posts[wire.AppNodeScopedHTTPPath(wire.OperationAppNodeScopedCancel)] != 0 || f.c.node.Client.NextRequest != 2 {
+		t.Fatal("ACK race canceled admitted Node or consumed another counter")
+	}
+}
+
+func TestScopedAppRealTLSExpiredReviewCanFinishBeforeNewCode(t *testing.T) {
+	f := newScopedAppHTTPFixture(t)
+	n := f.startNode("SYNTHETIC-expired-review")
+	f.dispatch(Action{Kind: ActionReviewNodePairing, DevicePairingCode: n.code})
+	now := f.c.cfg.Now
+	f.c.cfg.Now = func() time.Time {
+		return parseExpiry(f.c.scoped.flow.Challenge.Claims.ProofExpiresAt).Add(time.Nanosecond)
+	}
+	s := f.c.Snapshot()
+	if containsAction(s.AvailableActions, ActionApproveNodePairing) || !containsAction(s.AvailableActions, ActionCancelNodePairing) || !s.Targets.Locked {
+		t.Fatal("expired proof permitted approval or lost cleanup")
+	}
+	f.c.cfg.Now = now // Observe/cancel with a valid clock; no server terminal has been invented.
+	f.dispatch(Action{Kind: ActionCancelNodePairing, NodePairingReviewID: s.Node.Pairing.ReviewID})
+	if !f.c.scoped.flow.CleanupComplete || f.c.Snapshot().Targets.Locked || f.c.selectedNodeBinding() != nil || f.c.node.Client.NextRequest != 1 {
+		t.Fatal("expired review failed to close its unused grant safely")
+	}
+}
+
+func TestScopedAppRealTLSQueryFenceMustObserveACKBeforeCleanup(t *testing.T) {
+	for _, acked := range []bool{false, true} {
+		t.Run(map[bool]string{false: "live-attempt", true: "ACK-wins"}[acked], func(t *testing.T) {
+			f := newScopedAppHTTPFixture(t)
+			n := f.startNode("SYNTHETIC-request-fence")
+			f.approveNode(n)
+			if acked {
+				f.ackNode(n)
+			}
+			flow := f.c.scoped.flow
+			q := wire.NodePairTrustScopedOwnerCancel{Format: wire.NodePairTrustScopedFormat, SessionToken: f.c.session.SessionToken, Scope: flow.Scope, Context: *flow.Context, OOBCommitment: flow.OOB, IssuedAt: f.c.scopedNow()}
+			p, err := f.c.newScopedOriginal(q, flow.NodeID, true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Fault-inject an authenticated request fence, while the actual Hub keeps
+			// the attempt live/ACKed. A request fence is not an attempt outcome.
+			ids, err := hubidentity.LoadOrCreate(filepath.Join(f.root, "SYNTHETIC-hub-keys"), "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			result := wire.NodePairTrustScopedResult{Format: wire.NodePairTrustScopedFormat, Operation: p.Operation, RequestID: p.RequestID, AttemptID: p.AttemptID, RequestPacketDigest: wire.NodePairTrustScopedPacketDigest(p.Packet), State: wire.NodePairTrustScopedFenced, ErrorCode: "FENCED", ObservedAt: f.c.scopedNow()}
+			p.Response, err = wire.SealNodePairTrustScopedResponse(ids.ClientControl, f.hub, p.Packet, &q, result)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := f.c.checkScopedResponse(p, p.Response); err != nil {
+				t.Fatal(err)
+			}
+			p.Applied = true
+			if err := f.c.persistScopedFrame(scopedOriginalSlot, p); err != nil {
+				t.Fatal(err)
+			}
+			f.c.scoped.original = p
+			flow.Stage, flow.CancelRequested = wire.NodePairTrustScopedFenced, true
+			if err := f.c.persistScopedFlow(); err != nil {
+				t.Fatal(err)
+			}
+			f.c.publish()
+			f.dispatch(Action{Kind: ActionCancelNodePairing, NodePairingReviewID: f.c.Snapshot().Node.Pairing.ReviewID})
+			if f.posts[wire.NodePairTrustScopedHTTPPath(wire.OperationOwnerNodePairTrustScopedCancel)] != 1 {
+				t.Fatal("request fence skipped actual attempt cancellation/observation")
+			}
+			if acked {
+				if !reflect.DeepEqual(f.c.selectedNodeBinding(), n.binding) || f.posts[wire.AppNodeScopedHTTPPath(wire.OperationAppNodeScopedCancel)] != 0 || f.c.node.Client.NextRequest != 2 {
+					t.Fatal("request fence canceled an ACKed grant")
+				}
+			} else if !f.c.scoped.flow.CleanupComplete || f.c.selectedNodeBinding() != nil || f.c.node.Client.NextRequest != 1 {
+				t.Fatal("live attempt was not ended safely before unlock")
+			}
+		})
 	}
 }

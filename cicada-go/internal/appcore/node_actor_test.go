@@ -395,11 +395,11 @@ func (f *nodeActorFixture) reconcile(request wire.AppNodeReconcileRequest, id, d
 
 func (f *nodeActorFixture) approve(t *testing.T) {
 	t.Helper()
-	s := f.c.Snapshot()
+	s := legacyFixtureSnapshot(f.c)
 	if s.Node.Candidate == nil {
 		t.Fatal("missing Node review")
 	}
-	if err := f.c.Dispatch(context.Background(), Action{Kind: ActionApproveNode, NodeReviewID: s.Node.Candidate.ReviewID, ConfirmNodeIdentity: true, ConfirmNodeAccess: true}); err != nil {
+	if err := legacyFixtureDispatch(f.c, context.Background(), Action{Kind: ActionApproveNode, NodeReviewID: s.Node.Candidate.ReviewID, ConfirmNodeIdentity: true, ConfirmNodeAccess: true}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -415,7 +415,7 @@ func (f *nodeActorFixture) reopen(t *testing.T) {
 	if err := f.c.Dispatch(ctx, Action{Kind: ActionDiscoverProfiles}); err != nil {
 		t.Fatal(err)
 	}
-	profiles := f.c.Snapshot().Profiles
+	profiles := legacyFixtureSnapshot(f.c).Profiles
 	if len(profiles) != 1 {
 		t.Fatal("saved profile lost")
 	}
@@ -430,22 +430,22 @@ func TestNodeControllerFiniteFlowKeepsN2AndKeysAndUsesHeartbeatDeadline(t *testi
 	ctx := context.Background()
 	owner, device := c.owner.Public(), c.device.Public()
 	n2Before, _ := json.Marshal(c.state.Enrollment)
-	if c.Snapshot().Authorization.State != "EXPIRED" {
+	if legacyFixtureSnapshot(c).Authorization.State != "EXPIRED" {
 		t.Fatal("test did not start after logical N2 expiry")
 	}
-	if err := c.Dispatch(ctx, Action{Kind: ActionPreviewNode, NodeCode: f.code}); err != nil {
+	if err := legacyFixtureDispatch(c, ctx, Action{Kind: ActionPreviewNode, NodeCode: f.code}); err != nil {
 		t.Fatal(err)
 	}
-	s := c.Snapshot()
+	s := legacyFixtureSnapshot(c)
 	if s.Node.Candidate == nil || s.Node.Access.Confirmed {
 		t.Fatal("preview granted authority")
 	}
 	before := len(f.posts[wire.OperationAppNodeComplete])
-	if c.Dispatch(ctx, Action{Kind: ActionApproveNode, NodeReviewID: s.Node.Candidate.ReviewID, ConfirmNodeAccess: true}) == nil || len(f.posts[wire.OperationAppNodeComplete]) != before {
+	if legacyFixtureDispatch(c, ctx, Action{Kind: ActionApproveNode, NodeReviewID: s.Node.Candidate.ReviewID, ConfirmNodeAccess: true}) == nil || len(f.posts[wire.OperationAppNodeComplete]) != before {
 		t.Fatal("approval bypassed exact key consent")
 	}
 	f.approve(t)
-	s = c.Snapshot()
+	s = legacyFixtureSnapshot(c)
 	if s.Node.Binding == nil || !s.Node.Access.Confirmed || s.Node.ConnectionState() != NodeUnknown || s.Management != ManagementUnavailable {
 		t.Fatal("binding became heartbeat or generic management authority")
 	}
@@ -453,21 +453,21 @@ func TestNodeControllerFiniteFlowKeepsN2AndKeysAndUsesHeartbeatDeadline(t *testi
 	if err := c.Dispatch(ctx, Action{Kind: ActionRefreshNode}); err != nil {
 		t.Fatal(err)
 	}
-	if c.Snapshot().Node.ConnectionState() != NodeOnline {
+	if legacyFixtureSnapshot(c).Node.ConnectionState() != NodeOnline {
 		t.Fatal("current authenticated heartbeat not shown")
 	}
 	f.n2.now = f.n2.now.Add(wire.AppNodeObservationStaleAfter + time.Second)
-	if c.Snapshot().Node.ConnectionState() != NodeStale {
+	if legacyFixtureSnapshot(c).Node.ConnectionState() != NodeStale {
 		t.Fatal("idle desktop kept a permanent online label")
 	}
 	if err := c.Dispatch(ctx, Action{Kind: ActionRefreshNode}); err != nil {
 		t.Fatal(err)
 	}
-	if c.Snapshot().Node.ConnectionState() != NodeStale {
+	if legacyFixtureSnapshot(c).Node.ConnectionState() != NodeStale {
 		t.Fatal("new poll refreshed an old heartbeat")
 	}
 	f.deny = wire.OperationAppNodeStatus
-	if c.Dispatch(ctx, Action{Kind: ActionRefreshNode}) == nil || !c.Snapshot().Node.Pending || c.Snapshot().Node.ConnectionState() == NodeOnline {
+	if c.Dispatch(ctx, Action{Kind: ActionRefreshNode}) == nil || !legacyFixtureSnapshot(c).Node.Pending || legacyFixtureSnapshot(c).Node.ConnectionState() == NodeOnline {
 		t.Fatal("failed read retained live state or discarded its packet")
 	}
 	n2After, _ := json.Marshal(c.state.Enrollment)
@@ -478,10 +478,10 @@ func TestNodeControllerFiniteFlowKeepsN2AndKeysAndUsesHeartbeatDeadline(t *testi
 
 func TestNodeControllerOldHubNeverPostsSecretsOrCreatesPending(t *testing.T) {
 	f := newNodeActorAvailabilityFixture(t, false)
-	if f.c.Dispatch(context.Background(), Action{Kind: ActionPreviewNode, NodeCode: f.code}) == nil {
+	if legacyFixtureDispatch(f.c, context.Background(), Action{Kind: ActionPreviewNode, NodeCode: f.code}) == nil {
 		t.Fatal("unsupported Hub accepted Node preview")
 	}
-	if len(f.posts) != 0 || f.c.node.Pending != nil || f.c.Snapshot().Node.Available {
+	if len(f.posts) != 0 || f.c.node.Pending != nil || legacyFixtureSnapshot(f.c).Node.Available {
 		t.Fatal("old Hub received N3 secret traffic or gained pending state")
 	}
 	_, _, found, err := f.c.vault.LoadState(nodeStateNamespace)
@@ -493,7 +493,7 @@ func TestNodeControllerOldHubNeverPostsSecretsOrCreatesPending(t *testing.T) {
 func TestNodeControllerHeartbeatClockBoundaryWithoutTraffic(t *testing.T) {
 	f := newNodeActorFixture(t)
 	ctx := context.Background()
-	if err := f.c.Dispatch(ctx, Action{Kind: ActionPreviewNode, NodeCode: f.code}); err != nil {
+	if err := legacyFixtureDispatch(f.c, ctx, Action{Kind: ActionPreviewNode, NodeCode: f.code}); err != nil {
 		t.Fatal(err)
 	}
 	f.approve(t)
@@ -501,7 +501,7 @@ func TestNodeControllerHeartbeatClockBoundaryWithoutTraffic(t *testing.T) {
 	if err := f.c.Dispatch(ctx, Action{Kind: ActionRefreshNode}); err != nil {
 		t.Fatal(err)
 	}
-	deadline := parseExpiry(f.c.Snapshot().Node.Connectivity.FreshUntil)
+	deadline := parseExpiry(legacyFixtureSnapshot(f.c).Node.Connectivity.FreshUntil)
 	if !deadline.Equal(parseExpiry(f.heartbeat).Add(wire.AppNodeObservationStaleAfter)) {
 		t.Fatal("test did not use the authenticated heartbeat deadline")
 	}
@@ -511,7 +511,7 @@ func TestNodeControllerHeartbeatClockBoundaryWithoutTraffic(t *testing.T) {
 		want NodeConnectionState
 	}{{deadline.Add(-time.Nanosecond), NodeOnline}, {deadline, NodeStale}, {deadline.Add(time.Nanosecond), NodeStale}} {
 		f.n2.now = tt.at
-		if got := f.c.Snapshot().Node.ConnectionState(); got != tt.want {
+		if got := legacyFixtureSnapshot(f.c).Node.ConnectionState(); got != tt.want {
 			t.Fatalf("snapshot at heartbeat boundary %v: got %s, want %s", tt.at, got, tt.want)
 		}
 	}
@@ -525,7 +525,7 @@ func TestNodeControllerLegacyOrChangedEpochCannotStartAuthority(t *testing.T) {
 	before := len(f.posts[wire.OperationAppNodePrepare])
 	old := f.c.state.Enrollment
 	f.c.state.Enrollment = nil
-	if f.c.Dispatch(context.Background(), Action{Kind: ActionPreviewNode, NodeCode: f.code}) == nil || len(f.posts[wire.OperationAppNodePrepare]) != before {
+	if legacyFixtureDispatch(f.c, context.Background(), Action{Kind: ActionPreviewNode, NodeCode: f.code}) == nil || len(f.posts[wire.OperationAppNodePrepare]) != before {
 		t.Fatal("legacy account bypassed completed N2 history")
 	}
 	f.c.state.Enrollment = old
@@ -555,7 +555,7 @@ func TestNodeControllerReadExpiredCannotInitializeCountersOrPermission(t *testin
 func TestNodeControllerStatusOnlyReauthorizationKeepsExactConfirmation(t *testing.T) {
 	f := newNodeActorFixture(t)
 	ctx := context.Background()
-	if err := f.c.Dispatch(ctx, Action{Kind: ActionPreviewNode, NodeCode: f.code}); err != nil {
+	if err := legacyFixtureDispatch(f.c, ctx, Action{Kind: ActionPreviewNode, NodeCode: f.code}); err != nil {
 		t.Fatal(err)
 	}
 	f.approve(t)
@@ -571,18 +571,18 @@ func TestNodeControllerStatusOnlyReauthorizationKeepsExactConfirmation(t *testin
 	f.c.sessionInspected = true
 	f.c.state.AccountState = AccountStateSessionActive
 	f.c.initializeNode(ctx)
-	if f.c.Snapshot().Node.Access.Confirmed {
+	if legacyFixtureSnapshot(f.c).Node.Access.Confirmed {
 		t.Fatal("new login adopted old Node permission")
 	}
-	if err := f.c.Dispatch(ctx, Action{Kind: ActionReauthorizeNodeStatus}); err != nil {
+	if err := legacyFixtureDispatch(f.c, ctx, Action{Kind: ActionReauthorizeNodeStatus}); err != nil {
 		t.Fatal(err)
 	}
-	if !f.c.Snapshot().Node.Candidate.StatusOnly {
+	if !legacyFixtureSnapshot(f.c).Node.Candidate.StatusOnly {
 		t.Fatal("existing Node required a new pairing code")
 	}
 	f.approve(t)
 	if len(f.posts["nodes.confirm"]) != count || !reflect.DeepEqual(original, f.c.nodeConfirmation.Binding) || f.c.node.Grant.Claims.Profile != wire.AppNodeProfileStatus ||
-		f.c.node.Grant.Claims.PreviousGrantID != old.GrantID || f.c.node.Grant.Claims.GrantID == old.GrantID || !f.c.Snapshot().Node.Access.Confirmed {
+		f.c.node.Grant.Claims.PreviousGrantID != old.GrantID || f.c.node.Grant.Claims.GrantID == old.GrantID || !legacyFixtureSnapshot(f.c).Node.Access.Confirmed {
 		t.Fatal("status authorization changed binding, renewed old grant or consumed confirmation")
 	}
 }
@@ -590,12 +590,12 @@ func TestNodeControllerStatusOnlyReauthorizationKeepsExactConfirmation(t *testin
 func TestNodeControllerStoredUnappliedCompleteReplaysBeforeNewPost(t *testing.T) {
 	f := newNodeActorFixture(t)
 	ctx := context.Background()
-	if err := f.c.Dispatch(ctx, Action{Kind: ActionPreviewNode, NodeCode: f.code}); err != nil {
+	if err := legacyFixtureDispatch(f.c, ctx, Action{Kind: ActionPreviewNode, NodeCode: f.code}); err != nil {
 		t.Fatal(err)
 	}
 	f.drop = wire.OperationAppNodeComplete
-	s := f.c.Snapshot()
-	if f.c.Dispatch(ctx, Action{Kind: ActionApproveNode, NodeReviewID: s.Node.Candidate.ReviewID, ConfirmNodeIdentity: true, ConfirmNodeAccess: true}) == nil {
+	s := legacyFixtureSnapshot(f.c)
+	if legacyFixtureDispatch(f.c, ctx, Action{Kind: ActionApproveNode, NodeReviewID: s.Node.Candidate.ReviewID, ConfirmNodeIdentity: true, ConfirmNodeAccess: true}) == nil {
 		t.Fatal("lost complete reported success")
 	}
 	p := f.c.node.Pending
@@ -620,14 +620,14 @@ func TestNodeControllerStoredUnappliedCompleteReplaysBeforeNewPost(t *testing.T)
 	if err := f.c.Dispatch(ctx, Action{Kind: ActionDiscoverProfiles}); err != nil {
 		t.Fatal(err)
 	}
-	profiles := f.c.Snapshot().Profiles
+	profiles := legacyFixtureSnapshot(f.c).Profiles
 	if len(profiles) != 1 {
 		t.Fatal("saved profile lost")
 	}
 	if err := f.c.Dispatch(ctx, Action{Kind: ActionResumeProfile, ProfileID: profiles[0].ID}); err != nil {
 		t.Fatal(err)
 	}
-	if f.c.node.Grant == nil || f.c.node.Pending == nil || !f.c.node.Pending.Applied || f.c.hasNodePending() || len(f.posts[wire.OperationAppNodeStatus]) != count || f.c.Snapshot().Node.Access.Confirmed {
+	if f.c.node.Grant == nil || f.c.node.Pending == nil || !f.c.node.Pending.Applied || f.c.hasNodePending() || len(f.posts[wire.OperationAppNodeStatus]) != count || legacyFixtureSnapshot(f.c).Node.Access.Confirmed {
 		t.Fatal("startup replaced unapplied receipt or revived its authority")
 	}
 	if !reflect.DeepEqual(owner, f.c.owner.Public()) || !reflect.DeepEqual(device, f.c.device.Public()) {
@@ -644,12 +644,12 @@ func TestNodeControllerConfirmationReceiptAndSeparateProofCrashBoundaries(t *tes
 		t.Run(name, func(t *testing.T) {
 			f := newNodeActorFixture(t)
 			ctx := context.Background()
-			if err := f.c.Dispatch(ctx, Action{Kind: ActionPreviewNode, NodeCode: f.code}); err != nil {
+			if err := legacyFixtureDispatch(f.c, ctx, Action{Kind: ActionPreviewNode, NodeCode: f.code}); err != nil {
 				t.Fatal(err)
 			}
 			f.drop = "nodes.confirm"
-			s := f.c.Snapshot()
-			if f.c.Dispatch(ctx, Action{Kind: ActionApproveNode, NodeReviewID: s.Node.Candidate.ReviewID, ConfirmNodeIdentity: true, ConfirmNodeAccess: true}) == nil {
+			s := legacyFixtureSnapshot(f.c)
+			if legacyFixtureDispatch(f.c, ctx, Action{Kind: ActionApproveNode, NodeReviewID: s.Node.Candidate.ReviewID, ConfirmNodeIdentity: true, ConfirmNodeAccess: true}) == nil {
 				t.Fatal("lost confirmation was not pending")
 			}
 			p := f.c.node.Pending
@@ -686,7 +686,7 @@ func TestNodeControllerStoredReconcileReceiptCompletesAcrossNamespaces(t *testin
 	f := newNodeActorFixture(t)
 	ctx := context.Background()
 	f.drop = wire.OperationAppNodePrepare
-	if f.c.Dispatch(ctx, Action{Kind: ActionPreviewNode, NodeCode: f.code}) == nil {
+	if legacyFixtureDispatch(f.c, ctx, Action{Kind: ActionPreviewNode, NodeCode: f.code}) == nil {
 		t.Fatal("prepare loss missing")
 	}
 	f.deny, f.drop = wire.OperationAppNodePrepare, wire.OperationAppNodeReconcile
@@ -711,14 +711,14 @@ func TestNodeControllerExpiredPrepareReceiptSettlesButCannotApprove(t *testing.T
 	f := newNodeActorFixture(t)
 	ctx := context.Background()
 	f.drop = wire.OperationAppNodePrepare
-	if f.c.Dispatch(ctx, Action{Kind: ActionPreviewNode, NodeCode: f.code}) == nil {
+	if legacyFixtureDispatch(f.c, ctx, Action{Kind: ActionPreviewNode, NodeCode: f.code}) == nil {
 		t.Fatal("prepare loss missing")
 	}
 	f.n2.now = f.n2.now.Add(6 * time.Minute)
 	if err := f.c.Dispatch(ctx, Action{Kind: ActionRecoverNode}); err != nil {
 		t.Fatal(err)
 	}
-	if f.c.hasNodePending() || f.c.node.Proposal != nil || f.c.Snapshot().Node.Access.Confirmed {
+	if f.c.hasNodePending() || f.c.node.Proposal != nil || legacyFixtureSnapshot(f.c).Node.Access.Confirmed {
 		t.Fatal("expired historical challenge revived approval")
 	}
 	if len(f.posts[wire.OperationAppNodePrepare]) != 2 || !bytes.Equal(f.posts[wire.OperationAppNodePrepare][0], f.posts[wire.OperationAppNodePrepare][1]) {
@@ -732,7 +732,7 @@ func TestNodeControllerExpiredPrepareReceiptSettlesButCannotApprove(t *testing.T
 func TestNodeControllerObsoletePreparedSessionCanBeDiagnosedWithoutLogin(t *testing.T) {
 	f := newNodeActorFixture(t)
 	ctx := context.Background()
-	if err := f.c.Dispatch(ctx, Action{Kind: ActionPreviewNode, NodeCode: f.code}); err != nil {
+	if err := legacyFixtureDispatch(f.c, ctx, Action{Kind: ActionPreviewNode, NodeCode: f.code}); err != nil {
 		t.Fatal(err)
 	}
 	prepareCount := len(f.posts[wire.OperationAppNodePrepare])
@@ -751,10 +751,10 @@ func TestNodeControllerObsoletePreparedSessionCanBeDiagnosedWithoutLogin(t *test
 func TestNodeControllerIdleReviewExpiryRetainsDiagnosticRefresh(t *testing.T) {
 	f := newNodeActorFixture(t)
 	ctx := context.Background()
-	if err := f.c.Dispatch(ctx, Action{Kind: ActionPreviewNode, NodeCode: f.code}); err != nil {
+	if err := legacyFixtureDispatch(f.c, ctx, Action{Kind: ActionPreviewNode, NodeCode: f.code}); err != nil {
 		t.Fatal(err)
 	}
-	before := f.c.Snapshot()
+	before := legacyFixtureSnapshot(f.c)
 	if before.Node.Candidate == nil || !containsAction(before.AvailableActions, ActionApproveNode) {
 		t.Fatal("test did not begin with a reviewable proposal")
 	}
@@ -762,7 +762,7 @@ func TestNodeControllerIdleReviewExpiryRetainsDiagnosticRefresh(t *testing.T) {
 	// Only time passes: no publish or request can add a missing action to the
 	// frozen renderer snapshot. The diagnostic action must already exist.
 	f.n2.now = parseExpiry(before.Node.Candidate.ExpiresAt).Add(time.Nanosecond)
-	after := f.c.Snapshot()
+	after := legacyFixtureSnapshot(f.c)
 	if containsAction(after.AvailableActions, ActionApproveNode) || !containsAction(after.AvailableActions, ActionRefreshNode) ||
 		after.Node.Candidate == nil || after.Node.Candidate.ReviewID != before.Node.Candidate.ReviewID || after.Node.Access.Confirmed ||
 		f.c.nodeVer != version || len(f.requests) != requests {
@@ -771,7 +771,7 @@ func TestNodeControllerIdleReviewExpiryRetainsDiagnosticRefresh(t *testing.T) {
 	if err := f.c.Dispatch(ctx, Action{Kind: ActionRefreshNode}); err != nil {
 		t.Fatal(err)
 	}
-	if f.c.node.Proposal != nil || f.c.hasNodePending() || !containsAction(f.c.Snapshot().AvailableActions, ActionPreviewNode) ||
+	if f.c.node.Proposal != nil || f.c.hasNodePending() || !containsAction(legacyFixtureSnapshot(f.c).AvailableActions, ActionPreviewNode) ||
 		len(f.posts[wire.OperationAppNodePrepare]) != 1 || len(f.posts[wire.OperationAppNodeComplete]) != 0 || len(f.posts["nodes.confirm"]) != 0 {
 		t.Fatal("terminal diagnostic did not safely return to a new explicit code")
 	}
@@ -780,19 +780,19 @@ func TestNodeControllerIdleReviewExpiryRetainsDiagnosticRefresh(t *testing.T) {
 func TestNodeControllerSelfCancelAllowsStatusOnlyWithoutStoppingNode(t *testing.T) {
 	f := newNodeActorFixture(t)
 	ctx := context.Background()
-	if err := f.c.Dispatch(ctx, Action{Kind: ActionPreviewNode, NodeCode: f.code}); err != nil {
+	if err := legacyFixtureDispatch(f.c, ctx, Action{Kind: ActionPreviewNode, NodeCode: f.code}); err != nil {
 		t.Fatal(err)
 	}
 	f.approve(t)
 	before := f.bindingDTO()
 	oldGrant := f.c.node.Grant.Claims.GrantID
-	if err := f.c.Dispatch(ctx, Action{Kind: ActionCancelNodeAccess, NodeReviewID: f.c.Snapshot().Node.Access.ReviewID}); err != nil {
+	if err := f.c.Dispatch(ctx, Action{Kind: ActionCancelNodeAccess, NodeReviewID: legacyFixtureSnapshot(f.c).Node.Access.ReviewID}); err != nil {
 		t.Fatal(err)
 	}
-	if f.c.Snapshot().Node.Access.Confirmed || !reflect.DeepEqual(before, f.bindingDTO()) || f.binding.State != "ACTIVE" {
+	if legacyFixtureSnapshot(f.c).Node.Access.Confirmed || !reflect.DeepEqual(before, f.bindingDTO()) || f.binding.State != "ACTIVE" {
 		t.Fatal("ending App access changed the Node binding")
 	}
-	if err := f.c.Dispatch(ctx, Action{Kind: ActionReauthorizeNodeStatus}); err != nil {
+	if err := legacyFixtureDispatch(f.c, ctx, Action{Kind: ActionReauthorizeNodeStatus}); err != nil {
 		t.Fatal(err)
 	}
 	f.approve(t)
@@ -804,18 +804,18 @@ func TestNodeControllerSelfCancelAllowsStatusOnlyWithoutStoppingNode(t *testing.
 func TestNodeControllerReadExistingRejectsSubstitutedFullBinding(t *testing.T) {
 	f := newNodeActorFixture(t)
 	ctx := context.Background()
-	if err := f.c.Dispatch(ctx, Action{Kind: ActionPreviewNode, NodeCode: f.code}); err != nil {
+	if err := legacyFixtureDispatch(f.c, ctx, Action{Kind: ActionPreviewNode, NodeCode: f.code}); err != nil {
 		t.Fatal(err)
 	}
 	f.approve(t)
-	if err := f.c.Dispatch(ctx, Action{Kind: ActionCancelNodeAccess, NodeReviewID: f.c.Snapshot().Node.Access.ReviewID}); err != nil {
+	if err := f.c.Dispatch(ctx, Action{Kind: ActionCancelNodeAccess, NodeReviewID: legacyFixtureSnapshot(f.c).Node.Access.ReviewID}); err != nil {
 		t.Fatal(err)
 	}
 	f.binding.HubKeyVersion++
-	if f.c.Dispatch(ctx, Action{Kind: ActionReauthorizeNodeStatus}) == nil || !f.c.hasNodePending() {
+	if legacyFixtureDispatch(f.c, ctx, Action{Kind: ActionReauthorizeNodeStatus}) == nil || !f.c.hasNodePending() {
 		t.Fatal("different full binding was offered for consent")
 	}
-	for _, a := range f.c.Snapshot().AvailableActions {
+	for _, a := range legacyFixtureSnapshot(f.c).AvailableActions {
 		if a == ActionApproveNode {
 			t.Fatal("substituted target enabled explicit consent")
 		}

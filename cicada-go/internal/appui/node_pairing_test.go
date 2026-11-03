@@ -40,7 +40,7 @@ func TestDevicePairingPresentationHidesCandidateBeforeLogin(t *testing.T) {
 }
 func TestDevicePairingCaptionsHaveBothLocalesWithoutManualKeyInstructions(t *testing.T) {
 	for _, locale := range []Locale{English, Chinese} {
-		for _, key := range []string{"node_pairing.title", "node_pairing.intro", "node_pairing.approve", "node_pairing.waiting_title", "node_pairing.waiting_body", "node_pairing.connected", "node_pairing.legacy", "node_pairing.default"} {
+		for _, key := range []string{"node_pairing.title", "node_pairing.intro", "node_pairing.approve", "node_pairing.waiting_title", "node_pairing.waiting_body", "node_pairing.connected", "node_pairing.cleanup_title", "node_pairing.cleanup_body", "node_pairing.finish"} {
 			caption := Text(locale, key)
 			if caption == key || caption == "" {
 				t.Fatal("pairing caption missing")
@@ -48,6 +48,25 @@ func TestDevicePairingCaptionsHaveBothLocalesWithoutManualKeyInstructions(t *tes
 			if strings.Contains(caption, "OpenSSL") || strings.Contains(caption, "descriptor") || strings.Contains(caption, "公钥") {
 				t.Fatal("default pairing UI asks for manual trust files")
 			}
+		}
+	}
+}
+
+func TestPairingCleanupMustPrecedeNewCode(t *testing.T) {
+	now := time.Now().UTC()
+	for _, state := range []string{"EXPIRED", "CANCELLED", "REVOKED", "FENCED", "REVIEW"} {
+		s := appcore.Snapshot{Node: appcore.NodeSetupSnapshot{Pairing: &appcore.NodePairingSnapshot{State: state, ExpiresAt: now.Add(-time.Minute).Format(time.RFC3339Nano), ErrorCode: "APP_NODE_PAIRING_UNKNOWN"}}, AvailableActions: []appcore.ActionKind{appcore.ActionRefreshNodePairing, appcore.ActionCancelNodePairing}}
+		flow := NodePairingFlow(s, now)
+		if flow.Stage != "cleanup" || flow.Primary != appcore.ActionCancelNodePairing || flow.Cancel {
+			t.Fatal("saved terminal/expired review lost its authorized finish action", state, flow)
+		}
+		s.AvailableActions = append(s.AvailableActions, appcore.ActionRecoverNodePairing)
+		if got := NodePairingFlow(s, now); got.Stage != "recovery" || got.Primary != appcore.ActionRecoverNodePairing {
+			t.Fatal("finish replaced exact original recovery", state, got)
+		}
+		s.AvailableActions = []appcore.ActionKind{appcore.ActionReviewNodePairing}
+		if state != "REVIEW" && NodePairingFlow(s, now).Primary != appcore.ActionReviewNodePairing {
+			t.Fatal("settled cleanup did not offer explicit new-code review")
 		}
 	}
 }

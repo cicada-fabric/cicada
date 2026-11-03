@@ -22,7 +22,7 @@ func (f nodeAutoHTTPFunc) Do(r *http.Request) (*http.Response, error) { return f
 func readyNodeAutoFixture(t *testing.T) (*nodeActorFixture, NodeStatusTarget) {
 	t.Helper()
 	f := newNodeActorFixture(t)
-	if err := f.c.Dispatch(context.Background(), Action{Kind: ActionPreviewNode, NodeCode: f.code}); err != nil {
+	if err := legacyFixtureDispatch(f.c, context.Background(), Action{Kind: ActionPreviewNode, NodeCode: f.code}); err != nil {
 		t.Fatal(err)
 	}
 	f.approve(t)

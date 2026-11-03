@@ -13,6 +13,12 @@ func (c *nativeController) dispatchScopedNode(ctx context.Context, a Action) (bo
 	defer func() { stop(); cancel() }()
 	ctx = op
 	switch a.Kind {
+	case ActionPreviewNode:
+		return true, ErrInvalidAction
+	case ActionApproveNode, ActionReauthorizeNodeStatus:
+		if c.selectedScopedNode() == nil {
+			return true, ErrInvalidAction
+		}
 	case ActionBeginAddNode:
 		return true, c.beginAddNode(ctx)
 	case ActionEndAddNode:
@@ -26,10 +32,7 @@ func (c *nativeController) dispatchScopedNode(ctx context.Context, a Action) (bo
 		if strings.HasPrefix(strings.TrimSpace(a.DevicePairingCode), wire.NodePairTrustScopedCodePrefix) {
 			return true, c.reviewScopedNodePairing(ctx, a.DevicePairingCode)
 		}
-		// An explicit scoped draft never silently downgrades to legacy trust.
-		if c.scoped.adding || c.scopedBusy() {
-			return true, ErrInvalidAction
-		}
+		return true, ErrInvalidAction // New enrollment accepts only current scoped codes.
 	case ActionRecoverNodePairing, ActionRecoverNode:
 		if c.scopedPending() {
 			return true, c.recoverScopedNode(ctx)
@@ -38,6 +41,7 @@ func (c *nativeController) dispatchScopedNode(ctx context.Context, a Action) (bo
 		if c.scopedBusy() {
 			return true, c.approveScopedPairing(ctx, a.NodePairingReviewID, a.ConfirmNodePairing)
 		}
+		return true, ErrInvalidAction
 	case ActionRefreshNodePairing:
 		if c.scopedBusy() {
 			err := c.refreshScopedPairing(ctx)

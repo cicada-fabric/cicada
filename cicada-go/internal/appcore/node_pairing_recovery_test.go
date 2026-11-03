@@ -19,7 +19,7 @@ func TestNodePairingSavedReviewRestoresWithoutRenewingConsent(t *testing.T) {
 			f := newNodePairingFixture(t)
 			ctx := context.Background()
 			if mode == wire.NodePairTrustExisting {
-				if err := f.n.c.Dispatch(ctx, Action{Kind: ActionPreviewNode, NodeCode: f.n.code}); err != nil {
+				if err := legacyFixtureDispatch(f.n.c, ctx, Action{Kind: ActionPreviewNode, NodeCode: f.n.code}); err != nil {
 					t.Fatal(err)
 				}
 				f.n.approve(t)
@@ -35,7 +35,7 @@ func TestNodePairingSavedReviewRestoresWithoutRenewingConsent(t *testing.T) {
 			}
 			f.review()
 			c := f.n.c
-			review, deadline := c.Snapshot().Node.Pairing.ReviewID, c.Snapshot().Node.Pairing.ExpiresAt
+			review, deadline := legacyFixtureSnapshot(c).Node.Pairing.ReviewID, legacyFixtureSnapshot(c).Node.Pairing.ExpiresAt
 			original, _ := json.Marshal(c.node.PairTrust)
 			proposal, _ := json.Marshal(c.node.Proposal)
 			counters := c.node.Client
@@ -50,17 +50,17 @@ func TestNodePairingSavedReviewRestoresWithoutRenewingConsent(t *testing.T) {
 				t.Fatal("historical profile restored fresh Node authority")
 			}
 			c.initializeNode(ctx)
-			if !c.nodeContextChecked || !containsAction(c.Snapshot().AvailableActions, ActionApproveNodePairing) {
+			if !c.nodeContextChecked || !containsAction(legacyFixtureSnapshot(c).AvailableActions, ActionApproveNodePairing) {
 				t.Fatal("saved review did not restore approval through initialization")
 			}
 			restored, _ := json.Marshal(c.node.PairTrust)
 			if !bytes.Equal(original, restored) {
 				t.Fatal("initialization changed original review or pairing packet")
 			}
-			if err := c.Dispatch(ctx, Action{Kind: ActionRefreshNodePairing}); err != nil {
+			if err := legacyFixtureDispatch(c, ctx, Action{Kind: ActionRefreshNodePairing}); err != nil {
 				t.Fatal(err)
 			}
-			checked := c.Snapshot()
+			checked := legacyFixtureSnapshot(c)
 			restoredProposal, _ := json.Marshal(c.node.Proposal)
 			if checked.Node.Pairing.State != "REVIEW" || checked.Node.Pairing.ReviewID != review || checked.Node.Pairing.ExpiresAt != deadline ||
 				!containsAction(checked.AvailableActions, ActionApproveNodePairing) || !bytes.Equal(proposal, restoredProposal) ||
@@ -80,7 +80,7 @@ func TestNodePairingSavedReviewRestoresWithoutRenewingConsent(t *testing.T) {
 			c = f.n.c
 			if c.node.PairTrust.Stage != "REVIEW" || c.nodeContextChecked || !c.node.PairTrust.Pending.Applied ||
 				!bytes.Equal(statusRequest, c.node.PairTrust.Pending.Request) || !bytes.Equal(statusResponse, c.node.PairTrust.Pending.Response) ||
-				containsAction(c.Snapshot().AvailableActions, ActionApproveNodePairing) {
+				containsAction(legacyFixtureSnapshot(c).AvailableActions, ActionApproveNodePairing) {
 				t.Fatal("historical status lost the review or granted fresh approval")
 			}
 			c.initializeNode(ctx)
@@ -92,14 +92,14 @@ func TestNodePairingSavedReviewRestoresWithoutRenewingConsent(t *testing.T) {
 			if err := c.refreshNodePairingContext(ctx); err != nil {
 				t.Fatal(err)
 			}
-			if containsAction(c.Snapshot().AvailableActions, ActionApproveNodePairing) || f.approve() == nil || c.node.PairTrust.ConsentReviewID != "" {
+			if containsAction(legacyFixtureSnapshot(c).AvailableActions, ActionApproveNodePairing) || f.approve() == nil || c.node.PairTrust.ConsentReviewID != "" {
 				t.Fatal("different current session approved or renewed saved review")
 			}
 			f.n.scope.AccountSessionID = sessionID
 			if err := c.refreshNodePairingContext(ctx); err != nil {
 				t.Fatal(err)
 			}
-			if c.nodePairingReviewID() != review || c.Snapshot().Node.Pairing.ExpiresAt != deadline {
+			if c.nodePairingReviewID() != review || legacyFixtureSnapshot(c).Node.Pairing.ExpiresAt != deadline {
 				t.Fatal("read-only context refresh replaced the original review")
 			}
 			if err := f.approve(); err != nil {
@@ -110,10 +110,10 @@ func TestNodePairingSavedReviewRestoresWithoutRenewingConsent(t *testing.T) {
 			}
 			if mode == wire.NodePairTrustExisting {
 				f.state = wire.NodePairTrustRevoked
-				if err := c.Dispatch(ctx, Action{Kind: ActionRefreshNodePairing}); err != nil {
+				if err := legacyFixtureDispatch(c, ctx, Action{Kind: ActionRefreshNodePairing}); err != nil {
 					t.Fatal(err)
 				}
-				if c.node.PairTrust.Stage != wire.NodePairTrustRevoked || containsAction(c.Snapshot().AvailableActions, ActionApproveNodePairing) {
+				if c.node.PairTrust.Stage != wire.NodePairTrustRevoked || containsAction(legacyFixtureSnapshot(c).AvailableActions, ActionApproveNodePairing) {
 					t.Fatal("real terminal observation restored an approval")
 				}
 			}
@@ -132,13 +132,13 @@ func TestNodePairingPacketFenceObservesAttemptInsteadOfInventingTerminal(t *test
 			var err error
 			switch op {
 			case wire.OperationOwnerNodePairTrustLookup:
-				err = f.n.c.Dispatch(context.Background(), Action{Kind: ActionReviewNodePairing, DevicePairingCode: f.code})
+				err = legacyFixtureDispatch(f.n.c, context.Background(), Action{Kind: ActionReviewNodePairing, DevicePairingCode: f.code})
 			case wire.OperationOwnerNodePairTrustStatus:
 				if err = f.approve(); err != nil {
 					t.Fatal(err)
 				}
 				f.ack()
-				err = f.n.c.Dispatch(context.Background(), Action{Kind: ActionRefreshNodePairing})
+				err = legacyFixtureDispatch(f.n.c, context.Background(), Action{Kind: ActionRefreshNodePairing})
 			case wire.OperationOwnerNodePairTrustCancel:
 				if err = f.approve(); err != nil {
 					t.Fatal(err)
@@ -233,7 +233,7 @@ func TestNodePairingCapacityRefusalPrecedesNewPacketAndPreservesOriginal(t *test
 	if c.storageFault || len(f.requests[wire.OperationOwnerNodePairTrustPrepare]) != before || !bytes.Equal(original, c.node.PairTrust.Pending.Request) {
 		t.Fatal("capacity check posted, replaced original or mislabeled disk failure")
 	}
-	if c.Snapshot().ErrorCode != "APP_NODE_PAIRING_STORAGE_FULL" {
+	if legacyFixtureSnapshot(c).ErrorCode != "APP_NODE_PAIRING_STORAGE_FULL" {
 		t.Fatal("missing actionable capacity refusal")
 	}
 }
@@ -305,7 +305,7 @@ func TestNodePairingMaxCandidateMetadataFitsActualPQVaultAndRecovery(t *testing.
 	}
 	f.ack()
 	f.drop = wire.OperationOwnerNodePairTrustStatus
-	if f.n.c.Dispatch(context.Background(), Action{Kind: ActionRefreshNodePairing}) == nil {
+	if legacyFixtureDispatch(f.n.c, context.Background(), Action{Kind: ActionRefreshNodePairing}) == nil {
 		t.Fatal("missing lost maximal ACK status")
 	}
 	f.deny = wire.OperationOwnerNodePairTrustStatus

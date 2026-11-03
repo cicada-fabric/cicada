@@ -38,7 +38,13 @@ func NodePairingFlow(s appcore.Snapshot, now time.Time) NodePairingSetupFlow {
 				return NodePairingSetupFlow{Stage: "review", Primary: appcore.ActionApproveNodePairing, Cancel: cancel}
 			}
 		}
-		return NodePairingSetupFlow{Stage: "expired", Cancel: cancel}
+		f := NodePairingSetupFlow{Stage: "expired"}
+		if cancel {
+			f.Stage, f.Primary = "cleanup", appcore.ActionCancelNodePairing
+		} else if has(appcore.ActionRefreshNodePairing) {
+			f.Primary = appcore.ActionRefreshNodePairing
+		}
+		return f
 	case "OWNER_APPROVED":
 		stage := "waiting"
 		end, err := time.Parse(time.RFC3339Nano, p.ExpiresAt)
@@ -53,6 +59,12 @@ func NodePairingFlow(s appcore.Snapshot, now time.Time) NodePairingSetupFlow {
 	case "ACKED":
 		return NodePairingSetupFlow{Stage: "connected"}
 	case "EXPIRED", "CANCELLED", "REVOKED", "FENCED":
+		if cancel {
+			return NodePairingSetupFlow{Stage: "cleanup", Primary: appcore.ActionCancelNodePairing}
+		}
+		if has(appcore.ActionRefreshNodePairing) {
+			return NodePairingSetupFlow{Stage: "cleanup", Primary: appcore.ActionRefreshNodePairing}
+		}
 		f := NodePairingSetupFlow{Stage: "ended"}
 		if has(appcore.ActionReviewNodePairing) {
 			f.Primary = appcore.ActionReviewNodePairing

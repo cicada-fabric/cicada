@@ -33,6 +33,16 @@ func (c *nativeController) initializeNode(ctx context.Context) {
 	if !c.nodeAccountReady() || !c.canBeginOperation() || c.hasNodePending() {
 		return
 	}
+	if c.useScopedPairing() {
+		if c.nodeVer == 0 {
+			c.node = c.newNodeState()
+		}
+		if !c.scoped.discovered {
+			_ = c.discoverScopedNodes(ctx)
+		}
+		c.publish()
+		return
+	}
 	if !c.nodeDiscoveryTried {
 		if err := c.discoverNodeAvailability(ctx); err != nil {
 			c.publish()

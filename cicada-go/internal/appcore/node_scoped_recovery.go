@@ -116,6 +116,15 @@ func (c *nativeController) recoverScopedNode(ctx context.Context) error {
 
 func (c *nativeController) completeScopedAction(ctx context.Context) error {
 	f := c.scoped.flow
+	if f != nil && f.CancelRequested && !f.CleanupComplete && !c.scopedPending() && f.Stage != wire.NodePairTrustScopedACKed {
+		if f.Stage == wire.NodePairTrustScopedFenced {
+			// A signed request fence does not terminate the remote attempt.
+			return c.cancelScopedPairing(ctx, c.scopedReviewID())
+		}
+		if err := c.finishScopedCancellation(ctx); err != nil {
+			return err
+		}
+	}
 	if f != nil && f.Stage == wire.NodePairTrustScopedACKed && !c.scopedPending() {
 		n := c.scopedNode(f.NodeID)
 		if n == nil || !n.CountersCommitted || n.Trust == nil || c.verifyStoredScopedTrust(n) != nil {

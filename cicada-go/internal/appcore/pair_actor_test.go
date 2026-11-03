@@ -43,7 +43,7 @@ type pairActorFixture struct {
 func newPairActorFixture(t *testing.T) *pairActorFixture {
 	t.Helper()
 	n := newNodeActorFixture(t)
-	if err := n.c.Dispatch(context.Background(), Action{Kind: ActionPreviewNode, NodeCode: n.code}); err != nil {
+	if err := legacyFixtureDispatch(n.c, context.Background(), Action{Kind: ActionPreviewNode, NodeCode: n.code}); err != nil {
 		t.Fatal(err)
 	}
 	n.approve(t)

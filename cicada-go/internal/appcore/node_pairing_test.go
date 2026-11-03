@@ -318,15 +318,15 @@ func (f *nodePairingFixture) ack() {
 }
 func (f *nodePairingFixture) review() {
 	f.t.Helper()
-	if err := f.n.c.Dispatch(context.Background(), Action{Kind: ActionReviewNodePairing, DevicePairingCode: f.code}); err != nil {
+	if err := legacyFixtureDispatch(f.n.c, context.Background(), Action{Kind: ActionReviewNodePairing, DevicePairingCode: f.code}); err != nil {
 		f.t.Fatal(err)
 	}
-	if f.n.c.Snapshot().Node.Pairing.State != "REVIEW" {
+	if legacyFixtureSnapshot(f.n.c).Node.Pairing.State != "REVIEW" {
 		f.t.Fatal("missing exact Node review")
 	}
 }
 func (f *nodePairingFixture) approve() error {
-	return f.n.c.Dispatch(context.Background(), Action{Kind: ActionApproveNodePairing, NodePairingReviewID: f.n.c.Snapshot().Node.Pairing.ReviewID, ConfirmNodePairing: true})
+	return legacyFixtureDispatch(f.n.c, context.Background(), Action{Kind: ActionApproveNodePairing, NodePairingReviewID: legacyFixtureSnapshot(f.n.c).Node.Pairing.ReviewID, ConfirmNodePairing: true})
 }
 func (f *nodePairingFixture) reopen() {
 	f.reopenSession()
@@ -359,7 +359,7 @@ func (f *nodePairingFixture) reopenSession() {
 	if err := c.Dispatch(ctx, Action{Kind: ActionDiscoverProfiles}); err != nil {
 		f.t.Fatal(err)
 	}
-	if err := c.Dispatch(ctx, Action{Kind: ActionResumeProfile, ProfileID: c.Snapshot().Profiles[0].ID}); err != nil {
+	if err := c.Dispatch(ctx, Action{Kind: ActionResumeProfile, ProfileID: legacyFixtureSnapshot(c).Profiles[0].ID}); err != nil {
 		f.t.Fatal(err)
 	}
 	c.session = &session
@@ -374,33 +374,33 @@ func TestNodePairingOneConsentWaitsForAuthenticatedOriginalACK(t *testing.T) {
 	if c.nodeConfirmation != nil || f.n.binding != nil || len(f.requests[wire.OperationOwnerNodePairTrustPrepare]) != 0 {
 		t.Fatal("lookup/preview granted trust or admission")
 	}
-	if c.Dispatch(context.Background(), Action{Kind: ActionApproveNodePairing, NodePairingReviewID: "SYNTHETIC_WRONG_REVIEW", ConfirmNodePairing: true}) == nil {
+	if legacyFixtureDispatch(c, context.Background(), Action{Kind: ActionApproveNodePairing, NodePairingReviewID: "SYNTHETIC_WRONG_REVIEW", ConfirmNodePairing: true}) == nil {
 		t.Fatal("stale review approved")
 	}
 	if err := f.approve(); err != nil {
 		t.Fatal(err)
 	}
-	if c.nodeConfirmation != nil || f.n.binding != nil || c.node.Client.NextRequest != 1 || c.node.Client.NextResponse != 1 || c.Snapshot().Node.Pairing.State != wire.NodePairTrustOwnerApproved {
+	if c.nodeConfirmation != nil || f.n.binding != nil || c.node.Client.NextRequest != 1 || c.node.Client.NextResponse != 1 || legacyFixtureSnapshot(c).Node.Pairing.State != wire.NodePairTrustOwnerApproved {
 		t.Fatal("Owner approval became admission before ACK")
 	}
-	if c.Dispatch(context.Background(), Action{Kind: ActionApproveNode, ConfirmNodeIdentity: true, ConfirmNodeAccess: true}) == nil {
+	if legacyFixtureDispatch(c, context.Background(), Action{Kind: ActionApproveNode, ConfirmNodeIdentity: true, ConfirmNodeAccess: true}) == nil {
 		t.Fatal("old confirmation bypassed pending ACK")
 	}
-	snapshot, _ := json.Marshal(c.Snapshot())
+	snapshot, _ := json.Marshal(legacyFixtureSnapshot(c))
 	if bytes.Contains(snapshot, []byte(f.code)) || bytes.Contains(snapshot, []byte("OOBSecret")) {
 		t.Fatal("pairing secret reached snapshot")
 	}
 	f.ack()
-	if err := c.Dispatch(context.Background(), Action{Kind: ActionRefreshNodePairing}); err != nil {
+	if err := legacyFixtureDispatch(c, context.Background(), Action{Kind: ActionRefreshNodePairing}); err != nil {
 		t.Fatal(err)
 	}
-	if c.nodeConfirmation == nil || !bytes.Equal(c.nodeConfirmation.Operation.Request, f.confirm) || !bytes.Equal(c.nodeConfirmation.Operation.Response, f.confirmationResponse) || c.node.Client.NextRequest != 2 || c.node.Client.NextResponse != 2 || c.Snapshot().Node.Pairing.State != wire.NodePairTrustACKed {
+	if c.nodeConfirmation == nil || !bytes.Equal(c.nodeConfirmation.Operation.Request, f.confirm) || !bytes.Equal(c.nodeConfirmation.Operation.Response, f.confirmationResponse) || c.node.Client.NextRequest != 2 || c.node.Client.NextResponse != 2 || legacyFixtureSnapshot(c).Node.Pairing.State != wire.NodePairTrustACKed {
 		t.Fatal("ACK did not apply exact original confirmation once")
 	}
 	if !reflect.DeepEqual(owner, c.owner.Public()) || !reflect.DeepEqual(device, c.device.Public()) || f.trap.calls != 0 {
 		t.Fatal("pairing replaced keys or fell back")
 	}
-	if err := c.Dispatch(context.Background(), Action{Kind: ActionRefreshNodePairing}); err != nil {
+	if err := legacyFixtureDispatch(c, context.Background(), Action{Kind: ActionRefreshNodePairing}); err != nil {
 		t.Fatal(err)
 	}
 	if c.node.Client.NextRequest != 2 || c.node.Client.NextResponse != 2 {
@@ -418,7 +418,7 @@ func TestNodePairingLostResponseRestoresOriginalCodeAndPackets(t *testing.T) {
 			f.drop = op
 			switch op {
 			case wire.OperationOwnerNodePairTrustLookup:
-				if c.Dispatch(context.Background(), Action{Kind: ActionReviewNodePairing, DevicePairingCode: f.code}) == nil {
+				if legacyFixtureDispatch(c, context.Background(), Action{Kind: ActionReviewNodePairing, DevicePairingCode: f.code}) == nil {
 					t.Fatal("lost lookup reported success")
 				}
 			case wire.OperationOwnerNodePairTrustPrepare, wire.OperationOwnerNodePairTrustComplete:
@@ -430,7 +430,7 @@ func TestNodePairingLostResponseRestoresOriginalCodeAndPackets(t *testing.T) {
 					t.Fatal(err)
 				}
 				f.ack()
-				if c.Dispatch(context.Background(), Action{Kind: ActionRefreshNodePairing}) == nil {
+				if legacyFixtureDispatch(c, context.Background(), Action{Kind: ActionRefreshNodePairing}) == nil {
 					t.Fatal("lost ACK status reported success")
 				}
 			}
@@ -505,7 +505,7 @@ func TestNodePairingActualVaultReconcileBudget(t *testing.T) {
 		t.Fatal("actual encrypted reconciliation did not restore approval")
 	}
 	f.ack()
-	if err := f.n.c.Dispatch(context.Background(), Action{Kind: ActionRefreshNodePairing}); err != nil {
+	if err := legacyFixtureDispatch(f.n.c, context.Background(), Action{Kind: ActionRefreshNodePairing}); err != nil {
 		t.Fatal(err)
 	}
 	for operation, size := range f.stateSizes {
@@ -520,12 +520,12 @@ func TestNodePairingRejectsWrongHubAndUnavailableBeforeSecretPost(t *testing.T) 
 	c := f.n.c
 	before := len(f.requests)
 	c.connection.HubFingerprint = strings.Repeat("0", 64)
-	if c.Dispatch(context.Background(), Action{Kind: ActionReviewNodePairing, DevicePairingCode: f.code}) == nil || len(f.requests) != before {
+	if legacyFixtureDispatch(c, context.Background(), Action{Kind: ActionReviewNodePairing, DevicePairingCode: f.code}) == nil || len(f.requests) != before {
 		t.Fatal("wrong retained Hub accepted code")
 	}
 	c.connection.HubFingerprint, _ = wire.HubFingerprint(f.context.Hub)
 	f.caps = false
-	if c.Dispatch(context.Background(), Action{Kind: ActionReviewNodePairing, DevicePairingCode: f.code}) == nil || len(f.requests) != before {
+	if legacyFixtureDispatch(c, context.Background(), Action{Kind: ActionReviewNodePairing, DevicePairingCode: f.code}) == nil || len(f.requests) != before {
 		t.Fatal("public unavailable allowed credential POST")
 	}
 	if f.trap.calls != 0 {
@@ -709,7 +709,7 @@ func TestNodePairingExactSavedDescriptorMismatchNeverReplacesProfile(t *testing.
 	}
 	digest, _ := wire.NodePairTrustContextDigest(f.context)
 	f.o, _ = wire.NodePairTrustOOBCommitment(digest, f.secret)
-	if c.Dispatch(context.Background(), Action{Kind: ActionReviewNodePairing, DevicePairingCode: f.code}) == nil {
+	if legacyFixtureDispatch(c, context.Background(), Action{Kind: ActionReviewNodePairing, DevicePairingCode: f.code}) == nil {
 		t.Fatal("same CC/NC with different CA/SPKI descriptor digest was accepted")
 	}
 	after, _ := json.Marshal(c.state.Transport)
@@ -722,7 +722,7 @@ func TestNodePairingExistingBindingAddsTrustWithoutNewInitialGrant(t *testing.T)
 	f := newNodePairingFixture(t)
 	c := f.n.c
 	ctx := context.Background()
-	if err := c.Dispatch(ctx, Action{Kind: ActionPreviewNode, NodeCode: f.n.code}); err != nil {
+	if err := legacyFixtureDispatch(c, ctx, Action{Kind: ActionPreviewNode, NodeCode: f.n.code}); err != nil {
 		t.Fatal(err)
 	}
 	f.n.approve(t)
@@ -748,7 +748,7 @@ func TestNodePairingExistingBindingAddsTrustWithoutNewInitialGrant(t *testing.T)
 		t.Fatal("trust-only pairing started a new INITIAL admission")
 	}
 	f.ack()
-	if err := c.Dispatch(ctx, Action{Kind: ActionRefreshNodePairing}); err != nil {
+	if err := legacyFixtureDispatch(c, ctx, Action{Kind: ActionRefreshNodePairing}); err != nil {
 		t.Fatal(err)
 	}
 	if c.node.PairTrust.Stage != wire.NodePairTrustACKed || !reflect.DeepEqual(binding, f.n.bindingDTO()) || !bytes.Equal(confirmation, c.nodeConfirmation.Operation.Request) || c.node.Client != counters {
@@ -769,7 +769,7 @@ func TestNodePairingNewLoginObservesWithoutRenewingOriginalApproval(t *testing.T
 	f.n.scope.AccountSessionExpiresAt = f.n.stamp(f.n.n2.now.Add(12 * time.Minute))
 	c.session.ExpiresAt = f.n.scope.AccountSessionExpiresAt
 	f.state = wire.NodePairTrustRevoked
-	if err := c.Dispatch(context.Background(), Action{Kind: ActionRefreshNodePairing}); err != nil {
+	if err := legacyFixtureDispatch(c, context.Background(), Action{Kind: ActionRefreshNodePairing}); err != nil {
 		t.Fatal(err)
 	}
 	p := c.node.PairTrust.Pending
@@ -795,19 +795,19 @@ func TestNodePairingAvailabilityStartsUnknownAndDeadlineIsLocalOnly(t *testing.T
 	c.pairTrustAvailable = false
 	c.pairTrustAvailability = ""
 	c.publish()
-	if c.Snapshot().Node.Pairing.Availability != "UNKNOWN" {
+	if legacyFixtureSnapshot(c).Node.Pairing.Availability != "UNKNOWN" {
 		t.Fatal("unqueried capability was shown as unsupported")
 	}
 	f.review()
 	if err := f.approve(); err != nil {
 		t.Fatal(err)
 	}
-	before := c.Snapshot().Node.Pairing
+	before := legacyFixtureSnapshot(c).Node.Pairing
 	if before.ExpiresAt != c.node.PairTrust.Approval.AcceptBefore {
 		t.Fatal("UI used code lifetime instead of the earlier acceptance deadline")
 	}
 	f.n.n2.now = parseExpiry(before.ExpiresAt)
-	after := c.Snapshot().Node.Pairing
+	after := legacyFixtureSnapshot(c).Node.Pairing
 	if !after.DeadlineReached || after.State != wire.NodePairTrustOwnerApproved || c.node.PairTrust.Stage != wire.NodePairTrustOwnerApproved {
 		t.Fatal("local clock either stayed waiting or invented server expiry")
 	}
@@ -829,7 +829,7 @@ func TestNodePairingCloseDoesNotCancelApprovalOrStopIndependentACK(t *testing.T)
 	}
 	f.ack()
 	f.reopen()
-	if err := f.n.c.Dispatch(context.Background(), Action{Kind: ActionRefreshNodePairing}); err != nil {
+	if err := legacyFixtureDispatch(f.n.c, context.Background(), Action{Kind: ActionRefreshNodePairing}); err != nil {
 		t.Fatal(err)
 	}
 	if f.n.c.nodeConfirmation == nil || !bytes.Equal(original, f.n.c.nodeConfirmation.Operation.Request) || f.n.c.owner.Public().ID != owner || f.n.c.node.PairTrust.Stage != wire.NodePairTrustACKed {

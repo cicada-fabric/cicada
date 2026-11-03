@@ -226,9 +226,6 @@ func (c *nativeController) refreshNodePairing(ctx context.Context) error {
 	if t.FencedOperation != "" {
 		return c.observeFencedNodePairing(ctx)
 	}
-	if (t.Stage == "LOOKUP" || t.Stage == "APPROVING") && c.nodePairTrustMayContinue() {
-		return c.continueNodePairing(ctx)
-	}
 	if err := c.observeNodePairing(ctx); err != nil {
 		return err
 	}

@@ -87,9 +87,6 @@ func (c *nativeController) nodePairingActions() []ActionKind {
 	if t.Context != nil {
 		actions = append(actions, ActionCancelNodePairing)
 	}
-	if c.nodePairingReviewable() {
-		actions = append(actions, ActionApproveNodePairing)
-	}
 	return actions
 }
 func expireNodePairingView(view *Snapshot, now time.Time) {

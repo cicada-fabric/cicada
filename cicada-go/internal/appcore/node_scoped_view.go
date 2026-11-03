@@ -162,6 +162,8 @@ func (c *nativeController) scopedOwnerActor(ctx context.Context) (e2ee.OwnerAppN
 
 func (c *nativeController) populateScopedNode(view *Snapshot) {
 	n := c.selectedScopedNode()
+	f := c.scoped.flow
+	showFlow := f != nil && ((!f.CleanupComplete && f.Stage != wire.NodePairTrustScopedACKed) || n == nil || f.NodeID == n.NodeID)
 	if n != nil {
 		view.Pair = PairSetupSnapshot{}
 		view.OwnerEndpoints = OwnerEndpointSnapshot{}
@@ -205,7 +207,9 @@ func (c *nativeController) populateScopedNode(view *Snapshot) {
 	}
 	if c.scoped.adding {
 		view.Node.Pairing = &NodePairingSnapshot{Available: c.scoped.available, Availability: c.scoped.availability, State: "CODE"}
-	} else if f := c.scoped.flow; f != nil && (c.scopedBusy() || n != nil && f.NodeID == n.NodeID) {
+	} else if n == nil && f == nil && c.useScopedPairing() {
+		view.Node.Pairing = &NodePairingSnapshot{Available: c.scoped.available, Availability: c.scoped.availability, State: "CODE"}
+	} else if showFlow {
 		p := &NodePairingSnapshot{Available: c.scoped.available, Availability: c.scoped.availability, State: f.Stage, NodeID: f.NodeID, ReviewID: c.scopedReviewID(), ExpiresAt: earlierNodeDeadline(f.Code.ExpiresAt, f.Scope.AccountSessionExpiresAt), ErrorCode: f.LastError}
 		if f.Context != nil {
 			if x := f.Context.Candidate; x != nil {
@@ -228,7 +232,7 @@ func (c *nativeController) populateScopedNode(view *Snapshot) {
 	} else if n != nil && n.Binding != nil {
 		view.Node.Pairing = &NodePairingSnapshot{Available: c.scoped.available, Availability: c.scoped.availability, State: wire.NodePairTrustScopedACKed, NodeID: n.NodeID, Name: n.Binding.NodeName}
 	}
-	if c.scopedBusy() || c.scoped.adding || n != nil {
+	if c.scopedBusy() || c.scoped.adding || n != nil || showFlow {
 		view.AvailableActions = slices.DeleteFunc(view.AvailableActions, func(a ActionKind) bool {
 			return a == ActionReviewNodePairing || a == ActionApproveNodePairing || a == ActionRefreshNodePairing || a == ActionRecoverNodePairing || a == ActionCancelNodePairing
 		})
@@ -237,12 +241,21 @@ func (c *nativeController) populateScopedNode(view *Snapshot) {
 		} else if c.nodeAccountReady() {
 			if c.scoped.adding {
 				view.AvailableActions = append(view.AvailableActions, ActionReviewNodePairing, ActionEndAddNode)
-			} else if f := c.scoped.flow; f != nil && c.scopedBusy() {
-				view.AvailableActions = append(view.AvailableActions, ActionRefreshNodePairing, ActionCancelNodePairing)
+			} else if showFlow && !f.CleanupComplete && f.Stage != wire.NodePairTrustScopedACKed {
+				view.AvailableActions = append(view.AvailableActions, ActionRefreshNodePairing)
+				if f.Context != nil {
+					view.AvailableActions = append(view.AvailableActions, ActionCancelNodePairing)
+				}
 				if f.Stage == "REVIEW" && c.scoped.available && c.scopedScopeSessionMatches(f.Scope) {
 					view.AvailableActions = append(view.AvailableActions, ActionApproveNodePairing)
 				}
+			} else if showFlow && f.CleanupComplete {
+				view.AvailableActions = append(view.AvailableActions, ActionReviewNodePairing)
 			}
 		}
 	}
+}
+
+func (c *nativeController) useScopedPairing() bool {
+	return c.state.Transport != nil && c.node.PairTrust == nil && c.nodeConfirmation == nil && c.node.Grant == nil && c.node.Proposal == nil && !c.hasNodePending()
 }

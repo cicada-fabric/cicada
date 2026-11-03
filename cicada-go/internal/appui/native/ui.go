@@ -107,8 +107,6 @@ type view struct {
 	consent              widget.Bool
 	nodeCode             widget.Editor
 	devicePairingCode    widget.Editor
-	nodePairingMode      widget.Clickable
-	legacyNodePairing    bool
 	pairingPoll          nodePairingPollScheduler
 	nodeIdentityConsent  widget.Bool
 	nodeAccessConsent    widget.Bool
@@ -583,7 +581,6 @@ func (v *view) resetPresentationInputs() {
 	v.consent.Value = false
 	v.nodeIdentityConsent.Value, v.nodeAccessConsent.Value = false, false
 	v.nodeReviewID = ""
-	v.legacyNodePairing = false
 	v.pairingPoll.reset()
 	v.pairLabel.SetText("")
 	v.pairBootstrapConsent.Value, v.pairSlotAConsent.Value, v.pairSlotBConsent.Value, v.pairRevokeConsent.Value = false, false, false, false

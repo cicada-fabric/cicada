@@ -10,10 +10,10 @@ func TestDevicePairingInputPreservesCaseAndRejectsOverflow(t *testing.T) {
 		name, input, want string
 		ready             bool
 	}{
-		{"case-preserving", "cicada-npt1.AaZz019_SyNtHeTiC", "cicada-npt1.AaZz019_SyNtHeTiC", true},
-		{"outer-space", " \tcicada-npt1.AaZz019_SyNtHeTiC\r\n", "cicada-npt1.AaZz019_SyNtHeTiC", true},
+		{"case-preserving", "cicada-npt1.AaZz019_SyNtHeTiC", "cicada-npt1.AaZz019_SyNtHeTiC", false},
+		{"outer-space", " \tcicada-npt1.AaZz019_SyNtHeTiC\r\n", "cicada-npt1.AaZz019_SyNtHeTiC", false},
 		{"empty", " \t ", "", false},
-		{"maximum", strings.Repeat("A", devicePairingInputBytes), strings.Repeat("A", devicePairingInputBytes), true},
+		{"maximum", "cicada-npts1." + strings.Repeat("A", devicePairingInputBytes-len("cicada-npts1.")), "cicada-npts1." + strings.Repeat("A", devicePairingInputBytes-len("cicada-npts1.")), true},
 		{"oversized", strings.Repeat("A", devicePairingInputBytes+1), strings.Repeat("A", devicePairingInputBytes+1), false},
 		{"larger-paste", strings.Repeat("A", 2048), strings.Repeat("A", devicePairingInputBytes+1), false},
 		{"byte-limit", strings.Repeat("密", 600), strings.Repeat("密", 600), false},

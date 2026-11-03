@@ -18,10 +18,7 @@ func newDevicePairingEditor() widget.Editor {
 func devicePairingInput(editor *widget.Editor) (string, bool) {
 	code := strings.TrimSpace(editor.Text())
 	limit := devicePairingInputBytes
-	if strings.HasPrefix(code, wire.NodePairTrustCodePrefix) {
-		limit = wire.MaxNodePairTrustCodeBytes
-	}
 	// Keep one overflow rune in the editor so a pasted oversized code cannot
 	// silently become a valid maximum-length code through widget truncation.
-	return code, code != "" && len(code) <= limit
+	return code, strings.HasPrefix(code, wire.NodePairTrustScopedCodePrefix) && len(code) <= limit
 }

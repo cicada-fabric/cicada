@@ -44,7 +44,7 @@ func newLocalCollaborationActor(t *testing.T) *localCollaborationActor {
 	n := newNodeActorFixture(t)
 	f := &localCollaborationActor{t: t, n: n, c: n.c, next: n, available: true, capStatus: 200, pageSize: 1, posts: map[string][][]byte{}, receipts: map[string][]byte{}}
 	f.c.cfg.HTTP = f
-	if err := f.c.Dispatch(context.Background(), Action{Kind: ActionPreviewNode, NodeCode: n.code}); err != nil {
+	if err := legacyFixtureDispatch(f.c, context.Background(), Action{Kind: ActionPreviewNode, NodeCode: n.code}); err != nil {
 		t.Fatal(err)
 	}
 	n.approve(t)

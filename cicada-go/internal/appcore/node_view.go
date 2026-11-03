@@ -290,24 +290,12 @@ func (c *nativeController) nodeActions() []ActionKind {
 		return []ActionKind{ActionRefreshNode}
 	}
 	if p := c.node.Proposal; p != nil && p.Challenge != nil && (c.node.Grant == nil || p.Challenge.Claims.GrantID != c.node.Grant.Claims.GrantID) {
-		if c.nodeProposalReviewable() {
-			actions = append(actions, ActionApproveNode)
-		}
 		// Snapshot may outlive the proof without another publish. Keep the
 		// diagnostic read available when clock decay removes approval.
 		return append(actions, ActionRefreshNode, ActionCancelNodeAccess)
 	}
-	if c.nodeProposalReviewable() {
-		actions = append(actions, ActionApproveNode)
-	}
 	if c.nodeGrantLive() {
 		actions = append(actions, ActionRefreshNode, ActionCancelNodeAccess)
-	}
-	if c.nodeCanReauthorizeStatus() {
-		actions = append(actions, ActionReauthorizeNodeStatus)
-	}
-	if c.nodeCanStartInitial() {
-		actions = append(actions, ActionPreviewNode)
 	}
 	if c.node.Grant != nil && !c.nodeChecked && !c.hasNodePending() && !c.nodeGrantLive() {
 		// A settled historical/cancelled read can require an explicit fresh

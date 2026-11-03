@@ -269,6 +269,13 @@ func (c *nativeController) cancelScopedPairing(ctx context.Context, review strin
 	if f == nil || f.Context == nil || review == "" || review != c.scopedReviewID() || c.scopedPending() || !c.nodeAccountReady() {
 		return ErrInvalidAction
 	}
+	if scopedPairingTerminal(f.Stage) {
+		f.CancelRequested = true
+		if err := c.persistScopedFlow(); err != nil {
+			return err
+		}
+		return c.finishScopedCancellation(ctx)
+	}
 	if !c.scopedScopeSessionMatches(f.Scope) {
 		if err := c.refreshScopedContext(ctx, f.NodeID); err != nil {
 			return err
@@ -279,7 +286,7 @@ func (c *nativeController) cancelScopedPairing(ctx context.Context, review strin
 	if err := c.persistScopedFlow(); err != nil {
 		return err
 	}
-	if err := c.sendScopedNew(ctx, q, f.NodeID, true); err != nil {
+	if err := c.sendScopedNew(ctx, q, f.NodeID, true); err != nil && (c.scopedPending() || !scopedPairingTerminal(f.Stage)) {
 		return err
 	}
 	return c.finishScopedCancellation(ctx)
@@ -293,7 +300,7 @@ func (c *nativeController) finishScopedCancellation(ctx context.Context) error {
 	if f.Stage == wire.NodePairTrustScopedACKed {
 		return nil
 	}
-	if f.Stage != wire.NodePairTrustScopedCancelled && f.Stage != wire.NodePairTrustScopedExpired && f.Stage != wire.NodePairTrustScopedRevoked && f.Stage != wire.NodePairTrustScopedFenced {
+	if !scopedPairingTerminal(f.Stage) {
 		return c.scopedFailure("APP_NODE_PAIRING_UNKNOWN")
 	}
 	if f.Challenge != nil {
@@ -305,23 +312,34 @@ func (c *nativeController) finishScopedCancellation(ctx context.Context) error {
 		if n.Grant != nil && n.Grant.Claims.GrantID == f.Challenge.Claims.GrantID {
 			head = n.Grant.Claims.Scope.HeadVersion
 		}
-		q, err := wire.NewAppNodeScopedCancel(c.nodeSession(), f.NodeID, f.Challenge.Claims.GrantID, head, c.cfg.Now().UTC())
-		if err != nil {
-			return err
+		if !scopedCleanupGrantSettled(n, f.Challenge.Claims.GrantID) {
+			q, err := wire.NewAppNodeScopedCancel(c.nodeSession(), f.NodeID, f.Challenge.Claims.GrantID, head, c.cfg.Now().UTC())
+			if err != nil {
+				return err
+			}
+			if err := c.sendScopedNew(ctx, q, f.NodeID, false); err != nil {
+				return err
+			}
 		}
-		if err := c.sendScopedNew(ctx, q, f.NodeID, false); err != nil {
-			return err
-		}
-		if n.Current == nil || (n.Current.Authority.State != wire.AppNodeScopedCancelled && n.Current.Authority.State != wire.AppNodeScopedExpired && n.Current.Authority.State != wire.AppNodeScopedSessionEnded && n.Current.Authority.State != wire.AppNodeScopedRevoked) {
+		if !scopedCleanupGrantSettled(n, f.Challenge.Claims.GrantID) {
 			return c.scopedFailure("APP_NODE_PAIRING_UNKNOWN")
 		}
 	}
 	f.CleanupComplete = true
+	f.LastError, c.scoped.errorCode = "", ""
 	if err := c.persistScopedFlow(); err != nil {
 		return err
 	}
 	c.publish()
 	return nil
+}
+
+func scopedPairingTerminal(stage string) bool {
+	return stage == wire.NodePairTrustScopedCancelled || stage == wire.NodePairTrustScopedExpired || stage == wire.NodePairTrustScopedRevoked
+}
+
+func scopedCleanupGrantSettled(n *scopedNodeRecord, grant string) bool {
+	return n.Current != nil && n.Current.Authority.GrantID == grant && (n.Current.Authority.State == wire.AppNodeScopedCancelled || n.Current.Authority.State == wire.AppNodeScopedExpired || n.Current.Authority.State == wire.AppNodeScopedSessionEnded || n.Current.Authority.State == wire.AppNodeScopedRevoked)
 }
 
 func (c *nativeController) scopedRecordConfirmed(id string) bool {

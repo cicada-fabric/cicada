@@ -14,9 +14,22 @@ import (
 	"github.com/cicada-ai/cicada/internal/appui"
 )
 
-func (v *view) legacyNodeSection(s appcore.Snapshot) layout.Widget {
+func (v *view) retainedNodeSection(s appcore.Snapshot) layout.Widget {
 	return func(gtx layout.Context) layout.Dimensions {
 		flow := appui.NodeFlow(s)
+		retainedAction := func(a appcore.ActionKind) bool {
+			return a == appcore.ActionRefreshNode || a == appcore.ActionRecoverNode || a == appcore.ActionCancelNodeAccess
+		}
+		if !retainedAction(flow.Primary) {
+			flow.Primary = ""
+		}
+		var secondary []appcore.ActionKind
+		for _, a := range flow.Secondary {
+			if retainedAction(a) {
+				secondary = append(secondary, a)
+			}
+		}
+		flow.Secondary = secondary
 		updating := v.updates.showingProgress(s, time.Now())
 		if updating {
 			flow = appui.NodeSetupFlow{Stage: "bound"}
@@ -60,62 +73,8 @@ func (v *view) legacyNodeSection(s appcore.Snapshot) layout.Widget {
 			rows = append(rows, layout.Rigid(v.labelRow(appui.ErrorText(v.locale, s.Node.ErrorCode))))
 		}
 		switch flow.Stage {
-		case "code":
-			if flow.Notice != "" {
-				rows = append(rows, layout.Rigid(v.labelRow(appui.Text(v.locale, flow.Notice))))
-			}
-			rows = append(rows, layout.Rigid(v.labelRow(appui.Text(v.locale, "node.intro"))), layout.Rigid(v.editorRow(&v.nodeCode, appui.Text(v.locale, "node.code"), false)))
 		case "review", "review-expired":
-			c := s.Node.Candidate
-			reviewKey, scopeKey, consentKey := "node.review", "node.scope", "node.access_consent"
-			if c.StatusOnly {
-				reviewKey, scopeKey, consentKey = "node.review_status", "node.status_scope", "node.status_consent"
-			}
-			rows = append(rows, layout.Rigid(v.headingRow(appui.Text(v.locale, reviewKey))))
-			if flow.Stage == "review-expired" {
-				rows = append(rows, layout.Rigid(v.labelRow(appui.Text(v.locale, flow.Notice))))
-			}
-			for _, field := range []struct{ key, value string }{
-				{"node.name", safeDisplay(c.Name, 128)},
-				{"node.candidate_until", displayNodeTime(c.ExpiresAt)}, {"node.access_until", displayNodeTime(c.AuthorizationExpiresAt)},
-			} {
-				if field.value != "" {
-					rows = append(rows, layout.Rigid(v.labelRow(appui.Text(v.locale, field.key)+": "+field.value)))
-				}
-			}
-			rows = append(rows, layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				if v.nodePinButton.Clicked(gtx) {
-					v.nodePinDetails = !v.nodePinDetails
-					v.window.Invalidate()
-				}
-				style := material.Button(v.theme, &v.nodePinButton, appui.Text(v.locale, "node.fingerprints"))
-				style.Background, style.Color = color.NRGBA{}, v.theme.ContrastBg
-				return style.Layout(gtx)
-			}))
-			if v.nodePinDetails || flow.Consent {
-				for _, field := range appui.NodePublicFields(s, time.Now()) {
-					if field.Key == "node.fingerprint" || field.Key == "node.hub_fingerprint" {
-						rows = append(rows, layout.Rigid(v.publicFieldRow("node/"+field.Key, field)))
-					}
-				}
-			}
-			rows = append(rows, layout.Rigid(v.labelRow(appui.Text(v.locale, scopeKey))))
-			if flow.Consent && !c.StatusOnly {
-				rows = append(rows, layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					if v.busy.Load() {
-						gtx = gtx.Disabled()
-					}
-					return material.CheckBox(v.theme, &v.nodeIdentityConsent, appui.Text(v.locale, "node.identity_consent")).Layout(gtx)
-				}))
-			}
-			if flow.Consent {
-				rows = append(rows, layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					if v.busy.Load() {
-						gtx = gtx.Disabled()
-					}
-					return material.CheckBox(v.theme, &v.nodeAccessConsent, appui.Text(v.locale, consentKey)).Layout(gtx)
-				}))
-			}
+			rows = append(rows, layout.Rigid(v.labelRow(appui.Text(v.locale, "node_pairing.cleanup_body"))))
 		case "account-recovery":
 			rows = append(rows, layout.Rigid(v.labelRow(appui.Text(v.locale, "node.account_recovery"))))
 		case "recovery":
@@ -158,10 +117,7 @@ func (v *view) legacyNodeSection(s appcore.Snapshot) layout.Widget {
 				}
 			}
 		default:
-			key := flow.Notice
-			if key == "" {
-				key = "node.unavailable"
-			}
+			key := "node_pairing.unavailable"
 			rows = append(rows, layout.Rigid(v.labelRow(appui.Text(v.locale, key))))
 		}
 		if flow.Primary != "" {
@@ -260,4 +216,35 @@ func displayNodeTime(value string) string {
 
 func isNodeAction(kind appcore.ActionKind) bool {
 	return kind == appcore.ActionPreviewNode || kind == appcore.ActionApproveNode || kind == appcore.ActionRefreshNode || kind == appcore.ActionRecoverNode || kind == appcore.ActionCancelNodeAccess || kind == appcore.ActionReauthorizeNodeStatus
+}
+
+// This is the current scoped status-only grant review, never legacy enrollment.
+func (v *view) scopedStatusReview(s appcore.Snapshot) layout.Widget {
+	return func(gtx layout.Context) layout.Dimensions {
+		candidate := s.Node.Candidate
+		if candidate == nil || !candidate.StatusOnly {
+			return layout.Dimensions{}
+		}
+		if v.nodeReviewID != candidate.ReviewID {
+			v.nodeReviewID = candidate.ReviewID
+			v.nodeIdentityConsent.Value, v.nodeAccessConsent.Value = false, false
+		}
+		rows := []layout.FlexChild{
+			layout.Rigid(v.headingRow(appui.Text(v.locale, "node.review_status"))),
+			layout.Rigid(v.labelRow(appui.Text(v.locale, "node.status_scope"))),
+			layout.Rigid(v.nodeCaption(appui.Text(v.locale, "node.candidate_until") + ": " + displayNodeTime(candidate.ExpiresAt))),
+			layout.Rigid(v.nodeCaption(appui.Text(v.locale, "node.access_until") + ": " + displayNodeTime(candidate.AuthorizationExpiresAt))),
+		}
+		if hasAction(s, appcore.ActionApproveNode) {
+			rows = append(rows, layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+				if v.busy.Load() {
+					gtx = gtx.Disabled()
+				}
+				return material.CheckBox(v.theme, &v.nodeAccessConsent, appui.Text(v.locale, "node.status_consent")).Layout(gtx)
+			}), layout.Rigid(v.actionButton(appcore.ActionApproveNode, appui.Text(v.locale, "node.authorize_status"), s)))
+		} else {
+			rows = append(rows, layout.Rigid(v.labelRow(appui.Text(v.locale, "node.status_review_expired"))))
+		}
+		return layout.Flex{Axis: layout.Vertical}.Layout(gtx, rows...)
+	}
 }
