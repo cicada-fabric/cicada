@@ -10596,11 +10596,20 @@ HTTP 200 bad receipt and fresh authenticated PENDING/FENCED/ACKED all preserve
 the original attempt and create no archive/new intent. A new local intent
 still waits for fresh Owner approval and the original Node's private ACK.
 
-At this checkpoint's source freeze, the focused race command was **RUNNING**,
-not an aggregate PASS: archive HTTP capture, cancellation and authenticated
-PENDING/FENCED/ACKED subcases had completed without a reported race. Its
-remaining bad-receipt/unavailable subcases and package terminal result belong
-to the subsequent Root QA record. No additional race campaign is authorized.
+The original source-freeze note and `qualification.json` race snapshot saying
+**RUNNING** were stale: the process had already reached **FAIL_TIMEOUT** at
+180.038 seconds. The original receipt/log are retained; `race-result.json`
+explicitly corrects the snapshot. Archive HTTP capture, cancellation and
+authenticated PENDING/FENCED/ACKED plus HTTP 200 bad-receipt subcases completed
+PASS without a data-race warning; UNAVAILABLE had no terminal result.
+Root authorized one separate 120-second run of only that unfinished subcase:
+UNAVAILABLE **PASS**, 32.53 seconds (package 34.884 seconds), no data-race warning
+or skip. No other case was rerun. This does not turn the original command or
+whole matrix into an aggregate race PASS. `race-unavailable-result.json`
+SHA-256 is `30615ca320a209c03d4edcec2c98019300488fc928ba50fa5eb68acffb00dd68`.
+The original timeout's owned 0700 synthetic fixture had no active process file
+reference and was removed; its cleanup receipt and the separate run confirm no
+matching fixture roots remain. No additional race campaign was run.
 
 Evidence is under
 `/home/zyf/Cicada/.local/evidence/v01-node-local-abandon-20261103-01/`:
@@ -10611,9 +10620,54 @@ The receipt binds log hashes, exact final Go file hashes and test results;
 the later commit receipt binds this checkpoint without rewriting old evidence.
 
 Actual new-source CLI/App/private-ACK/service handoff and disposable Docker
-interop are **NOT_RUN by this producer** and remain Root-owned gates. The
-earlier clean `7fa5634` actual service/Docker passes above keep their original
-source attribution. User-device recovery, real native Runtime, Windows
+interop were **NOT_RUN by this producer** at handoff; Root's later gates are
+recorded below. The earlier clean `7fa5634` actual service/Docker passes above
+keep their original source attribution. User-device recovery, real native Runtime, Windows
 DPAPI/ACL/GUI, Android, A/B/MCP and public HTTPS remain **NOT_RUN** for this
 checkpoint. No installed binary, real Node state/service, key or deployment
 was modified; the user's old EXPIRED attempt has not been declared recovered.
+
+### 2026-11-03 Root QA of local INITIAL abandonment checkpoint
+
+Root reviewed and integrated implementation
+`2337f7d80d00fdcd65ee12cf879322373edeea6a`, then tested its clean frozen source.
+The delivered CLI's actual **fresh synthetic INITIAL** passed real TLS Hub
+handler/Store, production App SDK approval, original Node private ACK and local
+binding/pins/native transport persistence. Its isolated real systemd user
+service passed **on/status/off/on/off**, with original identity/credential/
+binding invariants. Result: **SCOPED_PASS**, exit 0, **15.993 seconds, no skip**.
+The user's real Node public-state hash stayed unchanged.
+
+- Actual delivered/executed CLI SHA-256: `5c66d72ca24f4ac5fdf481db5f8667e108d16f1d41e386e892e43f760dc52d96`.
+- Reused harness SHA-256: `fa5cacef98a2b72bae718b2f2b200a9ecfaebf2e548c9b1cb213867a4cd55ca3`, source `7fa56346ad299cff2dd7d82cf4a3cf4d20cce131`. Root's `harness-reuse.json` verifies the Appcore test and all its imported production libraries are unchanged; the external CLI is the new `2337f7d` build.
+- Actual CLI result SHA-256: `3fa6e979e7b27d742cd5649a69db4fe636853c669bd78d863b98d5b03d2a2174`; test-log SHA-256 `30e49ba8d92d454d6d49d0a62227673a8637f6947895632dbf01d9bbf04482ae`.
+- Evidence: `/home/zyf/Cicada/.local/evidence/v01-expired-retry-root-20261103/actual-cli-service/`.
+
+Independent standard-transport disposable **Client Docker interop PASS**, exit
+0, used clean `2337f7d80d00fdcd65ee12cf879322373edeea6a`, source fingerprint
+`205662e6b9684f933504c67677cab1cd72c40dc8553bc969f01a06616831f0a1`.
+Smoke, headless SDK, Owner bootstrap and recovery-fault tests each passed.
+Hub image was `sha256:2278c54bc2f1c02ce52a80f0cb43d9a9d4319595054f489878637bc110534cfe`;
+test image was `sha256:3dc840387dc0abc2be82f0362d5604009045b043351917224e7e1ac0d3f104eb`.
+Owned cleanup is **CONFIRMED**; Root independently verified all three named
+containers, two images and the private scratch directory are absent.
+The Client result under
+`/home/zyf/Cicada/.local/evidence/v01-expired-retry-root-20261103/client-interop/`
+has SHA-256 `49c3833d189e388301d1d919f5d3fb41dd0909f5c8595a967a704f44532449d3`.
+
+Root's final scope review is **SCOPED_PASS / 0** at
+`/home/zyf/Cicada/.local/artifacts/native-ip-complete/run-expired-retry-2337f7d-20261103/evidence/root-scoped-qa-review.json`,
+SHA-256 `81ebbd404ed56ddeaf3a2ee8d2b20f37b23abbcd92cad957625a70f1e390b777`.
+It verifies the producer's 42 deterministic PASS events, delivered/executed
+CLI match, actual service chain, preserved user state, Client interop and exact
+cleanup. The original race timeout and separate missing-case PASS keep their
+individual results above; neither is hidden by this scoped acceptance.
+
+The real CLI test starts a fresh synthetic INITIAL; it does **not** execute the
+user's old expired attempt or natural Hub-GC retirement. That regression keeps
+its separate real Store/fixed-clock and scripted HTTP-refusal producer layers.
+Actual user expired-attempt recovery/first-on remains **NOT_RUN**, user-controlled.
+Windows physical DPAPI/ACL/GUI, real native AI Runtime, Android, A/B/MCP and
+public HTTPS/Hub remain **NOT_RUN** for this checkpoint. Root performed no
+resident deployment. This QA documentation checkpoint reruns no test and
+changes no Go source, installed program, identity, grant or service.

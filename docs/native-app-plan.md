@@ -1142,8 +1142,16 @@ now handles explicit retries when bounded anonymous Hub retention rejects the
 old Poll, under strict no-admission/no-ACK/no-uncertainty checks. It archives the
 exact old sealed bytes, keeps original identities and requires fresh approval
 plus original Node ACK. Local elapsed time/Stage/HTTP errors are not Hub proofs.
-Producer deterministic results and remaining actual CLI/service, Docker and
-user-device limits are [recorded separately](native-app-validation.md#2026-11-03-node-local-abandonment-of-unaccepted-initial).
+Producer deterministic results (11 top-level / 42 terminal PASS), the original
+race FAIL_TIMEOUT and separate missing-case PASS keep their own source in the
+[producer record](native-app-validation.md#2026-11-03-node-local-abandonment-of-unaccepted-initial).
+Root's [clean `2337f7d` QA](native-app-validation.md#2026-11-03-root-qa-of-local-initial-abandonment-checkpoint)
+passes the delivered CLI's fresh synthetic INITIAL/App/private ACK/local-ready
+handoff, real user-service on/status/off/on/off and independent disposable
+Client Docker interop with confirmed cleanup. The actual CLI fixture does not
+exercise old-attempt GC; that regression retains its two producer layers.
+The user's old expired attempt/first-on, Windows and native Runtime remain
+NOT_RUN; the fixture result does not recover the user's original state.
 The Node CLI writes local `ROOT/node-service.json` at mode 0600, retaining the fixed
 executable, original Node/state/MCP/Hub selection. Later on reuses that config
 and rejects drift. The systemd **user transient unit** is scoped by UID/root/ID;

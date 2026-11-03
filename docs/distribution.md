@@ -362,6 +362,18 @@ These synthetic-fixture results do not revive an existing EXPIRED attempt or
 establish the user's real Node readiness. A real expired attempt still needs
 the explicit new-code/Owner-approval flow above, followed by local readiness.
 
+The later [Root verification of `2337f7d`](native-app-validation.md#2026-11-03-root-qa-of-local-initial-abandonment-checkpoint)
+passed the freshly built delivered CLI's synthetic INITIAL, App approval,
+original Node private ACK/local readiness and real isolated user-service
+on/status/off/on/off in 15.993 seconds, no skip. Independent Client Docker
+interop passed all four tests with confirmed owned cleanup. The actual CLI
+SHA-256 is `5c66d72ca24f4ac5fdf481db5f8667e108d16f1d41e386e892e43f760dc52d96`.
+The expired-GC recovery regression is separately qualified by real Store and
+scripted Node HTTP-refusal tests. The original race command remains TIMEOUT;
+only its unfinished UNAVAILABLE case was separately rerun and passed.
+Actual recovery of the user's old expired attempt, physical Windows and real
+native Runtime remain NOT_RUN; no resident deployment was performed.
+
 The unit is `cicada-node-<first-16-bytes-of-SHA256>.service`, with SHA-256 input
 `decimal-effective-UID + NUL + canonical-root + NUL + Node-ID`. The service
 description is `Cicada managed Node <SHA256-of-exact-config-bytes>`;
