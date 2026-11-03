@@ -66,9 +66,12 @@ private code after expiry, approval/private ACK and background Node startup
 after retry. Root independently observed `status=running`, PID `332280`, and
 the exact systemd unit active/running with Result=success from 14:18:28 UTC.
 The first startup's discovery-publication timeout remains a failure; no budget
-fix or new package was needed for the successful retry. App experience is
-deferred; plugin/MCP, A/B and physical Windows acceptance of this package remain
-NOT_RUN. See the [source-bound follow-up](native-app-validation.md#2026-11-03-user-expired-retry-and-background-node-follow-up).
+fix or new package was needed for the successful retry. The next user batch
+on delivered `2337f7d` is **USER_REPORTED_PASS** for A/B registration, both
+communication directions (121 and 74 checks), and continued communication
+after closing App. It does not establish independent traces or broader Windows
+security acceptance. See the [startup follow-up](native-app-validation.md#2026-11-03-user-expired-retry-and-background-node-follow-up)
+and [user A/B batch plus next five-Thread scope](native-app-validation.md#2026-11-03-user-ab-continuation-and-five-thread-order-cli-preparation).
 Use the [short exit index](#current-feedback-and-acceptance-ledger)
 and [current source-bound results](native-app-cross-node-validation.md#current-scopes--2026-10-30).
 
@@ -569,19 +572,79 @@ including legacy/global mutation paths when a shared Principal has wider grants.
 If reuse cannot preserve other Endpoints while enforcing that ceiling, it returns
 conflict/unsupported without changing shared Membership; unknown sources reject.
 
-| Case | Required independent observation | Current status |
-| --- | --- | --- |
-| M1 — G2 exists | Fresh owned Hub with default G1 only; actual App creates named G2 and separately adds exact D after Owner review. An unseen original APPLY is permanently fenced with zero effect; only a new explicit Owner intent may then create G2. Drop committed responses and restart App/Hub; exact original recovery yields one G2/relation, no extra identity/grants. | SCOPED_PASS on actual clean 64927cbe / QtqKRp, 163.92s; all six facts, exact original recovery audit and final four identities validate. |
-| M2 — one Thread, two Groups | Original SID/Endpoint/workspace/key remains identical in G1/G2. Explicit use_group changes current scope; real Cicada ASK/REPLY and receive stay within it, without a new Join or grant. | SCOPED_PASS on actual clean 64927cbe / QtqKRp, 498.61s; all six facts, correlated G1/G2 communication and original four identities validate. |
-| M3 — remove only D-G1 | Actual App removes exact D-G1 with current CAS; A/B/C, shared-principal other Endpoints and D-G2 retain their original authority/key snapshots. Queued D-G1 work fails fresh final Guard. | SCOPED_PASS on actual clean 64927cbe / QtqKRp, 203.30s; all eight facts, exact D-G1 removal, surviving D-G2/others and fresh final native denial validate. |
-| M4 — no automatic resurrection | Runtime: after removal, literal Join, fresh Attempt, warm/cold recovery, old response replay and Node/MCP restart cannot clear deny; pending re-add preserves old deny. Only exact key completion of a new Owner add at the current head can clear it. Verify finite duration binds the original review and retries do not extend it. Separate production Store/crypto deterministic boundary: finite manual expiry never falls back to default. Actual 24-hour expiry remains a distinct NOT_RUN subitem. | SCOPED_PASS on actual clean 64927cbe / QtqKRp, 592.95s; all seven permanent/finite-review/retained-deny facts validate. Historical expired-Current failure retained. Deterministic finite-expiry checks keep their source; actual 24-hour elapsed expiry NOT_RUN. |
-| M5 — independent lifetime | Revoke/expire default policy while D-G2 is manually authorized. Cross the actual lease-renewal boundary, restart Node/MCP and continue exact G2 ASK/REPLY with App closed. Immediate one-send success is insufficient. | SCOPED_PASS on actual clean 64927cbe / QtqKRp, 523.81s; all eight facts and real wall/monotonic lease witness validate (464.217s elapsed), followed by G2 ASK/REPLY with App closed and original Node identity. |
-| M6 — last Group | Remove D's final relation; preserve original key, native Thread/history, Endpoint/workspace and running Node, with zero Group rights. New explicit Owner add cannot substitute an identity/key. | SCOPED_PASS on actual clean 64927cbe / QtqKRp, 209.68s; all six facts, zero business rights with retained original identity/history and explicit same-identity re-add validate. Historical d4566fcd M6 ticket failure remains retained. |
-| M7 — real authority revocation | Independently revoke actual Owner key and Node binding/key; all dependent sources/Groups deny new work, including cold recovery. App closure is not this revocation. | SCOPED_PASS on actual clean 64927cbe / QtqKRp, 1265.82s; all six facts from independent Owner-key and Node-binding/key revocations, cold refusal and final native denial validate. |
-| M8 — retained operations | Old request/reply/selection/outbox cannot borrow surviving Group, Network or Link authority. Original exact read recovery remains distinct from authorized redispatch; same-ID changed bytes conflict. | SCOPED_PASS on actual clean 64927cbe / QtqKRp, 313.32s; all six exact original-scope/outbox/read-versus-redispatch facts validate. Runs after M3/M4/M6 and before separate M7 baselines; final original-four witness validates. |
-| Security: Guard ceilings and historical expiry | Managed Endpoint five-right ceiling, shared-Principal/Network and legacy/global Leave denial; finite expiry cannot fall back to default. | QtqKRp M3 validates all eight facts; wider historical HTTP/Store/crypto checks retain their exact sources below. Actual 24-hour expiry NOT_RUN. |
-| Security: scoped evidence rejection and recovery | Original native/Owner registration trust, scope/key/head-digest corruption, refused/changed issuer evidence, pending-write fences, immutable recovery and same-ID changed body. | Source-bound producer and QA SCOPED_PASS only, including seven-input normal/focused race/Docker and exact retired-read/conflict checks. These do not establish all adversarial Hub/App/Runtime routes. |
-| Security: attributed negatives and remaining bounds | Independent two-handle ADD/REMOVE same-CAS competition and authenticated TCP wrong Node/Network/Group refusals; producer trust, review, foreign Owner, mixed profile and DTO checks retain their exact source attribution. | Independent checks SCOPED_PASS on dirty 303639d; historical producer checks have bounded byte/function attribution. These independent controls alone do not infer additional enrollment, maximum 32-active/64-row carrier stress or portable schema-69 restore success; the later full QtqKRp scope is separately accepted. See [the exact security handoff](native-app-validation.md#2026-10-29-independent-security-checks-and-producer-continuation-handoff). |
+The next user scene on delivered `2337f7d` uses these same M1–M8 items in
+five batches; **every next-scene item is NOT_RUN**. Earlier `64927cbe` Runtime
+results in the existing status column remain attributed to that execution.
+The two-Thread user registration/121/74/App-close PASS does not qualify this
+five-Thread scene.
+
+The business deliverable is an **order-fulfillment and inventory-reconciliation
+CLI** covering duplicate events, out-of-order events, partial shipments,
+cancellation, insufficient stock and an audit trail. Advisor coordinates
+requirements, cross-worker questions and review. Worker-Data owns event/data
+definitions and fixtures; Worker-Core implements the CLI and state transitions;
+Worker-QA owns independent expected results and boundary/regression checks;
+Worker-Delivery owns integration, repeatable CLI usage and delivery. These are
+task assignments, **not Guard-enforced Advisor/Worker roles** or authority to
+approve their own Group access. Actual findings and work transfer use the
+authorized ASK/SEND/REPLY paths; local code/files are not Cicada Task/Artifact
+records.
+
+Use five new actual Codex Threads for these roles; the original A/B remain a
+comparison outside the new Fulfillment Group. The five registrations may
+already have default G1: manual Fulfillment/Audit additions do not replace it.
+If A/B share G1, communication there is authorized and is not evidence of a
+cross-Group escape. Read the exact selected Group for every observation. All
+business assignment, questions, results and review use actual Cicada
+communication; Codex TUI cross-thread dispatch does not substitute for it.
+
+Root prepared only an empty acceptance-project Git baseline
+`0841a672fae0f540513067078e922e61231f1515` at
+`~/.cicada/acceptance/group5-order-audit/project`, plus linked worktrees
+`worktrees/{data,core,qa,delivery}`. This baseline is separate from Cicada
+product source `2337f7d`; Root wrote no project code/docs and changed no real
+Group authority or service. Preparation evidence is
+`.local/evidence/group5-order-audit-20261103/setup.json` (full reference in validation).
+
+Batch 1 is original-Thread registration and App-reviewed Group setup; batch 2
+is actual four-way work, contacts, requests/progress/replies and App-close
+continuation; batch 3 is explicit multi-Group selection and scope refusal;
+batch 4 is exact relation removal/last-Group/re-add; batch 5 is original-context
+cold recovery and independent source lifetime. Until-revoked/1/7/30-day choices
+can be inspected without claiming natural expiry; the actual 24-hour boundary
+stays separate. Broad Owner/Node key revocation requires a dedicated isolated
+fixture and separate explicit authorization; it is not part of the live
+business exercise and must not alter the current deployment's Root/keys.
+The current profile grants only directory.read and message
+ask/receive/reply/send. Journal, Discussion, Group Space/history, Task/handoff,
+Artifact, broadcast, Link, regroup/topology and representative/role-management
+tools are unavailable under it, even if the global tool catalog lists them.
+MCP whitelist and Store Guards independently enforce that ceiling. Contacts
+forms require Host support; ASK/SEND can use a fresh selection reference,
+whereas REPLY retains the original request route. Groups are communication
+scopes, not isolation of a Thread's retained plaintext memory.
+
+| Case | Required independent observation | Existing source-bound status | Next delivered five-Thread scene |
+| --- | --- | --- | --- |
+| M1 — G2 exists | Fresh owned Hub with default G1 only; actual App creates named G2 and separately adds exact D after Owner review. An unseen original APPLY is permanently fenced with zero effect; only a new explicit Owner intent may then create G2. Drop committed responses and restart App/Hub; exact original recovery yields one G2/relation, no extra identity/grants. | SCOPED_PASS on actual clean 64927cbe / QtqKRp, 163.92s; all six facts, exact original recovery audit and final four identities validate. | NOT_RUN — batch 1: App creates named Fulfillment and Audit Groups and separately adds the original five Threads; key readiness must complete. No fault/restart result inferred. |
+| M2 — one Thread, two Groups | Original SID/Endpoint/workspace/key remains identical in G1/G2. Explicit use_group changes current scope; real Cicada ASK/REPLY and receive stay within it, without a new Join or grant. | SCOPED_PASS on actual clean 64927cbe / QtqKRp, 498.61s; all six facts, correlated G1/G2 communication and original four identities validate. | NOT_RUN — batches 2–3: four ASK/SEND/REPLY workstreams; Advisor plus QA/Delivery also use Audit, preserving original identities and explicit Group selection. |
+| M3 — remove only D-G1 | Actual App removes exact D-G1 with current CAS; A/B/C, shared-principal other Endpoints and D-G2 retain their original authority/key snapshots. Queued D-G1 work fails fresh final Guard. | SCOPED_PASS on actual clean 64927cbe / QtqKRp, 203.30s; all eight facts, exact D-G1 removal, surviving D-G2/others and fresh final native denial validate. | NOT_RUN — batch 4: remove Delivery only from Fulfillment; Audit and Data/Core/QA relations keep their exact authority. |
+| M4 — no automatic resurrection | Runtime: after removal, literal Join, fresh Attempt, warm/cold recovery, old response replay and Node/MCP restart cannot clear deny; pending re-add preserves old deny. Only exact key completion of a new Owner add at the current head can clear it. Verify finite duration binds the original review and retries do not extend it. Separate production Store/crypto deterministic boundary: finite manual expiry never falls back to default. Actual 24-hour expiry remains a distinct NOT_RUN subitem. | SCOPED_PASS on actual clean 64927cbe / QtqKRp, 592.95s; all seven permanent/finite-review/retained-deny facts validate. Historical expired-Current failure retained. Deterministic finite-expiry checks keep their source; actual 24-hour elapsed expiry NOT_RUN. | NOT_RUN — batch 4: old deny survives local rejoin/cold resume and pending re-add; only exact new completion clears it. Inspect duration deadlines; actual 24-hour expiry stays NOT_RUN. |
+| M5 — independent lifetime | Revoke/expire default policy while D-G2 is manually authorized. Cross the actual lease-renewal boundary, restart Node/MCP and continue exact G2 ASK/REPLY with App closed. Immediate one-send success is insufficient. | SCOPED_PASS on actual clean 64927cbe / QtqKRp, 523.81s; all eight facts and real wall/monotonic lease witness validate (464.217s elapsed), followed by G2 ASK/REPLY with App closed and original Node identity. | NOT_RUN — batch 5: App-close continuation, original Thread/MCP cold resume and actual lease renewal; independently authorized manual Group survives default-source withdrawal. Full historical Node-restart gate is not inferred. |
+| M6 — last Group | Remove D's final relation; preserve original key, native Thread/history, Endpoint/workspace and running Node, with zero Group rights. New explicit Owner add cannot substitute an identity/key. | SCOPED_PASS on actual clean 64927cbe / QtqKRp, 209.68s; all six facts, zero business rights with retained original identity/history and explicit same-identity re-add validate. Historical d4566fcd M6 ticket failure remains retained. | NOT_RUN — batch 4: fresh complete listing of QA's active relations includes default G1 and manual Groups. Remove only QA edges until its actual final relation; groups is empty and business denies, while other Threads remain unchanged. Preserve original identity/history and explicitly re-add it. |
+| M7 — real authority revocation | Independently revoke actual Owner key and Node binding/key; all dependent sources/Groups deny new work, including cold recovery. App closure is not this revocation. | SCOPED_PASS on actual clean 64927cbe / QtqKRp, 1265.82s; all six facts from independent Owner-key and Node-binding/key revocations, cold refusal and final native denial validate. | NOT_RUN — requires a dedicated isolated fixture and separate explicit authorization; no current real Root/Owner/Node key revocation in this business exercise. |
+| M8 — retained operations | Old request/reply/selection/outbox cannot borrow surviving Group, Network or Link authority. Original exact read recovery remains distinct from authorized redispatch; same-ID changed bytes conflict. | SCOPED_PASS on actual clean 64927cbe / QtqKRp, 313.32s; all six exact original-scope/outbox/read-versus-redispatch facts validate. Runs after M3/M4/M6 and before separate M7 baselines; final original-four witness validates. | NOT_RUN — batches 2–5: request status/cancel, stale contact/selection after scope change and original-scope recovery; exact outbox retry only for an actually observed uncertain original. |
+| Security: Guard ceilings and historical expiry | Managed Endpoint five-right ceiling, shared-Principal/Network and legacy/global Leave denial; finite expiry cannot fall back to default. | QtqKRp M3 validates all eight facts; wider historical HTTP/Store/crypto checks retain their exact sources below. Actual 24-hour expiry NOT_RUN. | NOT_RUN for the delivered five-Thread scene; existing independent security evidence retains its original source/scope. |
+| Security: scoped evidence rejection and recovery | Original native/Owner registration trust, scope/key/head-digest corruption, refused/changed issuer evidence, pending-write fences, immutable recovery and same-ID changed body. | Source-bound producer and QA SCOPED_PASS only, including seven-input normal/focused race/Docker and exact retired-read/conflict checks. These do not establish all adversarial Hub/App/Runtime routes. | NOT_RUN for the delivered five-Thread scene; existing independent security evidence retains its original source/scope. |
+| Security: attributed negatives and remaining bounds | Independent two-handle ADD/REMOVE same-CAS competition and authenticated TCP wrong Node/Network/Group refusals; producer trust, review, foreign Owner, mixed profile and DTO checks retain their exact source attribution. | Independent checks SCOPED_PASS on dirty 303639d; historical producer checks have bounded byte/function attribution. These independent controls alone do not infer additional enrollment, maximum 32-active/64-row carrier stress or portable schema-69 restore success; the later full QtqKRp scope is separately accepted. See [the exact security handoff](native-app-validation.md#2026-10-29-independent-security-checks-and-producer-continuation-handoff). | NOT_RUN for the delivered five-Thread scene; existing independent security evidence retains its original source/scope. |
+
+The proposed message-injection simplification is **presentation-only /
+NOT_IMPLEMENTED / NOT_RUN**: show body, message type, request_id, exact
+unambiguous Group scope and one short untrusted-data notice. Message/receiver
+IDs and cryptographic details remain in backend evidence; wire signatures,
+deduplication and all Guards stay unchanged. Nickname display must not add an
+extra RPC for every message; multiple-Group scope must remain clear. The user
+A/B PASS above does not qualify this planned display change.
 
 Use deterministic Store/Node tests and a disposable Docker actual App/Hub/Node
 gate, then genuine four-Thread Runtime A/B/C/D. Codex TUI task dispatch does not
@@ -1172,9 +1235,10 @@ durable publication currently shares the consumer's 3-second budget, while
 `on` has an 8-second readiness window. A publisher following Node-parent
 cancellation and a separate bounded startup window remain **NOT_IMPLEMENTED /
 CONTROLLED_REPRO_NOT_RUN**; no budget code, new test or package was made in
-this follow-up. The root cause of the first timeout is unproven. App experience
-is deferred; this package's plugin/MCP, A/B, Windows and native Runtime
-acceptance remain NOT_RUN.
+this follow-up. The root cause of the first timeout is unproven. The later user
+[A/B registration, both message directions and App-close continuation](native-app-validation.md#2026-11-03-user-ab-continuation-and-five-thread-order-cli-preparation)
+are USER_REPORTED_PASS on delivered `2337f7d`. Independent replay, the next
+five-Thread Group scene and broader Windows/security acceptance remain NOT_RUN.
 The Node CLI writes local `ROOT/node-service.json` at mode 0600, retaining the fixed
 executable, original Node/state/MCP/Hub selection. Later on reuses that config
 and rejects drift. The systemd **user transient unit** is scoped by UID/root/ID;

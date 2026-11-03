@@ -10713,10 +10713,83 @@ before any Go or test edit: **CONTROLLED_REPRO_NOT_RUN / NOT_IMPLEMENTED**.
 The existing lifecycle plan retains this narrow item; no new taskbook, package,
 public protocol or authorization change was introduced.
 
-App experience is deferred to later user feedback. Plugin/MCP, A/B, physical
-Windows and real native Runtime acceptance **for this delivered-package
-follow-up** remain **NOT_RUN**; prior accepted Runtime scopes keep their source
-attribution. Root continues the separate plugin acceptance guidance. This
+At that observation, App experience and this package's plugin/MCP, A/B,
+physical Windows and native Runtime acceptance remained NOT_RUN; the later
+user A/B report is recorded below, separately from independent execution and
+older accepted Runtime scopes. Root continues the separate plugin acceptance guidance. This
 documentation checkpoint records user reports and Root's read-only local
 observations, runs no new test, and changes only this validation and the
 existing plan.
+
+### 2026-11-03 User A/B continuation and five-Thread order CLI preparation
+
+On delivered source `2337f7d80d00fdcd65ee12cf879322373edeea6a`, the user reported
+**PASS** for A/B registration, both directions of communication (checks 121 and
+74), and continued communication after closing the App. Record each as
+**USER_REPORTED_PASS**. These reports add to the earlier new-code/private-ACK
+and background-startup observations; the first discovery-publication timeout
+and all historical failures remain recorded. This producer did not replay the
+real exchanges, inspect private message bodies or run another test. App window
+closure is not logout, key revocation or a proof of every permission lifetime.
+This report does not qualify independent native-consumption traces, physical
+Windows DPAPI/ACL/security, or the next five-Thread scenario.
+
+The next user scene is **NOT_RUN** and extends the existing
+[M1–M8 matrix](native-app-plan.md#owner-managed-group-relations-integrated-implementation-acceptance-incomplete),
+with no new taskbook. It builds an order-fulfillment and inventory-reconciliation
+CLI covering duplicates, out-of-order events, partial shipments, cancellation,
+insufficient inventory and an audit trail. Advisor coordinates and reviews;
+Data, Core, QA and Delivery own the four workstreams. These names express task
+assignments, not Guard-enforced roles or additional privileges.
+
+The next actors are five new actual Codex Threads, with the original A/B kept
+outside the new Fulfillment Group as a comparison. Registration may initially
+grant default G1 as well: shared-G1 A/B communication is authorized and does
+not prove a cross-Group escape. Every scope observation must name its selected
+Group. Before M6, obtain a fresh complete list of QA's active relations,
+including G1 and any manual groups, and remove only QA's edges individually
+until the actual final relation is gone. Require an empty groups result and
+business refusal while other Threads retain their own authority; removing
+only manual groups cannot establish zero Group rights. This remains NOT_RUN.
+All business coordination/results/review must travel through Cicada; Codex TUI
+cross-thread dispatch is not communication evidence.
+
+Root prepared only isolated Git metadata and linked worktrees: empty project
+baseline `0841a672fae0f540513067078e922e61231f1515`, Advisor at
+`~/.cicada/acceptance/group5-order-audit/project`, and four Worker worktrees at
+`~/.cicada/acceptance/group5-order-audit/worktrees/{data,core,qa,delivery}`.
+This project baseline is distinct from the Cicada product revision. Root wrote
+no project code/docs and changed no real Group authority, service or deployment.
+Preparation receipt:
+`/home/zyf/Cicada/.local/evidence/group5-order-audit-20261103/setup.json`,
+SHA-256 `4c5ea2fbeb5cc66add47500b2ad19c25a3148fa16bcf67593cc3a60fc75fc550`.
+Git preparation is not registration, approval, business implementation or PASS.
+
+Read-only capability review confirms `OWNER_ENDPOINT_GROUPS_V1` grants exactly
+directory.read and message.ask/receive/reply/send. App empty-Group creation and
+exact add/remove, duration choices, explicit multi-Group selection, original
+identity recovery and scoped communication are the available test surfaces.
+Journal, Discussion, Group Space/history, Task/handoff, Artifact, broadcast,
+Link, regroup/topology and representative/role-management tools remain outside
+this profile. The MCP whitelist (`endpoint_groups_mcp.go:249`), actual dispatch
+(`mcp.go:429`) and Store source Guard (`hub_endpoint_groups_guards_v1.go:89`)
+enforce the ceiling independently; the global tool catalog grants nothing.
+The existing Guard-negative fixture explicitly includes task.create/claim/
+submit, artifact.read and space.read. Ordinary project files or messages must
+not be counted as Task/Artifact/Journal feature acceptance.
+
+All next-scene batches remain NOT_RUN: Group setup; four-way business work and
+contacts/status/cancel; multi-Group selection and stale-scope refusal; precise
+removal/last-Group/re-add; original-context recovery and independent lifetime.
+Natural 24-hour expiry and broad Owner/Node authority revocation remain separate
+unrun gates. M7 requires a dedicated isolated fixture and additional explicit
+authorization; the live business scene must not revoke current real Root,
+Owner or Node keys. No real authorization or service was changed for this planning.
+
+Message-injection trimming is **PLANNED / NOT_IMPLEMENTED / NOT_RUN**, limited
+to display of body/type/request_id/exact Group scope and one untrusted-data
+notice. Message/receiver IDs and crypto details remain in backend evidence;
+wire signatures, deduplication and Guard checks are not reduced. No extra
+per-message RPC is planned just to fill nicknames, and multi-Group scope must
+stay unambiguous. No injection frame, Go code or package changed in this
+documentation checkpoint; the user A/B PASS does not qualify the proposed UI.
