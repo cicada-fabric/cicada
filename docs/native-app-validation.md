@@ -9483,6 +9483,7 @@ Hub、Owner/App、Node 和协作授权。它不再是旧安装的保留身份更
 | 本批项目 | 当前状态与证据范围 |
 | --- | --- |
 | Hub 绑定 | **USER_REPORTED_PASS**：总控转述用户已确认绑定成功；本次文档没有独立复跑 |
+| 本批 Node 配对恢复 | **USER_REPORTED_FAIL**：EXPIRED / stale APP_NODE_PAIRING_UNKNOWN、targets Locked 且无操作按钮；后续限定修复与新回归见本文末尾记录，不抹去先前 Hub 绑定报告 |
 | gpu1 本地 Codex | 总控已观察本地 `codex --version` 为 **0.166.0**；这是版本信息，不是 native Runtime 验收通过 |
 | gpu1 Cicada 安装清理 | Hub 执行线程已完成；总控 26 项独立复核 **PASS_READY_FOR_USER_MANUAL_INSTALL**，未代装、未启动 |
 | gpu1 用户手动安装与 Node 启动 | **NOT_RUN**；下一步由用户从已传输的原始 ZIP 手动安装 |
@@ -10076,3 +10077,235 @@ compiled test SHA-256
 `a7656eb9d5604ed25e66ca79bc0fe7e7ab38448e80897dc2bf55dadeb43d5382`.
 Container absent, remaining state files 0, **Runtime NOT_RUN** and native
 Threads/model calls 0. No new validation matrix or driver was added.
+
+### 2026-11-03 scoped pairing terminal recovery preparation
+
+Root assigned the bounded remediation on clean base `0f465b3`, task branch
+`task/v01-pairing-recovery-qa`. No new remediation tests, builds, package or
+physical execution have run at this preparation point. Integrated execution
+waits for Root's synchronized App/Hub commit, not uncommitted producer state.
+
+The new physical observation remains **USER_REPORTED_FAIL**: the user's App
+showed EXPIRED / “This pairing has ended”, APP_NODE_PAIRING_UNKNOWN text,
+targets Locked and no operation button. Root supplied these public deadline
+facts: approve-before `2026-11-03T07:09:53.217219916Z`, code/context deadline
+`2026-11-03T07:14:08.594768084Z`, and Hub date `2026-11-03T07:14:24Z`.
+The earlier approval deadline can explain an expired state; it does not establish
+which event caused the observed failure. Root's source review found that an
+unclean terminal scoped flow remains busy and Core still permits Refresh/Cancel,
+while the UI ended branch offers only Review, leaving no rendered action.
+This is a source-review explanation to test, not an independently reproduced
+RED result. No private code, token, proof or packet is included in this record.
+
+The required transition and twelve-case matrix are in the
+[existing App plan](native-app-plan.md#scoped-pairing-terminal-recovery-matrix--2026-11-03).
+Original recovery must remain reachable until the original authenticated result
+and cleanup settle; only then may explicit new-code review become reachable.
+ACKED must preserve its original binding, and account relogin cannot renew an
+old consent or create Root/business authority. Current pairing must not
+automatically fall back to legacy parsing, UI or protocol. Hub owns that change
+in its existing contract; this record does not retire general account/wire APIs.
+
+Driver inspection found these reuse boundaries:
+
+| Existing path | Reuse / execution boundary |
+| --- | --- |
+| `cicada-go/internal/appcore/node_scoped_http_test.go` | Preferred CURRENT real TCP/TLS Hub handler, genuine PQ identities/proofs/envelopes, persistent Hub SQLite/encrypted App vault, Node SDK actors, original-response loss and Controller/vault reopen helpers. It is SDK/Core integration, not a native Node/physical Runtime claim. Producer test files stay owned by App. |
+| Existing Core/appui/native pairing tests | Use the exact producer RED→GREEN and action projection selectors. Add `node_pairing_v01_recovery_qa_test.go` only for a missing independent critical assertion; do not duplicate a new test framework. |
+| `scripts/test-client-hub-interop.sh --suite client` | Required once after Root sync, owned by QA. Existing selectors are `TestClientDockerHub(Smoke\|RecoveryFixture\|HeadlessOperator\|OwnerBootstrap)`; labeled fresh Hub/setup/test containers, random loopback port, image digests and exact cleanup remain authoritative. |
+| `scripts/test-native-pair.sh --node-pair-trust` and direct-IP/native fixtures | Historical reuse research only. Their full lanes require old literal-Join/UserPromptSubmit and native consumers; do not re-enable them or migrate the framework for this bounded fix. Existing scoped code capture/child processes are not required for the narrowed gate. |
+| `scripts/test-native-app-n2.sh` / full foundation/native lanes | Existing evidence remains attributed to its source. Do not run a broad N2/M1/C1/NPT/Windows build suite as a substitute for the scoped regression. |
+
+Known Core reuse selectors include
+`TestScopedAppRealTLSLostAuthorityResponseRetainsOriginalAcrossRestart`,
+`TestScopedAppRealTLSLostACKReadRestoresExactReceiptAndSelection`,
+`TestScopedAppRealTLSSavedReviewRequiresRefreshAndNewConsent`,
+`TestScopedAppRealTLSApprovedNodeACKNeedsNoOnlineApp` and
+`TestScopedAppRealTLSExplicitFalseMetadataNeverCreatesSecretPOST`.
+The terminal cleanup, stale-error, account-expiry and no-legacy producer names
+will be pinned from the delivered patches before execution; no test-count or
+PASS claim is inferred from a proposed selector.
+
+Producer handoff subsequently identified
+`TestScopedAppRealTLSFinishPairingRecoversOriginalGrantCancel`,
+`TestScopedAppRealTLSTerminalSnapshotOffersFinishAndACKWins`, and portable UI
+`TestPairingCleanupMustPrecedeNewCode`. QA does not duplicate those producer
+cases or the separate FENCED-versus-terminal correction. Root approved one
+combined independent test in
+`internal/appcore/node_pairing_v01_recovery_qa_test.go`:
+`TestV01ScopedNaturalExpiryReloginRetainsSelectedNodeAndNewCode`.
+It reuses the CURRENT real-TLS fixture: A is genuinely ACKed, B starts with a
+valid signed 75-second SDK limit and naturally crosses its authenticated
+approval deadline, then the Hub/App must report EXPIRED. No Stage, persistent
+deadline or pairing clock is modified. A local account-expiry Snapshot
+projection is explicitly separate; the real Logout/Login and vault reopen then
+must recover the same lost-cleanup packet/body/GrantID/request/attempt, one
+durable cryptographically verified receipt and once-only cancellation. Selected
+A must remain intact, old B must not hide it, and an explicit new-code review
+must not admit that new Node or grant business rights. This source is prepared,
+not yet an executed RED/GREEN claim; App may perform Root-authorized controlled
+trial before the formal integrated gate.
+
+The first App-controlled QA trial used the earlier 45-second helper, file SHA
+`f3bfa148e281f7f0c4d22c124dadb6aa541ab32fea9bacac5c7c8a66b9c27c93`.
+It failed before expiry at the Node Start HTTP 403, in 8.41 seconds; the log is
+`~/Cicada/.local/evidence/n2-app/pairing-flow-20261103/qa-natural-expiry.jsonl`.
+This is a retained fixture failure, not the product RED or a deadline result:
+`startNodeControlKeyRequestTx` requires at least one minute after server time.
+QA corrected only its signed request to 75 seconds with transport margin and
+kept the production lifetime rule unchanged. App then reported the corrected
+`da46b7fb8f92ccac42a791a459d036ddef860a8f36abdd940df2c04aead9e3de`
+overlay PASS in about 89 seconds on its pre-f8 `0f465b3` base plus App dirty
+source. Only the raw log, exact QA overlay and partial App source snapshots were
+retained for that trial, not a complete compiled-source manifest; it cannot be
+upgraded to a final/f8 source qualification. Its raw log
+`qa-natural-expiry-75s.jsonl` in the same producer evidence
+directory has SHA-256
+`928a087085596391ebd087e2760269fea397e9fda47ab5d6125e90bf3edd7828`.
+This is an App-controlled trial, not formal QA at the final integrated source.
+QA preserved both exact fixture versions and original log references in
+`~/Cicada/.local/evidence/v01-pairing-recovery-qa/preparation-20261103-1m2dnthe/preparation-receipt.json`,
+SHA-256 `db30d224ca7e390096145c59b088970fb9a88ef53f1a57d0980cc951ce3dea37`.
+The old 45-second failure remains FIXTURE_FAIL, not the product RED.
+
+App also supplied the actual portable baseline RED, so QA does not rerun a
+duplicate baseline experiment: `red-ui.jsonl` and `red-ui-overlay.json` in the
+same producer directory. The Go overlay replaces only `internal/appui/node_pairing.go`
+with the old `0f465b3` source; QA independently confirmed the saved file's Git
+blob equals that baseline's `17cb11871f33f89ece2aac8415d5578bca0e7ba3`.
+`TestPairingCleanupMustPrecedeNewCode` runs and fails its assertion for EXPIRED
+with the ended projection and missing Primary. This is a real assertion RED,
+not a compile failure. It is portable UI evidence, not a Windows rerun or a
+proof of the physical incident's complete trigger sequence. The same current
+UI target remains part of the minimal final-source GREEN checks.
+
+Hub's final delivered checkpoint is `817f04e99e44e10f9cc50eda16db16609eb35d4e`,
+pending Root integration; it supersedes the unpublished producer `3b492bd`
+with its preserved source/receipt mapping. Its supplied selectors are
+`^TestNodePairScoped.*$` in `cmd/cicada`,
+`^TestNodePair(CurrentOnlyPublicAdmission|TrustScopedRealTLSTwoNodesOwnerApprovalACKAndOriginalReceipt|TrustRetiredRealTLSPublicOperationsReject)$`
+in `internal/server`, and
+`^Test(NodePairTrustScoped.*|NodePairTrustClosedContractInventory|NodePairTrustIndependentCodeCapsuleACKAndOriginalPacket)$`
+in `internal/hubaccountwire`. Retired public NPT1 POSTs expect 410; historical
+positive HTTP tests are not used to demand fallback. The producer supplied its
+retirement qualification SHA-256
+`e63311baf1da7b34a448711da801e3635c62cf973c6c5bf9ddfd07f947e10ef9`;
+its 42 top-level / 102 pass events are producer evidence, not a QA run.
+These delivered selectors have not been run by QA at this preparation point.
+
+Resources are task-isolated under `~/Cicada/.local` with fresh state/evidence/
+output. Focused Go checks use pinned Go 1.27.3 bookworm, UID1000, network-none,
+3 CPU / 3 GiB / 256 PID, readonly source/modules and an exclusively written task build cache.
+The existing client interop instead keeps its pinned Go 1.27.3 Alpine builder
+and Alpine runtime, 2 CPU / 3 GiB / 256 PID test container, host-network access
+to its new loopback-only Hub and private `/tmp/go-build`. Builder dependencies
+are inside isolated image layers; no shared host dependency cache is mounted
+writable. `CICADA_INTEROP_OUTPUT` selects QA's unique evidence directory.
+No shared development Hub, resident/public state or public deployment is used.
+
+Preserve the original USER_REPORTED_FAIL and all historical PASS/FAIL receipts.
+The delivered `9b6ec2c` package, helper `42b4052`, full Runtime actual `64927cbe`
+and cross Runtime actual `d4884a5` keep their original source/binary attribution.
+Any new build or check gets its own actual source/hash/exit/cleanup record;
+portable controlled-clock expiry is not natural elapsed-time acceptance.
+New Windows GUI/DPAPI/ACL/IME and physical Runtime are **NOT_RUN** until executed.
+
+### 2026-11-03 frozen pairing recovery independent acceptance
+
+**SCOPED_PASS / 0**, on Root's frozen integrated
+`873a3904b11614f47a93201684752e0b54a7bea6`. Hub `817f04e` is integrated via
+`f8c5fb9`; App's final delivery is `873a390`. The Go run additionally includes
+this branch's sole QA test and pending documentation, so it is explicitly a
+dirty-source test build. Client interop uses Root's separate clean detached
+`v01-current-package-873a390` worktree. Neither is execution of the delivered
+Windows/CLI package. Only the following two Go targets and one client Docker
+suite were run; earlier producer normal/race/Context results remain separate.
+
+| Executed target | Result / scope |
+| --- | --- |
+| `TestV01ScopedNaturalExpiryReloginRetainsSelectedNodeAndNewCode` | PASS / 0, 90.51s. The signed 75-second B attempt naturally crosses its original approval deadline; measured wait 72082ms, authenticated EXPIRED. Exact committed-but-lost cleanup survives real Logout/Login and encrypted vault reopen; one original packet/body/grant/request/attempt and one authentic SQLite receipt settle once. Original selected A, keys and counters survive. Explicit C review adds no binding/management authority. |
+| `TestPairingCleanupMustPrecedeNewCode` | PASS / 0. Same portable UI target as the retained baseline assertion RED; terminal/expired saved review exposes cleanup, original recovery takes precedence, and settled cleanup permits explicit new-code entry. This is not a physical GUI run. |
+| Existing client Docker interop | PASS / 0, 557.067s including image build. Smoke, RecoveryFixture, HeadlessOperator and OwnerBootstrap all PASS: four top-level tests, seven pass events, zero fail/skip. Full Hub-pin rejection and exact enrollment/packet recovery retain this suite's protocol scope. |
+
+Task evidence roots under `~/Cicada/.local/evidence/v01-pairing-recovery-qa/`:
+
+- `tagged-20261103T083402Z-2_2795nv/acceptance-result.json` — combined bounded
+  receipt, SHA-256 `9db6fa7e7629b85b2a6ebb39148d697c41ae3eba908ce9b0ec8751ce94872db0`.
+- In that same directory, `reviewed-result.json` — Go SCOPED_PASS / 0,
+  SHA-256 `d2c7e5ae86deaf2386ef3ac63ec76a8c87c44f88753c539ba25159e37478fa6d`.
+  Source before/after are identical, SHA-256
+  `5dd59b95f775ba376d8a15640ecce0a8bafabaf492b30c47e4acf7e6f3c7b47f`.
+  The final QA file SHA-256 is
+  `ed87be13fc71cafd27636f230a684f7e9c131dbc43907ff0fc507274f3ccfffc`.
+- `formal-20261103T082838Z-3mo1u82p/client-interop/result.json` — client PASS / 0,
+  SHA-256 `3d31503695fc59b3d0af1e4a6b7799e5dc84f790eeb766d225c884c15e635022`.
+  Its clean-source before/after SHA-256 is
+  `2d0123b4e849f857806048638d52f3aa05b439149d7bfaee714e2a114c18b0c6`.
+  Source fingerprint is
+  `94e90f01d2bec6b0f93604486aafeeb658e7946393cba92f1f9ae601ccbb883a`.
+  `cleanup.json` SHA-256 is
+  `64a13eca270258f4091e385304b68fbbec928db662021c21868f2fb4bc2b4a56`:
+  CONFIRMED, three containers, two task image references and private scratch
+  independently rechecked EXACT_ABSENT.
+
+Actual independent test artifacts are under the matching task names in
+`~/Cicada/.local/artifacts/v01-pairing-recovery-qa/`:
+`appcore.test` SHA-256
+`7f56d7efa4a081dbd8364759659d2e71f76297912fdb36e018f5ab027ef085af`,
+`appui.test` SHA-256
+`5a924fabfb0a535b4dd562b392e6ee35ee9bed692adbc62588878f43c04395e3`.
+The disposable client Hub image ID is
+`sha256:916f989e966f1670b0542eadfb9499c99d3dda5486564dfc5dbe2e3bef153174`,
+and its test image ID is
+`sha256:ee444c4874dd5318dead7db221d78ceafaec5532594c2e8f1a4674d643dbf962`.
+These hashes must not be used as executed delivery-binary pointers.
+
+The first formal Go attempt failed compilation before product assertions:
+QA omitted the fixture's `cicada_scoped_app_integration` build tag. The tag-only
+repair adds that constraint to the new QA file and the core compile command;
+producer sources are untouched. Its original `formal-.../result.json` stays
+FAIL / 1, SHA-256
+`fe44a6ed7cd724ad8dd0b0800d224e3ceb792eaf66e015d715cbd735dcb37516`.
+The first worktree snapshot was verified unchanged at failure review, then its
+only subsequent source difference was the QA tag repair while the independent
+clean-source client suite continued. The corrected run's five Go step exits are
+all zero, but its original `tagged-.../result.json` remains FAIL (wrapper exit 1,
+Docker/test exit 0), SHA-256
+`1e5a456ace376ae56f4c6210ec0606e51b60b426ed09e23e9169fdbcef768d74`:
+the cleanup oracle counted eight local Go-tool telemetry files as fixture state.
+The review records their paths/sizes/hashes, removes only those task-owned
+files and verifies zero remaining files and no owned container. Both original
+FAILs are retained; no extra product run was used to reclassify cleanup.
+The earlier 45-second fixture failure, 75-second producer trial and UI assertion
+RED also retain their original source/receipt limits above.
+
+The exact Docker argv is saved in `tagged-.../command.json`; step commands and
+exit files are retained in its artifact `run-targets.sh`. The pinned image is
+`golang:1.27.3-bookworm@sha256:5c3e9b43cfd3bb95c7937462e29d87ada57b481a96fa23ad0eb61778d7a00110`.
+Fresh task state/cache/output, readonly source/modules, network-none, UID1000
+and the resource bounds above apply when replaying. The test selectors are:
+
+```sh
+# Inside the isolated pinned container, in /repo/cicada-go:
+go test -mod=readonly -tags=cicada_scoped_app_integration -count=1 -timeout=240s ./internal/appcore -run '^TestV01ScopedNaturalExpiryReloginRetainsSelectedNodeAndNewCode$'
+go test -mod=readonly -count=1 -timeout=60s ./internal/appui -run '^TestPairingCleanupMustPrecedeNewCode$'
+# From an agreed frozen clean source, with a fresh output directory:
+CICADA_INTEROP_OUTPUT="$(mktemp -d "$HOME/Cicada/.local/evidence/v01-pairing-recovery-qa/replay-client.XXXXXX")" bash scripts/test-client-hub-interop.sh --suite client
+```
+
+For the user's current EXPIRED page, use Root's new
+`Cicada-0.0.5-device-pairing-873a3904.zip` delivery after Root verifies its final
+hash. Keep the existing `$env:USERPROFILE\.cicada` state; do not replace keys or
+clear pending recovery to make this test pass. Open the updated App from
+`F:\DOWNLOAD\Cicada\package\cicada-app.exe`, log into the original account if
+required, then use the offered original recovery/check/finish action. Record
+whether the button is reachable, the same original operation settles, stale
+UNKNOWN/Locked clears and any previously selected A survives. Only after
+cleanup should a freshly generated Node code be reviewed and separately
+approved/ACKed. This physical retest, Windows DPAPI/ACL/GUI/IME and execution of
+the new delivery binaries remain **NOT_RUN**. Controller/vault reopen is not an
+OS process crash, account Snapshot expiry is not a real 15-minute wait, and the
+SDK actors are not native Node/Runtime. Full M1–M8/C1–C7 were not rerun; their
+accepted `64927cbe`/`d4884a5` sources and prior `9b6ec2c`/`42b4052` artifacts
+remain distinct. The original physical USER_REPORTED_FAIL remains open pending
+that itemized user retest.

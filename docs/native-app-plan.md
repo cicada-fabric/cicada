@@ -41,6 +41,12 @@ Windows ZIP downloads are in `F:\DOWNLOAD\`, programs unpack to
 every platform. The exact Windows,
 Node and Hub user-relative paths are in the [installed-root rule](#installed-user-file-root);
 the existing physical procedure now supplies commands from step 2 with these paths.
+The subsequent pairing recovery regression is USER_REPORTED_FAIL: the App showed
+EXPIRED with stale APP_NODE_PAIRING_UNKNOWN, Locked targets and no recovery
+button. Its [scoped remediation matrix](#scoped-pairing-terminal-recovery-matrix--2026-11-03)
+has bounded **SCOPED_PASS / 0** on frozen `873a390` plus the isolated QA test;
+the single clean-source client Docker interop also passed. The user's physical
+page retest is still NOT_RUN. Historical Runtime/package attribution is retained.
 Use the [short exit index](#current-feedback-and-acceptance-ledger)
 and [current source-bound results](native-app-cross-node-validation.md#current-scopes--2026-10-30).
 
@@ -633,6 +639,65 @@ its own validation and mapping are under
 `~/Cicada/.local/evidence/owner-groups-guard-clarification-20261026/`.
 
 ## Current feedback and acceptance ledger
+
+### Scoped pairing terminal recovery matrix — 2026-11-03
+
+This is the bounded follow-up to the recorded physical USER_REPORTED_FAIL, not
+a repeat of full M1–M8/C1–C7. App owns Core/UI recovery; Hub owns current scoped
+CLI/protocol behavior and the existing contract update. QA owns these two
+existing documents and bounded independent checks using existing fixtures. Account and wire APIs are
+not generally retired by this change. The final-source execution below qualifies
+only the stated subsets; it does not turn this entire matrix into PASS.
+
+The frozen authority rule is **recover the original operation → authenticate
+its outcome and required cleanup → expose an explicit new-code action**.
+EXPIRED text, a local timer, raw HTTP errors or Targets.Locked cannot stand in
+for an authenticated terminal receipt. Neither recovery nor new-code entry
+creates Root, a Node binding, Group membership or business authority. An actual
+original Node ACK is required for admission; ACKED still does not grant business
+rights. Current Core AvailableActions and server Guards remain authoritative.
+
+| ID | Exact setup / fault | Required independent oracle | Planned layer / current status |
+| --- | --- | --- | --- |
+| SPR01 | Retained PENDING / OWNER_APPROVED without an original Node ACK | Show Check/original recovery as authorized; preserve attempt, keys, proof, packet and deadline. No connected/bound projection or new-code replacement. | SCOPED_PASS subset: real B approval without ACK in combined QA; wider retained states NOT_RUN |
+| SPR02 | Before-forward loss and committed-response loss; reopen original persistent App state | UNKNOWN retains exact packet/digest/request ID and one original effect/receipt. Explicit original recovery is reachable while targets are Locked; no guessed terminal result or replacement consent. | SCOPED_PASS: committed cleanup-response loss + real relogin/vault reopen; before-forward loss NOT_RUN |
+| SPR03 | A genuine signed Node SDK Start requests a 75-second limit, above the existing one-minute minimum; cross its actual approval deadline without modifying Stage, DB or either side's pairing clock | Actual Hub status must authenticate EXPIRED. Record real elapsed time; this is the explicit short SDK fixture window, not the CLI default lifetime. Account snapshot clock projection is separate and never called a natural 15-minute expiry. | SCOPED_PASS: real EXPIRED, deadline wait 72082ms, test 90.51s; 873a390 + QA overlay |
+| SPR04 | Authenticated EXPIRED with outstanding original/cleanup work, stale APP_NODE_PAIRING_UNKNOWN and Locked targets | Core and UI expose original recovery until settlement; ended copy cannot hide every action. Clear stale uncertainty only after its original authenticated outcome is applied; no premature new-code entry. | Baseline portable UI assertion RED; current Core and same UI target GREEN. Physical/native projection NOT_RUN |
+| SPR05 | Lose terminal-cleanup response or stop after durable receipt before local apply, then reopen | Restore the exact original cleanup packet/receipt and CAS lineage; settle once, preserving keys/counters. No unsigned/no-effect inference, repeated side effect or cancellation of a real admitted binding. | SCOPED_PASS: committed cleanup-response loss, exact packet/body/receipt after vault reopen; process crash NOT_RUN |
+| SPR06 | Original terminal cleanup is durably complete; user explicitly enters a fresh scoped code | New-code review becomes reachable with no old UNKNOWN lock. Same App/Owner/Node keys are retained; the new attempt requires fresh explicit approval and original-key ACK. Input/review alone creates zero admission/business authority. | SCOPED_PASS: explicit fresh C review, no binding/management authority; selected A retained |
+| SPR07 | Original Node ACK races a stale terminal/check/cancel result | A verified ACK projects the exact original binding and trust; no terminal cleanup erases it or creates another binding. Protected business calls remain refused without their separate grant. | Producer source-bound ACK-race checks retained; independent QA race NOT_RUN in this narrowed batch |
+| SPR08 | Account session expires during pending/cleanup work; close/reopen and explicitly log in again | Before current authentication, private target metadata stays hidden and only authorized neutral recovery/login is reachable. Relogin restores original pending bytes and identity, not consent deadlines or Root/business rights. Recovery then precedes new-code input. | SCOPED_PASS: Snapshot-only account expiry, real Logout/Login and vault reopen retain original; natural 15-minute expiry NOT_RUN |
+| SPR09 | Malformed/oversize/expired code, wrong Hub/Owner/OOB secret or mismatched Node/attempt; also an unapproved valid new code | Refuse before secret POST where locally decidable; otherwise reject cryptographically. Original work stays intact; no binding/trust/group/business effect is added. Observe actual server records/Guard, not UI wording alone. | SCOPED_PASS subset: valid unapproved C review and client full-Hub-pin rejection; broader scoped negatives NOT_RUN by this QA batch |
+| SPR10 | Repeat recovery, duplicate original request and reopen after successful cleanup | Original authenticated receipt/effect and counters are idempotent. New code is offered only after original work settles; a stale review cannot approve another attempt. | SCOPED_PASS: exact original durable cleanup receipt and one effect; broader duplicate/reopen permutations NOT_RUN |
+| SPR11 | Current scoped capability unavailable/false, old code entered, or a current scoped operation fails | No legacy code entry, manual-pin UI, legacy request or automatic protocol/parser fallback. An explicit unsupported/refusal result does not downgrade pairing. Existing account/wire compatibility remains separately attributed. | Hub/App producer qualification retained at delivered sources; independent QA scoped-fallback matrix NOT_RUN |
+| SPR12 | Inspect every pending/unknown/expired/cleanup/ACKED snapshot and exported artifact | No private code/OOB secret/proof/token/body export; only closed states, public fingerprints/hashes and counters. Identity/recovery completes without Control inference; account login is not Root and admission is not business permission. | SCOPED_PASS subset: identity/recovery without model calls and C review without admission; exhaustive snapshot/privacy audit NOT_RUN |
+
+Root narrowed execution to the CURRENT `node_scoped_http_test.go` real-TLS,
+real-crypto and persistent-vault fixture, its existing restart/response-drop
+helpers, and Core Snapshot → appui projection checks. Do not modify producer
+test files; if a critical independent assertion is missing, add only
+`node_pairing_v01_recovery_qa_test.go`. No new subprocess/PTY framework or old
+driver migration is required. Reuse the existing lost-authority response,
+lost-ACK read, saved-review and offline-ACK tests, plus the producer's exact new
+terminal-cleanup/UI selectors after its delivery. QA exclusively runs the
+existing `scripts/test-client-hub-interop.sh --suite client` once after Root's
+integrated hash; it does not repeat M1/C1/NPT. A portable/UI projection pass is
+not a physical Windows GUI/DPAPI/ACL pass.
+
+Root froze integrated App/Hub source `873a3904b11614f47a93201684752e0b54a7bea6`. Record
+the exact clean/dirty source manifest, image, actual CLI/test hashes, per-case
+exit codes, original failure and cleanup; use fresh task state, loopback TCP,
+persistent databases and readonly module cache.
+The focused Go container uses a private task build cache with an exclusive
+writer (the tag-fix retry has its own cache). Existing client interop keeps its own labeled disposable images,
+loopback Hub port and cleanup plan; its test container uses the existing host
+network path and private `/tmp/go-build`, without a writable shared host module
+cache. Do not revive UserPromptSubmit or run full historical gates to make a
+legacy driver usable. New physical Windows execution is NOT_RUN.
+The failure facts and reuse limitations are recorded in the
+[preparation log](native-app-validation.md#2026-11-03-scoped-pairing-terminal-recovery-preparation);
+[final scoped execution](native-app-validation.md#2026-11-03-frozen-pairing-recovery-independent-acceptance)
+records commands, original failures, hashes, cleanup and the current-page retest.
 
 ### v0.1 exit index — 2026-11-03
 
