@@ -40,7 +40,7 @@ func TestDevicePairingPresentationHidesCandidateBeforeLogin(t *testing.T) {
 }
 func TestDevicePairingCaptionsHaveBothLocalesWithoutManualKeyInstructions(t *testing.T) {
 	for _, locale := range []Locale{English, Chinese} {
-		for _, key := range []string{"node_pairing.title", "node_pairing.intro", "node_pairing.approve", "node_pairing.waiting_title", "node_pairing.waiting_body", "node_pairing.connected", "node_pairing.cleanup_title", "node_pairing.cleanup_body", "node_pairing.finish"} {
+		for _, key := range []string{"node_pairing.title", "node_pairing.intro", "node_pairing.approve", "node_pairing.waiting_title", "node_pairing.waiting_body", "node_pairing.connected", "node_pairing.cleanup_title", "node_pairing.cleanup_body", "node_pairing.finish", "node_pairing.check_saved", "node_pairing.check_saved_body", "node_pairing.unconfirmed"} {
 			caption := Text(locale, key)
 			if caption == key || caption == "" {
 				t.Fatal("pairing caption missing")
@@ -77,5 +77,20 @@ func TestDevicePairingDeadlineChangesCopyWithoutInventingTerminalState(t *testin
 	flow := NodePairingFlow(s, now)
 	if flow.Stage != "deadline" || flow.Primary != appcore.ActionRefreshNodePairing || s.Node.Pairing.State != "OWNER_APPROVED" {
 		t.Fatal("deadline either stayed waiting, dropped observation or invented Hub expiry")
+	}
+}
+
+func TestPairingRefreshOnlyChecksSavedHandle(t *testing.T) {
+	now := time.Now().UTC()
+	s := appcore.Snapshot{Node: appcore.NodeSetupSnapshot{Pairing: &appcore.NodePairingSnapshot{State: "FENCED", ErrorCode: "APP_NODE_PAIRING_UNKNOWN"}}, AvailableActions: []appcore.ActionKind{appcore.ActionRefreshNodePairing}}
+	flow := NodePairingFlow(s, now)
+	if flow.Stage != "checking" || flow.Primary != appcore.ActionRefreshNodePairing {
+		t.Fatal("refresh-only retained handle was presented as an available Finish", flow)
+	}
+	for _, locale := range []Locale{English, Chinese} {
+		caption := ErrorText(locale, s.Node.Pairing.ErrorCode)
+		if strings.Contains(strings.ToLower(caption), "recover") || strings.Contains(caption, "恢复原请求") {
+			t.Fatal("unknown feedback demanded a recovery action that Core does not offer", locale)
+		}
 	}
 }

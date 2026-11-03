@@ -6,7 +6,7 @@ func ErrorText(locale Locale, code string) string {
 	id := msgRequestFailed
 	switch code {
 	case "APP_NODE_PAIRING_UNKNOWN":
-		id = "node_pairing.recovery_body"
+		id = "node_pairing.unconfirmed"
 	case "APP_NODE_PAIRING_INVALID", "APP_NODE_PAIRING_CODE_INVALID":
 		id = "node_pairing.invalid"
 	case "APP_NODE_PAIRING_TRUST_MISMATCH":

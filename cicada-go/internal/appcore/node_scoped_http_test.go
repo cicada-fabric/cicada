@@ -1419,3 +1419,85 @@ func TestScopedAppRealTLSFencedFinishAfterReloginKeepsOriginal(t *testing.T) {
 		t.Fatal("fenced cleanup replaced identity/counters, canceled old terminal grant or admitted Node")
 	}
 }
+
+func TestScopedAppRealTLSColdFencedFinishDiscoversBeforeAnyPOST(t *testing.T) {
+	f := newScopedAppHTTPFixture(t)
+	n := f.startNode("SYNTHETIC-cold-fenced-finish")
+	f.approveNode(n)
+	owner, device, counters := f.c.state.OwnerKeyID, f.c.state.DeviceKeyID, f.c.node.Client
+	// A real Hub fence settles this exact, never-delivered status original.
+	// No cancellation was requested; the saved attempt still needs Finish.
+	f.refuseOperation = wire.NodePairTrustScopedHTTPPath(wire.OperationOwnerNodePairTrustScopedStatus)
+	if f.c.Dispatch(context.Background(), Action{Kind: ActionRefreshNodePairing}) == nil || !f.c.scopedPending() {
+		t.Fatal("pre-Hub status refusal failed to retain its exact original")
+	}
+	f.dispatch(Action{Kind: ActionRecoverNodePairing})
+	if f.c.scopedPending() || f.c.scoped.flow.Stage != wire.NodePairTrustScopedFenced || f.c.scoped.flow.Context == nil || f.c.scoped.flow.CancelRequested {
+		t.Fatal("fixture did not reach an authenticated settled fence with retained Context")
+	}
+	f.dispatch(Action{Kind: ActionLogout})
+	f.dispatch(Action{Kind: ActionLogin, Username: "synthetic-scoped-app", Password: n2SyntheticPassword})
+	f.restart()
+	s := f.c.Snapshot()
+	if f.c.scoped.available || f.c.scopedPending() || !containsAction(s.AvailableActions, ActionCancelNodePairing) || containsAction(s.AvailableActions, ActionRecoverNodePairing) || !s.Targets.Locked {
+		t.Fatal("cold retained fence did not expose Finish without a recoverable original")
+	}
+	posts := 0
+	for _, count := range f.posts {
+		posts += count
+	}
+	err := f.c.Dispatch(context.Background(), Action{Kind: ActionCancelNodePairing, NodePairingReviewID: s.Node.Pairing.ReviewID})
+	after := 0
+	for _, count := range f.posts {
+		after += count
+	}
+	flow := f.c.scoped.flow
+	if err != nil || flow == nil || !flow.CleanupComplete || f.c.Snapshot().Targets.Locked {
+		t.Fatalf("cold Finish did not discover and authenticate retained cleanup: err=%v available=%v pending=%v state=%s extraPOSTs=%d error=%s", err, f.c.scoped.available, f.c.scopedPending(), flow.Stage, after-posts, flow.LastError)
+	}
+	if owner != f.c.state.OwnerKeyID || device != f.c.state.DeviceKeyID || counters != f.c.node.Client || f.c.selectedNodeBinding() != nil || f.posts[wire.AppNodeScopedHTTPPath(wire.OperationAppNodeScopedCancel)] != 0 || !containsAction(f.c.Snapshot().AvailableActions, ActionReviewNodePairing) {
+		t.Fatal("cold Finish replaced identity/counters, canceled old terminal grant or granted admission")
+	}
+}
+
+func TestScopedAppRealTLSExpiredLookupRestoresHandleWithoutApproval(t *testing.T) {
+	f := newScopedAppHTTPFixture(t)
+	n := v01ShortScopedNode(t, f, "SYNTHETIC-expired-lookup-handle")
+	f.refuseOperation = wire.NodePairTrustScopedHTTPPath(wire.OperationOwnerNodePairTrustScopedLookup)
+	if f.c.Dispatch(context.Background(), Action{Kind: ActionReviewNodePairing, DevicePairingCode: n.code}) == nil || !f.c.scopedPending() {
+		t.Fatal("lookup refusal failed to preserve its original")
+	}
+	f.dispatch(Action{Kind: ActionRecoverNodePairing})
+	flow := f.c.scoped.flow
+	if f.c.scopedPending() || flow.Stage != wire.NodePairTrustScopedFenced || flow.Context != nil {
+		t.Fatal("fixture did not retain a settled request fence without Context")
+	}
+	owner, device, counters := f.c.state.OwnerKeyID, f.c.state.DeviceKeyID, f.c.node.Client
+	code := flow.Code
+	code.OOBSecret = bytes.Clone(code.OOBSecret)
+	defer clear(code.OOBSecret)
+	deadline := parseExpiry(n.context.ExpiresAt)
+	if deadline.IsZero() || deadline.After(time.Now().Add(80*time.Second)) {
+		t.Fatal("fixture deadline is not bounded")
+	}
+	time.Sleep(time.Until(deadline) + 20*time.Millisecond)
+	// Public Refresh gets the actual Hub's expired Context/OOB. It may only
+	// rebuild the retained handle; it cannot renew the code or prepare a grant.
+	if err := f.c.Dispatch(context.Background(), Action{Kind: ActionRefreshNodePairing}); err != nil {
+		t.Fatalf("authenticated terminal Lookup lost its expired retained handle: %v", err)
+	}
+	if f.c.scopedPending() || flow.Context == nil || !reflect.DeepEqual(*flow.Context, n.context) || flow.OOB != n.oob || !reflect.DeepEqual(flow.Code, code) || flow.Stage != wire.NodePairTrustScopedExpired || containsAction(f.c.Snapshot().AvailableActions, ActionApproveNodePairing) {
+		t.Fatal("terminal Lookup did not restore only the exact historical handle")
+	}
+	if err := f.c.Dispatch(context.Background(), Action{Kind: ActionApproveNodePairing, NodePairingReviewID: f.c.Snapshot().Node.Pairing.ReviewID, ConfirmNodePairing: true}); err == nil {
+		t.Fatal("terminal handle renewed expired approval")
+	}
+	f.dispatch(Action{Kind: ActionCancelNodePairing, NodePairingReviewID: f.c.Snapshot().Node.Pairing.ReviewID})
+	if !flow.CleanupComplete || f.c.Snapshot().Targets.Locked || f.c.selectedNodeBinding() != nil || owner != f.c.state.OwnerKeyID || device != f.c.state.DeviceKeyID || counters != f.c.node.Client || f.posts[wire.AppNodeScopedHTTPPath(wire.OperationAppNodeScopedPrepare)] != 0 {
+		t.Fatal("terminal handle cleanup changed identity/counters or created authority")
+	}
+	before := f.posts[wire.NodePairTrustScopedHTTPPath(wire.OperationOwnerNodePairTrustScopedLookup)]
+	if f.c.Dispatch(context.Background(), Action{Kind: ActionReviewNodePairing, DevicePairingCode: n.code}) == nil || before != f.posts[wire.NodePairTrustScopedHTTPPath(wire.OperationOwnerNodePairTrustScopedLookup)] {
+		t.Fatal("historical cleanup admitted the expired code as a new pairing")
+	}
+}

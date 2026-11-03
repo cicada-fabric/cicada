@@ -32,6 +32,24 @@ func (c *nativeController) applyScopedPairResult(p *scopedOriginal, r wire.NodeP
 	if f == nil || f.NodeID != p.NodeID || f.Code.AttemptID != p.AttemptID {
 		return wire.ErrInvalid
 	}
+	lookupContext := p.Operation == wire.OperationOwnerNodePairTrustScopedLookup && r.Context != nil && (r.ErrorCode == "" || scopedPairingTerminal(r.State))
+	if lookupContext {
+		if r.Context.AuthorityNodeID != f.NodeID {
+			return wire.ErrInvalid
+		}
+		previousContext, previousOOB := f.Context, f.OOB
+		f.Context, f.OOB = r.Context, r.OOBCommitment
+		at := c.cfg.Now().UTC()
+		if !fresh || scopedPairingTerminal(r.State) {
+			// An authenticated terminal lookup only reconstructs this retained
+			// handle. Keep every code/secret/OOB/profile pin; do not renew proof.
+			at = parseExpiry(r.Context.IssuedAt)
+		}
+		if err := c.matchScopedCode(at); err != nil || f.OOB != r.OOBCommitment {
+			f.Context, f.OOB = previousContext, previousOOB
+			return wire.ErrInvalid
+		}
+	}
 	if r.ErrorCode != "" {
 		// Only an authenticated exact result settles a refusal. An uncertain
 		// result is kept as the same original and never becomes a fresh write.
@@ -44,17 +62,11 @@ func (c *nativeController) applyScopedPairResult(p *scopedOriginal, r wire.NodeP
 	}
 	switch p.Operation {
 	case wire.OperationOwnerNodePairTrustScopedLookup:
-		if r.Context == nil || r.Context.AuthorityNodeID != f.NodeID {
+		if !lookupContext {
 			return wire.ErrInvalid
 		}
-		f.Context = r.Context
-		f.OOB = r.OOBCommitment
-		at := c.cfg.Now().UTC()
-		if !fresh {
-			at = parseExpiry(r.Context.IssuedAt)
-		}
-		if err := c.matchScopedCode(at); err != nil {
-			return err
+		if scopedPairingTerminal(r.State) {
+			f.Stage = r.State
 		}
 	case wire.OperationOwnerNodePairTrustScopedPrepare:
 		if r.Approval == nil || !reflect.DeepEqual(r.Approval.Scope, f.Scope) {
@@ -243,6 +255,12 @@ func (c *nativeController) refreshScopedPairing(ctx context.Context) error {
 		if err := c.sendScopedNew(ctx, q, f.NodeID, true); err != nil {
 			return err
 		}
+		if scopedPairingTerminal(f.Stage) {
+			if f.CancelRequested {
+				return c.finishScopedCancellation(ctx)
+			}
+			return nil
+		}
 	}
 	if f.Stage == "LOOKUP" || f.Stage == "APPROVING" {
 		return c.continueScopedPairing(ctx)
@@ -268,6 +286,11 @@ func (c *nativeController) cancelScopedPairing(ctx context.Context, review strin
 	f := c.scoped.flow
 	if f == nil || f.Context == nil || review == "" || review != c.scopedReviewID() || c.scopedPending() || !c.nodeAccountReady() {
 		return ErrInvalidAction
+	}
+	if !c.scoped.available {
+		if err := c.discoverScopedNodes(ctx); err != nil {
+			return c.scopedFailure("APP_NODE_PAIRING_UNAVAILABLE")
+		}
 	}
 	if scopedPairingTerminal(f.Stage) {
 		f.CancelRequested = true

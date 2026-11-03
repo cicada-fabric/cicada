@@ -63,7 +63,7 @@ func NodePairingFlow(s appcore.Snapshot, now time.Time) NodePairingSetupFlow {
 			return NodePairingSetupFlow{Stage: "cleanup", Primary: appcore.ActionCancelNodePairing}
 		}
 		if has(appcore.ActionRefreshNodePairing) {
-			return NodePairingSetupFlow{Stage: "cleanup", Primary: appcore.ActionRefreshNodePairing}
+			return NodePairingSetupFlow{Stage: "checking", Primary: appcore.ActionRefreshNodePairing}
 		}
 		f := NodePairingSetupFlow{Stage: "ended"}
 		if has(appcore.ActionReviewNodePairing) {

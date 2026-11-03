@@ -34,8 +34,12 @@ func (v *view) devicePairingRows(s appcore.Snapshot) []layout.Widget {
 		if flow.Stage == "ended" {
 			rows = append(rows, v.labelRow(appui.Text(v.locale, "node_pairing.ended")))
 		}
-	case "cleanup":
-		rows = append(rows, v.headingRow(appui.Text(v.locale, "node_pairing.cleanup_title")), v.labelRow(appui.Text(v.locale, "node_pairing.cleanup_body")))
+	case "cleanup", "checking":
+		title, body := "node_pairing.cleanup_title", "node_pairing.cleanup_body"
+		if flow.Stage == "checking" {
+			title, body = "node_pairing.check_saved", "node_pairing.check_saved_body"
+		}
+		rows = append(rows, v.headingRow(appui.Text(v.locale, title)), v.labelRow(appui.Text(v.locale, body)))
 	case "review", "expired":
 		rows = append(rows, v.headingRow(appui.Text(v.locale, "node_pairing.review_title")), v.labelRow(safeDisplay(p.Name, 128)), v.nodeCaption(appui.Text(v.locale, "node.candidate_until")+": "+displayNodeTime(p.ExpiresAt)), v.labelRow(appui.Text(v.locale, "node_pairing.scope")))
 		if flow.Stage == "expired" {
@@ -80,8 +84,8 @@ func (v *view) devicePairingRows(s appcore.Snapshot) []layout.Widget {
 	}
 	if flow.Primary != "" {
 		label := "node_pairing.check"
-		if flow.Stage == "cleanup" {
-			label = "node_pairing.finish"
+		if flow.Stage == "checking" {
+			label = "node_pairing.check_saved"
 		}
 		switch flow.Primary {
 		case appcore.ActionReviewNodePairing:
