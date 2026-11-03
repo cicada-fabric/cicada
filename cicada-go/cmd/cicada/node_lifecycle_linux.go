@@ -33,6 +33,7 @@ const nodeServiceConfigName = "node-service.json"
 const nodeServiceFormat = "cicada.node-service.v1"
 
 var errNodeServiceConfig = errors.New("NODE_SERVICE_CONFIG_INVALID: use one original paired relay Node and exact protected configuration")
+var errNodeServicePairingNotReady = errors.New("NODE_SERVICE_PAIRING_NOT_READY: original pairing is not locally ready; run the original foreground machine agent with the same ID, state and Hub address to finish its authenticated ACK. If it reports EXPIRED, explicitly use --retry-pairing there for a new code and Owner approval; on never retries pairing")
 var errNodeServiceManager = errors.New("NODE_SERVICE_MANAGER_UNAVAILABLE: systemd user manager version 254 or newer is required")
 var errNodeServiceConflict = errors.New("NODE_SERVICE_CONFLICT: another agent or an unowned unit is running; stop it explicitly before on")
 var errNodeServiceFailed = errors.New("NODE_SERVICE_FAILED: managed Node did not become ready; inspect its user journal")
@@ -134,8 +135,11 @@ func nodeLifecycle(action string, args []string, out io.Writer, binary string, r
 			return err
 		}
 		selection, err := validateNodeServiceConfig(config, rootPath, binary)
-		if err != nil || requireExistingNodeServiceState(config, selection) != nil {
-			return errNodeServiceConfig
+		if err != nil {
+			return err
+		}
+		if err := requireExistingNodeServiceState(config, selection); err != nil {
+			return err
 		}
 		// Refuse foreground conflicts before recording a configuration.
 		busy, err := nodeServiceAgentBusy(selection)
@@ -213,8 +217,8 @@ func nodeLifecycle(action string, args []string, out io.Writer, binary string, r
 		return nil
 	}
 	if action == "on" && state["ActiveState"] != "active" && state["ActiveState"] != "activating" {
-		if requireExistingNodeServiceState(config, selection) != nil {
-			return errNodeServiceConfig
+		if err := requireExistingNodeServiceState(config, selection); err != nil {
+			return err
 		}
 		busy, err := nodeServiceAgentBusy(selection)
 		if err != nil {
@@ -316,7 +320,7 @@ func canonicalNodeServiceArgs(root string, args []string) ([]string, nodeService
 		// borrow a shell default, or ask the operator to copy an identity URL.
 		client, _, err := loadMachineRecoveryClient(*state, *id)
 		if err != nil {
-			return nil, s, errNodeServiceConfig
+			return nil, s, nodeServiceExistingStateError(*state, *id)
 		}
 		*origin = client.state.HubOrigin
 	}
@@ -352,7 +356,10 @@ func validateNodeServiceConfig(c nodeServiceConfig, root, binary string) (nodeSe
 		}
 	}
 	canonical, s, err := canonicalNodeServiceArgs(root, c.AgentArgs)
-	if err != nil || !reflect.DeepEqual(canonical, c.AgentArgs) {
+	if err != nil {
+		return s, err
+	}
+	if !reflect.DeepEqual(canonical, c.AgentArgs) {
 		return s, errNodeServiceConfig
 	}
 	return s, nil
@@ -369,7 +376,10 @@ func requireExistingNodeServiceState(c nodeServiceConfig, s nodeServiceSelection
 	// Do not retain or print this existing bearer. The read-only loader never
 	// creates keys, repairs permissions, caches clients, or opens databases.
 	_ = token
-	if err != nil || client.state.HubOrigin != s.origin || client.state.HubTransportDescriptor == "" || s.address != "" && client.state.HubDialAddress != s.address {
+	if err != nil {
+		return nodeServiceExistingStateError(s.state, s.id)
+	}
+	if client.state.HubOrigin != s.origin || client.state.HubTransportDescriptor == "" || s.address != "" && client.state.HubDialAddress != s.address {
 		return errNodeServiceConfig
 	}
 	descriptor, err := hubtransport.DecodeDescriptor(client.state.HubTransportDescriptor)
@@ -382,6 +392,17 @@ func requireExistingNodeServiceState(c nodeServiceConfig, s nodeServiceSelection
 		}
 	}
 	return nil
+}
+
+// Classify only the protected public marker. Never decrypt pairing evidence,
+// infer a remote terminal state, repair state or initialize missing identity.
+func nodeServiceExistingStateError(stateDir, nodeID string) error {
+	s, exists, err := readMachineNativeState(stateDir, nodeID)
+	if err == nil && exists && s.NodePairTrustAttemptID != "" &&
+		(s.BindingID == "" || s.BindingVersion == 0 || s.NodeKeyEpoch == 0 || s.NodeKeyVersion == 0 || s.HubKeyVersion == 0 || s.HubTransportDescriptor == "" || s.HubDialAddress == "") {
+		return errNodeServicePairingNotReady
+	}
+	return errNodeServiceConfig
 }
 
 func lockNodeService(root *os.Root) (*os.File, error) {

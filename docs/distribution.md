@@ -278,8 +278,11 @@ must use the installer's quoted output. A shell startup file may contain the
 PATH export only; installation and shell startup never run `on`, enable a
 service, or start an agent.
 
-Complete the normal foreground pairing first. After it reports successful
-pairing, use Ctrl-C to stop that foreground agent before handing the **same**
+Complete the normal foreground pairing first. The App's “Hub pairing confirmed”
+reports the Hub result; local Node admission is a separate step. Before service
+handoff, the original Node must have verified its capsule and recovered its exact
+ACK receipt, then retained its binding, key pins and native transport in the
+original local state. Use Ctrl-C to stop that foreground agent before handing the **same**
 Node to `on`. The first `on` requires the original absolute state directory,
 stable ID, display name, original MCP session/outbox paths, exact Codex binary
 and original Hub address. It never guesses another existing installation:
@@ -325,6 +328,21 @@ state if `--control-url` was omitted. An explicit origin must match that state.
 Once, retry-pairing, LAN discovery, managed Worker, multi-Hub and alternate
 PQ/descriptor enrollment modes are outside this first service-control scope.
 An unfinished pairing cannot become a background enrollment.
+
+If an original pairing attempt is present but its local binding, key versions,
+epoch or native descriptor/dial address is incomplete, `on` returns
+`NODE_SERVICE_PAIRING_NOT_READY` before saving configuration or contacting the
+user service manager. Resume the original foreground `machine agent` with the
+same ID, state and Hub address to recover its original ACK/local application.
+This does not issue another attempt or renew the old deadline. If that foreground
+command reports authenticated `EXPIRED`, explicitly add `--retry-pairing` there
+to request a new code and fresh Owner approval; preserve the existing identity,
+credentials and journal. `on` never performs that retry. An already saved ACKED
+recovery may install its original binding without repeating the first-pairing
+banner. Inspect the original `node-control-state.json` locally for a nonempty
+binding/version, Node/Hub key pins/versions/epoch, and native descriptor/dial
+before handing it to service control; do not print credential or sealed contents.
+Local service readiness and Hub online observations remain separate.
 
 The unit is `cicada-node-<first-16-bytes-of-SHA256>.service`, with SHA-256 input
 `decimal-effective-UID + NUL + canonical-root + NUL + Node-ID`. The service

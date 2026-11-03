@@ -10466,3 +10466,49 @@ continuity, Windows DPAPI/ACL, background on/off behavior, or A/B/MCP communicat
 Those retain separate statuses and follow-up. No new gate, test, package build,
 Hub/Node deployment or real key/state change was performed for this documentation
 checkpoint; the existing producer and client Docker evidence retains its source.
+
+
+### 2026-11-03 Node first-on local-readiness diagnostic checkpoint
+
+Base is `44c6f4bb8d43d662f1d64be9ba787c15457c70c5`; producer branch
+`task/v01-node-first-on`. The user's first-on result remains **USER_REPORTED_FAIL**:
+`NODE_SERVICE_CONFIG_INVALID`, followed by the original foreground's `EXPIRED`
+and binding/pins/transport checks all false. This does not establish a lost ACK
+receipt. Hub pairing confirmation, Node local admission and managed-process
+readiness have separate oracles.
+
+The minimal Node change keeps the existing admission checks and classifies a
+protected original attempt marker with incomplete binding/pins/native transport
+as `NODE_SERVICE_PAIRING_NOT_READY`. It gives the original foreground recovery
+action and, only if that foreground reports EXPIRED, the existing explicit
+`--retry-pairing` action for a new code/Owner approval. It neither diagnoses the
+sealed remote outcome nor changes state, keys, TTL, permissions, PATH policy or
+service admission. The App's former “Computer connected” / “电脑已接入” caption
+now says “Hub pairing confirmed” / “Hub 已确认配对”; Node online observation stays
+independent. The updated [service handoff contract](distribution.md) requires
+local ACK/binding/pins/transport before first on.
+
+The new diagnostic regression first failed on the unmodified producer with the
+old generic error for both PENDING and synthetic EXPIRED local stages. The
+minimal fix passed **5 top-level / 7 terminal tests, 0 FAIL, 0 SKIP**, including
+existing exact configuration, missing ACK, state-preserving on/off/restart and
+private-config refusal checks. The new case verifies zero service-manager
+calls, no saved service configuration and an unchanged original Node tree.
+Its scripted cryptographic consumer and synthetic stage do not prove actual
+Hub expiry or real service acceptance. Exact RED/GREEN logs, commands and source
+hashes are retained under
+`/home/zyf/Cicada/.local/evidence/v01-node-first-on-20261103-01/`.
+
+One opt-in entry, `TestScopedAppActualNodeCLIFirstOnOffOn`, reuses the existing
+`cicada_scoped_app_integration` real TLS Hub/production App SDK fixture and
+private Python PTY reader. Root supplies its fresh exact CLI via
+`CICADA_NODE_LIFECYCLE_CLI` and opts into owned user-service work with
+`CICADA_NODE_LIFECYCLE_SYSTEMD_ACCEPTANCE=1`. It checks unfinished local refusal,
+one actual Scope2 Node approval/private ACK, Node public ready state, matching
+App ACK/binding, foreground shutdown, then actual on/status/off/on/off with
+managed PIDs and original binding/attempt/key/credential invariants. Codex is a
+zero-model executable placeholder; no native Runtime acceptance is claimed.
+The entry compiled successfully but is **NOT_RUN by this producer**. Root owns
+its one final execution and disposable Docker gate after integration; any result
+must retain its own source/artifact/fixture attribution. No user's real Node,
+service, sealed journal, credentials or public Hub was changed here.

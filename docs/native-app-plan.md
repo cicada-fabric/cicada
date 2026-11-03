@@ -1130,6 +1130,7 @@ Root froze lifecycle v1 for Hub implementation: Linux-native
 `cicada on`, `cicada off` and `cicada status`, each with `--user-root ROOT`,
 for an **already paired, single-Hub, relay-only** Node.
 First on supplies `--codex-bin ABS -- <original machine agent arguments>`;
+Hub pairing confirmation alone does not satisfy the [local ACK/binding/pins/transport handoff](distribution.md); incomplete local admission returns `NODE_SERVICE_PAIRING_NOT_READY`.
 Hub alone writes `ROOT/node-service.json` at mode 0600, retaining the fixed
 executable, original Node/state/MCP/Hub selection. Later on reuses that config
 and rejects drift. The systemd **user transient unit** is scoped by UID/root/ID;

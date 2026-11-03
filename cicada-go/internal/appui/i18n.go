@@ -545,7 +545,7 @@ var catalog = map[Locale]map[messageID]string{
 		"node_pairing.deadline":         "Pairing deadline reached",
 		"node_pairing.deadline_body":    "Check the saved result before starting again. The original approval and request remain saved.",
 		"node_pairing.waiting_body":     "Approval was sent. Keep Cicada Node running while it confirms this connection.",
-		"node_pairing.connected":        "Computer connected",
+		"node_pairing.connected":        "Hub pairing confirmed",
 		"node_pairing.details":          "Connection details",
 
 		msgNodeIntro:                 "Start Cicada Node on your Ubuntu computer, then enter the connection code shown there.",
@@ -993,7 +993,7 @@ var catalog = map[Locale]map[messageID]string{
 		"node_pairing.deadline":         "已到配对截止时间",
 		"node_pairing.deadline_body":    "请先查询保存的结果，再开始新的配对。原有批准和请求仍然保留。",
 		"node_pairing.waiting_body":     "批准已发送。请保持这台电脑上的 Cicada Node 运行，等待它确认连接。",
-		"node_pairing.connected":        "电脑已接入",
+		"node_pairing.connected":        "Hub 已确认配对",
 		"node_pairing.details":          "连接详情",
 
 		msgNodeIntro:                 "在 Ubuntu 电脑上启动 Cicada Node，然后输入该电脑显示的连接码。",

@@ -344,6 +344,52 @@ func TestNodeLifecycleAddressOnlyRetainsOriginalOriginAndNeedsRealACK(t *testing
 	}
 }
 
+func TestNodeLifecycleUnfinishedScopedPairingReportsNotReady(t *testing.T) {
+	for _, stage := range []string{"PENDING", "EXPIRED"} {
+		t.Run(stage, func(t *testing.T) {
+			f := newNodePairScopedConsumerFixture(t)
+			if err := f.run(t); !errors.Is(err, errMachineNodePairPending) {
+				t.Fatal("synthetic scoped candidate did not remain unbound", err)
+			}
+			c, journal := f.load(t)
+			defer clear(journal.Secret)
+			// A local stage is not authority. Both unfinished and terminal
+			// journals must leave service admission closed without local ACK.
+			journal.Stage = stage
+			if err := saveMachineNodePairScopedState(f.f.state, c.identity, journal); err != nil {
+				t.Fatal(err)
+			}
+			root := privateLocalNodeRoot(t)
+			binary, err := os.Executable()
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("PATH", "/usr/bin:/bin")
+			t.Setenv("CODEX_HOME", "")
+			args := []string{"--user-root", root, "--codex-bin", "/usr/bin/true", "--", "--id", f.f.node,
+				"--name", "SYNTHETIC unfinished scoped Node", "--state-dir", f.f.state, "--hub-address", f.f.address,
+				"--relay-only", "--mcp-session-state-file", filepath.Join(root, "mcp", "sessions.json"), "--mcp-outbox-state-file", filepath.Join(root, "mcp", "outbox.json")}
+			before, err := recoveryTreeDigest(machineNodeStateDir(f.f.state, f.f.node))
+			if err != nil {
+				t.Fatal(err)
+			}
+			managerCalls := 0
+			err = nodeLifecycle("on", args, io.Discard, binary, func(context.Context, string, ...string) (string, error) {
+				managerCalls++
+				return "", errors.New("synthetic manager must not be called")
+			})
+			if err == nil || !strings.Contains(err.Error(), "NODE_SERVICE_PAIRING_NOT_READY") || !strings.Contains(err.Error(), "--retry-pairing") || !strings.Contains(err.Error(), "EXPIRED") {
+				t.Fatal("unfinished original needs actionable pairing readiness refusal", err)
+			}
+			after, digestErr := recoveryTreeDigest(machineNodeStateDir(f.f.state, f.f.node))
+			_, configErr := os.Lstat(filepath.Join(root, nodeServiceConfigName))
+			if managerCalls != 0 || digestErr != nil || before != after || !errors.Is(configErr, os.ErrNotExist) {
+				t.Fatal("service refusal mutated Node evidence, created configuration or called the user manager")
+			}
+		})
+	}
+}
+
 func TestNodeLifecycleLostStartResponseRecoversSameService(t *testing.T) {
 	f := newNodeLifecycleFixture(t)
 	f.save(t)
