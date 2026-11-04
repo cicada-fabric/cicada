@@ -35,11 +35,15 @@ type codexFacadeProducerNode struct {
 	deny                                 bool
 	stallIssue, stallConsume             <-chan struct{}
 	issueAt, consumeAt                   time.Time
+	tickets                              localCodexContextAuthority
+	sends                                []crossNodeGroupRequest
+	deliveries                           map[string][]byte
+	loseSendReply                        bool
 }
 
 func newCodexFacadeProducerNode(t *testing.T, root, node, sid, workspace string) *codexFacadeProducerNode {
 	t.Helper()
-	f := &codexFacadeProducerNode{token: "SYNTHETIC_PRIVATE_TOKEN_" + node}
+	f := &codexFacadeProducerNode{token: "SYNTHETIC_PRIVATE_TOKEN_" + node, deliveries: make(map[string][]byte)}
 	pin := syntheticLocalNodePin(t, root, node)
 	pin.WriterRoot = filepath.Join(root, "original-shared-writer")
 	pin.MCPSessionStateFile = filepath.Join(pin.StateDir, "mcp", "sessions.json")
@@ -48,11 +52,20 @@ func newCodexFacadeProducerNode(t *testing.T, root, node, sid, workspace string)
 		f.mu.Lock()
 		defer f.mu.Unlock()
 		f.httpCalls++
-		if f.deny || r.Method != http.MethodGet || r.URL.Path != "/v2/fabric/whoami" || r.Header.Get("Authorization") != "CicadaSession "+f.token || r.Header.Get("Cicada-Group-Scope") != f.last.Relation.GroupID {
+		if f.deny || r.Header.Get("Authorization") != "CicadaSession "+f.token || r.Header.Get("Cicada-Group-Scope") != f.last.Relation.GroupID {
 			http.Error(w, "SYNTHETIC current Group refused", http.StatusUnauthorized)
 			return
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"endpoint_id": f.last.Relation.EndpointID, "principal_id": f.last.Relation.PrincipalID, "group_id": f.last.Relation.GroupID, "node_id": node, "native_session_id": sid, "workspace": workspace})
+		card := fabric.NetworkCard{EndpointID: f.last.Relation.EndpointID, PrincipalID: f.last.Relation.PrincipalID, GroupID: f.last.Relation.GroupID, NodeID: node, Harness: "codex", NativeSessionID: f.profile.NativeSessionID, Workspace: workspace, BindingID: f.profile.BindingID, BindingEpoch: f.profile.BindingEpoch, Capabilities: map[string]any{"local_peer_delivery": "sealed_v1"}}
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v2/fabric/whoami":
+		case r.Method == http.MethodPost && r.URL.Path == "/v2/fabric/resolve":
+			card.EndpointID, card.PrincipalID, card.NativeSessionID = "SYNTHETIC-target", "SYNTHETIC-target-principal", ""
+		default:
+			http.Error(w, "SYNTHETIC unsupported business", http.StatusNotFound)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(card)
 	}))
 	t.Cleanup(server.Close)
 	pin.APIOrigin = server.URL
@@ -99,7 +112,7 @@ func newCodexFacadeProducerNode(t *testing.T, root, node, sid, workspace string)
 	if err := os.WriteFile(filepath.Join(dir, localNodeLocatorName(pin.StateDir, node)), locatorRaw, 0600); err != nil {
 		t.Fatal(err)
 	}
-	var tickets localCodexContextAuthority
+	tickets := &f.tickets
 	codexConsumerNode(t, pin.StateDir, node, func(c net.Conn, raw json.RawMessage) {
 		var header struct {
 			Operation string `json:"operation"`
@@ -109,7 +122,10 @@ func newCodexFacadeProducerNode(t *testing.T, root, node, sid, workspace string)
 		case "local_node_describe":
 			var q localNodeDescribeRequest
 			_ = json.Unmarshal(raw, &q)
-			_ = json.NewEncoder(c).Encode(localNodeDescribeResponse{Version: 1, Description: &localNodeDescription{Nonce: q.Nonce, InstanceID: f.connection.InstanceID, LocatorDigest: f.connection.LocatorDigest, Connection: pin}})
+			f.mu.Lock()
+			current := f.connection
+			f.mu.Unlock()
+			_ = json.NewEncoder(c).Encode(localNodeDescribeResponse{Version: 1, Description: &localNodeDescription{Nonce: q.Nonce, InstanceID: current.InstanceID, LocatorDigest: current.LocatorDigest, Connection: current.Pin}})
 		case "codex_context_issue":
 			f.mu.Lock()
 			stall := f.stallIssue
@@ -119,11 +135,13 @@ func newCodexFacadeProducerNode(t *testing.T, root, node, sid, workspace string)
 				return
 			}
 			var q localCodexContextIssue
-			if decodeLocalBridgeRequest(raw, &q) != nil || q.NativeSessionID != sid || q.Workspace != workspace || q.APIOrigin != pin.APIOrigin {
+			f.mu.Lock()
+			profile := f.profile
+			f.mu.Unlock()
+			if decodeLocalBridgeRequest(raw, &q) != nil || q.NativeSessionID != profile.NativeSessionID || q.Workspace != workspace || q.APIOrigin != pin.APIOrigin {
 				_ = json.NewEncoder(c).Encode(localJoinResponse{Version: 1, Error: "SYNTHETIC issuer refused"})
 				return
 			}
-			profile := f.profile
 			profile.TurnID, profile.ToolUseID = q.TurnID, q.ToolUseID
 			issued, err := tickets.issueVerified(q, "SYNTHETIC-node-binding-"+node, time.Now(), profile)
 			if err != nil {
@@ -155,6 +173,11 @@ func newCodexFacadeProducerNode(t *testing.T, root, node, sid, workspace string)
 			f.mu.Unlock()
 			_ = json.NewEncoder(c).Encode(response)
 		case "endpoint_groups_self", "endpoint_groups_select":
+			f.mu.Lock()
+			defer f.mu.Unlock()
+			binding, _ := codexContextBinding(f.profile)
+			anchor := f.pages[0].Registration
+			registration := anchor.Registration
 			var q localEndpointGroupsRequest
 			if decodeLocalBridgeRequest(raw, &q) != nil {
 				t.Error("self request not closed")
@@ -204,12 +227,40 @@ func newCodexFacadeProducerNode(t *testing.T, root, node, sid, workspace string)
 					_ = json.NewEncoder(c).Encode(localJoinResponse{Version: 1, Error: "SYNTHETIC Group refused"})
 					return
 				}
-				result.Card = &fabric.NetworkCard{EndpointID: registration.EndpointID, PrincipalID: registration.PrincipalID, GroupID: q.GroupID, NodeID: node, Harness: "codex", NativeSessionID: sid, Workspace: workspace, BindingID: anchor.BindingID, BindingEpoch: anchor.BindingEpoch}
-				f.mu.Lock()
+				result.Card = &fabric.NetworkCard{EndpointID: registration.EndpointID, PrincipalID: registration.PrincipalID, GroupID: q.GroupID, NodeID: node, Harness: "codex", NativeSessionID: f.profile.NativeSessionID, Workspace: workspace, BindingID: anchor.BindingID, BindingEpoch: anchor.BindingEpoch}
 				f.selects++
-				f.mu.Unlock()
 			}
 			_ = json.NewEncoder(c).Encode(localJoinResponse{Version: 1, EndpointGroups: result})
+		case "cross_node_group_send":
+			var q crossNodeGroupRequest
+			if decodeLocalBridgeRequest(raw, &q) != nil {
+				t.Error("synthetic send request not closed")
+				return
+			}
+			f.mu.Lock()
+			defer f.mu.Unlock()
+			binding, _ := codexContextBinding(f.profile)
+			if f.deny || q.NativeSessionID != f.profile.NativeSessionID || q.Workspace != workspace || q.SessionToken != f.token || q.EndpointGroupAuthority != f.last || q.codexDomainBinding != binding || checkManagedLocalNodePin(context.Background(), f.connection.Pin) != nil {
+				_ = json.NewEncoder(c).Encode(localJoinResponse{Version: 1, Error: "SYNTHETIC final source refused"})
+				return
+			}
+			f.sends = append(f.sends, q)
+			encoded, _ := json.Marshal(q)
+			if old, ok := f.deliveries[q.OperationID]; ok && !bytes.Equal(old, encoded) {
+				t.Error("synthetic retry changed original packet")
+				return
+			}
+			f.deliveries[q.OperationID] = encoded
+			if f.loseSendReply {
+				f.loseSendReply = false
+				return
+			}
+			messageID, _, err := localSealedRPCIDs(q.OperationID)
+			if err != nil {
+				t.Error("synthetic send ID invalid")
+				return
+			}
+			_ = json.NewEncoder(c).Encode(localJoinResponse{Version: 1, CrossNodeGroup: &crossNodeGroupResult{MessageID: messageID, TargetEndpointID: q.TargetEndpointID, State: "PERSISTED", Delivery: "LOCAL_PERSISTED", PayloadMode: "SEALED_V1"}})
 		default:
 			t.Errorf("unexpected synthetic peer operation %s", header.Operation)
 		}

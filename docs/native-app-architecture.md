@@ -758,13 +758,28 @@ native SID. See the [local consumer contract](native-endpoint-directory-contract
 Private route hints cannot grant rights. Cold/unavailable selection remains
 retained without falling back to a remaining Hub. Exact historical operation
 reads are distinct from dispatch authorization and retain original Hub crypto
-trust. Only the verified explicit Manager adoption receipt may bridge an old
-unmanaged pin to its exact managed epoch 1; credential-store pins, old DB fence,
-original packets and uncertain intents remain retained. New calls still require
-fresh original-sender context, current Group Guard and final managed epoch check.
+trust. The verified explicit Manager adoption receipt relates an unmanaged pin
+to its exact managed epoch 1; it does not make an old live pin current. After an
+explicit local remove/re-add, the separate error-only
+`ValidateRetainedLocalNodeArtifacts` may prove storage continuity to the exact
+current child. It requires protected adoption/retirement provenance and unchanged
+Hub keys, binding, paths and all other pin fields. Numeric reachability changes
+cannot be folded into this generation change. Credential-store pins, the old DB
+fence, original packets and uncertain intents remain retained in place.
+
+That data proof grants no dispatch authority. New calls require fresh
+original-sender context, an explicit current Group choice and final managed
+epoch checks. An explicit UNKNOWN retry can reuse its original packet only
+with the exact same current remote registration, native binding and Group
+source, followed by the original Node Guard. A changed grant cannot rescue it.
+Retained terminal intents additionally require reopening the exact owned native
+record and obtaining a fresh Node invocation proof bound to the original request
+ID and intent digest, including before returning a cached completion. UserPrompt
+and supplied old proofs cannot stand in for that private terminal authorizer.
 
 Front/Hook/CLI selector and storage-adapter components now bind the reviewed
-Manager list/adoption APIs from `c55f17d` through their formal default entries. Synthetic
+Manager list/adoption APIs from `c55f17d` and the storage-purpose API from
+`4340057` through their formal default entries. Synthetic
 private peer producers do not qualify current NPT, production Hub authority,
 Manager lifecycle or native Runtime. These remain **IN_PROGRESS / NOT_RUN** in
 this checkpoint's independent acceptance lanes.

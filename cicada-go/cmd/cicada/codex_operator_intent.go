@@ -25,11 +25,13 @@ var errCodexOperatorIntentBusy = errors.New("CODEX_OPERATOR_INTENT_BUSY: another
 var errCodexOperatorIntentResponse = errors.New("CODEX_OPERATOR_INTENT_RESPONSE_INVALID: original command retained")
 
 type codexOperatorIntentClient struct {
-	path            string
-	mu              sync.Mutex
-	exchange        func(string, localEndpointRequest) (*localEndpointResult, error)
-	persist         func(string, []byte, string) error
-	adoptConnection codexAdoptionResolver
+	path               string
+	mu                 sync.Mutex
+	exchange           func(string, localEndpointRequest) (*localEndpointResult, error)
+	persist            func(string, []byte, string) error
+	adoptConnection    codexAdoptionResolver
+	retainedArtifacts  codexArtifactValidator
+	retainedInvocation codexRetainedIntentAuthorizer
 }
 
 type codexOperatorIntentDisk struct {
@@ -224,7 +226,7 @@ func (c *codexOperatorIntentClient) originalVerifiedCommand(q localEndpointReque
 		if p == nil {
 			return nil
 		}
-		if p.NodeID != nodeID || !c.sameConnectionPin(pin, p.ConnectionPin) {
+		if p.NodeID != nodeID || c.validateIntentArtifact(pin, p.ConnectionPin) != nil {
 			return errCodexOperatorIntentConflict
 		}
 		old, current := p.Request, q
@@ -256,7 +258,7 @@ func (c *codexOperatorIntentClient) pendingDomainJoin(q localEndpointRequest, no
 		if p == nil || (p.Request.LocalDomainVersion != 1 && p.Request.EndpointGroupsVersion != 1) || p.Request.Operation != "endpoint_register" {
 			return nil
 		}
-		if p.NodeID != nodeID || !c.sameConnectionPin(pin, p.ConnectionPin) {
+		if p.NodeID != nodeID || c.validateIntentArtifact(pin, p.ConnectionPin) != nil {
 			return errCodexOperatorIntentConflict
 		}
 		old, current := p.Request, q
@@ -304,7 +306,7 @@ func (c *codexOperatorIntentClient) prepareWithConnectionPin(q localEndpointRequ
 			if pin != nil && p.ConnectionPin == nil {
 				return ErrLocalNodeConfigRequired
 			}
-			if !c.sameConnectionPin(pin, p.ConnectionPin) {
+			if c.validateIntentArtifact(pin, p.ConnectionPin) != nil {
 				return ErrLocalNodeBindingChanged
 			}
 			if p.NodeID != nodeID || p.SemanticDigest != semantic {
@@ -434,9 +436,9 @@ func (c *codexOperatorIntentClient) callForConnection(q localEndpointRequest, co
 	if err := c.validateConnectionPath(connection); err != nil {
 		return nil, err
 	}
-	return c.callWithConnectionPin(connection.Pin.SocketPath, q, connection.Pin.NodeID, &connection.Pin)
+	return c.callWithConnectionPin(connection.Pin.SocketPath, q, connection.Pin.NodeID, &connection.Pin, connection)
 }
-func (c *codexOperatorIntentClient) callWithConnectionPin(socketPath string, q localEndpointRequest, nodeID string, pin *LocalNodeConnectionPin) (*localEndpointResult, error) {
+func (c *codexOperatorIntentClient) callWithConnectionPin(socketPath string, q localEndpointRequest, nodeID string, pin *LocalNodeConnectionPin, live ...LocalNodeConnection) (*localEndpointResult, error) {
 	invocation := q.InvocationProof
 	q.InvocationProof = nil
 	original, err := c.prepareWithConnectionPin(q, nodeID, pin)
@@ -445,16 +447,30 @@ func (c *codexOperatorIntentClient) callWithConnectionPin(socketPath string, q l
 	}
 	var cached *localEndpointResult
 	var cachedErr error
+	retainedOnly := false
 	err = c.withLocked(func(disk *codexOperatorIntentDisk) error {
 		p := disk.Pending
-		if p == nil || p.Request != original || p.NodeID != nodeID || !c.sameConnectionPin(pin, p.ConnectionPin) {
+		if p == nil || p.Request != original || p.NodeID != nodeID || c.validateIntentArtifact(pin, p.ConnectionPin) != nil {
 			return errCodexOperatorIntentConflict
 		}
+		retainedOnly = !c.sameConnectionPin(pin, p.ConnectionPin)
 		cached, cachedErr = p.Result, codexOperatorStoredError(p)
 		return nil
 	})
 	if err != nil {
 		return nil, err
+	}
+	if retainedOnly {
+		// Reading the journal did not authenticate this invocation. Only the
+		// trusted current terminal path can obtain a fresh proof for these exact
+		// original bytes; a supplied old proof/UserPrompt cannot replace it.
+		if len(live) != 1 || pin == nil || !sameLocalNodeAuthority(live[0].Pin, *pin) || live[0].Pin.SocketPath != socketPath {
+			return nil, errCodexMCPContext
+		}
+		invocation, err = c.authorizeRetainedIntent(original, live[0])
+		if err != nil {
+			return nil, err
+		}
 	}
 	if cached != nil {
 		return cached, cachedErr
@@ -474,7 +490,7 @@ func (c *codexOperatorIntentClient) callWithConnectionPin(socketPath string, q l
 	}
 	err = c.withLocked(func(disk *codexOperatorIntentDisk) error {
 		p := disk.Pending
-		if p == nil || p.Request != original || p.NodeID != nodeID || p.IntentDigest != result.IntentDigest || !c.sameConnectionPin(pin, p.ConnectionPin) {
+		if p == nil || p.Request != original || p.NodeID != nodeID || p.IntentDigest != result.IntentDigest || c.validateIntentArtifact(pin, p.ConnectionPin) != nil {
 			return errCodexOperatorIntentConflict
 		}
 		if p.Result != nil {

@@ -19,6 +19,7 @@ func newLocalNodeMCPServer(selection LocalNodeSelection) (*mcpServer, error) {
 		return nil, err
 	}
 	server.adoptConnection = ResolveAdoptedLocalNodeConnection
+	server.retainedArtifacts = ValidateRetainedLocalNodeArtifacts
 	return server, nil
 }
 

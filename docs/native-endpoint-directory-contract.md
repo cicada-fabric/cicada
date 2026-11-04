@@ -1729,13 +1729,38 @@ Guard before dispatch. An unseen partial page does not itself authorize a retry
 or establish absence. The explicit retry's original scope is temporary for
 that invocation and never changes the Thread's persisted current Group.
 
-Explicit `from-service` adoption is the only pin bridge. The common Manager
-verifies the protected original-pin-to-exact-connection/epoch-1 receipt and live
-state for each private adapter use. Shared pin equality stays strict. Session
-storage keeps its previous pin; the outbox retains its original DB fence and
-packet/WAL bytes; uncertain operator intents retain their original request and
-pin. Actual calls still use the managed live child and final epoch fence.
-Changed keys, paths, sender, epoch 2, removal or re-add cannot borrow this proof.
+Explicit `from-service` adoption retains its exact original-pin-to-managed-epoch-1
+receipt and live-state checks. The adoption resolver and shared live-pin equality
+stay strict; a later local removal/re-add cannot borrow that adoption proof.
+The separate error-only `ValidateRetainedLocalNodeArtifacts(historical,current)`
+can establish storage continuity after an explicit local stop/re-add without
+upgrading a live pin or credential. Its protected current registry, state
+reference, immediate successful LOCAL_STOPPED/NOT_REQUESTED retirement receipt
+and exact fresh live Resolve must agree. Pin 0 additionally requires its exact
+original service/adoption provenance. Only connection ID/epoch can differ under
+the common validator; numeric locator changes cannot be folded into that change.
+This checks the latest retirement receipt, not a complete chronological history.
+
+Session storage keeps its previous pin; the outbox retains its original DB
+fence and packet/WAL bytes; uncertain operator intents retain their original
+request and pin. There is no epoch namespace or replacement database. A fresh
+child may prepare new calls for the same or a new Thread in that original store
+after fresh Host context and explicit current Group selection. Explicit UNKNOWN
+retry additionally compares the exact original remote registration/native binding
+and Group source and repeats the original Node Guard and final managed fence.
+Local removal is not remote revocation. Changed keys, paths, sender or grants,
+missing provenance, old runtime frames, nonces and tickets still refuse.
+
+Locating an old operator journal is a data-only step. Across a retained local
+epoch, `sameConnectionPin` remains false and exchange or cached COMPLETED access
+requires the private terminal authorizer. It reopens the exact terminal-selected
+owned native record, checks its actual SID/workspace/source and obtains a fresh
+existing Node invocation proof bound to original request ID, intent digest and
+registration source. Caller-supplied old InvocationProof is ignored; a missing
+authorizer, stale proof or changed record refuses before exchange or original
+journal modification. Legacy UserPrompt gets no such authorizer. No new receipt,
+RPC or public protocol is introduced, and a historical result confers no current
+authorization.
 Linux `join` / `leave` accept `--hub ALIAS` mutually exclusively with
 `--hub-id`: exact unique ENABLED management metadata is only a selector, followed
 by full live Resolve and connection/fence comparison. Native record verification
@@ -1743,7 +1768,8 @@ and original intent recovery still establish the caller; CLI arguments alone
 do not prove identity or grant access.
 
 Implementation status: the production facade factory and default installed MCP/Hook
-now bind the reviewed Manager verified-list and adoption APIs from `c55f17d`.
+now bind the reviewed Manager verified-list and adoption APIs from `c55f17d`
+and the separate retained-artifact API from `4340057`.
 Linux join/leave bind the real list/adoption functions as well. Synthetic private
 peer producers cover the consumer path; actual current NPT/Hub Guard, shared
 native writer, Docker, real Runtime, Windows and public acceptance remain

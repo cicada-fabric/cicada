@@ -163,7 +163,7 @@ func (m *mcpServer) facadeOperationRetry(native harness.SessionContext, verified
 	if fresh == nil {
 		return nil, errMCPOriginalGroupRoute
 	}
-	if !sameLocalNodeAuthority(originalPin, m.localNode.Pin) && validateCodexAdoption(context.Background(), originalPin, m.localNode.Pin, m.adoptConnection) != nil {
+	if validateCodexStoredArtifact(context.Background(), originalPin, m.localNode.Pin, m.adoptConnection, m.retainedArtifacts) != nil {
 		return nil, errMCPOriginalGroupRoute
 	}
 	current, err := codexContextBinding(verified)

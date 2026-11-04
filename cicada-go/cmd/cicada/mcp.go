@@ -48,6 +48,7 @@ type mcpServer struct {
 	codexContext      *codexMCPContextState
 	codexFacade       *codexMCPFacade
 	adoptConnection   codexAdoptionResolver
+	retainedArtifacts codexArtifactValidator
 	sessionStoragePin *LocalNodeConnectionPin
 	localNode         *LocalNodeConnection
 	nativeHTTPOnce    sync.Once

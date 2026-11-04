@@ -178,7 +178,7 @@ func codexRoutedHookConnections(name string, business map[string]any, connection
 				if len(adoptions) > 0 {
 					adopt = adoptions[0]
 				}
-				if _, err := codexOriginalSingleHubHint(connections[0], native, adopt); err == nil {
+				if _, err := codexOriginalSingleHubHint(connections[0], native, adopt, ValidateRetainedLocalNodeArtifacts); err == nil {
 					return connections, nil
 				}
 			}
@@ -207,13 +207,17 @@ func codexRoutedHookConnections(name string, business map[string]any, connection
 	return chosen, nil
 }
 
-func codexOriginalSingleHubHint(connection LocalNodeConnection, native mcpTrustedContext, adopt codexAdoptionResolver) (*mcpCachedSession, error) {
+func codexOriginalSingleHubHint(connection LocalNodeConnection, native mcpTrustedContext, adopt codexAdoptionResolver, validators ...codexArtifactValidator) (*mcpCachedSession, error) {
 	context := harness.SessionContext{Harness: native.Harness, NativeSessionID: native.NativeSessionID, MachineID: connection.Pin.NodeID, Workspace: native.Workspace}
 	cached, err := newMCPSessionStateStore(connection.Pin.MCPSessionStateFile).load(connection.Pin.APIOrigin, context)
 	if err != nil || cached == nil || cached.GroupID == "" {
 		return nil, errMCPGroupRouteRequired
 	}
-	if err := validateCodexCachedAdoption(cached, &connection, adopt); err != nil {
+	var retained codexArtifactValidator
+	if len(validators) > 0 {
+		retained = validators[0]
+	}
+	if err := validateCodexCachedArtifact(cached, &connection, adopt, retained); err != nil {
 		return nil, err
 	}
 	return cached, nil

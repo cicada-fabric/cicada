@@ -43,7 +43,7 @@ func validateCodexCachedAdoption(cached *mcpCachedSession, current *LocalNodeCon
 }
 
 func (m *mcpServer) validateCachedConnection(cached *mcpCachedSession) error {
-	if err := validateCodexCachedAdoption(cached, m.localNode, m.adoptConnection); err != nil {
+	if err := validateCodexCachedArtifact(cached, m.localNode, m.adoptConnection, m.retainedArtifacts); err != nil {
 		return err
 	}
 	m.sessionMu.Lock()
@@ -107,7 +107,7 @@ func (m *mcpServer) bridgeOriginalOutbox() error {
 		store.connectionPin = m.localNodePin()
 		return nil
 	}
-	if err := validateCodexAdoption(context.Background(), *original, m.localNode.Pin, m.adoptConnection); err != nil {
+	if err := validateCodexStoredArtifact(context.Background(), *original, m.localNode.Pin, m.adoptConnection, m.retainedArtifacts); err != nil {
 		return codexLocalNodeError(err)
 	}
 	// Only the in-memory storage adapter references the retained old pin. The

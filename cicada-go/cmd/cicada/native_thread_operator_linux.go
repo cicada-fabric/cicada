@@ -71,7 +71,7 @@ func nativeThreadOperatorRecord(sid string) (string, string, error) {
 }
 
 func nativeThreadOperatorCommand(action string, args []string, out io.Writer) error {
-	return nativeThreadOperatorWithManager(action, args, out, ListLocalNodeHubConnections, ResolveAdoptedLocalNodeConnection)
+	return nativeThreadOperatorWithManager(action, args, out, ListLocalNodeHubConnections, ResolveAdoptedLocalNodeConnection, ValidateRetainedLocalNodeArtifacts)
 }
 
 type nativeThreadHubListFunc func(context.Context, string) (LocalNodeHubList, error)
@@ -112,7 +112,7 @@ func nativeThreadHubAlias(ctx context.Context, root, alias, node string, list na
 	return *found, nil
 }
 
-func nativeThreadOperatorWithManager(action string, args []string, out io.Writer, list nativeThreadHubListFunc, adopt codexAdoptionResolver) error {
+func nativeThreadOperatorWithManager(action string, args []string, out io.Writer, list nativeThreadHubListFunc, adopt codexAdoptionResolver, validators ...codexArtifactValidator) error {
 	if action != "join" && action != "leave" {
 		return errors.New("unsupported Thread operator action")
 	}
@@ -172,12 +172,18 @@ func nativeThreadOperatorWithManager(action string, args []string, out io.Writer
 		return err
 	}
 	client.adoptConnection = adopt
+	var retained codexArtifactValidator
+	if len(validators) > 0 {
+		retained = validators[0]
+	}
+	client.retainedArtifacts = retained
+	client.retainedInvocation = nativeThreadRetainedIntentAuthorizer(*thread, path, workspace, operation, native)
 	storagePin := &connection.Pin
 	cached, err := newMCPSessionStateStore(connection.Pin.MCPSessionStateFile).load(q.APIOrigin, native)
 	if err != nil {
 		return err
 	}
-	if err := validateCodexCachedAdoption(cached, &connection, adopt); err != nil {
+	if err := validateCodexCachedArtifact(cached, &connection, adopt, retained); err != nil {
 		return err
 	}
 	if cached != nil && cached.ConnectionPin != nil {
@@ -243,4 +249,16 @@ func nativeThreadOperatorWithManager(action string, args []string, out io.Writer
 		return err
 	}
 	return client.ack(result.RequestID, result.IntentDigest)
+}
+
+// Only the terminal operator configures this private authorizer. Reading an
+// old journal, UserPrompt or cached runtime frame cannot supply this identity.
+func nativeThreadRetainedIntentAuthorizer(thread, path, workspace, operation string, native harness.SessionContext) codexRetainedIntentAuthorizer {
+	return func(original localEndpointRequest, current LocalNodeConnection) (*endpointGroupsOperatorContextProof, error) {
+		currentPath, currentWorkspace, err := nativeThreadOperatorRecord(thread)
+		if err != nil || currentPath != path || currentWorkspace != workspace || original.Harness != native.Harness || original.NativeSessionID != native.NativeSessionID || original.Workspace != workspace || original.APIOrigin != current.Pin.APIOrigin || original.Operation != operation || current.Pin.NodeID != native.MachineID {
+			return nil, errCodexMCPContext
+		}
+		return endpointGroupsFreshOperatorProof(currentPath, "", "", native, &current, original)
+	}
 }

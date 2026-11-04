@@ -19,13 +19,14 @@ import (
 // The injected enumerator is the reviewed Manager boundary, never raw registry
 // interpretation. Both enumeration and the selected child revalidate per call.
 type codexMCPFacade struct {
-	mu              sync.Mutex
-	userRoot        string
-	nonce           string
-	list            ListVerifiedLocalNodeConnectionsFunc
-	children        map[string]*mcpServer
-	front           *mcpServer
-	adoptConnection codexAdoptionResolver
+	mu                sync.Mutex
+	userRoot          string
+	nonce             string
+	list              ListVerifiedLocalNodeConnectionsFunc
+	children          map[string]*mcpServer
+	front             *mcpServer
+	adoptConnection   codexAdoptionResolver
+	retainedArtifacts codexArtifactValidator
 }
 
 func newRoutedLocalNodeMCPServer(userRoot string, list ListVerifiedLocalNodeConnectionsFunc) (*mcpServer, error) {
@@ -34,6 +35,7 @@ func newRoutedLocalNodeMCPServer(userRoot string, list ListVerifiedLocalNodeConn
 		return nil, err
 	}
 	f.adoptConnection = ResolveAdoptedLocalNodeConnection
+	f.retainedArtifacts = ValidateRetainedLocalNodeArtifacts
 	if err := f.refresh(context.Background()); err != nil {
 		f.close()
 		return nil, err
@@ -123,6 +125,7 @@ func (f *codexMCPFacade) refresh(ctx context.Context) error {
 		}
 		f.children[id] = child
 		child.adoptConnection = f.adoptConnection
+		child.retainedArtifacts = f.retainedArtifacts
 	}
 	for id, child := range f.children {
 		if !current[id] {
@@ -255,7 +258,7 @@ func (f *codexMCPFacade) call(name string, arguments map[string]any) (any, error
 			if len(f.children) != 1 || cache.Selected != nil || !child.isJoined() {
 				return nil, errMCPGroupRouteRequired
 			}
-			original, err := codexOriginalSingleHubHint(*child.localNode, trusted, child.adoptConnection)
+			original, err := codexOriginalSingleHubHint(*child.localNode, trusted, child.adoptConnection, child.retainedArtifacts)
 			if err != nil {
 				return nil, err
 			}
@@ -310,7 +313,7 @@ func (f *codexMCPFacade) call(name string, arguments map[string]any) (any, error
 		}
 		if cache.Selected == nil {
 			if len(f.children) == 1 {
-				original, hintErr := codexOriginalSingleHubHint(*child.localNode, sender.Native, child.adoptConnection)
+				original, hintErr := codexOriginalSingleHubHint(*child.localNode, sender.Native, child.adoptConnection, child.retainedArtifacts)
 				child.sessionMu.RLock()
 				group, authority := child.sessionGroupID, child.sessionEndpointGroupAuthority
 				child.sessionMu.RUnlock()

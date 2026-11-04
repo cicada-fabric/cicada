@@ -2226,3 +2226,66 @@ Hub Guard, shared native writer and disposable Docker interop remain independent
 QA/Root targets; real native Runtime, Windows physical behavior and public HTTPS
 are **NOT_RUN** in this producer scope. No resident deployment, real key,
 installation or publishing action was performed.
+
+### Retained storage after explicit local remove/re-add — 2026-11-04
+
+The consumer continuation uses common parent `4340057` and the separate
+error-only `ValidateRetainedLocalNodeArtifacts` API. It retains the original
+credential-cache pin, outbox DB fence, packet/idempotency bytes and uncertain
+operator journal. No epoch namespace, new database, identity, remote revocation
+or public protocol is introduced. The earlier adoption tests' epoch-2 refusal
+remains evidence for the original adoption-only adapter, with no retained-data
+validator configured; it does not establish that local removal revokes unchanged
+remote authority.
+
+The actual facade, explicit child and Hook bind the common storage-purpose
+validator. Fresh calls still require the current child, original Host context
+and current Group choice. An explicit original UNKNOWN retry must match its
+original remote registration, native binding and exact Group source and repeat
+the Node Guard/final managed fence. Changed grants cannot rescue an original
+packet. Old live pins, parent/child frames, nonces and tickets stay invalid.
+
+Only the terminal join/leave consumer configures the private retained-intent
+authorizer. It reopens the exact owned native record and uses the existing
+issue/consume proof bound to original request ID and intent digest, revalidating
+the current connection before and after. This runs before exchange and before
+returning cached COMPLETED. Missing/stale proof, changed actual record or changed
+registration refuses without exchange or original journal modification. Old
+UserPrompt and supplied InvocationProof cannot replace the private authorizer;
+`sameConnectionPin`, the adoption resolver and live-pin equality remain strict.
+
+New component producers exercise managed 1→3 continuity with the real common
+validator, original cache/DB/WAL preservation, identical UNKNOWN retransmission
+and one synthetic effect, changed-source refusal, fresh same-Thread/new-Thread
+sends through the same outbox, old-frame refusal, and terminal uncertain/cached
+completion authorization. Pin-0→3 adapter argument checks use an injected
+purpose validator; actual service/adoption provenance remains separately proved
+by the common carrier tests. The production Hook/front/child, Unix issue/consume
+clients, protected record selector and SQLite storage execute against synthetic
+private Node/HTTP peers. They do not prove production Hub Guard, current NPT,
+shared native writer, installed CLI/Runtime, Docker or physical Windows/public
+HTTPS acceptance. Those remain independent QA/Root-owned lanes.
+
+Final producer qualification on dirty `4340057` plus this continuation's exact
+Go sources passed **14 normal top-level tests / 16 named pass events**, **11
+race top-level tests / 13 named pass events**, and **vet exit 0**, with **0
+failures / 0 skips**. Both test lanes include the three new retained-data tests,
+all four affected Hook/front private-peer producers and the three original
+adoption tests. Normal additionally includes both alias guards and the existing
+fresh-operator-proof check; both lanes include the owned record selector.
+These are component results, not new actual Hub/NPT/Runtime acceptance.
+
+Exact commands, offline Go environment, `umask 0077`, source hashes and logs are
+under `/home/zyf/Cicada/.local/evidence/n2-app/node-hub-retained-final-b2azn1fr/`.
+`source.json` SHA-256 is
+`78c44fc569e8c1a84f42062f4403b25221bc43471c985ad68953eef13b90bbfc`;
+normal/race/vet result receipt SHA-256 values are respectively
+`96f612174186802de11177a269b98a23c61df8b2a779e249ccf1d127d20a4c25`,
+`a3b7df13eecde8e700b8e3aae03d1cef325aa404d0819198ef07e4acccf7f26f`,
+`bfca630f0ee20cf7fc592d1b1bac25bbfe33e688977314fc1b4e8c7ba25e3f30`.
+`source-after-tests.json` records zero Go-source changes during these checks.
+Earlier exploratory fixture assertions failed on a transient-proof comparison,
+the private peer's message-ID/registration receipt shape, and a stale Group
+choice after re-add; those fixtures were corrected before this frozen run.
+The final same/new Thread positive cases explicitly obtain the current Group
+choice. No production authority validation was weakened to make tests pass.
