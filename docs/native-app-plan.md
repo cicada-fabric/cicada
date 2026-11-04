@@ -80,8 +80,12 @@ and [current source-bound results](native-app-cross-node-validation.md#current-s
 The user reports all four installation steps passed for the fresh Hub at
 `8.155.139.253:8787` on server `aliyun`, using the delivered `2337f7d` CLI
 (artifact digest reported with prefix `5c66`). This is USER_REPORTED_PASS only;
-no independent public-host execution is claimed. The App's inability to add,
-switch or remove saved Hub connections is the current USER_REPORTED_FAIL.
+no independent public-host execution is claimed. The prior App's inability to
+add, switch or remove saved Hub connections remains USER_REPORTED_FAIL for that
+previous source. After the `55fb175` App delivery, the user reports all six Hub
+manager checks passed: **USER_REPORTED_PASS for the reported local Hub-management
+batch only**. This does not establish server-authoritative App unbinding,
+independent Windows security validation, or a passing result for the old build.
 
 This App-only checkpoint exposes an authenticated local Hub list at startup,
 login and Settings; explicit Add, Switch, local Disconnect and exact confirmed
@@ -92,9 +96,39 @@ from their original encrypted vault, without a new bootstrap or rekey. The
 defines the removal marker, live verification, isolation, cancellation and
 64-profile boundary. No Hub/Node/wire/software-version change or redeployment is
 required for this fix. Producer validation and Root's independent interop/package
-checks retain separate scopes; this new code's Windows physical retest remains
-NOT_RUN until the user tries the reviewed App package. Existing real pending
-state and keys have not been touched by this development task.
+checks retain separate scopes. The subsequent physical observation is the user
+report above, not an independently executed Windows GUI/DPAPI/ACL run. Existing
+real pending state and keys have not been touched by development.
+
+### Server-authoritative App unbinding — new scope, contract review pending
+
+The user now requests explicit unbinding of this App from the selected Hub.
+This is a separate networked operation from local Disconnect/Remove/Restore.
+Hub owns the reviewed protocol and server effects; App transport integration
+must wait for that contract. No local-only success or new wire DTO is inferred.
+The App design requires exact selected Hub/account/Owner/device confirmation,
+durable original-packet recovery after response loss, truthful offline/unknown
+presentation and authenticated terminal evidence before clearing this scope's
+login/session. The long-lived Owner signer, unresolved original records,
+independent Nodes/Groups and other Hub vaults remain protected. Re-enrollment
+uses the retained Owner's KEM/signing proof to authorize one fresh App-device
+identity against the exact voluntary-unbind record, followed by ordinary account
+login. It starts with no inherited session or leases. Clearing an ID or rerunning
+initial activation is not a recovery strategy. Root has approved this bounded
+direction; transport compilation/integration waits for Hub's typed checkpoint.
+
+The [local generation primitive](native-app-architecture.md#app-device-generations--local-vault-primitive-2026-11-04)
+is implemented with an encrypted pending slot, at most four retained read-only
+generations, unchanged byte/current-namespace ceilings and atomic key/state CAS
+promotion. Producer normal vault/key checks have 30 top-level PASS and one
+configured external OpenSSL-fixture SKIP; vault race has 27 top-level PASS,
+zero FAIL/SKIP. Vet and Windows vault cross-compilation exit 0. The enlarged App
+regression is **FAIL**, 225 top-level PASS / 32 FAIL / zero SKIP. A separate
+targeted run of those exact 32 failed tests on clean `55fb175` reproduces all 32
+failures; it does not turn either run into PASS. These
+results are local primitive qualification, not server unbinding/rebinding or
+physical Windows GUI/DPAPI/ACL acceptance. Those new integration scopes remain
+NOT_RUN.
 
 ## Product boundary
 

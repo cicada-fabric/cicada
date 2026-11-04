@@ -614,3 +614,49 @@ removal/restoration or account/management success. The retained encrypted vault
 remains the recovery source; there is no trusted plaintext connection index.
 Explicit Add/Disconnect remain available during profile recovery, while raw
 CONNECT and key initialization stay blocked until the user chooses Add.
+
+## App-device generations — local vault primitive (2026-11-04)
+
+Server-authoritative self-unbinding and retained-Owner re-enrollment are separate
+from local Disconnect/Remove. Their transport integration waits for Hub's typed
+contract. The vault supplies a bounded local transition without weakening
+ordinary `Put`: replacing an existing purpose through `Put` remains forbidden.
+
+The optional `app_devices` record is inside the existing authenticated encrypted
+payload and uses the same file, envelope and full scope. Existing vaults without
+that record open unchanged. A prepared candidate has one fresh App-device key,
+bound to the namespace, CAS version and SHA-256 of a saved terminal unbinding
+record. Core must authenticate that receipt and resolve all earlier uncertain
+writes before staging. Preparing the same ceremony after restart reuses its
+original candidate. Public metadata and controller snapshots contain no key
+bytes; only the candidate has an opaque crypto handle for re-enrollment.
+
+Promotion requires a distinct saved completion record, its exact guard, the
+expected old/current candidate IDs and a complete current namespace CAS snapshot.
+One atomic encrypted publication archives the old key and every old namespace
+with its original payload and CAS version, promotes the candidate, updates only
+explicit new-generation state, and advances all other current namespaces to
+tombstones. Session storage must be an explicit tombstone. Owner private bytes
+are preserved. New account state cannot inherit old Node/Group grants, sessions
+or leases; after ordinary login Core must obtain fresh authenticated Hub views.
+Actual independent Hub/Node work is unaffected by this local archival step.
+Retired records are available only through a generation-specific read API;
+retired keys have no exported signing or ordinary `Get` handle.
+
+At most four retired generations and one pending candidate are retained. No
+history is evicted. The existing 32-current-namespace, 1 MiB record, 4 MiB total
+plaintext and 8 MiB file ceilings remain. Before the first network mutation Core
+must project the entire unbind/rebind originals, possible receipts/recovery,
+candidate and new account state. Vault admission includes retained generations,
+maximum accepted candidate-key size and guard/CAS encoding overhead; exhaustion
+refuses before send. An atomic write followed by failed durability/validation
+poisons the handle with `ErrCommitUncertain`. Close/reopen must inspect the actual
+generation before further work; it must not regenerate keys from an unknown
+write result. Older binaries may reject the new typed payload and must not
+attempt to repair or replace it.
+
+Synthetic vault tests cover candidate restart identity, complete atomic archival,
+Owner preservation, proof/CAS/session rejection, post-publication failure,
+capacity refusal, bounded history and malformed encrypted lifecycle records.
+These local checks do not establish server unbinding, real Windows DPAPI/ACL,
+GUI or independent Node/Group continuation.

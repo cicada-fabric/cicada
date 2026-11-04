@@ -42,15 +42,16 @@ const (
 )
 
 var (
-	ErrInvalidVault  = errors.New("invalid App vault")
-	ErrScopeMismatch = errors.New("App vault scope mismatch")
-	ErrVaultBusy     = errors.New("App vault is already open by another process")
-	ErrVaultExists   = errors.New("App vault already exists")
-	ErrClosed        = errors.New("App vault is closed")
-	ErrKeyExists     = errors.New("App vault key purpose already has a different identity")
-	ErrStateConflict = errors.New("App vault state version conflict")
-	ErrStateNotFound = errors.New("App vault state not found")
-	ErrUnsupportedOS = errors.New("App vault platform protection is unavailable")
+	ErrInvalidVault         = errors.New("invalid App vault")
+	ErrScopeMismatch        = errors.New("App vault scope mismatch")
+	ErrVaultBusy            = errors.New("App vault is already open by another process")
+	ErrVaultExists          = errors.New("App vault already exists")
+	ErrClosed               = errors.New("App vault is closed")
+	ErrKeyExists            = errors.New("App vault key purpose already has a different identity")
+	ErrStateConflict        = errors.New("App vault state version conflict")
+	ErrStateNotFound        = errors.New("App vault state not found")
+	ErrUnsupportedOS        = errors.New("App vault platform protection is unavailable")
+	ErrAppDeviceHistoryFull = errors.New("App device history is full; retained keys and receipts were preserved")
 	// ErrCommitUncertain means an atomic write may already have replaced the
 	// on-disk vault, but a later durability or validation step failed. The
 	// caller must close and reopen before reading or attempting another write.
@@ -101,9 +102,10 @@ type diskState struct {
 }
 
 type diskPayload struct {
-	Version int         `json:"version"`
-	Entries []diskEntry `json:"entries"`
-	States  []diskState `json:"states"`
+	Version    int                 `json:"version"`
+	Entries    []diskEntry         `json:"entries"`
+	States     []diskState         `json:"states"`
+	AppDevices *appDeviceLifecycle `json:"app_devices,omitempty"`
 }
 
 type stateValue struct {
@@ -122,6 +124,7 @@ type Vault struct {
 	fileInfo   os.FileInfo
 	entries    map[Purpose]diskEntry
 	states     map[string]stateValue
+	appDevices *appDeviceLifecycle
 	closed     bool
 	poisoned   bool
 }
@@ -360,7 +363,7 @@ func (v *Vault) CheckStateUpdates(updates map[string][]byte) error {
 		state.payload = append([]byte(nil), payload...)
 		states[namespace] = state
 	}
-	data, err := encodePayload(v.entries, states)
+	data, err := encodePayload(v.entries, states, v.appDevices)
 	clear(data)
 	return err
 }
@@ -377,12 +380,14 @@ func (v *Vault) Close() error {
 	v.closed = true
 	clearEntries(v.entries)
 	clearStates(v.states)
+	clearAppDeviceLifecycle(v.appDevices)
 	clear(v.dataKey)
 	clear(v.wrappedKey)
 	v.dataKey = nil
 	v.wrappedKey = nil
 	v.entries = nil
 	v.states = nil
+	v.appDevices = nil
 	var err error
 	if v.lock != nil {
 		err = v.lock.Unlock()
@@ -407,13 +412,17 @@ func (v *Vault) requireOpen() error {
 func (v *Vault) persist(create bool) error { return v.persistWith(v.entries, v.states, create) }
 
 func (v *Vault) persistWith(entries map[Purpose]diskEntry, states map[string]stateValue, create bool) error {
+	return v.persistGeneration(entries, states, v.appDevices, create)
+}
+
+func (v *Vault) persistGeneration(entries map[Purpose]diskEntry, states map[string]stateValue, devices *appDeviceLifecycle, create bool) error {
 	if err := v.requireOpen(); err != nil {
 		return err
 	}
 	if err := v.verifyCurrentFile(create); err != nil {
 		return err
 	}
-	payload, err := encodePayload(entries, states)
+	payload, err := encodePayload(entries, states, devices)
 	if err != nil {
 		return err
 	}
@@ -507,14 +516,18 @@ func (v *Vault) decodePayload(data []byte) error {
 		}
 		v.states[state.Namespace] = stateValue{version: state.Version, payload: append([]byte(nil), state.Payload...)}
 	}
+	if err := validateAppDeviceLifecycle(payload.AppDevices, v.entries); err != nil {
+		return err
+	}
+	v.appDevices = cloneAppDeviceLifecycle(payload.AppDevices)
 	return nil
 }
 
-func encodePayload(entries map[Purpose]diskEntry, states map[string]stateValue) ([]byte, error) {
+func encodePayload(entries map[Purpose]diskEntry, states map[string]stateValue, devices *appDeviceLifecycle) ([]byte, error) {
 	if len(entries) > maxVaultEntries || len(states) > maxStateRecords {
 		return nil, ErrInvalidVault
 	}
-	payload := diskPayload{Version: int(vaultVersion)}
+	payload := diskPayload{Version: int(vaultVersion), AppDevices: cloneAppDeviceLifecycle(devices)}
 	defer clearDiskPayload(&payload)
 	for purpose, entry := range entries {
 		if !validPurpose(purpose) || entry.Purpose != purpose || !validKeyID(entry.KeyID) || len(entry.Private) == 0 || len(entry.Private) > maxIdentityBytes {
@@ -550,6 +563,8 @@ func clearDiskPayload(payload *diskPayload) {
 		clear(payload.States[i].Payload)
 		payload.States[i].Payload = nil
 	}
+	clearAppDeviceLifecycle(payload.AppDevices)
+	payload.AppDevices = nil
 }
 
 func sealEnvelope(scope Scope, protectorID string, wrapped, dataKey, plain []byte) ([]byte, error) {
