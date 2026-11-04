@@ -148,6 +148,9 @@ JOIN machines m ON m.id=b.node_id AND m.owner_id=b.owner_id`
 	if json.Unmarshal([]byte(np), &b.NodePublicIdentity) != nil || json.Unmarshal([]byte(hp), &b.HubPublicIdentity) != nil || e2ee.ValidatePublicIdentity(b.NodePublicIdentity) != nil || e2ee.ValidatePublicIdentity(b.HubPublicIdentity) != nil || b.NodeKeyID != b.NodePublicIdentity.ID || b.HubKeyID != b.HubPublicIdentity.ID || b.NodeKeyFingerprint != nodewire.IdentityFingerprint(b.NodePublicIdentity) || b.HubKeyFingerprint != nodewire.IdentityFingerprint(b.HubPublicIdentity) || b.NodeKeyVersion == 0 || b.NodeKeyEpoch == 0 || b.HubKeyVersion == 0 {
 		return nil, ErrNodeControlKeyUnauthorized
 	}
+	if current && !appBindingLocalDomainSource(tx, b.OwnerID, b.ClientDeviceID, b.OwnerKeyID, b.HubID) {
+		return nil, ErrNodeControlKeyUnauthorized
+	}
 	return &b, nil
 }
 

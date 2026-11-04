@@ -220,7 +220,7 @@ func (h *hubNodesHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.nodeRPC(w, r)
 		return
 	}
-	if path == "/healthz" || path == "/v2/client/identity" || path == "/v2/client/capabilities" || path == "/v2/owner/bootstrap/accept" || accountOperation(path) != "" {
+	if path == "/healthz" || path == "/v2/client/identity" || path == "/v2/client/capabilities" || path == "/v2/owner/bootstrap/accept" || path == wire.AppBindingCapabilitiesPath || accountOperation(path) != "" {
 		h.base.ServeHTTP(w, r)
 		return
 	}

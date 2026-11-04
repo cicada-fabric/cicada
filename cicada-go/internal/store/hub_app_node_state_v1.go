@@ -90,6 +90,9 @@ func appNodeActor(tx *sql.Tx, hub wire.HubIdentity, deviceID string, public e2ee
 		// silently adopt changed security coordinates into the first N3 grant.
 		a.source = err == nil && state == wire.ActivationCompleted && completed == lease && activationEpoch == epoch && leaseState == "ACTIVE" && ae == epoch && de == ad.Epoch && n2.AccountEpoch == uint64(epoch) && n2.DeviceEpoch == uint64(ad.Epoch) && n2.AccountID == setup.AccountID && n2.OwnerID == setup.OwnerID && n2.HubID == hub.HubID && n2.HubFingerprint == fp && n2.Origin == setup.Origin && n2.DeviceID == deviceID && reflect.DeepEqual(n2.OwnerPublic, key.Public) && reflect.DeepEqual(n2.DevicePublic, public) && ad.State == "ACTIVE" && client.State == ClientDeviceActive && client.KeyVersion == 1 && client.SessionEpoch == 1 && a.root == wire.RootActiveState
 	}
+	if !a.source && a.root == wire.RootActiveState {
+		a.source = appBindingReboundSource(tx, a.scope, client, &ad)
+	}
 	if len(token) > 0 {
 		var id string
 		if tx.QueryRow(`SELECT session_id FROM hub_account_sessions_v1 WHERE token_digest=?`, AccountDigest("session-token", token)).Scan(&id) == nil {

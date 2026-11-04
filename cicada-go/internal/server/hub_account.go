@@ -29,6 +29,11 @@ func NewHandlerWithAccount(c *control.Control, account *hubauth.Service) http.Ha
 	return h
 }
 func accountOperation(path string) string {
+	for _, op := range wire.AppBindingContractCapabilities().Operations {
+		if path == wire.AppBindingHTTPPath(op) {
+			return op
+		}
+	}
 	for _, op := range []string{wire.OperationActivationPrepare, wire.OperationActivationComplete, wire.OperationActivationStatus, wire.OperationAccountReconcile} {
 		if path == wire.ActivationHTTPPath(op) {
 			return op
@@ -51,6 +56,26 @@ func accountOperation(path string) string {
 		return wire.OperationSessionLogout
 	}
 	return ""
+}
+
+func (h *Handler) hubAppBindingCapabilities(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+		return
+	}
+	provider, ok := h.accountAuth.(interface {
+		AppBindingCapabilities() (wire.AppBindingCapabilities, error)
+	})
+	if !ok {
+		writeError(w, http.StatusNotFound, errors.New("App binding unavailable"))
+		return
+	}
+	caps, err := provider.AppBindingCapabilities()
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, errors.New("App binding unavailable"))
+		return
+	}
+	writeJSON(w, http.StatusOK, caps)
 }
 func (h *Handler) hubAccount(response http.ResponseWriter, request *http.Request, operation string) {
 	if operation == wire.OperationOwnerEndpointRead && request.Method == http.MethodGet {

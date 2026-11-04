@@ -734,22 +734,7 @@ func (s *Store) BeginNodeControlRPC(input NodeControlRPCInput) (*NodeControlRPCR
 	if err := pruneNodeControlRPCResponsesTx(tx, time.Now().UTC()); err != nil {
 		return nil, false, err
 	}
-	var activeBindingID, activeNodeKeyID string
-	var activeBindingVersion, activeKeyEpoch int64
-	err = tx.QueryRow(`SELECT owner_binding.id,owner_binding.version,node_key.node_key_id,node_key.node_key_epoch
-FROM node_owner_bindings_v2 owner_binding
-JOIN fabric_node_credentials credential ON credential.node_id=owner_binding.node_id
- AND credential.status='active' AND credential.version=owner_binding.node_credential_version
- AND credential.credential_hash=owner_binding.node_credential_digest
-JOIN principals principal ON principal.id=owner_binding.owner_id AND principal.kind='human' AND principal.status='active'
-JOIN client_device_hub_config_v2 hub ON hub.id=1 AND hub.hub_id=owner_binding.hub_id
-JOIN owner_approval_keys_v2 owner_key ON owner_key.owner_id=owner_binding.owner_id
- AND owner_key.key_id=owner_binding.owner_key_id AND owner_key.state='ACTIVE'
-JOIN client_devices_v2 device ON device.owner_id=owner_binding.owner_id
- AND device.device_id=owner_binding.client_device_id AND device.state='ACTIVE'
-JOIN node_control_key_bindings_v1 node_key ON node_key.owner_binding_id=owner_binding.id AND node_key.state='ACTIVE'
-WHERE owner_binding.node_credential_digest=? AND owner_binding.node_id=? AND owner_binding.state='ACTIVE'`,
-		input.CredentialDigest, input.NodeID).Scan(&activeBindingID, &activeBindingVersion, &activeNodeKeyID, &activeKeyEpoch)
+	currentBinding, err := nodeControlCurrentBindingTx(tx, input.CredentialDigest, input.NodeID)
 	if errors.Is(err, sql.ErrNoRows) {
 		var activeOwnerBinding int
 		if lookupErr := tx.QueryRow(`SELECT count(*) FROM node_owner_bindings_v2
@@ -764,8 +749,8 @@ WHERE node_id=? AND node_credential_digest=? AND state='ACTIVE'`, input.NodeID, 
 	if err != nil {
 		return nil, false, err
 	}
-	if activeBindingID != input.BindingID || uint64(activeBindingVersion) != input.BindingVersion ||
-		activeNodeKeyID != input.NodeKeyID || uint64(activeKeyEpoch) != input.NodeKeyEpoch {
+	if currentBinding.OwnerBindingID != input.BindingID || currentBinding.BindingVersion != input.BindingVersion ||
+		currentBinding.NodeKeyID != input.NodeKeyID || currentBinding.NodeKeyEpoch != input.NodeKeyEpoch {
 		return nil, false, ErrNodeControlKeyUnauthorized
 	}
 	var prior NodeControlRPCRecord
@@ -1061,31 +1046,14 @@ WHERE owner_binding_id=? AND node_key_epoch=? AND sequence=? AND operation_id=? 
 }
 
 func verifyNodeControlBindingTx(tx *sql.Tx, input NodeControlRPCInput) error {
-	var bindingID, keyID string
-	var bindingVersion, epoch int64
-	err := tx.QueryRow(`SELECT owner_binding.id,owner_binding.version,node_key.node_key_id,node_key.node_key_epoch
-FROM node_owner_bindings_v2 owner_binding
-JOIN fabric_node_credentials credential ON credential.node_id=owner_binding.node_id
- AND credential.status='active' AND credential.version=owner_binding.node_credential_version
- AND credential.credential_hash=owner_binding.node_credential_digest
-JOIN principals principal ON principal.id=owner_binding.owner_id AND principal.kind='human' AND principal.status='active'
-JOIN client_device_hub_config_v2 hub ON hub.id=1 AND hub.hub_id=owner_binding.hub_id
-JOIN owner_approval_keys_v2 owner_key ON owner_key.owner_id=owner_binding.owner_id
- AND owner_key.key_id=owner_binding.owner_key_id AND owner_key.state='ACTIVE'
-JOIN client_devices_v2 device ON device.owner_id=owner_binding.owner_id
- AND device.device_id=owner_binding.client_device_id AND device.state='ACTIVE'
-JOIN node_control_key_bindings_v1 node_key ON node_key.owner_binding_id=owner_binding.id AND node_key.state='ACTIVE'
-WHERE owner_binding.id=? AND owner_binding.node_id=? AND owner_binding.node_credential_digest=?
- AND owner_binding.state='ACTIVE'`, input.BindingID, input.NodeID, input.CredentialDigest).
-		Scan(&bindingID, &bindingVersion, &keyID, &epoch)
+	b, err := nodeControlCurrentBindingTx(tx, input.CredentialDigest, input.NodeID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNodeControlKeyUnauthorized
 	}
 	if err != nil {
 		return err
 	}
-	if bindingID != input.BindingID || uint64(bindingVersion) != input.BindingVersion ||
-		keyID != input.NodeKeyID || uint64(epoch) != input.NodeKeyEpoch {
+	if b.OwnerBindingID != input.BindingID || b.BindingVersion != input.BindingVersion || b.NodeKeyID != input.NodeKeyID || b.NodeKeyEpoch != input.NodeKeyEpoch {
 		return ErrNodeControlKeyUnauthorized
 	}
 	return nil
@@ -1191,9 +1159,20 @@ func (s *Store) NodeControlPairingStatus(credentialDigest, nodeID, requestID str
 	if !validNodeCredentialDigest(credentialDigest) || !validNodeBindingID(nodeID) || requestID == "" {
 		return nil, ErrNodeControlPairingNotFound
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	current, err := nodeControlCurrentBindingTx(tx, credentialDigest, nodeID)
+	if err != nil {
+		return nil, ErrNodeControlPairingNotFound
+	}
 	var candidate NodeControlKeyCandidate
 	var bindingVersion int64
-	err := s.db.QueryRow(`SELECT request.id,node_key.approved_request_version,request.mode,request.hub_id,request.node_id,
+	err = tx.QueryRow(`SELECT request.id,node_key.approved_request_version,request.mode,request.hub_id,request.node_id,
 request.node_name,request.node_key_id,request.node_fingerprint,request.hub_key_id,
 request.hub_key_version,request.hub_fingerprint,request.node_key_epoch,request.candidate_digest,
 request.expires_at,request.state,owner_binding.id,owner_binding.version
@@ -1209,7 +1188,7 @@ JOIN client_device_hub_config_v2 hub ON hub.id=1 AND hub.hub_id=owner_binding.hu
 JOIN owner_approval_keys_v2 owner_key ON owner_key.owner_id=owner_binding.owner_id
  AND owner_key.key_id=owner_binding.owner_key_id AND owner_key.state='ACTIVE'
 JOIN client_devices_v2 device ON device.owner_id=owner_binding.owner_id
- AND device.device_id=owner_binding.client_device_id AND device.state='ACTIVE'
+ AND device.device_id=owner_binding.client_device_id
 WHERE request.id=? AND request.node_id=? AND request.state='CONFIRMED'`, credentialDigest, requestID, nodeID).Scan(
 		&candidate.RequestID, &candidate.Version, &candidate.Mode, &candidate.HubID, &candidate.NodeID,
 		&candidate.NodeName, &candidate.NodeKeyID, &candidate.NodeKeyFingerprint,
@@ -1222,7 +1201,7 @@ WHERE request.id=? AND request.node_id=? AND request.state='CONFIRMED'`, credent
 	if err != nil {
 		return nil, err
 	}
-	if bindingVersion < 1 {
+	if bindingVersion < 1 || candidate.BindingID != current.OwnerBindingID || uint64(bindingVersion) != current.BindingVersion {
 		return nil, ErrNodeControlPairingNotFound
 	}
 	candidate.BindingVersion = uint64(bindingVersion)

@@ -16,6 +16,7 @@ import (
 	"github.com/cicada-ai/cicada/internal/control"
 	"github.com/cicada-ai/cicada/internal/e2ee"
 	fabricpkg "github.com/cicada-ai/cicada/internal/fabric"
+	wire "github.com/cicada-ai/cicada/internal/hubaccountwire"
 	"github.com/cicada-ai/cicada/internal/hubowner"
 	"github.com/cicada-ai/cicada/internal/store"
 	"github.com/cicada-ai/cicada/internal/workspace/snapshot"
@@ -144,6 +145,10 @@ func (h *Handler) ServeHTTP(response http.ResponseWriter, request *http.Request)
 	}
 	// Client enrollment and encrypted management traffic have their own trust
 	// boundary. They never fall through to the legacy management bearer.
+	if request.URL.Path == wire.AppBindingCapabilitiesPath {
+		h.hubAppBindingCapabilities(response, request)
+		return
+	}
 	if operation := accountOperation(request.URL.Path); operation != "" {
 		h.hubAccount(response, request, operation)
 		return

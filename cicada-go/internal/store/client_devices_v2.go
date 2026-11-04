@@ -489,7 +489,15 @@ WHERE owner_id = ? AND device_id = ?`, ownerID, deviceID).Scan(&state, &version,
 	if err != nil {
 		return nil, err
 	}
-	if state != ClientDeviceActive || version != expectedVersion {
+	voluntary := false
+	if state == ClientDeviceRevoked && version == expectedVersion {
+		var count int
+		if err = tx.QueryRow(`SELECT count(*) FROM hub_app_unbound_v1 WHERE owner_id=? AND device_id=? AND state='UNBOUND' AND post_client_version=? AND post_client_epoch=?`, ownerID, deviceID, version, epoch).Scan(&count); err != nil {
+			return nil, err
+		}
+		voluntary = count == 1
+	}
+	if (state != ClientDeviceActive && !voluntary) || version != expectedVersion {
 		return nil, ErrVersionConflict
 	}
 	if epoch >= int64(^uint64(0)>>1) || version >= int64(^uint64(0)>>1) {
@@ -498,7 +506,7 @@ WHERE owner_id = ? AND device_id = ?`, ownerID, deviceID).Scan(&state, &version,
 	stamp := now()
 	result, err := tx.Exec(`UPDATE client_devices_v2 SET state = 'REVOKED', version = version + 1,
 session_epoch = session_epoch + 1, updated_at = ?, revoked_at = ?
-WHERE owner_id = ? AND device_id = ? AND state = 'ACTIVE' AND version = ?`,
+WHERE owner_id = ? AND device_id = ? AND version = ?`,
 		stamp, stamp, ownerID, deviceID, expectedVersion)
 	if err != nil {
 		return nil, err
@@ -506,6 +514,11 @@ WHERE owner_id = ? AND device_id = ? AND state = 'ACTIVE' AND version = ?`,
 	changed, err := result.RowsAffected()
 	if err != nil || changed != 1 {
 		return nil, ErrVersionConflict
+	}
+	if voluntary {
+		if _, err = tx.Exec(`UPDATE hub_app_unbound_v1 SET state='SECURITY_REVOKED' WHERE owner_id=? AND device_id=? AND state='UNBOUND'`, ownerID, deviceID); err != nil {
+			return nil, err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, err

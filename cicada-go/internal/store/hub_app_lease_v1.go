@@ -70,6 +70,12 @@ func appLeaseAllowed(q hubOwnerQuerier, owner, device, operation string) error {
 		return err
 	}
 	if l == nil {
+		if appBindingManaged(q, owner, device) {
+			if operation == "session.capabilities" {
+				return nil
+			}
+			return ErrClientDeviceRevoked
+		}
 		return nil
 	}
 	if l.State != wire.ActivationLeaseActive || l.LoginRequired {
@@ -100,6 +106,15 @@ func (s *Store) FilterAppLeaseOperations(owner, device string, operations []stri
 		return nil, err
 	}
 	if l == nil {
+		if appBindingManaged(s.db, owner, device) {
+			result := []string{}
+			for _, op := range operations {
+				if op == "session.capabilities" {
+					result = append(result, op)
+				}
+			}
+			return result, nil
+		}
 		return operations, nil
 	}
 	if l.State != wire.ActivationLeaseActive || l.LoginRequired {

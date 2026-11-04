@@ -101,7 +101,7 @@ JOIN client_device_hub_config_v2 hub ON hub.id=1 AND hub.hub_id=owner_binding.hu
 JOIN owner_approval_keys_v2 owner_key ON owner_key.owner_id=owner_binding.owner_id
  AND owner_key.key_id=owner_binding.owner_key_id AND owner_key.state='ACTIVE'
 JOIN client_devices_v2 device ON device.owner_id=owner_binding.owner_id
- AND device.device_id=owner_binding.client_device_id AND device.state='ACTIVE'
+ AND device.device_id=owner_binding.client_device_id
 JOIN node_control_key_bindings_v1 node_key ON node_key.owner_binding_id=owner_binding.id AND node_key.state='ACTIVE'
 WHERE owner_binding.node_credential_digest=? AND owner_binding.node_id=? AND owner_binding.state='ACTIVE'`,
 		credentialDigest, nodeID).Scan(&binding.OwnerBindingID, &binding.OwnerID, &binding.HubID,
@@ -127,6 +127,9 @@ WHERE owner_binding.node_credential_digest=? AND owner_binding.node_id=? AND own
 		nodeControlFingerprint(binding.HubPublicIdentity) != binding.HubKeyFingerprint ||
 		binding.NodeKeyVersion == 0 || binding.NodeKeyEpoch == 0 || binding.HubKeyVersion == 0 {
 		return nil, ErrNodeControlKeyUnauthorized
+	}
+	if !nodeHistoricalAppSourceTx(tx, binding.OwnerID, binding.ClientDeviceID, binding.OwnerKeyID, binding.HubID) {
+		return nil, sql.ErrNoRows
 	}
 	return &binding, nil
 }

@@ -92,10 +92,26 @@ account session for unbind. Fresh request lifetime is 60 seconds. Body/inner/
 outer ceilings reuse the additive activation bounds: 192/256/384 KiB;
 embedded original prepare and Owner proof are independently bounded at 96 KiB.
 Shape/size/canonical checks precede expensive crypto. Reuse the existing bounded
-Hub auth admission/worker/rate controls; cap live prepares per account/device,
-retain permanent operation/nonce floors and reject saturation without dropping
-an uncertain original. Do not allocate an account-wide exclusive slot which
-lets an unauthenticated replacement candidate strand the Owner.
+Hub auth admission/worker/rate controls. Prepare is a finite zero-effect cache:
+at most 256 records total, four pending records per candidate device and eight
+pending replacement candidates per previous tombstone. Expired rows are deleted
+inside a writer using parsed UTC deadlines, including the exact deadline.
+Prepare response replay is available while its cache row is retained; it is
+not a permanent large-packet recovery guarantee. Its maximum TTL exceeds fresh
+request lifetime, or is capped by the original unbind session's expiry, so an
+expired original cannot be newly admitted after eviction. There is no permanent
+anonymous prepare floor and no account-wide exclusive candidate slot.
+
+Completion ID/digest/nonce floors and exact receipts are permanent, with one
+terminal complete per binding digest. After any terminal result, a different
+complete ID or ciphertext for that binding refuses without adding another
+receipt. Only an admitted historical Owner proof, or the exact current retained
+Root public identity/version for a missing prepare, may allocate a terminal
+refusal. A caller's self-signed substitute Owner cannot allocate permanent
+records. The completion ledger has a hard ceiling of 16,384 records and 64 MiB
+of receipt/public-identity bytes; saturation refuses before commit and preserves
+the uncertain original. No completion receipt, tombstone or retired key/epoch
+floor is deleted to make room.
 
 ## Atomic unbinding and historical provenance
 
@@ -135,8 +151,11 @@ independence; unchanged DB rows alone are insufficient.
 
 ## Exact recovery and terminal refusal
 
-`recovery=BYTE_IDENTICAL_ORIGINAL_ONLY`: every endpoint recovers only its
+`recovery=BYTE_IDENTICAL_ORIGINAL_ONLY`: recovery matches only the
 persisted original ID, operation, digest, full sender identity and scope.
+The permanent recovery guarantee applies to complete receipts. An expired
+prepare's zero-effect challenge may have been evicted; that absence settles
+neither an uncertain complete nor the remote App binding.
 The App retains exact prepare/complete packets and the original device key.
 After self-fencing there is no fresh mutation/status packet or session needed
 to obtain the exact already sealed completion receipt. Changed bytes, another
@@ -184,8 +203,9 @@ Owner signer is preserved; old device IDs/keys are never resurrected.
 ## Qualification boundary
 
 The first shared checkpoint supplies Go codecs, closed inventory and synthetic
-crypto checks only. Hub/Store carrier implementation is the next checkpoint;
-availability must not be enabled before it. Deterministic Store/Hub tests,
+crypto checks only. The following Hub checkpoint adds migration 71, the four
+HTTP carriers and independent account-auth availability without Control.
+Deterministic Store/Hub tests,
 actual App/Hub/Node independence, sole-Owner replacement and disposable Docker
 keep separate source-specific results. Android, real native Runtime, physical
 Windows and public HTTPS are not qualified by codec tests.
@@ -202,3 +222,51 @@ The exact command, dirty-source manifest based on
 under `/home/zyf/Cicada/.local/evidence/v01-app-binding-wire-20261104-01/`.
 Hub carrier, App integration and disposable Docker remain NOT_RUN at this
 first checkpoint. No real key, state, service or deployment was changed.
+
+### Hub producer checkpoint, 2026-11-04
+
+Migration 71 records the finite prepare cache, immutable complete receipts,
+Owner-proved UNBOUND provenance and one BOUND_ZERO replacement source. Its
+required tables, uniqueness index and immutable triggers are checked by the
+existing startup migration inventory; missing permanent objects fail closed.
+The trusted Store input `HubAppBindingInput.Now` is sampled after acquisition
+and verification of the SQLite writer guard. It is a deterministic fixture
+seam and trusted process clock, not an HTTP parameter or production clock flag.
+
+The Hub producer ran the four-package scoped command recorded in
+`qualification.json`: **85 top-level / 198 terminal PASS, 0 FAIL, 0 SKIP**.
+Package elapsed times were Store 63.929 seconds, Server 27.929 seconds,
+Hubauth 0.007 seconds and shared wire 0.693 seconds. Real synthetic PQ packets
+exercise seal rollback, concurrent original replay, one replacement winner,
+zero sessions/leases/grants, retired-key refusal, exact cold recovery,
+authenticated expired/missing-prepare refusal, changed-ID proof replay with
+no new floor, forged fake-Owner refusal with no permanent allocation, parsed
+fractional/exact deadlines, quota expiry, current Root/device epoch fences,
+restore retained-pending versus missing-evidence behavior, absent writer guard
+and absent permanent schema objects. The real loopback HTTP carrier test also
+proves separate ordinary login and management bootstrap without transferred
+business authority or reopened initial Root activation.
+
+Existing LocalDomain policy independence for an inactive creator App remains
+unchanged. Only this protocol's dedicated tombstone adds the full current
+UNBOUND/security-revoked fence to that historical path. The new Store test
+checks authenticated Node-policy reads before and after voluntary unbind,
+then a fresh refusal after generic security revocation. These Store fixtures
+do not qualify the actual TLS heartbeat or current Group end-to-end traffic.
+
+The first development regression run retained five failures: two exposed the
+new blanket LocalDomain guard's conflict with the existing independent-policy
+contract, and three exposed explicit migration expectation maps ending at 70.
+The second run retained only the three migration expectation failures. The
+scoped guard correction and six expectation-map updates are in this same
+checkpoint; the complete final scoped command above passed. Original logs are
+retained with hashes under
+`/home/zyf/Cicada/.local/evidence/v01-app-binding-hub-20261104-03/`.
+Its source manifest identifies the dirty tree based on
+`bb08031766be112e350ed6bdeda902c3c2e79ad9`; the later commit receipt identifies
+the committed checkpoint separately. Qualification SHA-256 is
+`2585f5d207cfc423328042ec5033b225f7f211a65e87512b61048a9cf6b54c66`.
+
+Root-owned App/TLS/Node heartbeat/current Group cryptographic acceptance and
+the disposable Docker gate remain **NOT_RUN by this producer**. Android, real
+native Runtime, physical Windows and public HTTPS remain unqualified here.
