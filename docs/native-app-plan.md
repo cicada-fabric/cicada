@@ -100,12 +100,12 @@ checks retain separate scopes. The subsequent physical observation is the user
 report above, not an independently executed Windows GUI/DPAPI/ACL run. Existing
 real pending state and keys have not been touched by development.
 
-### Server-authoritative App unbinding — new scope, contract review pending
+### Server-authoritative App unbinding — App consumer, integration pending
 
 The user now requests explicit unbinding of this App from the selected Hub.
 This is a separate networked operation from local Disconnect/Remove/Restore.
-Hub owns the reviewed protocol and server effects; App transport integration
-must wait for that contract. No local-only success or new wire DTO is inferred.
+Hub owns the reviewed protocol and server effects. The App consumes the frozen
+`app-hub-binding-v1` codec at `ee84a480`; it declares no new shared wire DTO.
 The App design requires exact selected Hub/account/Owner/device confirmation,
 durable original-packet recovery after response loss, truthful offline/unknown
 presentation and authenticated terminal evidence before clearing this scope's
@@ -115,7 +115,12 @@ uses the retained Owner's KEM/signing proof to authorize one fresh App-device
 identity against the exact voluntary-unbind record, followed by ordinary account
 login. It starts with no inherited session or leases. Clearing an ID or rerunning
 initial activation is not a recovery strategy. Root has approved this bounded
-direction; transport compilation/integration waits for Hub's typed checkpoint.
+direction. Its Core and bilingual native UI are now connected to those four
+typed operations. One exact-scope user confirmation runs prepare, local Owner
+KEM/signing proof and complete; recovery resends the saved original. UI Settings
+offers unlink, while authenticated UNBOUND state offers retained-Owner
+reauthorization before login. Successful BOUND_ZERO still requires normal login
+and fresh authorized reads, with no inherited management or Node-status lease.
 
 The [local generation primitive](native-app-architecture.md#app-device-generations--local-vault-primitive-2026-11-04)
 is implemented with an encrypted pending slot, at most four retained read-only
@@ -128,7 +133,30 @@ targeted run of those exact 32 failed tests on clean `55fb175` reproduces all 32
 failures; it does not turn either run into PASS. These
 results are local primitive qualification, not server unbinding/rebinding or
 physical Windows GUI/DPAPI/ACL acceptance. Those new integration scopes remain
-NOT_RUN.
+NOT_RUN until separately executed against the new service. Component checks and
+cross-compilation do not establish the actual Hub mutation or Node/Group traffic.
+
+The App reserves both full binding records, current account/session/presence,
+candidate and retirement capacity before the first unlink request. An old
+uncertain operation refuses unlink without HTTP or CAS changes. A saved
+authenticated UNBOUND receipt fences legacy activation/session resurrection;
+the old encrypted session receipt stays inert until atomic retirement. Pending
+binding state is cleared on every local Hub switch and only the selected vault
+can reload it. An expired authenticated prepare with no complete ever saved has
+zero binding effect and needs fresh explicit consent. An unknown complete is
+never replaced. Missing/unsigned HTTP errors never settle that original.
+
+Consumer producer checks retain dirty `bb080317` plus exact App source hashes:
+10 top-level binding Core/UI tests PASS in both normal and race runs, zero
+FAIL/SKIP; vet and Windows App cross-build exit 0. The separate existing N2
+account/initial/legacy/login smoke has four top-level PASS at its recorded
+source. Scoped Hub-profile/login/display checks also pass; no passing result is
+claimed for the older broad regression. The near-ceiling capacity case verifies
+that an admitted initial lifecycle still fits after terminal-state growth and a
+later local Remove marker. Public/private transport, actual four-route service
+and independent Node/Group continuation are qualified separately by Root/QA on
+the final integrated source. These producer results precede the disjoint Hub
+carrier fast-forward to `a4a5c334`; they are not relabeled as its execution.
 
 ## Product boundary
 

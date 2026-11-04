@@ -660,3 +660,60 @@ Owner preservation, proof/CAS/session rejection, post-publication failure,
 capacity refusal, bounded history and malformed encrypted lifecycle records.
 These local checks do not establish server unbinding, real Windows DPAPI/ACL,
 GUI or independent Node/Group continuation.
+
+### Core and native binding flow
+
+Core consumes the [shared Hub binding contract](app-hub-binding-contract.md)
+through `ActionUnbindApp`, `ActionRebindApp` and `ActionRecoverAppBinding`.
+Unlink and reauthorization each accept one current local review ID and explicit
+confirmation. Review covers the selected full vault scope, current device/Owner,
+account/device epochs, inspected login and binding-record CAS versions. The
+renderer supplies no manually entered key, device ID, proof, signature or JSON.
+Core validates the closed public capability revision/operations/recovery only as
+availability, then authenticates every challenge/result against the pinned Hub,
+exact original, typed prepare, both identities and binding digest. Owner KEM
+possession and signing use the existing in-process `ownerbootstrap` proof.
+
+The encrypted `appcore.app-unbind.v1` and `appcore.app-rebind.v1` records retain
+typed prepares and exact prepare/challenge/complete/result packets. Their names
+consume the existing 32-current-namespace budget; no extra namespace allowance
+is added. Each record is bounded to 1 MiB; local challenge/result storage admits
+128/64 KiB respectively, prepare uses the shared 96 KiB ceiling and complete
+uses the existing App 380 KiB ceiling. Exact future response/record admission
+precedes each POST. The whole lifecycle reserves both full records plus current
+account/presence/session, candidate and retirement budgets before the first
+unlink. Saturation preserves existing work and refuses the next send.
+
+All prior uncertain operations must settle before unlink begins. Binding actions
+dispatch before generic account housekeeping so a refusal changes no original,
+CAS or network state. During a pending ceremony or confirmed unbinding, ordinary
+business actions and background reads are blocked; local Hub navigation remains
+available. An authenticated prepared challenge with no complete ever persisted
+has zero binding effect and may expire to a new explicit confirmation. A prepare
+without an authenticated response remains recoverable from its original; an
+unknown complete is never replaced because of time or raw HTTP status.
+
+UNBOUND is applied only after the authenticated original receipt is saved. It
+clears the live session and finite-authorization display, records a durable
+`AppDeviceUnbound` fence and blocks enrollment. The inert encrypted session
+original/receipt is retained for later generation archival. Loading the selected
+vault authenticates binding records before restoring session or activation
+receipts; the local fence alone cannot substitute for a Hub receipt. Cached N1
+association and old activation/login receipts cannot reactivate that device.
+
+Reauthorization stages only the encrypted candidate and names the exact prior
+UNBOUND digest. Its original completion receipt is saved immediately before
+atomic promotion. Storage failure in between leaves the same candidate, old
+current identity and saved result available to cold recovery with zero new POST.
+After promotion Core closes old detached key handles, loads the new identity and
+tombstoned business namespaces, and presents BOUND_ZERO with normal login. Owner
+identity and independent remote work remain retained. Every scope reset closes
+candidate handles and clears all binding runtime; another Hub cannot inherit its
+pending work, consent, terminal state or device IDs.
+
+Before login the bilingual renderer exposes neutral binding progress and the
+opaque current review ID, with old account/device details redacted. UNBOUND
+offers reauthorization; pending state offers exact recovery. Both precede old
+Connect/setup decisions. One consent checkbox is tied to the current review and
+is cleared on submission, scope change and input reset. These source behaviors
+need separate actual service and physical Windows acceptance.

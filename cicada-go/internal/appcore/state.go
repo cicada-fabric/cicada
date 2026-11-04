@@ -19,6 +19,7 @@ const (
 )
 
 type durableState struct {
+	AppDeviceUnbound          bool                  `json:"app_device_unbound,omitempty"`
 	AccountDeviceEnrolled     bool                  `json:"account_device_enrolled,omitempty"`
 	Format                    string                `json:"format"`
 	Version                   int                   `json:"version"`
@@ -114,10 +115,10 @@ func decodeDurableState(data []byte) (durableState, error) {
 		state.Enrollment.Target = state.Pending
 	}
 	// N1 association was committed atomically with the registered login device.
-	if state.Enrollment == nil && state.DeviceID != "" && state.OwnerKeyIDAtHub != "" {
+	if !state.AppDeviceUnbound && state.Enrollment == nil && state.DeviceID != "" && state.OwnerKeyIDAtHub != "" {
 		state.AccountDeviceEnrolled = true
 	}
-	if e := state.Enrollment; e != nil && e.Target != nil && e.Target.Operation == wire.OperationActivationComplete && e.Result != nil {
+	if e := state.Enrollment; !state.AppDeviceUnbound && e != nil && e.Target != nil && e.Target.Operation == wire.OperationActivationComplete && e.Result != nil {
 		r := e.Result
 		if (r.Operation == wire.OperationActivationComplete && r.State == wire.ActivationCompleted) ||
 			(r.Operation == wire.OperationActivationStatus && r.TargetOperation == wire.OperationActivationComplete && r.TargetState == wire.ActivationCompleted && len(r.ReceiptPacket) != 0) {

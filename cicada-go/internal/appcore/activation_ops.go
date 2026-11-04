@@ -132,6 +132,9 @@ func (c *nativeController) applyActivationChallenge(challenge *wire.ActivationCh
 }
 
 func (c *nativeController) applyActivationResult(result *wire.ActivationResult) error {
+	if c.appIsUnbound() {
+		return nil
+	}
 	e := c.state.Enrollment
 	if e == nil || result.Origin != c.connection.Origin || result.HubID != c.connection.HubID ||
 		result.AccountID != c.connection.AccountID || result.OwnerID != c.connection.OwnerID ||

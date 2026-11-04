@@ -10,6 +10,10 @@ import (
 // AccountInformationVisible is a display boundary, never an authorization
 // decision. These account states follow the core's authenticated session check.
 func AccountInformationVisible(s appcore.Snapshot, now time.Time) bool {
+	if s.AppBinding.Pending || s.AppBinding.State == appcore.AppBindingUnbound || s.AppBinding.State == appcore.AppBindingUnbinding ||
+		s.AppBinding.State == appcore.AppBindingRebinding || s.AppBinding.State == appcore.AppBindingBoundZero {
+		return false
+	}
 	if !s.Hub.Verified || s.Hub.Origin == "" || s.Hub.HubID == "" || s.Hub.Fingerprint == "" ||
 		s.Account.AccountID == "" || s.Account.OwnerID == "" || s.Account.DeviceID == "" {
 		return false
@@ -50,6 +54,8 @@ func PresentScreen(s appcore.Snapshot, now time.Time) ScreenPresentation {
 	// visible before login; saved account/Hub identity details stay protected.
 	copy.Hub = appcore.HubSnapshot{Verified: s.Hub.Verified, Address: s.Hub.Address, TransportState: s.Hub.TransportState}
 	copy.Account = appcore.AccountSnapshot{State: s.Account.State, DeviceEnrolled: s.Account.DeviceEnrolled}
+	copy.AppBinding = appcore.AppBindingSnapshot{State: s.AppBinding.State, ReviewID: s.AppBinding.ReviewID,
+		Pending: s.AppBinding.Pending, Generation: s.AppBinding.Generation}
 	copy.Node = appcore.NodeSetupSnapshot{Pending: s.Node.Pending}
 	copy.Pair = appcore.PairSetupSnapshot{Pending: s.Pair.Pending}
 	copy.Storage = appcore.StorageSnapshot{}
@@ -70,6 +76,9 @@ func PresentScreen(s appcore.Snapshot, now time.Time) ScreenPresentation {
 }
 
 func preLoginFlow(s appcore.Snapshot) SetupFlow {
+	if flow, ok := appBindingFlow(s); ok {
+		return flow
+	}
 	has := func(want appcore.ActionKind) bool {
 		for _, kind := range s.AvailableActions {
 			if kind == want {

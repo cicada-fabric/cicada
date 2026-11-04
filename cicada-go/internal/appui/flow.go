@@ -14,6 +14,9 @@ type SetupFlow struct {
 }
 
 func Flow(s appcore.Snapshot) SetupFlow {
+	if flow, ok := appBindingFlow(s); ok {
+		return flow
+	}
 	has := func(kind appcore.ActionKind) bool {
 		for _, action := range s.AvailableActions {
 			if action == kind {

@@ -5,6 +5,18 @@ package appui
 func ErrorText(locale Locale, code string) string {
 	id := msgRequestFailed
 	switch code {
+	case "APP_BINDING_RESPONSE_UNKNOWN", "APP_BINDING_RESPONSE_INVALID":
+		id = "binding.pending"
+	case "APP_BINDING_STORAGE_FULL":
+		id = "binding.storage_full"
+	case "APP_BINDING_UNAVAILABLE":
+		id = "binding.unavailable"
+	case "APP_BINDING_REVIEW_REQUIRED":
+		id = "binding.review_required"
+	case "APP_BINDING_REJECTED_EXPIRED", "APP_BINDING_REJECTED_NOT_ADMITTED", "APP_BINDING_REJECTED_STALE_SCOPE", "APP_BINDING_REJECTED_OWNER_REVOKED", "APP_BINDING_REJECTED_DEVICE_INACTIVE", "APP_BINDING_REJECTED_ALREADY_REPLACED", "APP_BINDING_REJECTED_RESTORE_FENCED":
+		id = "binding.refused"
+	case "APP_BINDING_STORAGE_FAILED", "APP_BINDING_PROMOTION_FAILED", "APP_BINDING_RECEIPT_INVALID":
+		id = msgLocalUnlockFailed
 	case "APP_NODE_PAIRING_UNKNOWN":
 		id = "node_pairing.unconfirmed"
 	case "APP_NODE_PAIRING_INVALID", "APP_NODE_PAIRING_CODE_INVALID":

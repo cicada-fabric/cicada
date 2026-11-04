@@ -37,6 +37,7 @@ type Config struct {
 }
 
 type nativeController struct {
+	appBinding            appBindingRuntime
 	cfg                   Config
 	connectionHTTP        HTTPDoer
 	directConnection      bool
@@ -151,11 +152,11 @@ func (c *nativeController) Snapshot() Snapshot {
 		}
 		var actions []ActionKind
 		for _, action := range view.AvailableActions {
-			if action != ActionSessionInspect && action != ActionLogout && action != ActionRefresh {
+			if action != ActionSessionInspect && action != ActionLogout && action != ActionRefresh && action != ActionUnbindApp {
 				actions = append(actions, action)
 			}
 		}
-		if !blocked && view.Account.DeviceID != "" && view.Account.DeviceEnrolled {
+		if !blocked && !view.AppBinding.Pending && view.AppBinding.State != AppBindingUnbound && view.Account.DeviceID != "" && view.Account.DeviceEnrolled {
 			actions = append(actions, ActionLogin)
 		}
 		view.AvailableActions = actions
@@ -216,6 +217,15 @@ func (c *nativeController) Dispatch(ctx context.Context, action Action) (dispatc
 		stop := context.AfterFunc(c.lifetime, cancel)
 		defer func() { stop(); cancel() }()
 		return c.resumeSavedProfile(op, action.ProfileID, action.HubAddress, true, action.ProfileReviewID)
+	}
+	if appBindingAction(action.Kind) {
+		operationCtx, cancel := context.WithCancel(ctx)
+		stop := context.AfterFunc(c.lifetime, cancel)
+		defer func() { stop(); cancel() }()
+		return c.dispatchAppBinding(operationCtx, action)
+	}
+	if c.appBindingHoldsBusiness() && !appBindingLocalAction(action.Kind) {
+		return ErrInvalidAction
 	}
 	if c.nodePairTrustBusy() && (nodeActionKind(action.Kind) || pairActionKind(action.Kind) || localCollaborationActionKind(action.Kind) || ownerEndpointActionKind(action.Kind) || action.AutoNodeStatus != nil) {
 		return ErrInvalidAction
@@ -621,19 +631,11 @@ func (c *nativeController) connect(ctx context.Context, action Action) error {
 			return c.failStorage("APP_STATE_UNAVAILABLE", err)
 		}
 	}
-	if material != nil && c.state.Enrollment == nil {
-		c.state.Enrollment = &enrollmentState{Material: *material}
-		if material.ExpectedOwnerPublic != nil {
-			c.state.OwnerKeyIDAtHub = material.ExpectedOwnerPublic.ID
-			c.state.OwnerFingerprint, _ = e2ee.OwnerDevicePublicKeyFingerprint(*material.ExpectedOwnerPublic)
-			c.state.RootState = RootStatePending
-		}
-		if err := c.persistState(); err != nil {
-			return c.failStorage("APP_STATE_UNAVAILABLE", err)
-		}
-	}
 	if err := c.loadIdentities(create); err != nil {
 		return c.failStorage("APP_IDENTITY_UNAVAILABLE", errors.New("App identity is unavailable"))
+	}
+	if err := c.loadAppBinding(); err != nil {
+		return c.failStorage("APP_BINDING_RECEIPT_INVALID", err)
 	}
 	if err := c.loadNodeState(); err != nil {
 		return c.failStorage("APP_NODE_STATE_INVALID", err)
@@ -641,7 +643,7 @@ func (c *nativeController) connect(ctx context.Context, action Action) error {
 	if err := c.ensureThreadGroupsLoaded(); err != nil {
 		return c.failStorage("APP_THREAD_GROUP_STORAGE_FAILED", err)
 	}
-	if material != nil {
+	if material != nil && !c.appBindingHoldsBusiness() && !c.state.AppDeviceUnbound && c.appBinding.generation <= 1 {
 		if err := c.installActivationMaterial(*material); err != nil {
 			return c.fail(PhaseError, "ACTIVATION_SCOPE_CHANGED", err)
 		}
@@ -675,6 +677,9 @@ func (c *nativeController) connect(ctx context.Context, action Action) error {
 		return c.failStorage("APP_PROFILE_UPDATE_FAILED", err)
 	}
 	c.requireSessionRecheck()
+	if c.appIsUnbound() {
+		return c.applyAppUnbound()
+	}
 	c.publish()
 	return nil
 }

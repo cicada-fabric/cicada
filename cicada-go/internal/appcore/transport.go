@@ -34,6 +34,9 @@ func accountPath(operation string) string {
 	if path := accountRoutes[operation]; path != "" {
 		return path
 	}
+	if path := wire.AppBindingHTTPPath(operation); path != "" {
+		return path
+	}
 	return wire.ActivationHTTPPath(operation)
 }
 

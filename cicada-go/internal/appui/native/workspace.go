@@ -171,6 +171,16 @@ func (v *view) workspaceRows(s appcore.Snapshot, flow appui.SetupFlow) []layout.
 			v.sectionCard(v.labelRow(appui.Text(v.locale, "workspace.settings_body"))),
 			v.sectionCard(v.labelRow(appui.Text(v.locale, "workspace.storage_body"))),
 		}
+		if hasAction(s, appcore.ActionUnbindApp) {
+			rows = append(rows, v.sectionCard(func(gtx layout.Context) layout.Dimensions {
+				items := v.appBindingRows(s, appcore.ActionUnbindApp)
+				children := make([]layout.FlexChild, 0, len(items))
+				for _, item := range items {
+					children = append(children, layout.Rigid(item))
+				}
+				return layout.Flex{Axis: layout.Vertical}.Layout(gtx, children...)
+			}))
+		}
 		rows = append(rows, v.sectionCard(func(gtx layout.Context) layout.Dimensions {
 			fields := v.publicFieldRows("storage/", appui.StoragePublicFields(s, time.Now()))
 			if s.Storage.Legacy {

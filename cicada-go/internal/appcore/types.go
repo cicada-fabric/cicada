@@ -137,6 +137,7 @@ type CanvasSnapshot struct {
 // Snapshot contains display-safe state only. It never includes passwords,
 // activation codes, private keys, pending ciphertext, session tokens or proofs.
 type Snapshot struct {
+	AppBinding       AppBindingSnapshot      `json:"app_binding"`
 	Phase            Phase                   `json:"phase"`
 	Hub              HubSnapshot             `json:"hub"`
 	Account          AccountSnapshot         `json:"account"`
@@ -237,6 +238,7 @@ const (
 // Action carries one closed native interaction. Secret-bearing fields are
 // deliberately omitted from its String/GoString representations.
 type Action struct {
+	AppBinding     AppBindingAction
 	Kind           ActionKind
 	Pair           PairAction
 	OwnerEndpoints OwnerEndpointReadAction

@@ -129,7 +129,7 @@ func (c *nativeController) restoreSession() error {
 	defer clear(payload)
 	c.sessionVer = version
 	c.sessionStored = len(payload) != 0
-	if len(payload) == 0 {
+	if len(payload) == 0 || c.appIsUnbound() {
 		return nil
 	}
 	saved, err := decodeDurableSession(payload)
@@ -245,6 +245,9 @@ func (c *nativeController) validateAccountResponseScope(value any) error {
 }
 
 func (c *nativeController) applyResponse(operation string, value any, request, response []byte) error {
+	if c.appIsUnbound() {
+		return nil
+	}
 	switch response := value.(type) {
 	case *wire.ClaimChallenge:
 		c.state.ClaimChallenge = response
@@ -367,6 +370,7 @@ func (c *nativeController) clearSession() {
 }
 
 func (c *nativeController) clearRuntimeSecrets() {
+	c.clearAppBindingRuntime()
 	c.clearThreadGroupsRuntime()
 	c.clearLocalDomainRuntime()
 	c.clearPairRuntime()
@@ -540,6 +544,7 @@ func (c *nativeController) publish() {
 		view.AvailableActions = kept
 	}
 	c.populateScopedNode(&view)
+	c.populateAppBinding(&view)
 	if c.storageFault {
 		view.Phase = PhaseError
 		view.Account = AccountSnapshot{State: AccountStateUnknown, RootState: RootStateUnknown}

@@ -69,6 +69,8 @@ func RunWindow(controller appcore.Controller) error {
 }
 
 type view struct {
+	appBindingReview                       string
+	appBindingConsent                      widget.Bool
 	hubConnections                         bool
 	scopeChanging                          atomic.Bool
 	profileControls                        map[string]*widget.Clickable
@@ -422,6 +424,10 @@ func (v *view) contentRows(s appcore.Snapshot, flow appui.SetupFlow, information
 	}
 	rows := []layout.Widget{v.hubControl(s, appcore.ActionDiscoverProfiles, "connection.manage_hubs"), v.hubControl(s, appcore.ActionAddHub, "connection.add_hub")}
 	switch flow.Stage {
+	case "app-rebind":
+		return append(rows, v.appBindingRows(s, appcore.ActionRebindApp)...)
+	case "app-binding-recovery":
+		return append(rows, v.appBindingRows(s, appcore.ActionRecoverAppBinding)...)
 	case "profile-recovery":
 		rows = append(rows, v.headingRow(appui.Text(v.locale, "setup.profile_recovery_title")), v.labelRow(appui.Text(v.locale, "setup.profile_recovery_body")))
 		for index, profile := range s.Profiles {
@@ -455,6 +461,9 @@ func (v *view) contentRows(s appcore.Snapshot, flow appui.SetupFlow, information
 		rows = append(rows, v.headingRow(appui.Text(v.locale, "setup.step_account")))
 	case "login":
 		rows = append(rows, v.headingRow(appui.Text(v.locale, "account.login")), v.labelRow(appui.Text(v.locale, "setup.login_body")))
+		if s.AppBinding.State == appcore.AppBindingBoundZero {
+			rows = append(rows, v.labelRow(appui.Text(v.locale, "binding.bound_zero")))
+		}
 	case "session-check":
 		rows = append(rows, v.headingRow(appui.Text(v.locale, "account.login")), v.labelRow(appui.Text(v.locale, "setup.check_saved_session")))
 	case "recovery":
@@ -561,6 +570,7 @@ func (v *view) connectionInputRows() []layout.Widget {
 }
 
 func (v *view) resetPresentationInputs() {
+	v.appBindingReview, v.appBindingConsent.Value = "", false
 	v.profileRemovalID, v.profileRemovalReview = "", ""
 	v.profileRemoveConsent.Value = false
 	v.profileAddresses = make(map[string]*widget.Editor)
@@ -605,6 +615,9 @@ func (v *view) actionButton(kind appcore.ActionKind, label string, s appcore.Sna
 	}
 	return func(gtx layout.Context) layout.Dimensions {
 		enabled := !v.busy.Load() && (kind != appcore.ActionActivateApp || v.consent.Value)
+		if kind == appcore.ActionUnbindApp || kind == appcore.ActionRebindApp {
+			enabled = enabled && hasAction(s, kind) && v.appBindingConsent.Value && v.appBindingReview != "" && v.appBindingReview == s.AppBinding.ReviewID
+		}
 		if isNodeAction(kind) {
 			enabled = v.nodeActionEnabled(kind, s)
 		}
@@ -666,6 +679,12 @@ func (v *view) actionFor(kind appcore.ActionKind, s appcore.Snapshot) (appcore.A
 	}
 	action := appcore.Action{Kind: kind}
 	switch kind {
+	case appcore.ActionUnbindApp, appcore.ActionRebindApp:
+		action, confirmed := appui.ConfirmAppBinding(s, kind, v.appBindingReview, v.appBindingConsent.Value)
+		v.appBindingConsent.Value = false
+		return action, confirmed
+	case appcore.ActionRecoverAppBinding:
+		return action, hasAction(s, kind)
 	case appcore.ActionActivateApp:
 		action.ConfirmLimitedAuthorization = v.consent.Value
 		v.consent.Value = false
@@ -740,6 +759,9 @@ func (v *view) startDispatch(action appcore.Action) {
 		return
 	}
 	switch action.Kind {
+	case appcore.ActionUnbindApp, appcore.ActionRebindApp, appcore.ActionRecoverAppBinding:
+		v.resetPresentationInputs()
+		v.updates.pauseForAccountScreen()
 	case appcore.ActionDiscoverProfiles:
 		v.hubConnections = true
 		fallthrough

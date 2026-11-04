@@ -172,6 +172,9 @@ func (c *nativeController) resumeSavedProfile(ctx context.Context, id, address s
 	if err := c.loadIdentities(false); err != nil {
 		return c.failStorage("APP_IDENTITY_UNAVAILABLE", err)
 	}
+	if err := c.loadAppBinding(); err != nil {
+		return c.failStorage("APP_BINDING_RECEIPT_INVALID", err)
+	}
 	if err := c.loadNodeState(); err != nil {
 		return c.failStorage("APP_NODE_STATE_INVALID", err)
 	}
@@ -199,6 +202,13 @@ func (c *nativeController) resumeSavedProfile(ctx context.Context, id, address s
 	// Cached inspections are receipts, not current authorization. Recover an
 	// uncertain packet first, then ask for fresh authenticated session state.
 	c.requireSessionRecheck()
+	if c.appIsUnbound() {
+		return c.applyAppUnbound()
+	}
+	if c.appBindingActive() != nil {
+		c.publish()
+		return nil
+	}
 	c.publish()
 	if c.state.Recovery != nil {
 		return c.recoverOperation(ctx)
