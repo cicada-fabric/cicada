@@ -39,6 +39,9 @@ func installNodeHubStateReference(context.Context, *machineHubContext) error { r
 func ResolveAdoptedLocalNodeConnection(context.Context, LocalNodeConnectionPin) (LocalNodeConnection, error) {
 	return LocalNodeConnection{}, errNodeHubUnsupported
 }
+func ValidateRetainedLocalNodeArtifacts(context.Context, LocalNodeConnectionPin, LocalNodeConnectionPin) error {
+	return errNodeHubUnsupported
+}
 func beginManagedNativeAdmission(ctx context.Context) (func(), error) {
 	if err := checkManagedMachineHubFence(ctx); err != nil {
 		return nil, err

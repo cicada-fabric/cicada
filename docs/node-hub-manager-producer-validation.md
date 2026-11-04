@@ -128,3 +128,64 @@ public HTTPS and resident installation migration: **NOT_RUN**. No skipped
 scope is a pass, and no actual deployment, push or branch integration occurred.
 App/MCP facade implementation belongs to its separate producer; this checkpoint
 only supplies its reviewed common interfaces and records human alias boundaries.
+
+## Retained storage and public metadata follow-on
+
+The bounded follow-on uses parent
+`9454b4e0c267e4de59a0efe5b014b416a846e9e6` plus this checkpoint's implementation.
+It does not rewrite or reattribute the earlier `c55f17d` qualification above.
+
+`ValidateRetainedLocalNodeArtifacts` is an error-only storage provenance check.
+It accepts managed historical epoch1 storage against current live epoch3 only
+with identical full immutable pin, original protected state reference and the
+latest LOCAL_STOPPED receipt whose fence is immediately followed by the current
+ENABLED entry. Pin0 additionally requires the exact original adoption receipt,
+startup digest/unit/PID0 and retained identity; tests cover current epoch1 and
+epoch3. Configured-only, future/foreign epochs, missing provenance, STOP_PENDING,
+wrong successors and changed identity/path fields reject. The original live-pin
+resolver, global pin equality and final native admission are unchanged. Opaque
+cache/outbox/WAL fixture bytes and original key bytes stay unchanged. Tests use
+same-user synthetic local discovery, not a production Hub/Host authorization
+receipt. App separately owns fresh-child storage adapter use and current Host,
+Hub/Network/Group authorization. This seam is not old intent/caller authorization.
+
+The production report failure was traced to `MultiHub` rejecting all non-relay
+metadata reads before reaching the Hub. The report already used its per-Hub
+StateDir; shared WriterRoot selection was not its cause. A precise public GET
+allowance now covers LocalDomain capabilities, EndpointGroups capabilities and
+`/v2/client/identity`, through the original pinned transport with no global or
+Node HTTP authorization. Other methods, bodies, queries, path aliases, ordinary
+Control management, foreign origins and redirects remain outside this allowance.
+Two synthetic HTTP peers verify correct Hub selection and absence of credentials;
+existing independent Node-token tests verify the authenticated relay path.
+Private Node proof/RPC and server Guard remain unchanged. Actual worker signed
+report and Group/unknown-outcome carrier acceptance belong to Root/QA's real
+follow-on gates; these transport tests do not substitute for them.
+
+Evidence is retained under
+`/home/zyf/Cicada/.local/evidence/v01-node-hub-retained-artifacts-20261104-01/`.
+Its source manifest, commands, raw JSON/stderr and qualification hashes identify
+the tested dirty source before commit. The five changed Go source files match
+manifest SHA256
+`92ba16f016a92a652675c16882467589e52935af389b7e66f2da8f7d3c5d600f`.
+The aggregate qualification SHA256 is
+`3070b7fb185c693789eebdef73237c79da8de05508cf08ad6b129df701a3dfd3`.
+
+The exact deterministic selector was:
+
+```text
+go test ./cmd/cicada -run '^(TestRetainedLocalNodeArtifacts|TestMachinePublicNodeMetadata|TestMachineHubContextPinsNodeTokenAndOrigin|TestMachineTwoHubHTTPNodeCredentialsStayIndependent|TestLocalDomainNodeReport|TestNodeHubBusinessAtomicNativeAdmissionAndLegacyFence|TestNodeHubBusinessStoppedServiceAdoptionPreservesOriginalAndExactPin)' -count=1 -timeout=3m -json
+```
+
+It passed 10 top-level / 22 leaf tests (25 passing test events), zero FAIL/SKIP,
+exit 0, command elapsed 7.913 seconds including build. The race selector was:
+
+```text
+go test -race ./cmd/cicada -run '^(TestRetainedLocalNodeArtifacts|TestMachinePublicNodeMetadata|TestMachineHubContextPinsNodeTokenAndOrigin|TestMachineTwoHubHTTPNodeCredentialsStayIndependent)' -count=1 -timeout=3m -json
+```
+
+It passed 5 top-level / 16 leaf tests (18 passing test events), zero FAIL/SKIP,
+exit 0, command elapsed 85.892 seconds including build. `go vet ./cmd/cicada`
+passed, exit 0, 2.810 seconds. Actual multi-Hub report/Group/unknown carrier,
+App fresh-child adapter acceptance, Docker and real native/device/public/resident
+results remain separately owned and **NOT_RUN** by this producer checkpoint.

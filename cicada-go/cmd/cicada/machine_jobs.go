@@ -12,6 +12,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	wire "github.com/cicada-ai/cicada/internal/hubaccountwire"
 )
 
 type machineJob struct {
@@ -228,13 +230,14 @@ func machineAPIJSON(ctx context.Context, endpoint, method string, payload, targe
 	}
 	nodeRoute := strings.Contains(request.URL.Path, "/v2/relay/nodes/") ||
 		strings.HasPrefix(request.URL.Path, "/v2/fabric/node/networks/direct/")
+	publicMetadata := machinePublicNodeMetadata(request, payload)
 	if nodeRoute {
 		token := machineNodeTokenFor(ctx)
 		if token == "" {
 			return errors.New("CICADA_NODE_TOKEN or CICADA_NODE_TOKEN_FILE is required for Relay Node APIs")
 		}
 		request.Header.Set("Authorization", "CicadaNode "+token)
-	} else {
+	} else if !publicMetadata {
 		if hub, ok := machineHubFrom(ctx); ok && hub.MultiHub {
 			return errors.New("Control management is unavailable in multi-Hub relay-only mode")
 		}
@@ -244,7 +247,7 @@ func machineAPIJSON(ctx context.Context, endpoint, method string, payload, targe
 	if err != nil {
 		return err
 	}
-	if nodeRoute {
+	if nodeRoute || publicMetadata {
 		client.CheckRedirect = rejectNodeRedirect
 	}
 	response, err := client.Do(request)
@@ -270,6 +273,20 @@ func machineAPIJSON(ctx context.Context, endpoint, method string, payload, targe
 		return json.Unmarshal(data, target)
 	}
 	return nil
+}
+
+// These exact public reads advertise metadata/availability only. They do not
+// authorize a LocalDomain or Group action, and never borrow a global bearer.
+func machinePublicNodeMetadata(request *http.Request, payload any) bool {
+	u := request.URL
+	if request.Method != http.MethodGet || payload != nil || u.User != nil || u.RawPath != "" || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || u.Opaque != "" {
+		return false
+	}
+	switch u.Path {
+	case wire.LocalDomainCapabilitiesPath, wire.OwnerEndpointGroupsCapabilitiesPath, "/v2/client/identity":
+		return true
+	}
+	return false
 }
 
 func limitText(value string, max int) string {

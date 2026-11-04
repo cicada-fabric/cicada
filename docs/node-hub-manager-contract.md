@@ -128,12 +128,40 @@ adapter into this same registry/manager, not a second single-Hub daemon.
 
 The protected adoption receipt binds the exact original configuration digest,
 old unit, observed zero PID, complete original Pin0 and new connection epoch1
-pin. `ResolveAdoptedLocalNodeConnection(ctx, oldPin)` is the only explicit
-compatibility seam. It checks the retained original state, current ENABLED
+pin. `ResolveAdoptedLocalNodeConnection(ctx, oldPin)` is the explicit
+live-pin adoption resolver. It checks the retained original state, current ENABLED
 entry, epoch1, startup provenance and complete live pin. Changed original
 fields, removal or re-add cannot use it. Global pin equality remains strict.
 A response-loss replay while the manager runs verifies this receipt instead
 of trying to reacquire the worker's original Agent lock.
+
+Storage continuity has a separate, error-only API:
+
+```go
+ValidateRetainedLocalNodeArtifacts(ctx context.Context, historical, current LocalNodeConnectionPin) error
+```
+
+This validates retained cache/outbox provenance for a fresh child which has
+independent current Host and exact Hub/Network/Group authorization. It returns
+no replacement pin, context or credential. Both pins must be valid and every
+field except the local epoch must be identical; an explicit Pin0 adoption also
+accounts for its originally absent connection ID. The current managed entry
+must be ENABLED, match its protected state reference and pass exact live
+discovery. A managed historical epoch must be older. After re-add, the latest
+protected retirement receipt must be LOCAL_STOPPED/NOT_REQUESTED, its full entry
+must match the current entry except desired state/fence, and the current epoch
+must be that stopped fence's immediate successor. A historical Pin0 additionally
+requires its original full adoption receipt, startup digest/unit/PID0 provenance
+and unchanged original retained identity. At epoch1 only that explicit Pin0
+case qualifies; epoch3 and later also require the stopped/re-add proof.
+
+The check reads existing metadata and live discovery; it never creates a new
+database/namespace, changes the saved DB pin, rewrites packets, or changes old
+intent/live-pin validity. An old caller or user prompt does not gain current
+authority from storage continuity. Every fresh operation repeats its current
+authorization and final native admission fence. Numeric locator changes are
+not combined with an epoch change here. The latest receipt proves the current
+re-add transition, not a complete audit chain for every previous epoch.
 
 New connections use separate private state below the selected Node root and
 the original shared WriterRoot. Once chosen, their paths stay fixed. Before
@@ -165,6 +193,14 @@ context/cancel, original Agent lock, transport and publication. Reconciliation
 starts/stops only changed entries; adding/removing one Hub must not restart
 healthy peers or the shared native writer. No new daemon framework or service
 dependency is introduced. Non-Linux lifecycle remains explicitly unsupported.
+
+Per-Hub workers may read exactly three public GET metadata routes through
+their pinned transport: LocalDomain capabilities, EndpointGroups capabilities
+and `/v2/client/identity`. They send neither global Control authorization nor
+a Node bearer on those reads. Request bodies, queries, encoded-path aliases,
+other methods and other Control routes are not part of this allowance; redirects
+are refused. Availability/identity metadata grants no permission. The existing
+private Node proof and Hub Guard still authorize each LocalDomain/Group action.
 
 The saved Cicada executable retains private, no-symlink path checks. External
 Codex installation keeps its original configured wrapper path and permits a
