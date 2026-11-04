@@ -11237,6 +11237,13 @@ enrollment, Hub mutation, key operation or artifact rebuild was performed.
 
 ### Node Hub coexistence: acceptance preparation (2026-11-04)
 
+Current qualification: Root accepts **SCOPED_PASS** for six real scoped
+integration scenarios on production `afb2bad8`, using the preserved five-case
+subset and a separate affected-Group rerun. This is not a single six-PASS run.
+The dated preparation/failed attempts below retain their original status; the
+final closeout at the end of this section lists exact sources, commands, hashes
+and NOT_RUN boundaries.
+
 The current scope preserves an existing Node/Hub connection while adding or
 removing another; each Group follows its Network's authoritative Hub. QA's
 `task/v01-node-hub-validation` worktree starts at `b34fbce`. The new
@@ -11263,3 +11270,343 @@ raw-ID selection collisions will use the reviewed selection boundary or a
 legitimate producer fixture. No real Node/Hub mutation, paid Runtime, provider
 call, shared development fixture or public deployment is authorized by this
 preparation. Root owns actual scoped/Docker execution and final packaging.
+
+The user's requested physical cutover treats old Hub `198.200.58.176` as retired
+and removes that connection; the final connection target is only Aliyun
+`8.155.139.253:8787`. The pending manual scope is A already offline while B is
+added, removal of A without harming B, cold restart without resurrecting A, and
+App-unbind continuity once a Node is actually enrolled. These are **NOT_RUN**
+for this new Node lifecycle. They cannot establish two simultaneously healthy
+physical Hubs. Healthy A/B concurrency, colliding selectors and current Group
+routing require the separately isolated two-Hub fixture. No real Node or Hub
+was changed when recording this scope; actual carrier/facade wiring is pending.
+
+Root has reviewed local contract `891c8bc`; the byte-identical unpublished
+preparation was mapped from `145697f` to `57aaa4b3`, then the pure routing
+component `08441157` was fast-forwarded. Their codec/selector component results
+do not qualify the manager/facade lifecycle. Current MCP
+compatibility uses the same 73-tool name list; the older 71-tool count is not
+this baseline. Original-sender read-only lookup must verify the original Hub's
+cryptographic trust, not merely matching HubID/Origin strings.
+
+The disposable healthy-A scenario must also adopt an existing legacy service
+without rebuilding its Endpoint or native SID. A protected exact old-pin/epoch-0
+to same-scope managed ConnectionID/epoch-1 receipt is the explicit transition;
+ordinary authority equality is not relaxed. State paths, keys and retained
+originals stay in place, and adding B must not restart A's healthy worker or
+replace its discovery instance/publication. The user's retired/offline A
+scenario cannot substitute for this healthy two-Hub check. NPT secrets stay in
+private fixture capture; logs contain only lengths, digests and stable status.
+
+Additional atomicity and stop assertions remain **NOT_RUN**, pending the real
+carrier seam. A deterministic barrier must hold A between final admission and
+native Begin/Start while removal competes: removal cannot claim LOCAL_STOPPED
+before the old admission and actual in-flight work are quiescent. The fence CAS
+and final check/Begin/Start must use the same per-connection admission gate;
+repeating unlocked reads is not an atomic proof. After fence commit, a retained
+old ticket must cause zero new starts. B's independent Thread must still make
+progress; the same physical Thread remains serialized and may advance to B only
+after its prior writer releases. Unknown native/provider effects remain pending.
+Separately, `off`/`status` must prove the exact owned manager and workers stopped;
+a foreign or unverified hand-started daemon cannot be reported as stopped just
+because the expected service unit is absent. Systemd fixtures, if needed, use
+only task roots and precisely owned units with verified cleanup, never resident
+services. None of these new assertions has been executed in this preparation.
+
+Removal also needs a positive used-connection case, **NOT_RUN**: Hub transport
+state CONSUMPTION_UNCONFIRMED does not by itself mean an uncertain native start.
+If the trusted Node/native receipt or provider admission ledger proves the
+exact old operation was QueueAccepted, local removal may stop future admission
+and return LOCAL_STOPPED after local quiescence. It retains the original packet,
+queue-acceptance evidence and history; it does not relabel that conversation as
+consumed, cancelled or remotely revoked. Negative cases retain the fence and
+STOP_PENDING for genuine INJECTING, INJECTION_UNCERTAIN or START_UNVERIFIED
+native/provider outcomes. Untrusted or mismatched receipt/ledger coordinates
+cannot justify the positive transition. A retained unknown network request
+cannot migrate to B, but its existence alone must not permanently forbid local
+stop. Neither an offline Hub nor an unmeasured consumption outcome supplies a
+fabricated native success or failure.
+
+The initial cmd-layer draft contains five executable targets under the existing
+`cicada_scoped_app_integration` tag. They consume the actual manager functions
+and the current CLI/Hook/facade. Its initial status was **NOT_RUN**, including
+compilation; only `gofmt` and `git diff --check` had completed. The later compile
+and first actual run below supersede that preparation status. No new
+Docker script is introduced: Root will separately run the existing general
+`scripts/test-client-hub-interop.sh --suite client` gate after reviewed carrier
+and App checkpoints are available.
+
+| Draft target in `cmd/cicada` | Intended real observations | Execution |
+| --- | --- | --- |
+| `TestNodeHubLifecycleCurrentNPTAddRemoveColdAcceptance` | Two pinned TLS/SQLite production Hubs, public App Controller authorization, default current NPT/private ACK, manager IPC/production workers, independent credentials/pins/paths and shared WriterRoot; exact foreign-token 401 and original-token 204; wrong-Hub TLS pin; repeated remove and cold no-resurrection | NOT_RUN |
+| `TestNodeHubLifecycleActualFacadeGroupAndInboxAcceptance` | App-activated current Group, actual `join --thread … --hub ALIAS` against an owned synthetic original native record, routed PreToolUse/one facade, exact Hub/Network/Group selection, mixed tuple refusal, sealed message decrypted by the live Agent, read-only durable inbox and original writer outcome; committed lost App-read response retained byte-for-byte in A's encrypted vault while B is added/used and A removed/cold reopened | NOT_RUN |
+| `TestNodeHubLifecycleAdmissionRemovalBarrierAcceptance` | Actual final-admission observer holds the shared gate before Begin/Start; a contending bounded remove cannot commit the fence or report stopped; B's different physical Thread progresses, same Thread stays serialized, and a retained old pin starts zero new processes after fence commit | NOT_RUN |
+| `TestNodeHubLifecycleNativeUnknownRemainsFencedAcceptance` | Actual Group/Agent delivery starts a real, synthetic offline queue subprocess that exits unsuccessfully; durable INJECTION_UNCERTAIN and original native outcome retain STOP_PENDING and the fence across manager restart, without reinjection or loss of B | NOT_RUN |
+| `TestNodeHubLifecycleStoppedOriginalAdoptionAcceptance` | Actual original scoped NPT, unmanaged production Agent and current CLI/owned Thread; explicit original stop, protected real from-service adoption receipt and actual manager; original Node key/binding/credential/Endpoint/SID/cache/outbox and committed unknown App packet stay in their original paths; adding B leaves the adopted A discovery instance unchanged; default facade resumes A | NOT_RUN; service runner only is scripted |
+
+The Node inbox assertions observe the live worker; no SDK actor races it to
+claim a delivery. Queue subprocesses reuse the existing Go test executable and
+private plaintext argv oracle. They establish synthetic Start/Wait and durable
+queue outcomes only, not installed Codex/native Runtime, model consumption or
+physical GUI. The admission-only target uses visibly synthetic immutable
+operations to isolate the atomicity property; the separate Group target owns
+end-to-end Guard/crypto qualification. Adoption explicitly stops the original
+Agent before transition, so its PID/discovery instance may change; only adding B
+after adoption must retain the adopted A instance. The adoption target uses a
+scripted service-command runner to launch the actual manager and workers and
+does not qualify real systemd `on/off/status`. Root owns that separate isolated
+qualification. At this draft checkpoint all five executions remained NOT_RUN;
+the later compile and first-run results below supersede that execution status.
+No release readiness or complete physical cutover follows from the draft.
+
+Root's pending focused command, from `cicada-go`, is:
+
+```sh
+umask 077
+go test -mod=readonly -tags=cicada_scoped_app_integration -p=1 -count=1 \
+  -timeout=8m -json ./cmd/cicada \
+  -run '^TestNodeHubLifecycle(CurrentNPTAddRemoveCold|ActualFacadeGroupAndInbox|AdmissionRemovalBarrier|NativeUnknownRemainsFenced|StoppedOriginalAdoption)Acceptance$'
+```
+
+Execution must use Root's task-isolated pinned Go environment, read-only shared
+module cache, fresh task build state and private output capture; its final
+record must include the exact tested source/dirty-input hashes, command and
+exit code, all terminal test outcomes, artifact hashes and cleanup. No full
+NPT code, credential, key or plaintext argv belongs in logs. Windows
+DPAPI/ACL/GUI, real native Runtime, physical Node, public HTTPS and the user's
+Aliyun cutover remain NOT_RUN until separately executed.
+
+Compile-only and first actual run (2026-11-04): QA fast-forwarded reviewed
+carrier `c55f17d9` and consumer `9454b4e0`, preserving the four uncommitted cmd
+acceptance files. One pinned, offline Go 1.27.3 Docker compilation used
+`go test -c -mod=readonly -buildvcs=false
+-tags=cicada_scoped_app_integration -p=2 -o /out/node-hub-acceptance.test
+./cmd/cicada`, under umask 077 with repository and shared module cache mounted
+read-only and a fresh task build cache. Compiler exit was **0**. The 1811-file
+Go/mod/sum inventory was unchanged before/after, SHA-256
+`292000e75bec508828189cacc02dd9ea33f162a1a5111a681dbbf084fb970875`.
+That inventory is broader than the compiled package; it does not execute the
+earlier SDK-only `internal/appcore/node_hub_acceptance_test.go` helpers.
+
+The private compile record is
+`v01-node-hub-validation/compile-20261104T170124Z-ymkcmz4g/` under workspace
+evidence. Its 55,654,203-byte `artifacts/node-hub-acceptance.test` has SHA-256
+`cecb64a47e00f5c846a3cf8a99e56c8013bd1da33da1a170a8c94437fec2e14c`.
+The orchestration wrapper exited **1** because its strict cleanup parser did
+not recognize Docker's lowercase exact-absence diagnostic; the original
+`receipt.json` and `cleanup.json` keep that UNKNOWN classification unchanged.
+Read-only follow-up verified both the original exact container ID and name
+absent after an ownership-verified removal. `cleanup-closeout.json` confirms
+that Docker cleanup, SHA-256
+`d5028c96b2260146faed07aaf47a38d6a675ea8d0882bd6fbe0b1614237e8812`.
+The private task build cache is retained; no runtime fixture keys were generated
+by compilation. No compiler or acceptance test was repeated for that closeout.
+
+Root independently ran that exact binary for all five targets as
+`v01-node-hub-root-20261104/current-integration-attempt1/`. The command exited
+**1**, **2 PASS / 3 FAIL / 0 SKIP**, in 121.172 seconds; source files were
+unchanged. Result SHA-256 is
+`aa8a0c0d1400988659198c7297efdfd29a9de668d0f86dbc4e31b7fd3f84a1ba`;
+log SHA-256 is
+`6e24774e0571c516ce6f3659b078067a1c399b49a05a43c15f4f672ec799a10e`.
+
+| Attempt-1 target suffix | Result | Qualified boundary or failure |
+| --- | --- | --- |
+| `CurrentNPTAddRemoveColdAcceptance` | PASS | Actual scoped NPT/private ACK, TLS/SQLite/production workers, foreign credential and Hub pin rejection, independent state, remove/repeated-remove/cold no-resurrection |
+| `AdmissionRemovalBarrierAcceptance` | PASS | Actual managed final-admission/removal interlock, offline subprocess Start/Wait, independent B Thread, one physical writer and increasing epoch, post-fence old-pin refusal; synthetic operations do not qualify Group Guard |
+| `StoppedOriginalAdoptionAcceptance` | FAIL | Fixture combined original `--hub-address` with a separately pinned worker context, which the real CLI correctly rejects; original Agent never became ready |
+| `NativeUnknownRemainsFencedAcceptance` | FAIL | Actual worker local-user report did not become ready within the bounded preparation; no native-unknown/removal success is claimed |
+| `ActualFacadeGroupAndInboxAcceptance` | FAIL | Same real local-user report preparation timeout; no current Group/facade/inbox pass is claimed |
+
+QA changed only the original unmanaged startup to the real single-Hub CLI
+path, retaining its canonical arguments and loading the original NPT state
+without a second pinned context. That fixture correction is **NOT_VALIDATED**.
+Root is investigating the real managed multi-Hub report path with its owner;
+QA has neither fabricated a report nor widened the deadline. No second
+compilation or gate has run at this checkpoint. The five-scenario source and
+its attempt-1 results retain their exact attribution. The separately confirmed
+removed/re-added epoch-3 artifact-continuation gap belongs to a later reviewed
+carrier/consumer fix and additional acceptance scope, not this five-target run.
+The general client Docker interop gate, actual systemd, native Runtime/model
+consumption, Windows DPAPI/ACL/GUI, physical Node and public HTTPS for this new
+lifecycle remain NOT_RUN.
+
+Next-source preparation: Root reviewed carrier fix `4340057e` after attempt 1.
+It permits only the three exact public metadata GETs needed by a multi-Hub
+worker, through its original pinned transport without a global/Node HTTP
+bearer; private RPC/Guard and other Control restrictions remain authoritative.
+It also provides error-only `ValidateRetainedLocalNodeArtifacts` for original
+storage continuity. Its producer component results do not qualify a real
+worker report or the new continuation chain; App consumer wiring and the next
+compile/run are still pending at this checkpoint.
+
+QA adds `TestNodeHubLifecycleRetainedArtifactsReaddAcceptance` as a sixth
+independent target, reusing the actual stopped-original adoption helper. It
+starts with original storage pin 0, explicitly adopts live pin 1, obtains
+LOCAL_STOPPED at fence 2, then explicitly re-adds the same alias/address as live
+pin 3. The draft requires no new NPT start, original Endpoint/SID/Node
+key/credential and stored pin 0 retained, exact original outbox rows and schema
+retained across the live-WAL lifecycle, no alternate outbox path/database, and
+the original committed unknown App packet/vault unchanged. A fresh production
+Host/Hook/current Guard at epoch 3 must send real crypto traffic through the
+original Endpoint; old live pins 0 and 1 must resolve/start zero new work. B
+must exchange actual traffic and retain its discovery instance. A read-only
+logical SQLite snapshot distinguishes immutable rows from legitimate WAL
+checkpoint byte changes; no synthetic operation row is inserted to satisfy
+this test. This sixth target, the fixture correction and the new combined
+source are **NOT_RUN**, including compilation. Root will run the final six
+only after the next reviewed App checkpoint; no deadline/report assertion was
+loosened to hide attempt 1.
+
+Final-six compile checkpoint: QA fast-forwarded reviewed consumer
+`afb2bad8fe286284237bf8295aeabd85d5636f4c` after `4340057e`, preserving its
+four acceptance Go files. One further compile-only operation used the same
+pinned offline Go image, umask 077, read-only source/module-cache mounts and
+the task's private, exclusively locked existing build cache. Compiler and
+wrapper exits were both **0**; exact owned Docker cleanup was CONFIRMED.
+The unchanged 1816-file Go/mod/sum before/after manifest has SHA-256
+`b943f0484d416fd0ff21ad2f8e67b20684eb8f3120a7baf764e03e097ea35403`.
+Private evidence is
+`v01-node-hub-validation/compile-final6-20261104T174619Z-xwwhodgs/`.
+Its 55,836,347-byte `artifacts/node-hub-acceptance-final6.test` has SHA-256
+`217064a28c211912b88ef1c7dc338c3163151da7f41af272392ea35b15618d62`;
+`receipt.json` SHA-256 is
+`5d2da7a7487c47214582e0477efcc67b1d06a5cd5f36cf929490812aa8aff23b`,
+and `cleanup.json` SHA-256 is
+`dc1b3e45903be6caa89d5552ab5199edc3fcf4dbf201cb87b2bed03999044e72`.
+This compile result itself does not execute or pass the six targets; Root owns
+their independent exact-binary execution.
+
+Two independent lanes on production source `afb2bad8` completed separately:
+
+| Lane | Actual scope | Result and boundary |
+| --- | --- | --- |
+| Existing `scripts/test-client-hub-interop.sh --suite client` | Disposable real Hub TCP, production SQLite/Guard, smoke, first Owner bootstrap, headless operator and recovery-fault cases | PASS / 0, four cases, exact owned cleanup CONFIRMED; this general gate does not qualify current multi-Hub Group/native lifecycle |
+| `systemd-zero-installed-attempt2` | Actual component installer installs the exact delivered CLI; a task-only real systemd user unit executes on/repeated-on/status/off/restart/repeated-off with an empty registry | PASS; all recorded command exits 0; owned unit stopped, task fixture removed and resident Node unit PID unchanged; zero connections only, no NPT/Hub/Runtime or resident migration |
+
+The Docker lane's result is
+`v01-node-hub-root-20261104/client-interop/result.json`, SHA-256
+`f3d9cf97fa1f356ea82d6f44791ce7bdcefc77571d096040568b4bbaf1ee57ff`.
+It records clean production revision `afb2bad8`, source fingerprint
+`78d4f0d81280dea2194867c347346c57e94eee6e0e3a700a73f25ca893cc1642`
+and Hub image ID
+`sha256:56dddc0a3f575a7fe49ae7678aa55df8616ad7f7557116c5a21da62b7b2b550e`.
+The installed-systemd result at
+`v01-node-hub-root-20261104/systemd-zero-installed-attempt2/result.json`
+has SHA-256
+`f2f4e11d37844b84f8ef1f2b0c60f11a059125714e31349bed591fd4983e9c58`;
+the installed delivered CLI SHA-256 is
+`723705a265bc58f9731709c2459b6dcebd611c3ae5f37e1dc02b13f383a2490b`.
+Its original direct-artifact-path startup failure remains a fixture-path
+failure: a group-writable ancestor correctly failed the private executable
+guard. The actual component installer supplies the accepted private installed
+path; no production guard was relaxed. Both real lanes retain their own source,
+commands, artifacts and cleanup evidence. Neither supplies physical Windows
+DPAPI/ACL/GUI, native Codex Runtime/model consumption, actual dual-Node systemd
+service operation or public deployment acceptance.
+
+Final lifecycle scope acceptance — 2026-11-04:
+
+Root's `v01-node-hub-root-20261104/scope-acceptance.json` is **SCOPED_PASS**,
+SHA-256
+`455782097db65558a2c2b425c10381f7fe03deea993293d51da26827e669323a`.
+Six scenarios are qualified **across preserved executions**, as follows:
+
+| Current target suffix | Accepted execution | Actual qualified scope |
+| --- | --- | --- |
+| `StoppedOriginalAdoptionAcceptance` | Five-case accepted subset, exact binary `217064a2…` | Real original scoped NPT/private ACK, unmanaged Agent/current CLI Thread, explicit stop and protected from-service adoption; original keys/binding/Endpoint/SID/cache/outbox/unknown packet stay in place; B add preserves adopted A instance |
+| `RetainedArtifactsReaddAcceptance` | Same five-case subset | Actual storage0/adoptLive1/LOCAL_STOPPED2/same-aliasLive3 with no new NPT start/identity/database/namespace, original rows/schema/pins/unknown packet retained, fresh current Host/Guard traffic and old-live0/1 zero-Start refusal; B exchanges real traffic without restart |
+| `AdmissionRemovalBarrierAcceptance` | Same five-case subset | Final check/Begin/Start and removal share the real admission gate; real writer contention/monotonic epoch, B independence and post-fence zero starts; operation identities/queue subprocess are synthetic, not a Group-authorization or Runtime claim |
+| `CurrentNPTAddRemoveColdAcceptance` | Same five-case subset | Actual two-Hub TLS/SQLite/NPT/private ACK/production workers, independent credentials/pins/paths and shared writer, foreign-token 401/original-token 204, wrong-Hub pin refusal, repeated remove and cold no-resurrection |
+| `NativeUnknownRemainsFencedAcceptance` | Same five-case subset | Real Group/Agent started synthetic queue exits unsuccessfully; durable INJECTION_UNCERTAIN/STOP_PENDING, exact original writer evidence and cold no-reinjection, while B survives |
+| `ActualFacadeGroupAndInboxAcceptance` | Separate affected-Group rerun, exact binary `1e772db8…` | Real default CLI/Hook/front/current Group crypto, Hub/Network/Group selection and mixed-tuple refusal, actual live Agent decrypt/inbox/queue evidence, A outage/removal/cold B continuity and retained exact unknown A App packet |
+
+The original six-target execution at
+`current-integration-final6-attempt2/result.json` remains **FAIL / 1**, with
+**5 PASS / 1 FAIL / 0 SKIP**, elapsed 428.743 seconds and unchanged source.
+Its result SHA-256 is
+`82c704946b1f2dd3b1cc143589c009701f75dec327b97610eaf7e8efd082acbc`;
+log SHA-256 is
+`a3daec9c1f15d62577d17855c8ffcdd4081935cd21bea5bc8a985603bc2a9c0a`.
+The last target blocked because `httptest.Server.Close` awaited the live Node
+SSE connection during simulated outage. Root selected exactly its owned test
+PID by executable and test arguments and sent SIGTERM. The subsequent
+NODE_NOT_RUNNING failure follows cancellation of those in-process test Agents;
+it is not attributed to spontaneous production failure. The independent
+`fixture-interruption.json`, SHA-256
+`43061cccf2a34e08d04658276026ee32b8ca46443514a19dd9b6473aa515f570`,
+preserves that attribution and the five completed passes. Neither raw file was
+rewritten or relabeled PASS.
+
+QA changed only the affected outage fixture to close the listener, close active
+clients, then close the server, preventing SSE reconnect/close deadlock. One
+private-cache compile-only operation exited **0**, with unchanged 1816-file
+Go/mod/sum inventory, SHA-256
+`1edb0eb4479d980d9c3682f19cce41efd3cde34785c1e3c3a5984aed99b17ac9`;
+owned Docker cleanup was CONFIRMED. Its evidence is
+`v01-node-hub-validation/compile-group-20261104T180030Z-jivmsaxr/`.
+The 55,836,771-byte `artifacts/node-hub-acceptance-group.test` SHA-256 is
+`1e772db8ba548a0a617470278232eabdeef834ed50c1d3ca0ef5eb56452a7532`;
+compile receipt SHA-256 is
+`2c8b93037ba5daf3c32a9fcf1a2bbf9757d52551134f6841c97623b95bf64a62`.
+Root reran only the affected Group target:
+`current-integration-group-attempt3/result.json` is **PASS / 0**, one target,
+0 failures/skips, 42.111 seconds and unchanged source. Result SHA-256 is
+`df546537b8be2058cdc9dcf9ce58d3e65997ffae94dbf4f5d3c71232b88a0a5e`;
+log SHA-256 is
+`64cfa3179ff486ec54c056a70c9b4fb9043dbf4b4b74b9556d24a56f9c068371`.
+The other five were not rerun or reattributed to this binary.
+
+Root compared all **950 production Go/mod/sum files** across both QA freezes
+and clean candidate production `afb2bad8`: no differences.
+`final6-production-source-equivalence.json` SHA-256 is
+`fc9c646e0921fd54551d5e40e76fd00b642259620ac398ee234b2178d477b8f0`.
+The tested builds retain `afb2bad8` plus their exact dirty acceptance-input
+manifests; their provenance is not reduced to HEAD. QA's later test/document
+checkpoint records these unchanged product inputs rather than rebuilding or
+retrospectively renaming earlier evidence.
+
+Resolved findings in this scope are the real multi-Hub public-metadata report
+block (`4340057e`), retained artifact continuity after remove/re-add
+(`4340057e`/`afb2bad8`), and the two QA fixture issues (duplicate unmanaged
+transport parameters and SSE outage closure). The initial strict Docker
+cleanup parser mismatch retains its original wrapper-1 record and independent
+exact-absence closeout. The direct-artifact systemd ancestor-permission failure
+also remains recorded; actual component installation supplies the proper
+private path. No production key, resident service or public deployment was
+changed by QA.
+
+Reproduce the current six source targets inside the recorded pinned offline Go
+environment with read-only repository/shared-module mounts, an isolated
+UserRoot/tmp/build cache and private output capture:
+
+```sh
+umask 077
+go test -mod=readonly -tags=cicada_scoped_app_integration -p=1 -count=1 \
+  -timeout=8m -json ./cmd/cicada \
+  -run '^TestNodeHubLifecycle(CurrentNPTAddRemoveCold|ActualFacadeGroupAndInbox|AdmissionRemovalBarrier|NativeUnknownRemainsFenced|StoppedOriginalAdoption|RetainedArtifactsReadd)Acceptance$'
+```
+
+The exact executed binary commands remain in each Root lane's `command.json`;
+the general disposable gate remains
+`scripts/test-client-hub-interop.sh --suite client`. A future single rerun does
+not replace the preserved split-execution evidence above.
+
+The frozen complete candidate is
+`Cicada-0.0.5-node-hubs-afb2bad8-candidate.zip`, production source `afb2bad8`,
+SHA-256 `502046d93965f2b649ffc5ffd449c08cec83da56ad5400144aec1e01e600f581`,
+under workspace artifacts
+`native-ip-complete/run-node-hubs-afb2bad-20261104/`. Root's metadata-only final
+archive is intentionally finalized after the QA checkpoint is committed;
+candidate/binary source attribution remains `afb2bad8`. Candidate cross-builds
+do not establish physical Windows operation.
+
+Remaining **NOT_RUN**: real installed Codex/native Runtime/model consumption;
+physical Windows GUI/DPAPI/ACL; Android; actual new-Hub public HTTPS or two
+simultaneous public Hubs; real systemd with connected Nodes (direct production
+manager/Agent tests and zero-connection systemd are separate accepted layers);
+resident migration, real key rotation and public deployment. The requested
+retired-A/Aliyun-B physical cutover and enrolled-Node/App-unbind continuity still
+need separately attributable user/physical execution. Six scoped synthetic
+queue scenarios do not accept any of those unexecuted scopes or renew old paid
+Runtime receipts.

@@ -1,15 +1,18 @@
 # CICADA technical documentation
 
-## Current development — 2026-10-30
+## Current development — 2026-11-04
 
 Software **0.0.5 remains unreleased**; **v0.1.0 is the planned first release**.
 The [adopted specification](../CICADA.md) defines the product, while the
 [native App plan and current acceptance ledger](native-app-plan.md#current-feedback-and-acceptance-ledger)
 track implementation and remaining acceptance. Current integrated source includes:
 
-- Explicit Node background `on/off/status` for an already paired, single-Hub
-  relay-only Node, retaining its state and keys. See the
-  [lifecycle plan](native-app-plan.md#native-node-onoffstatus-safety-preparation-2026-10-25)
+- A retained Node multi-Hub manager with `on/off/status`, explicit
+  `node hubs list/add/remove`, independent current-NPT credentials/state and a
+  shared physical native writer. The local contract permits 0–8 connections;
+  actual scoped acceptance covers two disposable Hubs. See the
+  [local manager contract](node-hub-manager-contract.md),
+  [current lifecycle acceptance](native-app-validation.md#node-hub-coexistence-acceptance-preparation-2026-11-04)
   and [distribution contract](distribution.md).
 - A Node-first device request, exact Owner review/approval in the Windows App,
   and the original Node's private ACK. See the
@@ -22,6 +25,18 @@ track implementation and remaining acceptance. Current integrated source include
   Thread. A Thread can retain several Groups and its original identity; current
   MCP Group selection is separate from membership. See the
   [Owner-managed Group contract](native-endpoint-directory-contract.md#proposed-owner-managed-endpoint-groups-v1).
+
+The current Node lifecycle is **SCOPED_PASS** on production `afb2bad8`: six
+scenarios qualified across preserved executions, not one six-PASS run. It
+includes real TLS/SQLite/current NPT, original-service adoption, Group/Hook/MCP
+traffic, removal/re-add with original artifacts and stale-live refusal, outage,
+uncertainty and restart using synthetic offline queue subprocesses. A separate
+four-case client Docker gate passed; actual installed-CLI systemd passed for
+zero connections only. New installed Codex/native Runtime/model consumption,
+physical Windows DPAPI/ACL/GUI, Android, public HTTPS and systemd with connected
+Nodes remain **NOT_RUN**. These results do not extend the historical Runtime
+receipts below. The [current scope record](native-app-validation.md#node-hub-coexistence-acceptance-preparation-2026-11-04)
+retains exact commands, hashes, failed attempts and remaining manual checks.
 
 Use the [current ledger](native-app-plan.md#current-feedback-and-acceptance-ledger),
 [App validation](native-app-validation.md) and

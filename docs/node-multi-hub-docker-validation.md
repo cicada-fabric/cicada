@@ -39,6 +39,16 @@ All resources carry a unique owner label and removal requires that exact label. 
 
 ## Current Node Hub lifecycle acceptance preparation (2026-11-04)
 
+Current qualification superseding the preparation below: Root accepts
+**SCOPED_PASS** for six actual lifecycle scenarios across a preserved five-case
+subset and one affected-Group rerun, not one six-PASS run. Production is
+`afb2bad8`; actual two-Hub current-NPT/default CLI/Hook/facade/Agent crypto is
+separate from the four-case client Docker PASS and installed-CLI
+zero-connection systemd PASS. The
+[current validation ledger](native-app-validation.md#node-hub-coexistence-acceptance-preparation-2026-11-04)
+contains exact source/binary/log/result hashes, original failed attempts and
+NOT_RUN scopes. Historical Docker artifacts above keep their original source.
+
 The historical artifact/source results above retain their original attribution.
 They provide reusable two-Hub isolation, Network-direct ciphertext, outage,
 response-loss and restart fixtures; they do not qualify dynamic current-NPT Hub
@@ -53,3 +63,96 @@ review. No new test or Docker gate has run. Static two-worker configuration is
 not dynamic addition/deletion acceptance. New native Runtime, physical Node,
 Windows DPAPI/ACL and public HTTPS remain NOT_RUN. Root owns scoped execution,
 the disposable Docker decision and final packaging; no real service is changed.
+
+For the separately planned physical cutover, the user retires
+`198.200.58.176` and retains only Aliyun `8.155.139.253:8787`. Its A-offline
+add-B/remove-A/cold-reopen checks and later enrolled-Node/App-unbind continuity
+remain NOT_RUN. They do not replace disposable healthy-two-Hub concurrency or
+Group-selector collision qualification. This note authorizes no fixture to use
+either real Hub as disposable state.
+
+The pending current fixture also needs healthy legacy-A adoption through its
+protected exact old-pin to managed-ID/epoch receipt, retaining original Endpoint,
+native SID, state paths and unresolved records. Root additionally requires a
+deterministic admission/removal barrier: the fence CAS shares the final native
+check/Begin/Start gate, post-fence starts refuse, and LOCAL_STOPPED requires real
+quiescence. B remains independent while one physical Thread still has one
+writer. Real `off`/`status` ownership and stop proofs must distinguish an unknown
+manual daemon from a stopped managed unit. These are NOT_RUN additions to the
+existing matrix, not new native/Docker results or authorization to touch a real
+service.
+
+The removal matrix includes both a used-connection positive and a native-unknown
+negative. Trusted exact QueueAccepted evidence permits local stop while Hub
+consumption remains unconfirmed; history stays retained and is not marked
+consumed/cancelled. Genuine native/provider INJECTING, INJECTION_UNCERTAIN or
+START_UNVERIFIED remains fenced STOP_PENDING. Unknown network originals remain
+isolated from B and retained, without automatically making local stop impossible.
+These cases are NOT_RUN and confer no native Runtime/consumption qualification.
+
+Five current cmd-layer tagged targets are now drafted in the existing
+[acceptance record](native-app-validation.md#node-hub-coexistence-acceptance-preparation-2026-11-04).
+They use current CLI `join --thread … --hub ALIAS`, the actual routed Hook/front,
+current NPT/private ACK and live production Agent inbox observation. The
+synthetic offline queue subprocess is the existing Go test executable; it
+does not call a provider. The fifth reuses those Hubs for actual unmanaged-A
+NPT/Agent/Thread, explicit stop and protected from-service adoption before B is
+added. The old PID/instance may change during the explicit stop/adoption;
+adding B must leave the adopted A instance unchanged. Its service runner is
+scripted and cannot qualify systemd. Compile and all five executions remain NOT_RUN.
+Root will use the existing `test-client-hub-interop.sh --suite client` as the
+general disposable Docker gate, retaining its evidence separately from these
+dual-Hub tagged tests. This preparation adds no new Docker driver and does not
+attribute any historical gate pass to the new source.
+
+Subsequent status: QA's one pinned offline Docker **compile-only** operation
+exited 0; the original wrapper's cleanup-parser exit 1 remains recorded and a
+separate exact-ID/name absence closeout confirms Docker cleanup. Root ran the
+exact resulting binary independently: attempt 1 exited **1**, with **2 PASS /
+3 FAIL / 0 SKIP** and unchanged source. Current NPT/add-remove-cold and the
+admission barrier passed; original-service adoption failed on a fixture
+transport argument conflict, while both Group/native-unknown targets stopped
+at an actual local-user report timeout. These are failed integration evidence,
+not a Docker interop or whole-lifecycle pass. The
+[current validation record](native-app-validation.md#node-hub-coexistence-acceptance-preparation-2026-11-04)
+contains exact manifests, artifact/log/result hashes and the unvalidated fixture
+correction. The general client Docker interop and actual systemd/Runtime/Windows
+qualifications remain separate and NOT_RUN for this lifecycle at this point.
+
+Root subsequently reviewed carrier `4340057e` for the exact public-metadata
+read gate and the error-only retained-artifact validation seam. QA's pending
+sixth real target reuses the original adoption fixture for storage0/adoptLive1/
+LOCAL_STOPPED2/explicitSameAliasLive3, retaining original keys, Endpoint/SID,
+cache/outbox pin/rows/schema and unknown App packet, while fresh live3 works,
+old live0/1 refuses and B continues unchanged. It introduces no alternate
+database, namespace or fabricated report/row. The combined next source awaits
+App wiring and is NOT_RUN, including compile; attempt 1 retains its original
+binary, source manifest and failed result.
+
+Final scope closeout: Root scope-acceptance SHA-256 is
+`455782097db65558a2c2b425c10381f7fe03deea993293d51da26827e669323a`.
+The original six-target run remains FAIL / 1, 5 PASS / 1 FAIL / 0 SKIP; the last
+failure followed a test SSE-close hang and exact-process SIGTERM. Its original
+result SHA-256 is
+`82c704946b1f2dd3b1cc143589c009701f75dec327b97610eaf7e8efd082acbc`.
+Only the outage fixture changed. The affected Group target then passed
+separately, exit 0, 42.111 seconds, result SHA-256
+`df546537b8be2058cdc9dcf9ce58d3e65997ffae94dbf4f5d3c71232b88a0a5e`.
+Root verified all 950 production Go/module inputs identical to clean candidate
+`afb2bad8` across both QA freezes. The old failure is not relabeled PASS and
+the five completed cases are not reattributed to the rerun binary.
+
+The actual general client Docker gate is PASS / 0 for four cases with exact
+owned cleanup CONFIRMED, result SHA-256
+`f3d9cf97fa1f356ea82d6f44791ce7bdcefc77571d096040568b4bbaf1ee57ff`.
+The real installed delivered CLI systemd gate is PASS for zero connections
+only, result SHA-256
+`f2f4e11d37844b84f8ef1f2b0c60f11a059125714e31349bed591fd4983e9c58`;
+owned unit/fixture cleanup is confirmed and the original resident Node PID is
+unchanged. These separate layers do not establish connected-Node systemd,
+native Runtime/model consumption, physical Windows GUI/DPAPI/ACL, Android,
+public HTTPS, resident migration or the user's physical Hub cutover. Those
+remain NOT_RUN. The frozen source-bound candidate ZIP SHA-256 is
+`502046d93965f2b649ffc5ffd449c08cec83da56ad5400144aec1e01e600f581`;
+Root finalizes archive metadata after the QA checkpoint, preserving production
+binary/candidate attribution.

@@ -6,6 +6,25 @@ Its Go implementation remains in `cicada-go`; Android is maintained under
 native Windows acceptance. “App” is the current product name; older Client-facing wire names,
 code and evidence remain attributed to their original contract and source.
 
+Current Node Hub lifecycle scope — 2026-11-04: production `afb2bad8` is
+**SCOPED_PASS** for six actual disposable current-NPT/TLS/SQLite/Agent/CLI/
+Hook/MCP scenarios across preserved executions. Five cases passed in the
+original six-target run, whose aggregate FAIL remains unchanged; the affected
+Group/inbox case passed separately after a test-only SSE-outage cleanup fix.
+The separate general client Docker gate passed four cases, and the actual
+installed delivered CLI passed zero-connection systemd lifecycle only. Original
+storage pin 0 survives adoption to live 1, local stop 2 and explicit re-add 3;
+fresh current authority works while old live pins remain refused. No new
+database/namespace or production key is created by that continuation. See the
+[local manager contract](node-hub-manager-contract.md) and
+[current scoped evidence](native-app-validation.md#node-hub-coexistence-acceptance-preparation-2026-11-04).
+Native queue subprocesses are synthetic. New actual Codex Runtime/model
+consumption, Windows physical GUI/DPAPI/ACL, Android, public HTTPS and systemd
+with connected Nodes remain **NOT_RUN**. The current user-requested physical
+target is Aliyun `8.155.139.253:8787`, with old `198.200.58.176` retired; this
+new cutover is not independently accepted. The dated Runtime/physical reports
+below keep their original source and scope.
+
 Current v0.1 exit status — 2026-11-03: the full QtqKRp Runtime on clean
 `64927cbe` passes M1–M8 and its parent, including the real lease boundary and
 final original-four witness. Root accepts the independently reclassified
@@ -2097,6 +2116,21 @@ two-Thread acceptance stay separate and **NOT_RUN**.
 
 
 ## Node multi-Hub MCP routing preparation — 2026-11-04
+
+Current scope superseding the preparation statuses below: **SCOPED_PASS** on
+production `afb2bad8`, with six independently accepted real integration
+scenarios across the preserved five-case subset and the separately rerun Group
+target. The source-specific component checkpoints below remain component
+evidence. They are supplemented, not retrospectively relabeled, by the actual
+current-NPT/default CLI/Hook/facade/Agent, original storage0/live1/live3, native
+fence/unknown and cold-reopen results in the
+[existing validation ledger](native-app-validation.md#node-hub-coexistence-acceptance-preparation-2026-11-04).
+Root scope acceptance SHA-256 is
+`455782097db65558a2c2b425c10381f7fe03deea993293d51da26827e669323a`.
+The four-case Docker gate and installed-CLI zero-connection systemd gate passed
+separately. Physical/native/model/systemd-connected-Node/public deployment
+qualifications remain NOT_RUN; old failures and all original production/test
+source manifests retain their original attribution.
 
 Status: **IN_PROGRESS — pure selection/context checkpoint only**. The local
 Manager contract is frozen at `891c8bc` and the QA helper carrier is `57aaa4b`.
