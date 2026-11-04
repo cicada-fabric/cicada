@@ -138,6 +138,7 @@ func (s *profileStorage) open(ctx context.Context, scope appvault.Scope, create 
 	s.mu.RLock()
 	root, known := s.locations[scope]
 	complete := s.discovered
+	count := len(s.locations)
 	s.mu.RUnlock()
 	if known {
 		return s.factory(root)(ctx, scope, false)
@@ -145,7 +146,7 @@ func (s *profileStorage) open(ctx context.Context, scope appvault.Scope, create 
 	if !create {
 		return nil, appvault.ErrStateNotFound
 	}
-	if !complete {
+	if !complete || count >= 64 {
 		return nil, appvault.ErrInvalidVault
 	}
 	// An explicit new-profile action still rechecks all known locations. An
@@ -157,6 +158,9 @@ func (s *profileStorage) open(ctx context.Context, scope appvault.Scope, create 
 	defer s.mu.Unlock()
 	if root, known := s.locations[scope]; known {
 		return s.factory(root)(ctx, scope, false)
+	}
+	if len(s.locations) >= 64 {
+		return nil, appvault.ErrInvalidVault
 	}
 	vault, err := s.factory(s.primary)(ctx, scope, true)
 	if err != nil {

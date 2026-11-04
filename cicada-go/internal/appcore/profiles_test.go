@@ -37,7 +37,7 @@ func fixtureVaultOpener(root, password string) VaultOpener {
 	}
 }
 
-func savedProfileFixture(t *testing.T, root string) (HubConnectionCard, string, *atomic.Int32, *atomic.Bool) {
+func savedProfileFixture(t *testing.T, root string, ownerSeeds ...byte) (HubConnectionCard, string, *atomic.Int32, *atomic.Bool) {
 	t.Helper()
 	hubKey, err := e2ee.NewIdentity()
 	if err != nil {
@@ -79,6 +79,9 @@ func savedProfileFixture(t *testing.T, root string) (HubConnectionCard, string, 
 	}
 	defer vault.Close()
 	imported := syntheticOwnerImport(t)
+	if len(ownerSeeds) == 2 {
+		imported = syntheticOwnerImportWithSeeds(t, ownerSeeds[0], ownerSeeds[1])
+	}
 	defer clear(imported.KEMPrivatePKCS8)
 	defer clear(imported.SigningPrivatePKCS8)
 	owner, err := appkeys.ImportOwner(appkeys.ImportOwnerPEM{KEMPrivatePKCS8: imported.KEMPrivatePKCS8,

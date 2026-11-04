@@ -75,6 +75,27 @@ and [user A/B batch plus next five-Thread scope](native-app-validation.md#2026-1
 Use the [short exit index](#current-feedback-and-acceptance-ledger)
 and [current source-bound results](native-app-cross-node-validation.md#current-scopes--2026-10-30).
 
+## Hub connection management — 2026-11-04
+
+The user reports all four installation steps passed for the fresh Hub at
+`8.155.139.253:8787` on server `aliyun`, using the delivered `2337f7d` CLI
+(artifact digest reported with prefix `5c66`). This is USER_REPORTED_PASS only;
+no independent public-host execution is claimed. The App's inability to add,
+switch or remove saved Hub connections is the current USER_REPORTED_FAIL.
+
+This App-only checkpoint exposes an authenticated local Hub list at startup,
+login and Settings; explicit Add, Switch, local Disconnect and exact confirmed
+Remove/Restore preserve original keys and pending packets. Startup no longer
+performs sole-profile network auto-resume. Removed connections remain recoverable
+from their original encrypted vault, without a new bootstrap or rekey. The
+[local App contract](native-app-architecture.md#saved-hub-connections--local-app-contract-2026-11-04)
+defines the removal marker, live verification, isolation, cancellation and
+64-profile boundary. No Hub/Node/wire/software-version change or redeployment is
+required for this fix. Producer validation and Root's independent interop/package
+checks retain separate scopes; this new code's Windows physical retest remains
+NOT_RUN until the user tries the reviewed App package. Existing real pending
+state and keys have not been touched by this development task.
+
 ## Product boundary
 
 CICADA is operated through three independently distributed components: Hub,

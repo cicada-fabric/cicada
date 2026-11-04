@@ -566,3 +566,51 @@ Owner operation may obtain only an exact selected-Node, grant-free authenticated
 context read when needed to sign reconciliation after restart or login. This
 does not admit a second mutation. Hub-Nodes already supplies Group discovery;
 the App integration needs no artificial Group capability override.
+
+
+## Saved Hub connections — local App contract (2026-11-04)
+
+The App presents its authenticated local Hub list at startup, before account
+sign-in, and in Settings. Startup discovers local profiles without contacting
+or automatically reopening a sole Hub. Each profile is identified by the full
+vault scope: Hub ID/fingerprint, logical origin, account and Owner. Public disk
+locators and display addresses never establish that scope. Cards show the saved
+address and selected status; technical Hub identifiers are collapsed. Account,
+Owner and device information remains hidden until current account authentication.
+
+Add another Hub explicitly leaves the current runtime and accepts only a numeric
+IP:port plus independently trusted bootstrap in the native UI. An old offline
+Hub or unresolved operation does not prevent this local exit. Creating a new
+scope never imports the former scope's Owner/device keys, session, consent,
+requests, Nodes or Groups. Supplying new reachability for an existing direct
+profile is a separate saved-profile action: its complete signed transport trust
+and identity remain pinned. The old renderer's protocol-version input toggle is
+removed; internal reading of existing legacy vaults remains compatible.
+
+Switch and Restore authenticate the selected vault again, verify the current
+Hub against its saved identity and transport, and only then load its original
+identities and recovery. Only that scope can resume its own original packets.
+Controller lifetime cancellation also applies to Restore. Scope transitions
+immediately hide the former workspace, clear transient inputs/consents/details
+and close its transport. Controller actions remain serialized with background
+reads; an accepted scope change cannot race an old writer. Disconnect closes
+local runtime state and sends no logout, remote deletion or permission revocation.
+
+Remove saved connection requires the exact profile ID, current local review ID
+and an explicit confirmation that keys and recovery material are retained. It
+writes only the authenticated `appcore.profile-presence.v1` state record inside
+that vault, via the existing CAS/atomic-persistence path. It does not erase keys,
+change protocol originals/receipts/CAS generations, delete the remote Hub or
+revoke its grants. Removed profiles leave the normal list and remain in a
+collapsed, visibly titled recovery section with an explicit Restore action.
+Restore uses the saved scope and current live Hub verification; expired initial
+installation material and a new Owner key are not prerequisites. Reconnecting
+the same authenticated scope also restores this local marker and original keys.
+
+Removed profiles count toward the existing 64-profile limit. The 65th new scope
+is refused before vault creation. Invalid/busy storage, marker-write uncertainty,
+a failed close or failed live verification must report failure without showing
+removal/restoration or account/management success. The retained encrypted vault
+remains the recovery source; there is no trusted plaintext connection index.
+Explicit Add/Disconnect remain available during profile recovery, while raw
+CONNECT and key initialization stay blocked until the user chooses Add.

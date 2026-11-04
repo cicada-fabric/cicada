@@ -160,7 +160,14 @@ func (v *view) workspaceRows(s appcore.Snapshot, flow appui.SetupFlow) []layout.
 		}
 		return rows
 	case "settings":
-		rows := []layout.Widget{
+		rows := []layout.Widget{v.sectionCard(func(gtx layout.Context) layout.Dimensions {
+			items := v.hubConnectionRows(s)
+			children := make([]layout.FlexChild, 0, len(items))
+			for _, item := range items {
+				children = append(children, layout.Rigid(item))
+			}
+			return layout.Flex{Axis: layout.Vertical}.Layout(gtx, children...)
+		}),
 			v.sectionCard(v.labelRow(appui.Text(v.locale, "workspace.settings_body"))),
 			v.sectionCard(v.labelRow(appui.Text(v.locale, "workspace.storage_body"))),
 		}

@@ -69,63 +69,66 @@ func RunWindow(controller appcore.Controller) error {
 }
 
 type view struct {
-	cancelReplacement    widget.Clickable
-	controller           appcore.Controller
-	window               *app.Window
-	ctx                  context.Context
-	cancel               context.CancelFunc
-	theme                *material.Theme
-	locale               appui.Locale
-	activation           widget.Editor
-	hubAddress           widget.Editor
-	connectionMode       widget.Clickable
-	legacyConnection     bool
-	username             widget.Editor
-	password             widget.Editor
-	buttons              map[appcore.ActionKind]*widget.Clickable
-	profileButtons       map[string]*widget.Clickable
-	profileAddresses     map[string]*widget.Editor
-	pairButtons          map[string]*widget.Clickable
-	publicFields         map[string]*publicFieldState
-	workspacePage        string
-	workspaceButtons     map[string]*widget.Clickable
-	disclosures          map[string]*disclosureState
-	pairLabel            widget.Editor
-	pairBootstrapConsent widget.Bool
-	pairSlotAConsent     widget.Bool
-	pairSlotBConsent     widget.Bool
-	pairRevokeConsent    widget.Bool
-	pairReviewID         string
-	pairStateReviewID    string
-	contentList          widget.List
-	canvasList           widget.List
-	langEN               widget.Clickable
-	langZH               widget.Clickable
-	previewButton        widget.Clickable
-	detailsButton        widget.Clickable
-	details              bool
-	consent              widget.Bool
-	nodeCode             widget.Editor
-	devicePairingCode    widget.Editor
-	pairingPoll          nodePairingPollScheduler
-	nodeIdentityConsent  widget.Bool
-	nodeAccessConsent    widget.Bool
-	nodeReviewID         string
-	nodePinDetails       bool
-	nodePinButton        widget.Clickable
-	inputScope           appui.InputScope
-	accountVisible       bool
-	replacementInput     bool
-	canvas               canvasWidget
-	preview              bool
-	busy                 atomic.Bool
-	autoBusy             atomic.Bool
-	updates              nodeStatusUpdater
-	closed               atomic.Bool
-	workerWG             sync.WaitGroup
-	statusMu             sync.Mutex
-	failed               bool
-	uiErrorCode          string
+	hubConnections                         bool
+	scopeChanging                          atomic.Bool
+	profileControls                        map[string]*widget.Clickable
+	profileRemovalID, profileRemovalReview string
+	profileRemoveConsent                   widget.Bool
+	cancelReplacement                      widget.Clickable
+	controller                             appcore.Controller
+	window                                 *app.Window
+	ctx                                    context.Context
+	cancel                                 context.CancelFunc
+	theme                                  *material.Theme
+	locale                                 appui.Locale
+	activation                             widget.Editor
+	hubAddress                             widget.Editor
+	username                               widget.Editor
+	password                               widget.Editor
+	buttons                                map[appcore.ActionKind]*widget.Clickable
+	profileButtons                         map[string]*widget.Clickable
+	profileAddresses                       map[string]*widget.Editor
+	pairButtons                            map[string]*widget.Clickable
+	publicFields                           map[string]*publicFieldState
+	workspacePage                          string
+	workspaceButtons                       map[string]*widget.Clickable
+	disclosures                            map[string]*disclosureState
+	pairLabel                              widget.Editor
+	pairBootstrapConsent                   widget.Bool
+	pairSlotAConsent                       widget.Bool
+	pairSlotBConsent                       widget.Bool
+	pairRevokeConsent                      widget.Bool
+	pairReviewID                           string
+	pairStateReviewID                      string
+	contentList                            widget.List
+	canvasList                             widget.List
+	langEN                                 widget.Clickable
+	langZH                                 widget.Clickable
+	previewButton                          widget.Clickable
+	detailsButton                          widget.Clickable
+	details                                bool
+	consent                                widget.Bool
+	nodeCode                               widget.Editor
+	devicePairingCode                      widget.Editor
+	pairingPoll                            nodePairingPollScheduler
+	nodeIdentityConsent                    widget.Bool
+	nodeAccessConsent                      widget.Bool
+	nodeReviewID                           string
+	nodePinDetails                         bool
+	nodePinButton                          widget.Clickable
+	inputScope                             appui.InputScope
+	accountVisible                         bool
+	replacementInput                       bool
+	canvas                                 canvasWidget
+	preview                                bool
+	busy                                   atomic.Bool
+	autoBusy                               atomic.Bool
+	updates                                nodeStatusUpdater
+	closed                                 atomic.Bool
+	workerWG                               sync.WaitGroup
+	statusMu                               sync.Mutex
+	failed                                 bool
+	uiErrorCode                            string
 
 	localDomainNetworkName   widget.Editor
 	localDomainGroupName     widget.Editor
@@ -255,6 +258,9 @@ func configureNativeFonts(theme *material.Theme) {
 func (v *view) layout(gtx layout.Context) {
 	paint.Fill(gtx.Ops, v.theme.Bg)
 	raw := v.controller.Snapshot()
+	if v.scopeChanging.Load() {
+		raw = appui.HubTransitionSnapshot(raw)
+	}
 	now := time.Now()
 	presentation := appui.PresentScreen(raw, now)
 	if appui.ResetPresentationInputs(v.inputScope, v.accountVisible, raw, now) {
@@ -408,22 +414,29 @@ func (v *view) statusCard(gtx layout.Context, s appcore.Snapshot) layout.Dimensi
 }
 
 func (v *view) contentRows(s appcore.Snapshot, flow appui.SetupFlow, informationVisible, managementAuthorized bool, objects []appui.CanvasObject, preview bool) []layout.Widget {
+	if v.hubConnections {
+		return v.hubConnectionRows(s)
+	}
 	if v.replacementInput && s.Setup.ReplacementAllowed {
 		flow = appui.SetupFlow{Stage: "replace", Primary: appcore.ActionConnect}
 	}
-	rows := make([]layout.Widget, 0, 12)
+	rows := []layout.Widget{v.hubControl(s, appcore.ActionDiscoverProfiles, "connection.manage_hubs"), v.hubControl(s, appcore.ActionAddHub, "connection.add_hub")}
 	switch flow.Stage {
 	case "profile-recovery":
 		rows = append(rows, v.headingRow(appui.Text(v.locale, "setup.profile_recovery_title")), v.labelRow(appui.Text(v.locale, "setup.profile_recovery_body")))
 		for index, profile := range s.Profiles {
-			rows = append(rows, v.profileRow(profile, index))
+			if !profile.Removed {
+				rows = append(rows, v.profileRow(profile, index))
+			}
 		}
 	case "connect":
 		rows = append(rows, v.headingRow(appui.Text(v.locale, "setup.welcome")), v.labelRow(appui.Text(v.locale, "setup.welcome_body")))
 		if len(s.Profiles) > 0 {
 			rows = append(rows, v.headingRow(appui.Text(v.locale, "connection.saved_profiles")))
 			for index, profile := range s.Profiles {
-				rows = append(rows, v.profileRow(profile, index))
+				if !profile.Removed {
+					rows = append(rows, v.profileRow(profile, index))
+				}
 			}
 		}
 		rows = append(rows, v.headingRow(appui.Text(v.locale, "setup.step_connect")))
@@ -543,30 +556,13 @@ func (v *view) publicStatusRows(s appcore.Snapshot) []layout.Widget {
 }
 
 func (v *view) connectionInputRows() []layout.Widget {
-	var rows []layout.Widget
-	if v.legacyConnection {
-		rows = append(rows, v.editorRow(&v.activation, appui.Text(v.locale, "connection.material"), false))
-	} else {
-		rows = append(rows, v.editorRow(&v.hubAddress, appui.Text(v.locale, "connection.hub_address"), false),
-			v.editorRow(&v.activation, appui.Text(v.locale, "connection.bootstrap_code"), false))
-	}
-	rows = append(rows, func(gtx layout.Context) layout.Dimensions {
-		if v.connectionMode.Clicked(gtx) && !v.busy.Load() {
-			v.legacyConnection = !v.legacyConnection
-			v.activation.SetText("")
-		}
-		label := "connection.legacy_input"
-		if v.legacyConnection {
-			label = "connection.direct_input"
-		}
-		style := material.Button(v.theme, &v.connectionMode, appui.Text(v.locale, label))
-		style.Background, style.Color = color.NRGBA{}, v.theme.ContrastBg
-		return style.Layout(gtx)
-	})
-	return rows
+	return []layout.Widget{v.editorRow(&v.hubAddress, appui.Text(v.locale, "connection.hub_address"), false),
+		v.editorRow(&v.activation, appui.Text(v.locale, "connection.bootstrap_code"), false)}
 }
 
 func (v *view) resetPresentationInputs() {
+	v.profileRemovalID, v.profileRemovalReview = "", ""
+	v.profileRemoveConsent.Value = false
 	v.profileAddresses = make(map[string]*widget.Editor)
 	v.publicFields = make(map[string]*publicFieldState)
 	v.workspacePage = "overview"
@@ -629,14 +625,13 @@ func (v *view) actionButton(kind appcore.ActionKind, label string, s appcore.Sna
 			if kind == appcore.ActionConnect && strings.TrimSpace(v.activation.Text()) == "" {
 				enabled = false
 			}
-			if kind == appcore.ActionConnect && !v.legacyConnection && strings.TrimSpace(v.hubAddress.Text()) == "" {
+			if kind == appcore.ActionConnect && strings.TrimSpace(v.hubAddress.Text()) == "" {
 				enabled = false
 			}
 		}
 		if button.Clicked(gtx) && enabled {
 			if kind == appcore.ActionConnect && s.Hub.Verified && s.Setup.ReplacementAllowed && !v.replacementInput && appui.Flow(s).Stage != "replace" {
 				v.replacementInput = true
-				v.legacyConnection = s.Hub.Address == ""
 				v.hubAddress.SetText(s.Hub.Address)
 				v.activation.SetText("")
 				v.consent.Value = false
@@ -686,12 +681,9 @@ func (v *view) actionFor(kind appcore.ActionKind, s appcore.Snapshot) (appcore.A
 		v.password.SetText("")
 		return action, action.Username != "" && action.Password != ""
 	case appcore.ActionConnect:
-		address := ""
-		if !v.legacyConnection {
-			address = v.hubAddress.Text()
-			if strings.TrimSpace(address) == "" {
-				return appcore.Action{}, false
-			}
+		address := v.hubAddress.Text()
+		if strings.TrimSpace(address) == "" {
+			return appcore.Action{}, false
 		}
 		v.replacementInput = false
 		v.consent.Value = false
@@ -747,6 +739,21 @@ func (v *view) startDispatch(action appcore.Action) {
 		clearOwnerImport(action.OwnerImport)
 		return
 	}
+	switch action.Kind {
+	case appcore.ActionDiscoverProfiles:
+		v.hubConnections = true
+		fallthrough
+	case appcore.ActionAddHub, appcore.ActionDisconnectHub, appcore.ActionConnect, appcore.ActionResumeProfile, appcore.ActionRestoreProfile, appcore.ActionRemoveProfile:
+		v.scopeChanging.Store(true)
+		v.resetPresentationInputs()
+		v.updates.pauseForAccountScreen()
+		if action.Kind == appcore.ActionAddHub || action.Kind == appcore.ActionResumeProfile || action.Kind == appcore.ActionRestoreProfile || action.Kind == appcore.ActionConnect {
+			v.hubConnections = false
+		}
+		if action.Kind == appcore.ActionDisconnectHub {
+			v.hubConnections = true
+		}
+	}
 	v.workerWG.Add(1)
 	go func() {
 		defer v.workerWG.Done()
@@ -759,12 +766,7 @@ func (v *view) dispatchForeground(action appcore.Action) {
 	if err == nil {
 		err = v.controller.Dispatch(v.ctx, action)
 	}
-	if err == nil && action.Kind == appcore.ActionDiscoverProfiles {
-		profiles := v.controller.Snapshot().Profiles
-		if len(profiles) == 1 {
-			err = v.controller.Dispatch(v.ctx, appcore.Action{Kind: appcore.ActionResumeProfile, ProfileID: profiles[0].ID})
-		}
-	}
+
 	clearOwnerImport(action.OwnerImport)
 	// Best-effort removal of secret-bearing references. Go strings cannot
 	// guarantee physical zeroization, but they need not remain in this UI.
@@ -779,6 +781,7 @@ func (v *view) dispatchForeground(action appcore.Action) {
 	v.uiErrorCode = ""
 	v.statusMu.Unlock()
 	v.updates.foregroundCompleted(v.controller.Snapshot(), time.Now(), action, err)
+	v.scopeChanging.Store(false)
 	v.busy.Store(false)
 	if !v.closed.Load() {
 		v.window.Invalidate()
@@ -1220,46 +1223,7 @@ func (v *view) headingRow(label string) layout.Widget {
 }
 
 func (v *view) profileRow(profile appcore.ProfileSnapshot, index int) layout.Widget {
-	button := v.profileButtons[profile.ID]
-	if button == nil {
-		button = new(widget.Clickable)
-		v.profileButtons[profile.ID] = button
-	}
-	return func(gtx layout.Context) layout.Dimensions {
-		var address *widget.Editor
-		if profile.Direct {
-			if v.profileAddresses == nil {
-				v.profileAddresses = make(map[string]*widget.Editor)
-			}
-			address = v.profileAddresses[profile.ID]
-			if address == nil {
-				address = new(widget.Editor)
-				address.SingleLine, address.MaxLen = true, 128
-				v.profileAddresses[profile.ID] = address
-			}
-		}
-		if button.Clicked(gtx) && !v.busy.Load() {
-			action := appcore.Action{Kind: appcore.ActionResumeProfile, ProfileID: profile.ID}
-			if address != nil {
-				action.HubAddress = strings.TrimSpace(address.Text())
-			}
-			v.startDispatch(action)
-		}
-		return v.card(gtx, func(gtx layout.Context) layout.Dimensions {
-			rows := []layout.FlexChild{layout.Rigid(v.labelRow(appui.SavedConnectionLabel(v.locale, index)))}
-			if address != nil {
-				rows = append(rows, layout.Rigid(v.editorRow(address, appui.Text(v.locale, "connection.saved_address_override"), false)))
-			}
-			rows = append(rows,
-				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					return layout.Inset{Top: 12}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-						return v.button(gtx, button, appui.Text(v.locale, "connection.resume_profile"), !v.busy.Load())
-					})
-				}),
-			)
-			return layout.Flex{Axis: layout.Vertical}.Layout(gtx, rows...)
-		})
-	}
+	return v.hubProfileRow(profile, index)
 }
 
 func (v *view) authorizationLabel(state string) string {

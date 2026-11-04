@@ -452,7 +452,9 @@ func (c *nativeController) publish() {
 		Account:    AccountSnapshot{State: AccountStateUnknown, RootState: RootStateUnknown},
 		Management: ManagementUnavailable, Canvas: CanvasSnapshot{State: CanvasNoAuthorization}}
 	for _, profile := range c.profiles {
-		view.Profiles = append(view.Profiles, profile.view)
+		p := profile.view
+		p.Current = c.vault != nil && cardScope(c.connection) == profile.scope
+		view.Profiles = append(view.Profiles, p)
 	}
 	view.Storage.UserRoot = c.cfg.UserRoot
 	if c.vault != nil && c.cfg.VaultLocation != nil {
@@ -555,11 +557,12 @@ func (c *nativeController) availableActions() []ActionKind {
 	if !c.profileRecoveryRequired {
 		actions = append(actions, ActionConnect)
 	}
+	actions = append(actions, ActionAddHub, ActionDisconnectHub)
 	if c.cfg.DiscoverVaults != nil {
 		actions = append(actions, ActionDiscoverProfiles)
 	}
 	if len(c.profiles) != 0 {
-		actions = append(actions, ActionResumeProfile)
+		actions = append(actions, ActionResumeProfile, ActionRemoveProfile, ActionRestoreProfile)
 	}
 	if c.profileRecoveryRequired {
 		return actions

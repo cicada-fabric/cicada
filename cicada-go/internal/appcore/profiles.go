@@ -3,7 +3,6 @@ package appcore
 import (
 	"context"
 	"errors"
-	"path/filepath"
 	"sort"
 	"strings"
 
@@ -65,17 +64,19 @@ func (c *nativeController) discoverProfiles(ctx context.Context) error {
 			return c.failProfileOpen(err)
 		}
 		state, _, readErr := readProfile(vault, scope)
+		vaultPresence, presenceErr := readProfilePresence(vault)
 		closeErr := vault.Close()
+		if presenceErr != nil {
+			readErr = presenceErr
+		}
 		if readErr != nil || closeErr != nil {
 			return c.fail(PhaseLocked, "APP_PROFILE_INVALID", errors.New("local profile authentication failed"))
 		}
-		path, err := scopeVaultPath(string(filepath.Separator), scope)
+		profile, err := profileFromState(state, scope, vaultPresence)
 		if err != nil {
 			return c.fail(PhaseLocked, "APP_PROFILE_INVALID", err)
 		}
-		profiles = append(profiles, localProfile{scope: scope, view: ProfileSnapshot{
-			ID: strings.TrimSuffix(filepath.Base(path), ".vault"), Origin: scope.Origin,
-			AccountID: scope.AccountID, OwnerID: scope.OwnerID, Direct: state.Transport != nil}})
+		profiles = append(profiles, profile)
 	}
 	sort.Slice(profiles, func(i, j int) bool { return profiles[i].view.ID < profiles[j].view.ID })
 	c.profiles, c.profileRecoveryRequired = profiles, false
@@ -88,6 +89,10 @@ func (c *nativeController) resumeProfile(ctx context.Context, id string) error {
 }
 
 func (c *nativeController) resumeProfileAt(ctx context.Context, id, address string) error {
+	return c.resumeSavedProfile(ctx, id, address, false, "")
+}
+
+func (c *nativeController) resumeSavedProfile(ctx context.Context, id, address string, restore bool, review string) error {
 	var selected *localProfile
 	for i := range c.profiles {
 		if c.profiles[i].view.ID == id {
@@ -95,7 +100,7 @@ func (c *nativeController) resumeProfileAt(ctx context.Context, id, address stri
 			break
 		}
 	}
-	if selected == nil || c.cfg.OpenVault == nil {
+	if selected == nil || c.cfg.OpenVault == nil || selected.view.Removed != restore || restore && review != selected.view.ReviewID {
 		return ErrInvalidAction
 	}
 	scope := selected.scope
@@ -113,6 +118,11 @@ func (c *nativeController) resumeProfileAt(ctx context.Context, id, address stri
 	if err != nil {
 		_ = vault.Close()
 		return c.fail(PhaseLocked, "APP_PROFILE_INVALID", err)
+	}
+	presence, err := readProfilePresence(vault)
+	if err != nil || presence.Removed != restore || restore && profilePresenceReview(scope, presence.Version) != review {
+		_ = vault.Close()
+		return c.fail(PhaseLocked, "APP_PROFILE_INVALID", errors.New("saved connection changed"))
 	}
 	c.vault, c.state, c.stateVer = vault, state, version
 	card := state.Connection
@@ -181,6 +191,9 @@ func (c *nativeController) resumeProfileAt(ctx context.Context, id, address stri
 		if err := c.ensureLocalDomainLoaded(); err != nil {
 			return err
 		}
+	}
+	if err := c.restoreCurrentProfile(); err != nil {
+		return c.failStorage("APP_PROFILE_UPDATE_FAILED", err)
 	}
 	c.profileRecoveryRequired = false
 	// Cached inspections are receipts, not current authorization. Recover an

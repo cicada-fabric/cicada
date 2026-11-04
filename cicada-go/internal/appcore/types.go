@@ -185,17 +185,27 @@ type AuthorizationSnapshot struct {
 // ProfileSnapshot is authenticated local metadata, never evidence of current
 // Hub availability, an account session, or management authorization.
 type ProfileSnapshot struct {
-	ID        string `json:"id"`
-	Origin    string `json:"origin"`
-	AccountID string `json:"account_id"`
-	OwnerID   string `json:"owner_id"`
-	Direct    bool   `json:"direct,omitempty"`
+	Address     string `json:"address,omitempty"`
+	HubID       string `json:"hub_id,omitempty"`
+	Fingerprint string `json:"fingerprint,omitempty"`
+	Removed     bool   `json:"removed,omitempty"`
+	Current     bool   `json:"current,omitempty"`
+	ReviewID    string `json:"review_id,omitempty"`
+	ID          string `json:"id"`
+	Origin      string `json:"origin"`
+	AccountID   string `json:"account_id"`
+	OwnerID     string `json:"owner_id"`
+	Direct      bool   `json:"direct,omitempty"`
 }
 
 type ActionKind string
 
 const (
 	ActionConnect               ActionKind = "CONNECT"
+	ActionAddHub                ActionKind = "ADD_HUB_CONNECTION"
+	ActionDisconnectHub         ActionKind = "DISCONNECT_HUB_LOCALLY"
+	ActionRemoveProfile         ActionKind = "REMOVE_SAVED_HUB_CONNECTION"
+	ActionRestoreProfile        ActionKind = "RESTORE_SAVED_HUB_CONNECTION"
 	ActionDiscoverProfiles      ActionKind = "DISCOVER_LOCAL_PROFILES"
 	ActionResumeProfile         ActionKind = "UNLOCK_AND_RESUME_PROFILE"
 	ActionActivateApp           ActionKind = "ACTIVATE_APP"
@@ -244,7 +254,9 @@ type Action struct {
 	BootstrapCode string
 	// ActionResumeProfile may supply HubAddress alone to retry the saved
 	// direct profile at a new address without changing its authenticated scope.
-	ProfileID string
+	ProfileID             string
+	ProfileReviewID       string
+	ConfirmProfileRemoval bool
 	// A native confirmation must name the exact finite scope shown to the user.
 	ConfirmLimitedAuthorization bool
 	// Node approval names the exact authenticated candidate displayed to the

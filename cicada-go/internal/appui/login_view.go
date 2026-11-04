@@ -64,7 +64,7 @@ func PresentScreen(s appcore.Snapshot, now time.Time) ScreenPresentation {
 	}
 	copy.Profiles = nil
 	for _, profile := range s.Profiles {
-		copy.Profiles = append(copy.Profiles, appcore.ProfileSnapshot{ID: profile.ID, Direct: profile.Direct})
+		copy.Profiles = append(copy.Profiles, appcore.ProfileSnapshot{ID: profile.ID, Direct: profile.Direct, Address: profile.Address, HubID: profile.HubID, Fingerprint: profile.Fingerprint, Removed: profile.Removed, Current: profile.Current, ReviewID: profile.ReviewID})
 	}
 	return ScreenPresentation{Snapshot: copy, Flow: flow}
 }
@@ -134,4 +134,11 @@ func ResetPresentationInputs(previous InputScope, previouslyVisible bool, s appc
 
 func SavedConnectionLabel(locale Locale, index int) string {
 	return fmt.Sprintf("%s %d", Text(locale, "connection.saved_connection"), index+1)
+}
+
+// HubTransitionSnapshot suppresses the previous tenant from the first accepted
+// switch frame, before a worker can publish its reset. Profiles remain neutral.
+func HubTransitionSnapshot(s appcore.Snapshot) appcore.Snapshot {
+	return appcore.Snapshot{Phase: appcore.PhaseNeedConnection, Profiles: s.Profiles,
+		Management: appcore.ManagementUnavailable}
 }

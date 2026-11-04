@@ -47,6 +47,8 @@ func ErrorText(locale Locale, code string) string {
 		id = msgPairFenced
 	case "APP_PAIR_COMMIT_FAILED":
 		id = msgLocalUnlockFailed
+	case "APP_PROFILE_UPDATE_FAILED":
+		id = "connection.update_failed"
 	case "APP_PROFILE_IN_USE":
 		id = msgProfileInUse
 	case "APP_NODE_UNAVAILABLE":

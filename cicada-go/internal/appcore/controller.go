@@ -197,6 +197,26 @@ func (c *nativeController) Dispatch(ctx context.Context, action Action) (dispatc
 	if closed {
 		return ErrClosed
 	}
+	// Local connection management never runs old-Hub housekeeping or retries.
+	// Each original is already durably persisted before its first network send.
+	switch action.Kind {
+	case ActionAddHub, ActionDisconnectHub:
+		if err := c.resetConnection(); err != nil {
+			return c.fail(PhaseLocked, "APP_VAULT_CLOSE_FAILED", err)
+		}
+		if action.Kind == ActionAddHub {
+			c.profileRecoveryRequired = false
+		}
+		c.publish()
+		return nil
+	case ActionRemoveProfile:
+		return c.removeProfile(ctx, action)
+	case ActionRestoreProfile:
+		op, cancel := context.WithCancel(ctx)
+		stop := context.AfterFunc(c.lifetime, cancel)
+		defer func() { stop(); cancel() }()
+		return c.resumeSavedProfile(op, action.ProfileID, action.HubAddress, true, action.ProfileReviewID)
+	}
 	if c.nodePairTrustBusy() && (nodeActionKind(action.Kind) || pairActionKind(action.Kind) || localCollaborationActionKind(action.Kind) || ownerEndpointActionKind(action.Kind) || action.AutoNodeStatus != nil) {
 		return ErrInvalidAction
 	}
@@ -492,6 +512,15 @@ func (c *nativeController) connect(ctx context.Context, action Action) error {
 	if validateConnectionCard(card, now) != nil {
 		return c.fail(PhaseError, "EXPIRED_CONNECTION_MATERIAL", ErrInvalidCard)
 	}
+	if len(c.profiles) >= 64 {
+		known := false
+		for _, profile := range c.profiles {
+			known = known || profile.scope == cardScope(card)
+		}
+		if !known {
+			return c.fail(PhaseLocked, "APP_PROFILE_LIMIT", ErrInvalidAction)
+		}
+	}
 	if card.AllowLoopbackHTTP && !c.cfg.AllowLoopbackHTTP {
 		if len(card.Origin) >= len("http://") && card.Origin[:len("http://")] == "http://" {
 			return c.fail(PhaseError, "LOOPBACK_HTTP_DISABLED", ErrInvalidCard)
@@ -642,6 +671,9 @@ func (c *nativeController) connect(ctx context.Context, action Action) error {
 			return err
 		}
 	}
+	if err := c.restoreCurrentProfile(); err != nil {
+		return c.failStorage("APP_PROFILE_UPDATE_FAILED", err)
+	}
 	c.requireSessionRecheck()
 	c.publish()
 	return nil
@@ -651,15 +683,12 @@ func (c *nativeController) resetConnection() error {
 	c.closeConnectionHTTP()
 	c.connectionTransport, c.transportState = nil, ""
 	c.clearRuntimeSecrets()
+	var closeErr error
 	if c.vault != nil {
-		err := c.vault.Close()
+		closeErr = c.vault.Close()
 		c.vault = nil
-		if err != nil {
-			c.connected = false
-			c.state = durableState{}
-			return err
-		}
 	}
+	c.directConnection = false
 	c.hub = wire.HubIdentity{}
 	c.connection = HubConnectionCard{}
 	c.service = ""
@@ -669,7 +698,10 @@ func (c *nativeController) resetConnection() error {
 	c.stateVer, c.sessionVer = 0, 0
 	c.inspectionRequestID = ""
 	c.authorizationChecked, c.activationStatusRequestID = false, ""
-	c.storageFault = false
+	c.storageFault = closeErr != nil
+	if closeErr != nil {
+		c.profileRecoveryRequired = true
+	}
 	c.snapshotMu.Lock()
 	c.snapshot = Snapshot{Phase: PhaseNeedConnection, Hub: HubSnapshot{Health: HubHealthUnknown},
 		Account:    AccountSnapshot{State: AccountStateUnknown, RootState: RootStateUnknown},
@@ -680,7 +712,7 @@ func (c *nativeController) resetConnection() error {
 		c.snapshot.AvailableActions = c.availableActions()
 	}
 	c.snapshotMu.Unlock()
-	return nil
+	return closeErr
 }
 
 func (c *nativeController) setConnectedHub(hub wire.HubIdentity, card HubConnectionCard, service string, activation *ActivationCode) {

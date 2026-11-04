@@ -10793,3 +10793,128 @@ wire signatures, deduplication and Guard checks are not reduced. No extra
 per-message RPC is planned just to fill nicknames, and multi-Group scope must
 stay unambiguous. No injection frame, Go code or package changed in this
 documentation checkpoint; the user A/B PASS does not qualify the proposed UI.
+
+
+### 2026-11-04 saved Hub connection management
+
+The user reports the four new-Hub installation steps on server `aliyun`, at
+numeric address `8.155.139.253:8787`, passed using delivered CLI `2337f7d`
+(artifact digest reported with prefix `5c66`). This is **USER_REPORTED_PASS**
+for those installation steps only. No independent public HTTPS/real-server test
+was performed by this App task. The inability to add, switch or remove saved Hub
+connections in the previous App is **USER_REPORTED_FAIL**. This checkpoint is
+App-only and requires no Hub/Node/wire/software-version change or redeployment.
+The new App's Windows physical retest remains **NOT_RUN**.
+
+Source is base `2935a4f` plus this single App checkpoint on
+`task/v01-app-hub-connections`. Producer work was confined to its linked task
+worktree. The source freeze receipt is
+`n2-app/hub-connections-20261104/go-source-frozen.json` under private evidence,
+SHA-256 `0ea291eb6ee8a4a13ed92d0f5900477753d9c64036d6d4e0ad25dfbfbbea2c23`.
+It includes all 17 changed Go source/test files, including new files. All
+`cicada-go` inputs, including the unchanged module files and App README, remained
+frozen during Root's independent execution. Only this repository's root App
+documents were completed after that source freeze. The final commit/source
+mapping and verification artifacts are in the producer receipt.
+
+The [local contract](native-app-architecture.md#saved-hub-connections--local-app-contract-2026-11-04)
+adds the saved Hub list before login/in Settings, explicit Add/Switch/local
+Disconnect, exact confirmed Remove and retained Restore. It uses an authenticated
+per-vault presence marker without deleting keys or original operation records.
+Startup performs local discovery and no sole-profile network auto-resume. Native
+new setup uses numeric address plus trusted bootstrap; existing legacy records
+retain internal compatibility without a protocol-version input toggle.
+
+Producer focused execution uses offline Go 1.27.3, `-mod=readonly`,
+`GOTOOLCHAIN=local`, `GOWORK=off`, `GOMAXPROCS=2`. Normal checks use CGO=0;
+selected race checks use CGO=1. Commands from `cicada-go`:
+
+```sh
+go test -count=1 -json -run '^Test(HubConnection|Profile|MultipleProfiles|NativeProfile|BlockedProfile|PreLogin|Login|AccountInformation|AppDirectTLS|NativeCoreSnapshot|Storage)' ./internal/appcore ./internal/appui ./internal/appui/native
+go test -race -count=1 -json -run '^TestHubConnection' ./internal/appcore ./internal/appui
+go test -race -count=1 -json -run '^TestHubTransitionImmediatelyHidesPreviousTenant$' ./internal/appui
+GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go test -c -o <private-evidence>/native-ui-tests-final.exe ./internal/appui/native
+```
+
+| Producer scope | Actual result and limitation |
+| --- | --- |
+| Focused normal, `focused-final.jsonl` | PASS: 29 top-level targets (Core 22 / UI 7), no fail/skip; Core 35.950s, UI 0.009s. Native package has zero matching tests and is a compile check only (0.006s). SHA-256 `53324c1a0afc59faec5df0e57509b8b206f8f2bae5ed575c44758a7a2788bddb`. |
+| New focused race, `focused-race.jsonl` | PASS: six top-level targets (Core 5 / UI 1), no fail/skip; Core 59.142s, UI 1.018s. SHA-256 `d17d6509a964499887afcb34efa4765a705786e86c239d81d7d3b42a0d3003fb`. The transition test has its own selection/receipt below. |
+| Immediate-transition race, `transition-race.jsonl` | One additional selected UI target PASS, package 1.021s, no fail/skip. SHA-256 `b340e743ff60766850cf5d7b177ba7eec8043ef40410e535c49128c23e29c495`. This case was not matched by the earlier `^TestHubConnection` selector; it is not counted in that log's six targets. |
+| Windows native test cross-compile | Exit 0; artifact SHA-256 `588112eb4fbe4174cc73ad606d06be8179c3fe731a78cb678fad75150af43ecd`. This is not Windows GUI, DPAPI/ACL or native Runtime execution. |
+
+The new Core cases exercise distinct synthetic Owner and App-device keys in
+scopes A/B; an actual encrypted uncertain account packet remains byte-identical
+and its independent retained state/CAS generation is unchanged across switch,
+remove, offline restore failure, Add and later same-scope recovery. No previous
+packet is sent to the other Hub. Explicit removal requires the exact profile and
+review; moving only a disposable fixture's original vault file before CAS makes
+the marker write fail without reporting removal or damaging the retained Owner.
+Close cancels a blocked Restore, and the 65th scope is rejected before opening or
+creating a new vault, counting removed profiles.
+
+The fresh-Add case reuses the existing numeric-dial TLS/production crypto fixture:
+the old Hub is stopped with an uncertain activation packet; explicit Add uses a
+real trusted bootstrap and TLS socket for a different complete Hub scope. The
+new profile appears in the list and reopens with its own device key, no inherited
+Owner/session/pending, no secret POST to the new Hub, and the old vault retains
+its Owner/device/exact packet. Its account authority is a synthetic actor;
+backend Guard, transactions and physical Windows acceptance are not claimed.
+UI cases check neutral saved-address selection while account/Owner identifiers
+remain hidden, and immediate previous-tenant suppression/input-scope reset.
+
+The first implementation compile exposed a missing Go import. The first newly
+written unknown-original fixture used a deliberately minimal saved-device ID
+that the actual account codec rejected; it was corrected to a visibly synthetic
+valid account-device ID. These intermediate failures are not product RED or
+passing evidence. The earlier `focused-normal-2.jsonl` passes its then-tested
+scope separately (24 top-level targets; Core 35.895s); it is not relabelled as the
+final source after strict presence-record parsing.
+
+Root independently owns focused verification, the existing disposable client
+interop gate and final packaging. Their exact source inventory, commands,
+results and cleanup are recorded separately below after completion. Producer
+ran no Docker/full M1/C1/Android/Runtime gate, touched no actual credentials,
+profiles or services, and built no distribution package. Existing real keys,
+pending packets and user state remain untouched by development.
+
+
+Root independent focused verification on the same frozen dirty source is
+**SCOPED_PASS / 0**: Core 59 terminal pass events including subtests (41.032s),
+UI/native 229 terminal pass events (1.222s), zero failures/skips. These counts
+are not top-level-case counts. Receipt:
+`v01-app-hub-connections-root-20261104/focused/result.json`, SHA-256
+`ee94408e74985d903eb5c19d9c29b76589268c8a7ba5f2544cf53969836f034c`.
+The full Go/module/sum tree is unchanged before/after, fingerprint
+`569e5af6f17b3b17427639cc65f8071f5fa6d2196ec0d9eb890c158de2e4a5af`.
+Its actual commands are retained in the receipt: selected
+`TestHubConnection.*|TestProfile.*|TestNativeProfile.*|TestMultipleProfiles.*|TestAppDirect.*|TestAppTransport.*`
+Core cases and complete portable `appui` / `appui/native` packages, both with
+`-json -mod=readonly -p=1 -count=1`. Core log SHA-256
+`6a44e14bff1b1d5d3e3b8ad5a750f0a0f1deb55bcddb68c190bc2265acba6062`,
+UI log SHA-256
+`e45c9512083a1043556073988ff27a0c0f5067e8dbaf2d925f95725661953cda`.
+The Root run touched no resident state. Windows physical remains NOT_RUN.
+
+
+Root's sole existing disposable client interop gate then completed **PASS / 0**
+on the same frozen source: `TestClientDockerHubSmoke`,
+`TestClientDockerHubRecoveryFixture`, `TestClientDockerHubHeadlessOperator` and
+`TestClientDockerHubOwnerBootstrap` all report PASS. Receipt:
+`v01-app-hub-connections-root-20261104/client-interop/result.json`, SHA-256
+`c50709feb8ce357b491aefc47d104c2988daca3760f91febf00630aa27b323ef`. Its actual build source remains
+`2935a4f551fc21608f81f6d0081f0c0699ef4d23` **dirty=true**, with source fingerprint
+`94bcb51f41d3dac5537b94d1a97bc0b74e03bc10bdfe61ca6ce60a69979cfdf9`;
+it is not attributed solely to that HEAD. All 17 changed Go inputs match both
+its input inventory and the producer freeze receipt. The final checkpoint only
+records this tested code and its documentation; its source/commit mapping lives
+in the final producer receipt, without rewriting the original tested provenance.
+
+The gate's `cleanup.json`, SHA-256
+`749972238e1509f5c8b6d57d82ed97d1e453aaef8c4f26e8240ff9aaf612017e`, reports **CONFIRMED**:
+three owned containers, two task image references and the private scratch are
+all EXACT_ABSENT. Android, native Runtime and public HTTPS remain NOT_RUN in the
+original receipt. This gate is existing Client/Hub compatibility over disposable
+TCP; it does not establish real user profiles, Windows GUI/DPAPI/ACL, physical
+Hub switching or background Runtime behavior. Root performs package review and
+user delivery separately. No deployment or real-key/state change was made.

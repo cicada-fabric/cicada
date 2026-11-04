@@ -23,7 +23,7 @@ func assertProfileRecoveryBlocked(t *testing.T, c Controller, code string) {
 		t.Fatalf("profile recovery lost its public reason or retry: %s", s.ErrorCode)
 	}
 	for _, kind := range s.AvailableActions {
-		if kind != ActionDiscoverProfiles && kind != ActionResumeProfile {
+		if kind != ActionDiscoverProfiles && kind != ActionResumeProfile && kind != ActionAddHub && kind != ActionDisconnectHub && kind != ActionRemoveProfile && kind != ActionRestoreProfile {
 			t.Fatal("profile failure advertised a new setup or business action")
 		}
 	}

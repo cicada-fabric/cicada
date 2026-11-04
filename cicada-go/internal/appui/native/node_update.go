@@ -115,7 +115,7 @@ func (u *nodeStatusUpdater) foregroundCompleted(s appcore.Snapshot, now time.Tim
 	}
 	if u.paused {
 		switch action.Kind {
-		case appcore.ActionRefreshNode, appcore.ActionRecoverNode, appcore.ActionRefresh, appcore.ActionApproveNode, appcore.ActionResumeProfile:
+		case appcore.ActionRefreshNode, appcore.ActionRecoverNode, appcore.ActionRefresh, appcore.ActionApproveNode, appcore.ActionResumeProfile, appcore.ActionRestoreProfile:
 			u.paused = false
 		default:
 			return
