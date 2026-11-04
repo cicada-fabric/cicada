@@ -11234,3 +11234,32 @@ failures also retain their original classification.
 
 This update changes documentation only. No new test, deployment, Node
 enrollment, Hub mutation, key operation or artifact rebuild was performed.
+
+### Node Hub coexistence: acceptance preparation (2026-11-04)
+
+The current scope preserves an existing Node/Hub connection while adding or
+removing another; each Group follows its Network's authoritative Hub. QA's
+`task/v01-node-hub-validation` worktree starts at `b34fbce`. The new
+`internal/appcore/node_hub_acceptance_test.go` prepares current NPT, real TLS,
+independent durable Hub databases/App vaults and Group cryptographic actors.
+Its helpers reuse the qualified scoped fixture; no new registry/facade DTO or
+action is assumed before Root reviews the closed interface. There are no new
+top-level executable acceptance targets at this preparation checkpoint, and no
+compile, test, Docker or physical execution is claimed.
+
+| Minimal new scenario | Reused evidence/fixture boundary | Current result |
+| --- | --- | --- |
+| Retain A and add B through current NPT; preserve A's keys, pins, authority and unresolved originals | Two independent production service/Agent fixtures exist; their preconfigured two-Hub startup does not establish dynamic add | NOT_RUN |
+| Approve/refuse/expire/revoke B without changing A; reject transplanted credentials/proofs with zero effect | Existing foreign-Hub credential guards; fresh per-Hub current NPT proof/action integration still required | NOT_RUN |
+| Resolve colliding names/IDs by exact Hub/Network/Group/Endpoint/binding scope and the Network's authoritative Hub | Existing Docker nonempty traffic is Network-direct; current scoped Group positive/negative routing remains a separate acceptance target | NOT_RUN |
+| Remove A without disrupting B; retain A's unknown originals and prevent cold resurrection of the removed connection | Static registry and independent state directories exist; dynamic remove/cold reopen requires the reviewed facade | NOT_RUN |
+| One physical native writer across both Hub contexts, durable increasing epoch and retired-writer refusal | Existing nodelock/service assertions; new helper requires the facade's actual shared WriterRoot to equal the task's synthetic root | NOT_RUN for the new lifecycle; no native Runtime |
+| A offline/unknown while B works; add/remove/restart cannot rewrite A's exact outbox, CAS or native outcome into B | Existing outage, lost-response, restart and native-outcome fixtures; new helpers retain genuine lost Group-read ciphertext and its encrypted-vault CAS | NOT_RUN |
+
+All Owner keys are visibly synthetic. Matching Node/native-session/name labels
+across the two fixtures do not share keys or grant trust. Generated signed
+Network/Group coordinates are not rewritten in SQL to fabricate a collision;
+raw-ID selection collisions will use the reviewed selection boundary or a
+legitimate producer fixture. No real Node/Hub mutation, paid Runtime, provider
+call, shared development fixture or public deployment is authorized by this
+preparation. Root owns actual scoped/Docker execution and final packaging.

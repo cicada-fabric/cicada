@@ -36,3 +36,20 @@ Negative checks use actual HTTP guards: foreign-Hub Node credentials, foreign Ow
 `--self-test` runs four Python standard-library tests for producer/Node artifact identity cross-binding and cleanup after a sticky secret-scan failure, including foreign-resource refusal. Focused Go normal/race checks cover ownership/private coordinate rejection, exact typed HTTP denials and fragmented SSE observation. Core normal/race tests use actual child processes and explicit barriers: concurrent existing-registry opens wait for an exclusive lock, persistent locks fail within the bounded timeout without history loss, and competing dedicated scopes yield exactly one accepted history and one scope conflict. Escaped filenames and separate in-memory registries retain their existing semantics. No global lock or blind retry is introduced. These checks do not replace the real gate. Every actual command records argv, exit, timeout, safe stdout/stderr and hashes; failed attempts remain immutable and skips are not passes. The three fixture source files and two authorized Core source/test files, including this document, freeze before the final runtime attempt. Actual results are authoritative in the fresh evidence directory's `receipt.json`, `commands.json`, source inventories, binary identities and bounded logs.
 
 All resources carry a unique owner label and removal requires that exact label. Cleanup discovers timed-out resources and reports failures; private synthetic keys and payload trees are removed in `finally`, with filesystem cleanup errors surfaced. Main, Client, global settings, accepted producer artifacts and previous evidence receive no writes from this slice. Models/provider calls, real native Runtime/session verification, native queue injection/consumption, Android, physical devices, public HTTPS, real credentials and cross-Hub forwarding are **NOT_RUN**. This finite evidence does not authorize closed Client operations or claim whole-product completion.
+
+## Current Node Hub lifecycle acceptance preparation (2026-11-04)
+
+The historical artifact/source results above retain their original attribution.
+They provide reusable two-Hub isolation, Network-direct ciphertext, outage,
+response-loss and restart fixtures; they do not qualify dynamic current-NPT Hub
+add/remove or routing a current Group through its Network's authoritative Hub.
+The old driver also pins its own toolchain/artifact/cache identities; fresh
+execution must bind the reviewed current source and actual build inputs.
+
+QA prepares the existing [six-scenario matrix](native-app-validation.md#node-hub-coexistence-acceptance-preparation-2026-11-04)
+on `b34fbce` in `task/v01-node-hub-validation`, with isolated synthetic current
+NPT/TLS/SQLite/Group helpers. Registry/facade wiring awaits Root's closed API
+review. No new test or Docker gate has run. Static two-worker configuration is
+not dynamic addition/deletion acceptance. New native Runtime, physical Node,
+Windows DPAPI/ACL and public HTTPS remain NOT_RUN. Root owns scoped execution,
+the disposable Docker decision and final packaging; no real service is changed.
