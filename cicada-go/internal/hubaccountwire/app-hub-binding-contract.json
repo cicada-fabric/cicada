@@ -1,0 +1,141 @@
+{
+  "contract": "app-hub-binding-v1",
+  "packet_format": "cicada.owner-account-packet.v1",
+  "wire_version": 1,
+  "capabilities_path": "/v2/owner/app-binding/capabilities",
+  "operations": [
+    {
+      "Operation": "owner.app.unbind.prepare",
+      "Path": "/v2/owner/app-binding/unbind/prepare"
+    },
+    {
+      "Operation": "owner.app.unbind.complete",
+      "Path": "/v2/owner/app-binding/unbind/complete"
+    },
+    {
+      "Operation": "owner.app.rebind.prepare",
+      "Path": "/v2/owner/app-binding/rebind/prepare"
+    },
+    {
+      "Operation": "owner.app.rebind.complete",
+      "Path": "/v2/owner/app-binding/rebind/complete"
+    }
+  ],
+  "fields": {
+    "AppUnbindPrepare": [
+      "format",
+      "origin",
+      "hub_id",
+      "account_id",
+      "owner_id",
+      "device_id",
+      "session_token",
+      "account_epoch",
+      "device_epoch",
+      "owner_public_identity",
+      "request_id",
+      "client_nonce",
+      "issued_at"
+    ],
+    "AppRebindPrepare": [
+      "format",
+      "origin",
+      "hub_id",
+      "account_id",
+      "owner_id",
+      "previous_device_id",
+      "unbind_binding_digest",
+      "device_id",
+      "owner_public_identity",
+      "request_id",
+      "client_nonce",
+      "issued_at"
+    ],
+    "AppBinding": [
+      "format",
+      "purpose",
+      "origin",
+      "hub_id",
+      "hub_fingerprint",
+      "account_id",
+      "owner_id",
+      "owner_public_identity",
+      "owner_key_version",
+      "account_epoch",
+      "credential_version",
+      "device_id",
+      "device_public_identity",
+      "device_epoch",
+      "client_device_version",
+      "client_session_epoch",
+      "session_id",
+      "previous_device_id",
+      "unbind_binding_digest",
+      "prepare_request_id",
+      "prepare_packet_digest",
+      "issued_at",
+      "expires_at"
+    ],
+    "AppBindingChallenge": [
+      "format",
+      "operation",
+      "request_id",
+      "request_packet_digest",
+      "binding",
+      "client_nonce",
+      "server_nonce",
+      "proof"
+    ],
+    "AppBindingComplete": [
+      "format",
+      "binding",
+      "prepare_packet",
+      "server_nonce",
+      "owner_proof",
+      "request_id",
+      "client_nonce",
+      "issued_at"
+    ],
+    "AppBindingResult": [
+      "format",
+      "operation",
+      "request_id",
+      "request_packet_digest",
+      "state",
+      "error_code",
+      "binding_digest",
+      "device_id",
+      "device_epoch",
+      "client_device_version",
+      "client_session_epoch",
+      "observed_at"
+    ],
+    "AppBindingCapabilities": [
+      "contract_revision",
+      "available",
+      "operations",
+      "recovery"
+    ]
+  },
+  "challenge_seconds": 120,
+  "request_freshness_seconds": 60,
+  "body_limit_bytes": 196608,
+  "inner_limit_bytes": 262144,
+  "outer_limit_bytes": 393216,
+  "original_limit_bytes": 98304,
+  "owner_proof_limit_bytes": 98304,
+  "recovery": "BYTE_IDENTICAL_ORIGINAL_ONLY",
+  "success_states": [
+    "UNBOUND",
+    "BOUND_ZERO"
+  ],
+  "terminal_error_codes": [
+    "EXPIRED",
+    "NOT_ADMITTED",
+    "STALE_SCOPE",
+    "OWNER_REVOKED",
+    "DEVICE_INACTIVE",
+    "ALREADY_REPLACED",
+    "RESTORE_FENCED"
+  ]
+}

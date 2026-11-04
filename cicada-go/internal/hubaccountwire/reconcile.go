@@ -77,6 +77,9 @@ func ValidateAccountReconcileTarget(result AccountReconcileResult, original []by
 }
 
 func validateExtensionDevice(body any, device e2ee.PublicIdentity) error {
+	if op, _, _, _, _, err := appBindingMetadata(body); err == nil && appBindingOperation(op) {
+		return validateAppBindingDevice(body, device)
+	}
 	if op, _, _, _, _, err := ownerEndpointGroupsMetadata(body); err == nil && ownerEndpointGroupsOperation(op) {
 		_, _, _, _, raw, _ := ownerEndpointGroupsParts(body)
 		var proof e2ee.OwnerEndpointGroupsRequestProof

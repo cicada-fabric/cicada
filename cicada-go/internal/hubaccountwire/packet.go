@@ -268,6 +268,14 @@ func openClientResponsePacket(device *e2ee.Identity, hub HubIdentity, request Pa
 		return ErrInvalid
 	}
 	switch value := dereference(out).(type) {
+	case AppBindingChallenge:
+		if value.RequestPacketDigest != AppBindingPacketDigest(requestBytes) || ValidateAppBindingChallenge(value, hub, time.Time{}) != nil {
+			return ErrInvalid
+		}
+	case AppBindingResult:
+		if value.RequestPacketDigest != AppBindingPacketDigest(requestBytes) {
+			return ErrInvalid
+		}
 	case OwnerEndpointGroupsResult:
 		if value.RequestPacketDigest != OwnerEndpointGroupsPacketDigest(requestBytes) {
 			return ErrInvalid

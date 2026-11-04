@@ -10,6 +10,9 @@ import (
 )
 
 func extensionMetadata(body any) (operation, id, owner, device string, epoch uint64, err error) {
+	if op, id, owner, device, epoch, err := appBindingMetadata(body); err == nil {
+		return op, id, owner, device, epoch, nil
+	}
 	if op, id, owner, device, epoch, err := ownerEndpointGroupsMetadata(body); err == nil {
 		return op, id, owner, device, epoch, nil
 	}
@@ -37,6 +40,9 @@ func extensionMetadata(body any) (operation, id, owner, device string, epoch uin
 	return appNodeMetadata(body)
 }
 func extensionOperation(op string) bool {
+	if appBindingOperation(op) {
+		return true
+	}
 	if ownerEndpointGroupsOperation(op) {
 		return true
 	}
@@ -49,6 +55,9 @@ func validateActivationBinding(b ActivationBinding) error {
 	return nil
 }
 func validateExtensionRequest(body any, hub HubIdentity, now time.Time) error {
+	if op, _, _, _, _, err := appBindingMetadata(body); err == nil && appBindingOperation(op) {
+		return validateAppBindingRequest(body, hub, now)
+	}
 	if op, _, _, _, _, err := appNodeScopedMetadata(body); err == nil && appNodeScopedOperation(op) {
 		return validateAppNodeScopedRequest(body, hub, now)
 	}
@@ -102,6 +111,9 @@ func validateExtensionRequest(body any, hub HubIdentity, now time.Time) error {
 	return nil
 }
 func validateExtensionResponse(body any, r clientwire.Route) error {
+	if appBindingOperation(r.Operation) {
+		return validateAppBindingResponse(body, r)
+	}
 	if appNodeScopedOperation(r.Operation) {
 		return validateAppNodeScopedResponse(body, r)
 	}
