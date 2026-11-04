@@ -523,8 +523,9 @@ func (s *Store) recordBoundNodeHeartbeat(credentialDigest string, clock func() t
 		return err
 	}
 	defer tx.Rollback()
-	var nodeID, nodeName, ownerID, machineOwnerID string
-	err = tx.QueryRow(`SELECT binding.node_id, binding.node_name, binding.owner_id, machine.owner_id
+	var nodeID, nodeName, ownerID, machineOwnerID, appDeviceID, ownerKeyID, hubID string
+	err = tx.QueryRow(`SELECT binding.node_id, binding.node_name, binding.owner_id, machine.owner_id,
+binding.client_device_id,binding.owner_key_id,binding.hub_id
 FROM fabric_node_credentials credential
 JOIN node_owner_bindings_v2 binding ON binding.node_id=credential.node_id
   AND binding.node_credential_digest=credential.credential_hash
@@ -536,7 +537,7 @@ JOIN owner_approval_keys_v2 owner_key ON owner_key.owner_id=binding.owner_id
   AND owner_key.key_id=binding.owner_key_id AND owner_key.state='ACTIVE'
 JOIN machines machine ON machine.id=binding.node_id
 WHERE credential.credential_hash=? AND credential.status='active'`, credentialDigest).
-		Scan(&nodeID, &nodeName, &ownerID, &machineOwnerID)
+		Scan(&nodeID, &nodeName, &ownerID, &machineOwnerID, &appDeviceID, &ownerKeyID, &hubID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNodeCredentialNotFound
 	}
@@ -545,6 +546,9 @@ WHERE credential.credential_hash=? AND credential.status='active'`, credentialDi
 	}
 	if machineOwnerID != ownerID {
 		return ErrNodeMachineOwnershipConflict
+	}
+	if !appBindingLocalDomainSource(tx, ownerID, appDeviceID, ownerKeyID, hubID) {
+		return ErrNodeCredentialNotFound
 	}
 	// Preserve accepted heartbeat precision just like the Machine-heartbeat
 	// entry point; another bound writer must not truncate it before approval.

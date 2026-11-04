@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"net/http"
+	"net/url"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -139,5 +141,62 @@ func TestAppBindingHubTCPUnbindExactRecoveryAndZeroReplacement(t *testing.T) {
 	}
 	if _, err = f.auth.IssueActivationLocal(wire.PurposeInitialActivation, "", "", false); err == nil {
 		t.Fatal("rebind reopened initial Root activation")
+	}
+}
+
+func TestAppBindingHubTCPRealRelayHeartbeatUnbindAndSecurityFence(t *testing.T) {
+	a := nativePairTCP(t)
+	f := a.f
+	path := "/v2/relay/nodes/" + url.PathEscape(a.scope.Node.NodeID) + "/heartbeat"
+	status, _ := n3HTTP(t, f, http.MethodPost, path, a.nodeToken, []byte(`{}`))
+	if status != http.StatusNoContent {
+		t.Fatal("real bound Relay heartbeat unavailable", status)
+	}
+	before, err := f.db.GetMachine(a.scope.Node.NodeID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fingerprint, err := e2ee.OwnerDevicePublicKeyFingerprint(a.device.Public())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session := wire.SessionContext{Origin: a.session.Origin, HubID: f.hub.HubID, AccountID: a.session.AccountID, OwnerID: a.session.OwnerID, DeviceID: a.session.DeviceID, DeviceKeyID: a.device.Public().ID, DeviceKeyFingerprint: fingerprint, SessionToken: a.session.Token, AccountEpoch: a.session.AccountEpoch, DeviceEpoch: a.session.DeviceEpoch, ExpiresAt: a.scope.Actor.AccountSessionExpiresAt}
+	prepare, err := wire.NewAppUnbindPrepare(session, a.owner.Public(), time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var challenge wire.AppBindingChallenge
+	original, _ := appBindingTCP(t, f, a.device, prepare, &challenge)
+	proof, err := ownerbootstrap.CreateProof(a.owner, challenge.Proof, time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	complete, err := wire.NewAppBindingComplete(original, challenge, proof, time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var result wire.AppBindingResult
+	appBindingTCP(t, f, a.device, complete, &result)
+	if result.State != wire.AppBindingUnbound {
+		t.Fatal("real unbind failed")
+	}
+	status, _ = n3HTTP(t, f, http.MethodPost, path, a.nodeToken, []byte(`{"status":"busy","capabilities":{"synthetic":"retained"}}`))
+	if status != http.StatusNoContent {
+		t.Fatal("voluntary unbind broke real Relay heartbeat", status)
+	}
+	after, err := f.db.GetMachine(a.scope.Node.NodeID)
+	if err != nil || after.LastSeen == before.LastSeen || after.Status != "busy" {
+		t.Fatal("real heartbeat projection missing", err)
+	}
+	if _, err = f.db.RevokeClientDevice(a.session.OwnerID, a.session.DeviceID, int64(result.ClientDeviceVersion)); err != nil {
+		t.Fatal(err)
+	}
+	status, _ = n3HTTP(t, f, http.MethodPost, path, a.nodeToken, []byte(`{"status":"available","capabilities":{"synthetic":"forbidden"}}`))
+	if status != http.StatusUnauthorized {
+		t.Fatal("security revoked Relay heartbeat remained writable", status)
+	}
+	current, err := f.db.GetMachine(a.scope.Node.NodeID)
+	if err != nil || !reflect.DeepEqual(current, after) {
+		t.Fatal("refused real heartbeat changed machine projection", err)
 	}
 }

@@ -51,9 +51,9 @@ func nodeHistoricalAppSourceTx(tx *sql.Tx, owner, device, root, hub string) bool
 	return state == ClientDeviceActive || (state == ClientDeviceRevoked && appBindingHistoricalSource(tx, owner, device, root, hub))
 }
 
-// Existing LocalDomain policies were already independent of an inactive
-// creator App. Preserve that contract. This new protocol adds a stricter
-// current provenance fence only for its own voluntary-unbind tombstones.
+// Existing LocalDomain policies and bound heartbeat writers were already
+// independent of an inactive creator App. Preserve that contract. Both use
+// this current provenance fence only for this protocol's own tombstones.
 func appBindingLocalDomainSource(tx *sql.Tx, owner, device, root, hub string) bool {
 	var count int
 	if tx.QueryRow(`SELECT count(*) FROM hub_app_unbound_v1 WHERE owner_id=? AND device_id=?`, owner, device).Scan(&count) != nil {

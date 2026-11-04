@@ -149,6 +149,19 @@ Node/key security revocation retains its original broader fences. Real Node
 heartbeat and current Group cryptographic traffic are required to qualify
 independence; unchanged DB rows alone are insufficient.
 
+In the bounded Hub composition the existing liveness endpoint is
+`POST /v2/relay/nodes/{node_id}/heartbeat` with a Node bearer and strict JSON
+body (`{}` preserves Worker status). It returns 204 when accepted. Both this
+Machine-heartbeat writer and the other bound liveness writer repeat the
+dedicated tombstone's current historical-source check inside the transaction
+before updating liveness. UNBOUND preserves the independent Node; its later
+SECURITY_REVOKED marker refuses the write, and the public Machine-heartbeat
+route returns its existing 401 unauthorized result without changing timestamp,
+status or capabilities. Existing sources without this protocol's tombstone
+keep their prior behavior. `node.binding.status` is a supported encrypted Node
+status operation; `node.heartbeat` is not part of this bounded RPC composition
+and must not be used as evidence of heartbeat success or revocation.
+
 ## Exact recovery and terminal refusal
 
 `recovery=BYTE_IDENTICAL_ORIGINAL_ONLY`: recovery matches only the
@@ -270,3 +283,24 @@ the committed checkpoint separately. Qualification SHA-256 is
 Root-owned App/TLS/Node heartbeat/current Group cryptographic acceptance and
 the disposable Docker gate remain **NOT_RUN by this producer**. Android, real
 native Runtime, physical Windows and public HTTPS remain unqualified here.
+
+### Actual heartbeat writer closure, 2026-11-04
+
+The follow-up checkpoint adds only this protocol's existing tombstone check
+to the two existing bound heartbeat writers, within each original write
+transaction. It adds no schema or RPC. The exact producer selector in
+`qualification.json` passed **18 top-level / 35 terminal tests, 0 FAIL,
+0 SKIP, exit 0**: Store 17.712 seconds and Server 4.481 seconds. The real
+no-Control loopback HTTP test uses the supported Relay heartbeat endpoint and
+observes 204 before unbind, 204 afterward, and 401 after security revocation;
+the refused attempt changes no Machine projection. Store tests cover both
+writers, no clock sampling after refusal, legacy sources without a tombstone,
+and preserved timestamp precision. All AppBinding producer regressions also
+pass in that selector.
+
+Evidence is under
+`/home/zyf/Cicada/.local/evidence/v01-app-binding-heartbeat-20261104-02/`.
+The source manifest records the dirty tree based on
+`f72fdad692f3b7d77398a927063cdcbca7c1c0d7`; qualification SHA-256 is
+`28e7ecd66270ddc51b1cd10b4efa36cfe6fdc217b1f4895c1845bcc359bf920a`.
+Root-owned Core/TLS retry and Docker/Group end-to-end gates remain separate.

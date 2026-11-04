@@ -605,3 +605,74 @@ func TestAppBindingStoreLocalDomainSurvivesUnbindAndSecurityRevokeStopsIt(t *tes
 		}
 	}
 }
+
+func TestAppBindingStoreHeartbeatWritersFenceOnlyRevokedVoluntarySource(t *testing.T) {
+	for _, machineWriter := range []bool{false, true} {
+		t.Run(map[bool]string{false: "liveness", true: "machine"}[machineWriter], func(t *testing.T) {
+			f := n3Fixture(t, true)
+			g := f.activate(t)
+			if _, err := f.db.ProcessHubAppNodeClient(f.client(t, g, 1, f.now.Add(2*time.Second))); err != nil {
+				t.Fatal(err)
+			}
+			credential := base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{9}, 32))
+			sampled := 0
+			write := func() error {
+				clock := func() time.Time { sampled++; return f.now.Add(time.Duration(2+sampled) * time.Second) }
+				if machineWriter {
+					return f.db.recordBoundNodeMachineHeartbeat(credential, "busy", map[string]any{"synthetic": sampled}, nil, clock)
+				}
+				return f.db.recordBoundNodeHeartbeat(credential, clock)
+			}
+			if err := write(); err != nil {
+				t.Fatal("bound heartbeat", err)
+			}
+			before, err := f.db.GetMachine(g.Candidate.NodeID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			p, ch := appBindingPrepareUnbind(t, f)
+			if _, err = f.db.ProcessHubAppBinding(appBindingCompletion(t, f, f.device, p, ch)); err != nil {
+				t.Fatal(err)
+			}
+			if err = write(); err != nil {
+				t.Fatal("voluntary unbind broke real heartbeat writer", err)
+			}
+			after, err := f.db.GetMachine(g.Candidate.NodeID)
+			if err != nil || after.LastSeen == before.LastSeen {
+				t.Fatal("voluntary heartbeat did not update liveness", err)
+			}
+			if _, err = f.db.RevokeClientDevice(f.scope.OwnerID, f.scope.DeviceID, 2); err != nil {
+				t.Fatal(err)
+			}
+			wantErr := ErrNodeCredentialNotFound
+			if machineWriter {
+				wantErr = ErrNodeWorkerNotAuthorized
+			}
+			if err = write(); !errors.Is(err, wantErr) {
+				t.Fatal("security revoked heartbeat remained writable", err)
+			}
+			current, err := f.db.GetMachine(g.Candidate.NodeID)
+			if err != nil || sampled != 2 || !reflect.DeepEqual(after, current) {
+				t.Fatal("refused heartbeat sampled time or changed projection", err)
+			}
+		})
+	}
+}
+
+func TestAppBindingStoreHeartbeatWithoutTombstoneKeepsLegacyIndependence(t *testing.T) {
+	f := n3Fixture(t, true)
+	g := f.activate(t)
+	if _, err := f.db.ProcessHubAppNodeClient(f.client(t, g, 1, f.now.Add(2*time.Second))); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.db.RevokeClientDevice(f.scope.OwnerID, f.scope.DeviceID, 1); err != nil {
+		t.Fatal(err)
+	}
+	credential := base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{9}, 32))
+	if err := f.db.RecordBoundNodeHeartbeat(credential); err != nil {
+		t.Fatal("legacy liveness writer acquired new App prerequisite", err)
+	}
+	if err := f.db.RecordBoundNodeMachineHeartbeat(credential, "idle", nil); err != nil {
+		t.Fatal("legacy machine writer acquired new App prerequisite", err)
+	}
+}
