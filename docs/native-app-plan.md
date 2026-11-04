@@ -2094,3 +2094,58 @@ shim, private initialization probe or driver-held Owner signer substituted for
 these fresh App actions. See the [same-source runtime receipts](native-app-validation.md#ready-protocol-five-pass-and-actual-app-revoke-failure).
 Production GUI/Windows DPAPI/ACL, real native MCP/queue/Runtime and user-operated
 two-Thread acceptance stay separate and **NOT_RUN**.
+
+
+## Node multi-Hub MCP routing preparation — 2026-11-04
+
+Status: **IN_PROGRESS — pure selection/context checkpoint only**. The local
+Manager contract is frozen at `891c8bc` and the QA helper carrier is `57aaa4b`.
+The actual baseline advertises **73** MCP tools; the older 71-tool count is
+historical. This checkpoint retains every original tool name and business
+schema, adding only a reserved routed context schema. It does not connect the
+facade, Hook, live enumeration, persistent Thread selection or operation lookup.
+
+`cmd/cicada/mcp_group_route.go` defines explicit Group selection from verified
+child metadata, with optional Hub/Network qualification and no default Hub.
+Duplicate Group names across Hubs refuse ambiguity. The same original native
+SID/cwd may have a different Node and Endpoint at each Hub. Immutable sender
+coordinates retain Hub/Origin/Network/Node/Owner/Principal/Endpoint and native
+identity. Read-only historical lookup may use a fresh local connection epoch
+or registration generation, including after the last Group is removed; its
+result confers no dispatch authority. The separate dispatch fence does not
+borrow a later selection, binding or grant. RegistrationDigest identifies the
+original registration tuple; RegistrationRevision is a registration generation,
+not a Group membership revision. Production outbox adaptation remains pending.
+
+`cmd/cicada/codex_routed_context.go` defines a closed local parent/child envelope:
+`connection_nonce`, `routing_version: 1`, and `children`, with at most **8**
+children and **8 KiB** encoded bytes. Each child contains only an opaque
+`route_id`, its own `connection_nonce` and an opaque one-use `ticket` (1–256
+bytes). The route ID hashes the verified immutable pin, including the managed
+connection ID/epoch; authenticated numeric dial reachability is excluded.
+A domain-separated hash of the fresh random parent nonce and route ID gives
+each Hub child a distinct nonce. A locally chosen exact child set is mandatory;
+unknown/duplicate fields, duplicate routes, unknown children and mismatched
+nonces refuse. Business arguments remain unchanged when replacing the reserved
+envelope, preserving their original full digest. These codecs do not issue,
+consume or authorize tickets; actual Node issue/consume and Guard remain
+mandatory when production routing is connected.
+
+The agreed next boundary is a private per-Thread routing hint/cache with no
+bearer or token. Retain cold selection without silently choosing another Hub
+when its route is removed or unavailable. The existing verified native Host,
+harness/SID/cwd/transcript and original registration evidence remains the
+identity boundary; neither OS UID nor CODEX_HOME proves a cloud account. Cold
+selection becomes usable only after fresh original-sender Node context and
+current Group Guard succeed. No new cloud-account proof is claimed or required.
+Owner/App UI authority, server protocol, Android and v0.2 are outside this slice.
+
+Scoped validation on dirty `57aaa4b` plus the four new Go files:
+`go test ./cmd/cicada -run '^Test(MCP(GroupRoute|Original)|Codex(Routed|ChildNonce))' -count=1`
+passed **8 top-level tests, exit 0**. The receipt records each tested file hash,
+exact baseline, command and JSON log hash at
+`/home/zyf/Cicada/.local/evidence/n2-app/node-hub-routing-codec-mzbwwjec/receipt.json`.
+Earlier development runs rejected an incorrectly upper-case fixture origin and
+a stale hard-coded 71-tool expectation; both were corrected before this result.
+Full-package regression, disposable Docker interop, actual dual-Hub routing,
+real native Runtime, Windows and public HTTPS are **NOT_RUN for this checkpoint**.
