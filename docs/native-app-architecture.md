@@ -679,10 +679,36 @@ typed prepares and exact prepare/challenge/complete/result packets. Their names
 consume the existing 32-current-namespace budget; no extra namespace allowance
 is added. Each record is bounded to 1 MiB; local challenge/result storage admits
 128/64 KiB respectively, prepare uses the shared 96 KiB ceiling and complete
-uses the existing App 380 KiB ceiling. Exact future response/record admission
-precedes each POST. The whole lifecycle reserves both full records plus current
+uses the existing App 380 KiB ceiling. Bounded future response/record admission
+precedes each POST. The whole lifecycle reserves both complete records plus current
 account/presence/session, candidate and retirement budgets before the first
 unlink. Saturation preserves existing work and refuses the next send.
+
+Admission sizes each complete record from those four packet ceilings and the
+closed typed prepare metadata, rather than reserving the 1 MiB record ceiling
+twice. JSON encoding counts every field and base64 expansion. Scope and Owner
+public bytes are the exact immutable current values. Token/nonce/request-ID
+widths come from the shared constructors and validators; epochs use the largest
+legal value below signed 64-bit maximum and issue time uses the longest accepted
+UTC RFC3339Nano form. The new device ID has the existing prefix plus a 32-digit
+request ID; the candidate key ID has the current vault-validated identity width.
+Only in-memory sizing data is constructed, with no key generation or request
+sealing. A larger saved record remains the projection's lower bound and is
+never truncated. The existing vault checker still tests staging and full
+retirement/promotion, including maximum candidate-key bytes, fresh state,
+session tombstone, local presence marker and CAS encodings under the same
+4 MiB/1 MiB/32-namespace/four-retired-generation limits.
+
+The capacity regression retains twelve opaque synthetic slots with the measured
+1,175,776-byte Node/Group footprint, plus the real local account state. It stores
+both complete records at their maximum projected packet sizes, stages a
+candidate, promotes atomically and cold-opens to verify every old payload/CAS and
+the original Owner. This is a local storage bound test, not a fabricated Hub
+receipt or Node/Group authorization result. The independent real TLS traffic
+case remains its own source-bound qualification. Separate total-ceiling checks
+retain a second padding slot so the search reaches overall lifecycle exhaustion
+before the single-record ceiling; an admitted initial reservation must still
+fit terminal-state growth and a later local Remove marker.
 
 All prior uncertain operations must settle before unlink begins. Binding actions
 dispatch before generic account housekeeping so a refusal changes no original,

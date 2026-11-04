@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -163,6 +164,9 @@ func TestAppBindingWholeLifecycleCapacityIsReadOnly(t *testing.T) {
 	if _, err := c.vault.CompareAndSwapState("synthetic.history", 0, make([]byte, 1<<20)); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := c.vault.CompareAndSwapState("synthetic.history.2", 0, make([]byte, 256<<10)); err != nil {
+		t.Fatal(err)
+	}
 	if err := c.checkAppBindingCapacity(); !errors.Is(err, appvault.ErrInvalidVault) {
 		t.Fatal("whole lifecycle failed to reserve retained history plus both receipts", err)
 	}
@@ -197,6 +201,11 @@ func TestAppBindingInitialReservationStillFitsAfterTerminalAndLocalMarker(t *tes
 		t.Fatal(err)
 	}
 	var version uint64
+	// Tight admission can fit a full single padding record. A second retained
+	// slot makes the search reach total lifecycle capacity before that ceiling.
+	if _, err := c.vault.CompareAndSwapState("synthetic.capacity-fixed", 0, make([]byte, 256<<10)); err != nil {
+		t.Fatal(err)
+	}
 	writePadding := func(n int) {
 		t.Helper()
 		var err error
@@ -232,5 +241,212 @@ func TestAppBindingInitialReservationStillFitsAfterTerminalAndLocalMarker(t *tes
 	}
 	if err := c.checkAppBindingCapacity(); err != nil {
 		t.Fatal("admitted initial lifecycle was stranded by terminal state or local Remove", err)
+	}
+}
+
+func appBindingCapacityController(t *testing.T) (*nativeController, string, HubConnectionCard) {
+	t.Helper()
+	root := filepath.Join(t.TempDir(), "vaults")
+	card, _, _, _ := savedProfileFixture(t, root)
+	controller, err := NewController(Config{OpenVault: fixtureVaultOpener(root, "synthetic vault passphrase"), DiscoverVaults: NewProfileDiscovery(root), AllowLoopbackHTTP: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = controller.Close() })
+	c := controller.(*nativeController)
+	if err := c.Dispatch(context.Background(), Action{Kind: ActionDiscoverProfiles}); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Dispatch(context.Background(), Action{Kind: ActionResumeProfile, ProfileID: hubProfile(t, c, card.Origin).ID}); err != nil {
+		t.Fatal(err)
+	}
+	c.state.DeviceID = wire.AccountDeviceIDPrefix + strings.Repeat("a", 2*wire.RequestIDBytes)
+	if err := c.persistState(); err != nil {
+		t.Fatal(err)
+	}
+	return c, root, card
+}
+
+func TestAppBindingClosedRecordProjectionAndLargerOriginalRetention(t *testing.T) {
+	c, _, _ := appBindingCapacityController(t)
+	now := time.Date(9998, 1, 1, 0, 0, 0, 999999999, time.UTC)
+	fingerprint, _ := e2ee.OwnerDevicePublicKeyFingerprint(c.device.Public())
+	const epochUpper = (uint64(1) << 63) - 2
+	session := wire.SessionContext{Origin: c.connection.Origin, HubID: c.connection.HubID, AccountID: c.connection.AccountID,
+		OwnerID: c.connection.OwnerID, DeviceID: c.state.DeviceID, DeviceKeyID: c.device.Public().ID, DeviceKeyFingerprint: fingerprint,
+		SessionToken: bytes.Repeat([]byte{0xff}, wire.MaxSessionTokenBytes), AccountEpoch: epochUpper, DeviceEpoch: epochUpper,
+		ExpiresAt: now.Add(time.Minute).Format(time.RFC3339Nano)}
+	for _, rebind := range []bool{false, true} {
+		upper, err := c.appBindingRecordUpperBound(rebind)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer clear(upper)
+		var record appBindingRecord
+		if err := decodeStateJSON(upper, &record); err != nil {
+			t.Fatal(err)
+		}
+		if len(record.PreparePacket) != wire.MaxAppBindingOriginalBytes || len(record.ChallengePacket) != appBindingChallengeLimit ||
+			len(record.CompletePacket) != maxDurablePacketSize || len(record.ResultPacket) != appBindingResultLimit || len(upper) >= appBindingRecordLimit {
+			t.Fatal("closed projection did not retain every complete packet/receipt ceiling")
+		}
+		if rebind {
+			q, err := wire.NewAppRebindPrepare(c.hub, c.connection.Origin, c.connection.AccountID, c.connection.OwnerID,
+				c.state.DeviceID, strings.Repeat("f", 64), wire.AccountDeviceIDPrefix+strings.Repeat("b", 2*wire.RequestIDBytes), c.owner.Public(), now)
+			if err != nil {
+				t.Fatal(err)
+			}
+			record.Rebind = &q
+		} else {
+			q, err := wire.NewAppUnbindPrepare(session, c.owner.Public(), now)
+			if err != nil {
+				t.Fatal(err)
+			}
+			record.Unbind = &q
+		}
+		actual, err := json.Marshal(record)
+		if err != nil || len(actual) > len(upper) {
+			t.Fatal("legal constructor maximum escaped projection", err)
+		}
+		clear(actual)
+	}
+	upper, _ := c.appBindingRecordUpperBound(false)
+	defer clear(upper)
+	retained := bytes.Repeat([]byte{0x53}, len(upper)+17)
+	defer clear(retained)
+	if _, err := c.vault.CompareAndSwapState(appUnbindNamespace, 0, retained); err != nil {
+		t.Fatal(err)
+	}
+	projected, err := c.appBindingRecordUpperBound(false)
+	defer clear(projected)
+	if err != nil || !bytes.Equal(projected, retained) {
+		t.Fatal("larger existing original was truncated by upper projection", err)
+	}
+}
+
+func TestAppBindingMeasuredHistoryFitsEveryMaximumStoragePhase(t *testing.T) {
+	c, root, card := appBindingCapacityController(t)
+	// Root's failed real TLS Node/Group case had these 12 retained slot sizes,
+	// totaling 1,175,776 bytes. Use opaque synthetic payloads of that footprint
+	// PLUS the real local account state; this storage test claims no Hub proof.
+	sizes := []int{0, 0, 0, 0, 929, 41740, 48236, 54575, 71140, 90727, 429849, 438580}
+	for i, size := range sizes {
+		if _, err := c.vault.CompareAndSwapState(fmt.Sprintf("synthetic.measured.%02d", i), 0, bytes.Repeat([]byte{0x53}, size)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := c.checkAppBindingCapacity(); err != nil {
+		t.Fatal("normal measured Node/Group footprint cannot start unlink", err)
+	}
+	ownerBefore, err := c.owner.MarshalBinary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clear(ownerBefore)
+	oldKey := c.device.Public().ID
+	unbound, err := c.appBindingRecordUpperBound(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clear(unbound)
+	unboundVersion, err := c.vault.CompareAndSwapState(appUnbindNamespace, 0, unbound)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.state.AppDeviceUnbound, c.state.AccountDeviceEnrolled = true, false
+	c.state.AccountState = AccountStateLoginRequired
+	if err := c.persistState(); err != nil {
+		t.Fatal(err)
+	}
+	presence, _ := json.Marshal(profilePresence{Format: profilePresenceNamespace, Removed: true})
+	if _, err := c.vault.CompareAndSwapState(profilePresenceNamespace, 0, presence); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.checkAppBindingCapacity(); err != nil {
+		t.Fatal("admitted maximum unbind/marker state stranded rebind", err)
+	}
+	candidate, err := c.vault.PrepareAppDevice(oldKey, appvault.NewStateGuard(appUnbindNamespace, unboundVersion, unbound))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rebound, err := c.appBindingRecordUpperBound(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clear(rebound)
+	completionVersion, err := c.vault.CompareAndSwapState(appRebindNamespace, 0, rebound)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.checkAppBindingCapacity(); err != nil {
+		t.Fatal("maximum stored rebind completion cannot promote", err)
+	}
+	versions, err := c.vault.StateVersions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	type savedState struct {
+		raw     []byte
+		version uint64
+	}
+	saved := make(map[string]savedState)
+	defer func() {
+		for _, state := range saved {
+			clear(state.raw)
+		}
+	}()
+	for name := range versions {
+		raw, version, _, err := c.vault.LoadState(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		saved[name] = savedState{raw, version}
+	}
+	if _, ok := versions[appSessionNamespace]; !ok {
+		versions[appSessionNamespace] = 0
+	}
+	fresh := c.freshAppBindingState(wire.AccountDeviceIDPrefix+strings.Repeat("b", 2*wire.RequestIDBytes), candidate.KeyID)
+	fresh.ObservedDeviceEpoch = 1
+	freshRaw, err := encodeDurableState(fresh)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clear(freshRaw)
+	if _, err := c.vault.PromoteAppDevice(appvault.AppDevicePromotion{CurrentKeyID: oldKey, Candidate: candidate,
+		Completion: appvault.NewStateGuard(appRebindNamespace, completionVersion, rebound), ExpectedVersions: versions,
+		SessionNamespace: appSessionNamespace, Updates: map[string][]byte{appStateNamespace: freshRaw, appSessionNamespace: nil, profilePresenceNamespace: presence}}); err != nil {
+		t.Fatal("full maximum storage lifecycle could not atomically promote", err)
+	}
+	if err := c.vault.Close(); err != nil {
+		t.Fatal(err)
+	}
+	opened, err := fixtureVaultOpener(root, "synthetic vault passphrase")(context.Background(), cardScope(card), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer opened.Close()
+	status, err := opened.AppDeviceStatus()
+	if err != nil || status.Generation != 2 || status.CurrentKeyID != candidate.KeyID || status.Candidate != nil || len(status.Retired) != 1 {
+		t.Fatal("cold storage promotion lost identity generation", err)
+	}
+	for name, original := range saved {
+		raw, version, found, err := opened.LoadRetiredAppDeviceState(1, name)
+		if err != nil || !found || version != original.version || !bytes.Equal(raw, original.raw) {
+			t.Fatal("retirement lost original bytes/version", name, err)
+		}
+		clear(raw)
+	}
+	owner, err := opened.Get(appvault.PurposeOwnerSigner, c.owner.Public().ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer owner.Close()
+	ownerAfter, err := owner.MarshalBinary()
+	defer clear(ownerAfter)
+	if err != nil || !bytes.Equal(ownerBefore, ownerAfter) {
+		t.Fatal("maximum lifecycle changed retained Owner", err)
+	}
+	if session, _, _, err := opened.LoadState(appSessionNamespace); err != nil || len(session) != 0 {
+		t.Fatal("cold promotion inherited a session", err)
 	}
 }

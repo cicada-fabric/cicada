@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/cicada-ai/cicada/internal/appvault"
@@ -374,8 +375,19 @@ func (c *nativeController) checkAppBindingCapacity() error {
 		return err
 	}
 	defer clear(raw)
-	// Both full records are reserved together before the first unlink POST.
-	// A subsequent step still checks its own exact record + possible response.
+	// Reserve both closed records before unlink. Their packet caps and typed
+	// metadata determine the upper encoding; 1 MiB is a ceiling, not a size
+	// that every legal record can attain. Keep larger existing bytes intact.
+	unbound, err := c.appBindingRecordUpperBound(false)
+	if err != nil {
+		return err
+	}
+	defer clear(unbound)
+	rebound, err := c.appBindingRecordUpperBound(true)
+	if err != nil {
+		return err
+	}
+	defer clear(rebound)
 	oldState, err := encodeDurableState(c.state)
 	if err != nil {
 		return err
@@ -390,16 +402,70 @@ func (c *nativeController) checkAppBindingCapacity() error {
 	if len(oldState)+padding > appBindingRecordLimit {
 		return appvault.ErrInvalidVault
 	}
-	retiring := map[string][]byte{appUnbindNamespace: make([]byte, appBindingRecordLimit), appRebindNamespace: make([]byte, appBindingRecordLimit),
+	retiring := map[string][]byte{appUnbindNamespace: unbound, appRebindNamespace: rebound,
 		appStateNamespace: make([]byte, len(oldState)+padding), profilePresenceNamespace: make([]byte, 128)}
-	defer clear(retiring[appUnbindNamespace])
-	defer clear(retiring[appRebindNamespace])
 	defer clear(retiring[appStateNamespace])
 	defer clear(retiring[profilePresenceNamespace])
 	// A local Remove/Restore is allowed while unbound. Reserve its namespace
 	// and both boolean encodings even if this profile has no marker yet.
 	current := map[string][]byte{appStateNamespace: raw, appSessionNamespace: nil, profilePresenceNamespace: retiring[profilePresenceNamespace]}
 	return c.vault.CheckAppDeviceTransition(retiring, current)
+}
+
+// appBindingRecordUpperBound projects the existing record format, never a wire
+// request. Buffers below are sizing data: no key generation, sealing or send.
+// Current scope and retained Owner public bytes are immutable for the ceremony.
+func (c *nativeController) appBindingRecordUpperBound(rebind bool) ([]byte, error) {
+	if c.vault == nil || c.owner == nil || c.device == nil {
+		return nil, ErrInvalidAction
+	}
+	status, err := c.vault.AppDeviceStatus()
+	if err != nil {
+		return nil, err
+	}
+	// NewRequestID and NewNonce fix these widths. RFC3339Nano accepts at most
+	// this 30-byte UTC form; the wire validators cap epochs below MaxInt64.
+	id := strings.Repeat("f", 2*wire.RequestIDBytes)
+	issued := "9999-12-31T23:59:59.999999999Z"
+	const epochUpper = (uint64(1) << 63) - 2
+	record := appBindingRecord{Format: appBindingRecordFormat, Scope: cardScope(c.connection),
+		DeviceKeyID: c.device.Public().ID, Generation: status.Generation,
+		PreparePacket: make([]byte, wire.MaxAppBindingOriginalBytes), ChallengePacket: make([]byte, appBindingChallengeLimit),
+		CompletePacket: make([]byte, maxDurablePacketSize), ResultPacket: make([]byte, appBindingResultLimit)}
+	namespace := appUnbindNamespace
+	if rebind {
+		namespace = appRebindNamespace
+		record.Generation++
+		// Rebind's caller uses AccountDeviceIDPrefix + NewRequestID. A new
+		// appkeys identity has the same validated key-ID width as the old one.
+		record.Rebind = &wire.AppRebindPrepare{Format: wire.AppRebindPrepareFormat, Origin: c.connection.Origin, HubID: c.connection.HubID,
+			AccountID: c.connection.AccountID, OwnerID: c.connection.OwnerID, PreviousDeviceID: c.state.DeviceID,
+			UnbindBindingDigest: strings.Repeat("f", 64), DeviceID: wire.AccountDeviceIDPrefix + id, OwnerPublic: c.owner.Public(),
+			RequestID: id, ClientNonce: make([]byte, wire.NonceBytes), IssuedAt: issued}
+	} else {
+		// validateAppBindingRequest requires exactly MaxSessionTokenBytes,
+		// not an arbitrary-length token. These zero bytes are sizing only.
+		record.Unbind = &wire.AppUnbindPrepare{Format: wire.AppUnbindPrepareFormat, Origin: c.connection.Origin, HubID: c.connection.HubID,
+			AccountID: c.connection.AccountID, OwnerID: c.connection.OwnerID, DeviceID: c.state.DeviceID,
+			SessionToken: make([]byte, wire.MaxSessionTokenBytes), AccountEpoch: epochUpper, DeviceEpoch: epochUpper,
+			OwnerPublic: c.owner.Public(), RequestID: id, ClientNonce: make([]byte, wire.NonceBytes), IssuedAt: issued}
+	}
+	raw, err := json.Marshal(record)
+	if err != nil || len(raw) > appBindingRecordLimit {
+		clear(raw)
+		return nil, appvault.ErrInvalidVault
+	}
+	stored, _, _, err := c.vault.LoadState(namespace)
+	if err != nil {
+		clear(raw)
+		return nil, err
+	}
+	if len(stored) > len(raw) {
+		clear(raw)
+		return stored, nil
+	}
+	clear(stored)
+	return raw, nil
 }
 
 func (c *nativeController) checkAppBindingRecordFuture(record *appBindingRecord, complete bool) error {
