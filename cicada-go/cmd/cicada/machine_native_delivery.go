@@ -193,11 +193,23 @@ func executeMachineNativeCodexHeld(ctx context.Context, writer *nodelock.NativeW
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	if err := checkManagedMachineHubFence(ctx); err != nil {
+		return err
+	}
 	if admit != nil {
 		if err := admit(ctx); err != nil {
 			return err
 		}
 	}
+	if err := checkManagedMachineHubFence(ctx); err != nil {
+		return err
+	}
+	releaseAdmission, err := beginManagedNativeAdmission(ctx)
+	if err != nil {
+		return err
+	}
+	defer releaseAdmission()
+	dependencies.observed("managed_admission_checked")
 	state, err := writer.BeginNativeOperation(operation)
 	if errors.Is(err, nodelock.ErrNativeOperationUncertain) {
 		return &nativeInjectionUncertainError{cause: err}
@@ -209,12 +221,21 @@ func executeMachineNativeCodexHeld(ctx context.Context, writer *nodelock.NativeW
 	if state == nodelock.NativeQueueAccepted {
 		return nil
 	}
+	if err := checkManagedMachineHubFence(ctx); err != nil {
+		if finishErr := writer.FinishNativeOperation(operation, nodelock.NativeNotStarted); finishErr != nil {
+			return &nativeInjectionUncertainError{cause: finishErr}
+		}
+		return err
+	}
+	dependencies.observed("managed_before_command_start")
 	if err := command.Start(); err != nil {
+		releaseAdmission()
 		if finishErr := writer.FinishNativeOperation(operation, nodelock.NativeNotStarted); finishErr != nil {
 			return &nativeInjectionUncertainError{cause: finishErr}
 		}
 		return fmt.Errorf("codex queue could not start: %w", err)
 	}
+	releaseAdmission()
 	if err := command.Wait(); err != nil {
 		finishErr := writer.FinishNativeOperation(operation, nodelock.NativeUncertain)
 		return &nativeInjectionUncertainError{cause: errors.Join(err, ctx.Err(), finishErr)}

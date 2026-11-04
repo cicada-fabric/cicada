@@ -306,9 +306,40 @@ for a custom installation. Ordinary `cicada on` reuses the saved selection.
 Do not copy a device code, token, ticket, nonce, private key or bearer into any
 argument or configuration file.
 
-The planned [local multi-Hub manager contract](node-hub-manager-contract.md)
-freezes its local codecs and interfaces only. Its new CLI/daemon behavior is
-not implemented or qualified by the existing service lifecycle below.
+The [local multi-Hub manager](node-hub-manager-contract.md) now has a Linux
+producer for zero to eight independently configured connections under one
+systemd user daemon. Its [producer qualification](node-hub-manager-producer-validation.md)
+is separate from the historical single-service lifecycle below. Disposable
+real Store/NPT/systemd integration, real native Runtime and resident deployment
+are not claimed by that producer record. Ordinary fresh `on` creates an idle
+manager; `node hubs add` completes original scoped NPT/private ACK and waits
+for the selected local worker. `list` reports local state, with Hub online
+remaining UNKNOWN. Connection aliases differ from Node names. App-owned
+`join`/`leave --hub ALIAS` must resolve that alias to its exact live managed
+pin; the alias itself grants no authority.
+
+For a separately authorized migration from the abandoned old Hub to Aliyun,
+the reviewable sequence uses the installed binary and the same original root:
+
+```sh
+cicada off --user-root ROOT
+cicada node hubs add --user-root ROOT --from-service --alias old
+cicada node hubs add 8.155.139.253:8787 --user-root ROOT --alias aliyun
+cicada node hubs remove old --user-root ROOT
+cicada off --user-root ROOT
+cicada on --user-root ROOT
+cicada node hubs list --user-root ROOT
+```
+
+These commands were not executed against an installed Node in this task.
+`--from-service` proves the original service stopped, retains its identities,
+StateDir/WriterRoot/MCP paths, and CAS-replaces only its exact startup config.
+It can register the old references while that Hub is offline. The new add
+requires its independent Owner proof and private ACK. Remove works with the
+old Hub offline and reports `remote_revocation=NOT_REQUESTED`; STOP_PENDING
+must be resolved with the same retained originals. A cold start retains only
+the configured entries and never re-enables a removed old connection. No
+manual JSON deletion, key regeneration or credential copying belongs here.
 
 The local `cicada.node-service.v1` contract is one strictly decoded, same-user
 `0600` file at `<root>/node-service.json`. Only `on` produces it, by atomic

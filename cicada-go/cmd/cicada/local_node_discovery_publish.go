@@ -177,6 +177,10 @@ func (b *machineAgentJoinBridge) localNodeDescribe(q localNodeDescribeRequest) (
 	}
 	client.mu.Unlock()
 	pin := LocalNodeConnectionPin{UserRoot: p.config.UserRoot, HubID: hub.HubID, APIOrigin: hub.Origin, NodeID: hub.NodeID, SocketPath: p.socket, StateDir: hub.StateDir, WriterRoot: hub.WriterRoot, MCPSessionStateFile: p.config.MCPSessionStateFile, MCPOutboxStateFile: p.config.MCPOutboxStateFile, Binding: binding}
+	pin.ConnectionID, pin.ConnectionEpoch = hub.ManagedConnectionID, hub.ManagedConnectionEpoch
+	if checkManagedMachineHubFence(b.ctx) != nil {
+		return nil, ErrLocalNodeNotReady
+	}
 	pin.HubTransportDescriptor, pin.HubDialAddress = s.HubTransportDescriptor, s.HubDialAddress
 	if !ready || validateLocalNodePin(pin) != nil {
 		return nil, ErrLocalNodeNotReady

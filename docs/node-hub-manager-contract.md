@@ -7,10 +7,12 @@ local Join/discovery bridge and shared native writer. One physical Node may
 maintain independent registrations with multiple Hubs; a Hub-local Node ID is
 not a global cryptographic identity. No credential or Owner trust crosses Hubs.
 
-This checkpoint freezes the Go DTOs in
+The contract checkpoint froze the Go DTOs in
 [`node_hubs_contract.go`](../cicada-go/cmd/cicada/node_hubs_contract.go) and the
-following behavior for Root review. Business implementation and disposable integration remain NOT_RUN at this
-contract-only checkpoint; codec validation is recorded below.
+following behavior for Root review. The Linux producer now implements these
+operations. Its bounded deterministic qualification and explicit remaining
+integration scopes are recorded in
+[the producer validation](node-hub-manager-producer-validation.md).
 
 ## Closed CLI and local API
 
@@ -50,7 +52,7 @@ never replaced. Adoption, new pairing and original retry are disjoint modes.
 The local operations use `LocalNodeHubSelection`, `LocalNodeHubAddInput`,
 `LocalNodeHubView`, `LocalNodeHubList` and `LocalNodeHubRemoval`. Their exact
 JSON fields are the Go DTOs; JSON decoders reject unknown/duplicate fields and
-oversized messages. Planned Go functions are:
+oversized messages. Implemented Go functions are:
 
 ```go
 ListLocalNodeHubConnections(ctx context.Context, userRoot string) (LocalNodeHubList, error)
@@ -124,6 +126,15 @@ does not delete JSON files. Interrupted adoption is recoverable from its local
 transaction; it never recreates identities or silently restarts an old daemon. Existing first-on argument syntax is a compatibility
 adapter into this same registry/manager, not a second single-Hub daemon.
 
+The protected adoption receipt binds the exact original configuration digest,
+old unit, observed zero PID, complete original Pin0 and new connection epoch1
+pin. `ResolveAdoptedLocalNodeConnection(ctx, oldPin)` is the only explicit
+compatibility seam. It checks the retained original state, current ENABLED
+entry, epoch1, startup provenance and complete live pin. Changed original
+fields, removal or re-add cannot use it. Global pin equality remains strict.
+A response-loss replay while the manager runs verifies this receipt instead
+of trying to reacquire the worker's original Agent lock.
+
 New connections use separate private state below the selected Node root and
 the original shared WriterRoot. Once chosen, their paths stay fixed. Before
 pairing or starting any worker, check both that entry's recovery state and the
@@ -137,7 +148,10 @@ it cannot recreate keys under a new path to bypass retained authority/history.
 
 New add durably reserves its local entry before contacting a Hub, then reuses
 scoped NPT discovery, original packet journaling, Owner-to-Node proof and
-private ACK. It opens no business worker before authenticated ACK and original
+private ACK. After trusted descriptor discovery, the registry atomically
+reserves candidate HubID/origin before generating any new Node identity or
+proof. Different pending locators cannot claim the same Hub. This metadata is
+still PENDING; it grants no business authority. It opens no business worker before authenticated ACK and original
 local binding installation. Unavailable, expired, cancelled, fenced and unknown
 attempts stay recoverable under that same connection; other Hubs keep running.
 Manager restart resumes only the existing per-entry state and exact packets.
@@ -151,6 +165,17 @@ context/cancel, original Agent lock, transport and publication. Reconciliation
 starts/stops only changed entries; adding/removing one Hub must not restart
 healthy peers or the shared native writer. No new daemon framework or service
 dependency is introduced. Non-Linux lifecycle remains explicitly unsupported.
+
+The saved Cicada executable retains private, no-symlink path checks. External
+Codex installation keeps its original configured wrapper path and permits a
+same-user/root symlink and a 775 user bin parent; the resolved target must be
+a same-user/root regular executable without group/world write permission.
+No installation chmod, path rewrite or original digest rewrite occurs.
+The manager IPC binds the locator PID to kernel peer credentials, including
+the expected service MainPID. IPC loss with a held daemon gate is UNKNOWN,
+including zero connections. Shutdown timeout retains the daemon gate and
+instance until every worker actually retires; the real daemon also stays alive
+while delayed retirement is outstanding. Timeout never proves local stop.
 
 Local same-user control requests are bounded and strictly decoded.
 `nodeHubControlRequest` has exactly `format,operation,nonce,instance_id,revision`;
@@ -172,6 +197,9 @@ admission, then cancels and waits for only that connection's worker and closes
 its exact instance/inode publication. A managed connection ID and epoch are
 bound into its discovery pin and local context authority; final native
 delivery repeats the current entry/epoch fence, including already queued work.
+The shared admission gate covers the final epoch check, durable native intent
+and actual command Start. Removal, adoption and re-add use its exclusive side
+before registry mutation, and release it before cancellation or stop waits.
 A queued A packet cannot be migrated to B to evade removal. `LOCAL_STOPPED` is returned only after
 quiescence is proven. A timeout or uncertain native/provider action returns
 `STOP_PENDING`, retaining REMOVING and every original recovery record; it
@@ -179,6 +207,13 @@ must not claim remote revocation or delete secrets to force success. Restart
 keeps the entry fenced and completes local stop without starting it again.
 Exact repeated remove recovers its retained local result/fence. Only an
 explicit subsequent re-add may enable a retired original connection.
+Known durable queue acceptance is not unknown injection and does not claim
+model consumption or cancellation. True native/provider uncertainty retains
+STOP_PENDING. Provider inspection binds the original claim's execution/provider
+and resource lease/epoch; another Hub's unrelated ledger row is not borrowed.
+Repeated removal by alias, address, connection ID or Hub ID checks the complete
+retired tuple and returns the original removal receipt. Re-add preserves state
+references and advances the epoch, so the old pin never becomes current again.
 
 ## Discovery, MCP and Network routing
 
@@ -203,6 +238,12 @@ live same-user verified original connections, including complete Hub pin,
 logical origin, original paths and the managed connection epoch. The facade
 consumes this verified enumeration; it does not read raw registry metadata,
 import credential files or duplicate pairing/manager state.
+
+Human `join`/`leave --hub ALIAS` selection belongs to the App consumer. It is
+mutually exclusive with `--hub-id`; it selects a unique ENABLED alias from
+`ListLocalNodeHubConnections`, then resolves the exact live Hub/Node pin and
+checks connection ID/fence. Configured metadata alone is never a live child or
+authority. There is no default-Hub fallback or additional common selector API.
 
 Routing derives the Hub from the trusted Network's authority. Group scope is
 the complete `(HubID, NetworkID, GroupID)` tuple, even when two Hubs use equal

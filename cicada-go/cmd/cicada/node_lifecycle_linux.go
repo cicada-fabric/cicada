@@ -75,7 +75,7 @@ func nodeLifecycleCommand(action string, args []string, out io.Writer) error {
 	if err != nil {
 		return errNodeServiceConfig
 	}
-	return nodeLifecycle(action, args, out, binary, runNodeServiceCommand)
+	return nodeHubLifecycle(action, args, out, binary, runNodeServiceCommand)
 }
 
 func nodeLifecycle(action string, args []string, out io.Writer, binary string, run nodeServiceRunner) error {

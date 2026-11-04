@@ -182,6 +182,9 @@ func runMachineAgentWithContext(parent context.Context, args []string, pinned *m
 		writerRoot = *stateDir
 	}
 	pinned.WriterRoot = writerRoot
+	if err := installNodeHubStateReference(parent, pinned); err != nil {
+		return err
+	}
 	if err := recoverMachinePQHubIdentityHint(pinned, *pqConfig); err != nil {
 		return err
 	}
@@ -201,6 +204,12 @@ func runMachineAgentWithContext(parent context.Context, args []string, pinned *m
 			return fmt.Errorf("acquire Node Agent lock: %w", err)
 		}
 		defer agentLock.Close()
+	}
+	// Adoption holds this original Agent lock while installing its state ref.
+	// Repeat after acquisition so a startup racing that transition cannot keep
+	// an unpinned context obtained before the durable manager reference existed.
+	if err := installNodeHubStateReference(parent, pinned); err != nil {
+		return err
 	}
 	rootQuarantined, rootErr := nodebackup.WriterRootRecoveryQuarantineActive(writerRoot)
 	if rootErr != nil {

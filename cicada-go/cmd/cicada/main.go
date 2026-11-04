@@ -27,6 +27,21 @@ func main() {
 		os.Exit(2)
 	}
 	switch os.Args[1] {
+	case "node":
+		var err error
+		if len(os.Args) < 3 {
+			err = ErrLocalNodeHubConfig
+		} else if os.Args[2] == "hubs" {
+			err = nodeHubsCommand(os.Args[3:], os.Stdout)
+		} else if os.Args[2] == "daemon" {
+			err = nodeHubManagerDaemonCommand(os.Args[3:])
+		} else {
+			err = ErrLocalNodeHubConfig
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
 	case "join", "leave":
 		if err := nativeThreadOperatorCommand(os.Args[1], os.Args[2:], os.Stdout); err != nil {
 			fmt.Fprintln(os.Stderr, err)
@@ -415,7 +430,7 @@ func printJSON(value any) error {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: cicada join|leave|on|off|status|serve|hub|components|owner-signer|client|goal|machine|worker|fabric|network|snapshot|external|connector|mcp|codex-hook|migration|owner-key|owner|version")
+	fmt.Fprintln(os.Stderr, "usage: cicada join|leave|on|off|status|node|serve|hub|components|owner-signer|client|goal|machine|worker|fabric|network|snapshot|external|connector|mcp|codex-hook|migration|owner-key|owner|version")
 	fmt.Fprintln(os.Stderr, "  codex-hook: read one Codex hook event from stdin; accepts no arguments")
 }
 

@@ -236,7 +236,35 @@ func decodeLocalNodeJSON(data []byte, target any) error {
 // checks and all socket probes share one deadline; failures never select a
 // different original binding or initialize a replacement state directory.
 func ResolveLocalNodeConnection(parent context.Context, s LocalNodeSelection, pin *LocalNodeConnectionPin) (LocalNodeConnection, error) {
-	var zero LocalNodeConnection
+	found, err := resolveLocalNodeConnections(parent, s, pin)
+	if err != nil {
+		return LocalNodeConnection{}, err
+	}
+	if len(found) != 1 {
+		return LocalNodeConnection{}, ErrLocalNodeSelectionAmbiguous
+	}
+	return found[0], nil
+}
+
+// ListVerifiedLocalNodeConnections is the facade's live, same-user discovery
+// enumeration. It shares the existing complete pin/socket verification and
+// never imports raw registry coordinates as connection authority.
+func ListVerifiedLocalNodeConnections(ctx context.Context, userRoot string) ([]LocalNodeConnection, error) {
+	found, err := resolveLocalNodeConnections(ctx, LocalNodeSelection{UserRoot: userRoot}, nil)
+	if errors.Is(err, ErrLocalNodeNotRunning) {
+		return []LocalNodeConnection{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if len(found) > MaxLocalNodeHubConnections {
+		return nil, ErrLocalNodeDiscoveryLimit
+	}
+	return found, nil
+}
+
+func resolveLocalNodeConnections(parent context.Context, s LocalNodeSelection, pin *LocalNodeConnectionPin) ([]LocalNodeConnection, error) {
+	var zero []LocalNodeConnection
 	if parent == nil {
 		return zero, ErrLocalNodeDiscoveryInvalid
 	}
@@ -331,6 +359,9 @@ func ResolveLocalNodeConnection(parent context.Context, s LocalNodeSelection, pi
 		if s.HubID != "" && s.HubID != p.HubID || s.NodeID != "" && s.NodeID != p.NodeID {
 			continue
 		}
+		if checkManagedLocalNodePin(ctx, p) != nil {
+			continue
+		}
 		found = append(found, LocalNodeConnection{Pin: p, InstanceID: desc.InstanceID, LocatorDigest: desc.LocatorDigest})
 	}
 	if ctx.Err() != nil {
@@ -339,10 +370,7 @@ func ResolveLocalNodeConnection(parent context.Context, s LocalNodeSelection, pi
 	if len(found) == 0 {
 		return zero, ErrLocalNodeNotRunning
 	}
-	if len(found) > 1 {
-		return zero, ErrLocalNodeSelectionAmbiguous
-	}
-	return found[0], nil
+	return found, nil
 }
 func localNodeReadError(err error) error {
 	if errors.Is(err, ErrLocalNodeDiscoveryInvalid) {

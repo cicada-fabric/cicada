@@ -34,6 +34,8 @@ type machineHubContext struct {
 	HubTransportDescriptor, HubDialAddress                          string
 	TLSRuntime                                                      *nodetransport.Runtime
 	approvedHubID                                                   *atomic.Pointer[string]
+	ManagedUserRoot, ManagedConnectionID                            string
+	ManagedConnectionEpoch                                          uint64
 }
 
 type machineHubContextKey struct{}
