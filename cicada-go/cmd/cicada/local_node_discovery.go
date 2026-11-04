@@ -58,6 +58,8 @@ type LocalNodeBinding struct {
 	HubFingerprint     string `json:"hub_fingerprint"`
 }
 type LocalNodeConnectionPin struct {
+	ConnectionID           string           `json:"connection_id,omitempty"`
+	ConnectionEpoch        uint64           `json:"connection_epoch,omitempty"`
 	UserRoot               string           `json:"user_root"`
 	HubID                  string           `json:"hub_id"`
 	APIOrigin              string           `json:"api_origin"`
@@ -110,6 +112,9 @@ func localNodePath(path string) bool {
 	return path != "" && len(path) <= 4096 && utf8.ValidString(path) && filepath.IsAbs(path) && filepath.Clean(path) == path && !strings.ContainsAny(path, "\x00\r\n")
 }
 func validateLocalNodePin(p LocalNodeConnectionPin) error {
+	if (p.ConnectionID == "") != (p.ConnectionEpoch == 0) || p.ConnectionID != "" && (!localContextHex(p.ConnectionID, 32) || p.ConnectionEpoch >= 1<<63) {
+		return ErrLocalNodeDiscoveryInvalid
+	}
 	raw, err := json.Marshal(p)
 	if err != nil || len(raw) > localNodeMaxPinBytes {
 		return ErrLocalNodeDiscoveryLimit

@@ -306,6 +306,10 @@ for a custom installation. Ordinary `cicada on` reuses the saved selection.
 Do not copy a device code, token, ticket, nonce, private key or bearer into any
 argument or configuration file.
 
+The planned [local multi-Hub manager contract](node-hub-manager-contract.md)
+freezes its local codecs and interfaces only. Its new CLI/daemon behavior is
+not implemented or qualified by the existing service lifecycle below.
+
 The local `cicada.node-service.v1` contract is one strictly decoded, same-user
 `0600` file at `<root>/node-service.json`. Only `on` produces it, by atomic
 no-replace publication. Its closed fields are `format`, `user_root`, `binary`,
