@@ -181,8 +181,20 @@ are in the [independent qualification record](native-app-validation.md#self-app-
 and private Root `scope-acceptance.json`, SHA-256
 `ab6c1581283d1e8d16fb8ed6643c38b7f48357e2817694e793ad84482e95b8dd`.
 The older broad 32 failures are retained; no full App regression pass is claimed.
-Windows GUI/DPAPI/ACL, physical device, Android, native Runtime and public HTTPS
-remain NOT_RUN for this delivery. Root owns final packaging and user acceptance.
+Independent physical GUI/DPAPI/ACL, Android, native Runtime and public HTTPS
+checks remain NOT_RUN in that qualification record.
+
+The user subsequently reports functional acceptance of Root's delivered
+`Cicada-0.0.5-app-unbind-c59c62ec.zip`, source `c59c62ec`, SHA-256
+`615d8fb6f6b300e926f822f2578390b4a4b29ae95777a6d7ecc35bb6d7965ce8`.
+Offered items 1/2/3/5/6 are **USER_REPORTED_PASS**: confirmed unbind, cold
+UNBOUND, Remove/Restore, retained-Owner reauthorization and fresh-identity
+account login without automatic old access. Item 4 is **NOT_RUN** because the
+new Hub has no connected Node; synthetic integration does not replace that
+physical continuation check. Independent DPAPI/ACL, new native Runtime and
+public HTTPS verification remain NOT_RUN. See the
+[user-reported acceptance record](native-app-validation.md#self-app-unbinding-user-reported-functional-acceptance-2026-11-04).
+No historical package/build metadata is upgraded by this documentation update.
 
 ## Product boundary
 

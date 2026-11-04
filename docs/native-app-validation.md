@@ -11202,3 +11202,35 @@ remain FAIL at their recorded sources. New Windows GUI/DPAPI/ACL, physical
 device, Android, native Codex Runtime and public HTTPS/deployment acceptance are
 **NOT_RUN**. Packaging and the user's physical acceptance belong to Root's next
 handoff; no public deployment, resident state or real keys were changed.
+
+### Self-App unbinding: user-reported functional acceptance (2026-11-04)
+
+The user reports: “验收通过。第4项中无已接入的 node”. This is
+**USER_REPORTED_PASS_WITH_ONE_NOT_RUN** for the offered package
+`Cicada-0.0.5-app-unbind-c59c62ec.zip`, SHA-256
+`615d8fb6f6b300e926f822f2578390b4a4b29ae95777a6d7ecc35bb6d7965ce8`,
+source `c59c62ec4ed29241b7ca58bca04c0bf70488ab77`. This documentation checkpoint
+does not change the package's source attribution or historical build metadata.
+
+| Offered item | User-reported scope | Classification |
+| --- | --- | --- |
+| 1 | Settings unbinds this App from the selected Hub and clears its login | USER_REPORTED_PASS |
+| 2 | Restart/select the same Hub retains UNBOUND without resurrecting old login | USER_REPORTED_PASS |
+| 3 | Remove/restore the saved Hub retains the unbound state | USER_REPORTED_PASS |
+| 4 | Already connected Node/Group continue after unbind | NOT_RUN: the new Hub has no connected Node |
+| 5 | Retained Owner authorizes a fresh App identity without reinitializing the Hub | USER_REPORTED_PASS |
+| 6 | Existing account login retains Owner identity, uses the fresh App identity and does not restore old access automatically | USER_REPORTED_PASS |
+
+Root's private `v01-app-unbind-root-20261104/user-reported-acceptance.json`
+records the report and its boundary, SHA-256
+`672845c2581aabd5eb6fca4ff360b3c13f6a9988d1130452c616b19d41f2557a`.
+This is user-operated functional feedback;
+Root/QA did not independently inspect the deployed binary or physical GUI.
+Physical Node/Group continuation on this new Hub, independent DPAPI/ACL security
+checking, new native Codex Runtime acceptance and independent public HTTPS
+verification remain **NOT_RUN**. The synthetic TLS Node/Group passes above keep
+their separate sources and do not fill item 4. The older broad regression's 32
+failures also retain their original classification.
+
+This update changes documentation only. No new test, deployment, Node
+enrollment, Hub mutation, key operation or artifact rebuild was performed.
