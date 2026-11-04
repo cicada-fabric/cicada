@@ -11066,3 +11066,139 @@ The single owned container is **EXACT_ABSENT**; no shared state, deployment or
 keys were changed. Root owns the next actual focused execution and client
 Docker gate. Windows GUI/DPAPI/ACL, physical device, native Runtime and public
 HTTPS remain **NOT_RUN**.
+
+### Self-App unbinding: scoped integration qualification (2026-11-04)
+
+Root's final decision is **SCOPED_PASS**, seven accepted scenarios qualified in
+separate executions. It is **not a single passing run of all seven on the final
+source**. Six individual targets passed in attempt 2, whose aggregate remains
+FAIL; the affected real Node/Group case passed in attempt 5 after the product
+capacity fix and the exact Hub-Nodes denial expectation were corrected. The
+authoritative rollup is
+`v01-app-unbind-root-20261104/scope-acceptance.json`, SHA-256
+`ab6c1581283d1e8d16fb8ed6643c38b7f48357e2817694e793ad84482e95b8dd`.
+Every earlier result keeps its actual source and exit code.
+
+| Root execution | Actual source | Result / exit / elapsed |
+| --- | --- | --- |
+| `integration-attempt-1` | Clean `f72fdad692f3b7d77398a927063cdcbca7c1c0d7` | FAIL / 1 / 74.266s; 4 top-level PASS, 3 FAIL |
+| `integration-attempt-2` | `1e4f5d3e0518e0d89adc3658c1df2c982f31b37a`, dirty QA file `9d26756e…` | FAIL / 1 / 73.905s; 6 top-level PASS, 1 FAIL |
+| `integration-attempt-3` | Same production source, dirty diagnostic QA file `8108fa7f…` | FAIL / 1 / 20.196s; one affected target, capacity refusal before any POST |
+| `integration-attempt-4` | `375f1516c56f9d038f04a8912255e916a8997945`, dirty QA file `8108fa7f…` | FAIL / 1 / 26.341s; final SEND returned canonical 404 while the fixture expected 403 |
+| `integration-attempt-5` | Same production source, dirty QA file `5731fbf3…` | SCOPED_PASS / 0 / 26.046s; one top-level/terminal PASS, zero FAIL/SKIP |
+
+Final tested QA file SHA-256 is
+`5731fbf37c31ed01f31340f19ae281595b4edfaaee1ceada4901dacebaa11b1e`.
+All executions above retained stable inputs. Receipt SHA-256 values, in attempt
+order, are:
+
+```text
+41c452ebf88217866de84a7eba97554a739192129f0f1898491d7274796332b0
+7fb3c4701c4b9a5410cb0afbceb6cc0d8abd0f834e3362bcf52816e0575be9a5
+3e4df00cc7b716506c375988daa56f1bc7d74b05e86549444a5a2de1b800f4c0
+fda584ffe45aced2d2db425a9722f272c1336e1ed3807d1085853afc2540d09d
+a807ca37a615814a78f834b73275bbf05ead8ab8aaf01fb830eaf3f77fcd1fac
+```
+
+The corresponding `go-test.jsonl` SHA-256 values are:
+
+```text
+51b8ba828e81d77b82acc8f7d15c794b907aa63b455af18d49488406f2a5ece6
+566cf23595ef155df3545f3583b9625145db489e50c51b5f7855db303db7e27a
+679e1fa2e81b665764746151b2e636a5b0ceb590a9e0261af863cdbbeb9b0640
+5467a969e2b9855461e39d5d262ca36bd18d0161edd3690488be42be547cce80
+3a3d98cdd6de266b32f5e49d8b5a5b740edf4ba1216c1d2e874f7b19fffcdf68
+```
+
+The six accepted earlier targets cover PQ-valid forged Owner/no-prepare refusal
+with zero durable admission; authenticated expired Complete settlement and cold
+reopen without a recovery loop; strict integral/fractional writer deadlines;
+chronological bounded prepare-cache reclamation; refusal to discard a prior
+uncertain scoped original, followed by exact recovery and genuine ACK; and sole
+Owner rebind with a saved authenticated completion, failed promotion and cold
+zero-POST recovery of the same candidate into BOUND_ZERO. Original Owner identity
+and archived Complete/result bytes are checked; no session or Node authority is
+inherited. These use independent Owner/device proofs, not password or public
+capability authority.
+
+The final affected target qualifies actual pinned TLS, persistent SQLite and
+encrypted vaults. The original scoped ACK Node and two independently keyed
+Endpoints exchange a fresh sealed SEND before unbind. A real committed Complete
+response is replaced by an unsigned 403; Hub and App are reopened from durable
+state, and the exact original recovers its authenticated UNBOUND result. A
+second App reopen cannot resurrect the old session. The same Node then passes a
+fresh PQ `node.binding.status` read, actual published relay heartbeat and a new
+Group peer/send/claim/final-authorization/decryption chain using the original
+Owner pin and Endpoint keys. Generic security revoke then yields exactly 403
+for the PQ read, 401 for heartbeat, and 404 for peer/SEND. The rejected new
+message ID is absent from six Relay tables; total rows and recipient sequence
+counts/sums remain unchanged. Control inference and model Runtime are absent.
+
+The failed attempts identified and preserved the following corrections:
+
+- QA fixture corrections: authenticate the exact recovered Complete before ACK
+  retires the shared work slot, then verify the independent Node trust; use a
+  fresh single-use password protector per vault open with shared fault state;
+  use the real Hub-only heartbeat endpoint rather than unsupported
+  `node.heartbeat` RPC. No production guard was relaxed.
+- Hub correction `1e4f5d3`: both liveness writers enforce the dedicated voluntary
+  tombstone's current-source/security fence. Legacy sources without that marker
+  keep their prior semantics. Actual heartbeat success/refusal is 204/401.
+- App correction `375f151`: the ordinary Node/Group fixture held 12 namespaces
+  and 1,175,776 payload bytes, yet the old two-full-MiB reservation refused before
+  any POST. Closed packet/DTO size projection now budgets the complete lifecycle
+  without deleting originals or enlarging the 4 MiB plaintext, 1 MiB record,
+  32-current-namespace or four-history ceilings. Four producer capacity targets
+  pass normal/race; vet and Windows cross-build exit 0. Receipt
+  `n2-app/unbind-capacity-20261104/qualification.json`, SHA-256
+  `0c7093d4a92d0f3998e14e7969f03088165a2a1b262005f087650a81ed3baa76`.
+- The final SEND expectation is exactly 404 because
+  `hub_local_domain_data.go` hides `RequireLocalDomainRelay` refusal in Hub-Nodes
+  mode. This differs from the full Handler's later Store-error 403 mapping.
+  Attempt 4 remains FAIL; only the precise expectation and zero-write assertions
+  changed before attempt 5. Arbitrary non-2xx responses never count as success.
+
+Root's portable UI execution is separately **SCOPED_PASS / 0**, 60 top-level /
+166 terminal PASS, no FAIL/SKIP, 3.487s, on clean `f72fdad`. Receipt
+`ui-check/result.json` SHA-256
+`9753e5bec7c1cc4e89bbc6de56748840923196bd138f241c512762ae76f8259b`.
+This is presentation/action checking, not physical GUI execution.
+
+The sole disposable client Docker gate is **PASS / 0** for Smoke,
+RecoveryFixture, HeadlessOperator and OwnerBootstrap. Receipt
+`client-interop/result.json` SHA-256
+`2fb60ea6e63d66b779640f184225dd8aa92bf2baa5a5c9224fa9f05c08a5f0f3`;
+`cleanup.json` SHA-256
+`c53fde49a3c19ecb259daf42bd426763e4e46b088a97c052f2e629631236dc34`
+reports CONFIRMED, all three owned containers, two task image references and
+scratch EXACT_ABSENT. Its actual source is `1e4f5d3` **dirty=true**, fingerprint
+`445bcaadac0c747b18c329f4562e69cf0101e55c94fe3bc55cf63652092d0f57`.
+Hub image ID is
+`sha256:8cec607314f3b585e820d29ace65b1215221ffa4e82efce53eafa07b09eb8713`;
+test image ID is
+`sha256:d9c8e745af5e4911d07c2bfdebb17d7535e64d123e77274a739cf015e44dfc05`.
+Root's rollup confirms all 1,449 actual compiled inputs remain unchanged after
+the App-only capacity fix. The captured CLI/test closure excludes appcore;
+`docker-compiled-closure.json` SHA-256 is
+`4308e542ef6aed2d7719f978b13c5049c78b341ba0f0f7088b6b944759818f99`.
+This is dependency equivalence, not a Docker rerun attributed to `375f151`.
+
+Replay the selected real-HTTP scope from `cicada-go` using the pinned offline
+Go 1.27.3 toolchain, read-only shared modules and a private build/temp directory:
+
+```sh
+go test -json -mod=readonly -p=1 -count=1 -timeout=240s -tags=cicada_scoped_app_integration -run '^TestAppUnbind' ./internal/appcore
+# To repeat only the final affected scenario:
+go test -json -mod=readonly -p=1 -count=1 -timeout=240s -tags=cicada_scoped_app_integration -run '^TestAppUnbindLostCompleteColdRecoveryKeepsTrafficUntilSecurityRevoke$' ./internal/appcore
+# From the repository root; creates and cleans its own synthetic Docker fixture:
+scripts/test-client-hub-interop.sh --suite client
+```
+
+No new execution was added for documentation closeout. The preparation matrix
+remains a coverage inventory, not a blanket pass for every adversarial family.
+Separate App B enrollment and every operation-family race are not independently
+qualified by these seven targets. The earlier broad App regression's 32 failures
+remain FAIL at their recorded sources. New Windows GUI/DPAPI/ACL, physical
+device, Android, native Codex Runtime and public HTTPS/deployment acceptance are
+**NOT_RUN**. Packaging and the user's physical acceptance belong to Root's next
+handoff; no public deployment, resident state or real keys were changed.

@@ -100,7 +100,7 @@ checks retain separate scopes. The subsequent physical observation is the user
 report above, not an independently executed Windows GUI/DPAPI/ACL run. Existing
 real pending state and keys have not been touched by development.
 
-### Server-authoritative App unbinding — App consumer, integration pending
+### Server-authoritative App unbinding — scoped integration qualified
 
 The user now requests explicit unbinding of this App from the selected Hub.
 This is a separate networked operation from local Disconnect/Remove/Restore.
@@ -132,12 +132,14 @@ regression is **FAIL**, 225 top-level PASS / 32 FAIL / zero SKIP. A separate
 targeted run of those exact 32 failed tests on clean `55fb175` reproduces all 32
 failures; it does not turn either run into PASS. These
 results are local primitive qualification, not server unbinding/rebinding or
-physical Windows GUI/DPAPI/ACL acceptance. Those new integration scopes remain
-NOT_RUN until separately executed against the new service. Component checks and
-cross-compilation do not establish the actual Hub mutation or Node/Group traffic.
+physical Windows GUI/DPAPI/ACL acceptance. Root's separately executed real
+Hub/Core scope is qualified below; component checks and cross-compilation are
+not substituted for actual Hub mutation or Node/Group traffic.
 
-The App reserves both full binding records, current account/session/presence,
-candidate and retirement capacity before the first unlink request. An old
+The App projects both binding records from their closed packet/DTO bounds,
+current account/session/presence, candidate and retirement capacity before the
+first unlink request. Original byte/history/namespace ceilings remain unchanged.
+An old
 uncertain operation refuses unlink without HTTP or CAS changes. A saved
 authenticated UNBOUND receipt fences legacy activation/session resurrection;
 the old encrypted session receipt stays inert until atomic retirement. Pending
@@ -157,6 +159,30 @@ later local Remove marker. Public/private transport, actual four-route service
 and independent Node/Group continuation are qualified separately by Root/QA on
 the final integrated source. These producer results precede the disjoint Hub
 carrier fast-forward to `a4a5c334`; they are not relabeled as its execution.
+
+Root/QA now records **SCOPED_PASS** for seven scenarios through separate
+executions: six individual passes on `1e4f5d3` and the final affected real
+Node/Group case on `375f151` plus the exact QA file. This is not a single
+all-seven pass on final source. The final case verifies committed Complete
+response loss, durable Hub/App cold recovery, original Node heartbeat and fresh
+sealed Group delivery before/after unbind, then strict security refusal with
+zero new Relay rows/sequences. Sole-Owner rebind separately verifies retained
+Owner custody, same-candidate zero-POST promotion recovery and BOUND_ZERO with
+no inherited session/Node authority. The normal Node/Group capacity failure was
+fixed by tighter bounded projection, without clearing originals or enlarging
+limits. Earlier failed attempts remain FAIL in the record.
+
+The sole client Docker gate is PASS/0 with CONFIRMED cleanup at its actual
+`1e4f5d3` dirty source. Root verified all 1,449 compiled inputs remain unchanged
+after the App-only fix; this is dependency equivalence, not a relabelled rerun.
+Portable UI is separately 60 top-level / 166 terminal PASS at its recorded
+source. Commands, exits, source manifests, hashes, defects and remaining scope
+are in the [independent qualification record](native-app-validation.md#self-app-unbinding-scoped-integration-qualification-2026-11-04)
+and private Root `scope-acceptance.json`, SHA-256
+`ab6c1581283d1e8d16fb8ed6643c38b7f48357e2817694e793ad84482e95b8dd`.
+The older broad 32 failures are retained; no full App regression pass is claimed.
+Windows GUI/DPAPI/ACL, physical device, Android, native Runtime and public HTTPS
+remain NOT_RUN for this delivery. Root owns final packaging and user acceptance.
 
 ## Product boundary
 

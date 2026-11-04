@@ -16,6 +16,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"testing"
 	"time"
 
@@ -518,11 +519,23 @@ func TestAppUnbindRejectsExistingUncertainScopedOriginal(t *testing.T) {
 		t.Fatal("refused unbind or cold reopen changed the prior original")
 	}
 	f.dispatch(Action{Kind: ActionRecoverNodePairing})
+	settled := f.c.scoped.original
+	if settled == nil || !settled.Applied || !bytes.Equal(settled.Packet, original) || len(settled.Response) == 0 || f.c.checkScopedResponse(settled, settled.Response) != nil ||
+		f.c.scoped.recovery != nil || f.posts[wire.AppNodeScopedHTTPPath(wire.OperationAppNodeScopedComplete)] != 1 {
+		t.Fatal("prior Complete did not settle through its exact authenticated recovery")
+	}
+	recovered := f.c.scopedNode(n.context.AuthorityNodeID)
+	if recovered == nil || recovered.LatestGrantID == "" || recovered.HighestHead == 0 {
+		t.Fatal("recovered original did not preserve its scoped authority head")
+	}
+	grant, head := recovered.LatestGrantID, recovered.HighestHead
 	f.dispatch(Action{Kind: ActionRefreshNodePairing})
 	f.ackNode(n)
 	f.dispatch(Action{Kind: ActionRefreshNodePairing})
-	if f.c.scopedBusy() || !bytes.Equal(f.c.scoped.original.Packet, original) || f.posts[wire.AppNodeScopedHTTPPath(wire.OperationAppNodeScopedComplete)] != 1 {
-		t.Fatal("prior original was not settled through its exact recovery and ACK")
+	trusted := f.c.scopedNode(n.binding.NodeID)
+	if f.c.scopedBusy() || trusted == nil || trusted.ProvenanceID == "" || trusted.LatestGrantID != grant || trusted.HighestHead != head || f.c.verifyStoredScopedTrust(trusted) != nil ||
+		trusted.Binding == nil || !reflect.DeepEqual(trusted.Binding, n.binding) || f.posts[wire.AppNodeScopedHTTPPath(wire.OperationAppNodeScopedComplete)] != 1 {
+		t.Fatal("recovered original did not finish its independent authenticated ACK")
 	}
 	if f.c.Snapshot().AppBinding.State != AppBindingBound || f.c.Snapshot().AppBinding.ReviewID == "" {
 		t.Fatal("settled prior operation did not permit a fresh unbind review")
@@ -532,15 +545,38 @@ func TestAppUnbindRejectsExistingUncertainScopedOriginal(t *testing.T) {
 func TestAppUnbindLostCompleteColdRecoveryKeepsTrafficUntilSecurityRevoke(t *testing.T) {
 	f := newScopedAppHTTPFixture(t)
 	a := newAppUnbindTraffic(t, f)
-	if !a.heartbeat(http.StatusOK) {
+	if !a.nodeCurrent(http.StatusOK) || !a.heartbeat(http.StatusNoContent) {
 		t.Fatal("original Node heartbeat denied before voluntary unbind")
 	}
 	a.sendAndOpen("before voluntary unbind")
 	oldOwner, oldDevice, oldKey := f.c.owner.Public(), f.c.state.DeviceID, f.c.device.Public()
 	completePath := wire.AppBindingHTTPPath(wire.OperationAppUnbindComplete)
 	f.dropOperation, f.dropHTTPStatus = completePath, http.StatusForbidden
-	if f.c.Dispatch(context.Background(), appUnbindConfirm(f, ActionUnbindApp)) == nil || !f.c.Snapshot().AppBinding.Pending {
-		t.Fatal("unsigned lost-complete response settled voluntary unbind")
+	consent := appUnbindConfirm(f, ActionUnbindApp)
+	otherBefore := f.c.appBindingHasOtherPending()
+	dispatchErr := f.c.Dispatch(context.Background(), consent)
+	if dispatchErr == nil || !f.c.Snapshot().AppBinding.Pending {
+		// Print only stable Core errors, public progress and byte counts. Never
+		// print the vault contents, identity, token, proof or request packet.
+		s := f.c.Snapshot()
+		var sizes []int
+		payloadBytes := 0
+		inventoryOK := f.c.vault != nil
+		if inventoryOK {
+			versions, err := f.c.vault.StateVersions()
+			inventoryOK = err == nil
+			for namespace := range versions {
+				raw, _, _, err := f.c.vault.LoadState(namespace)
+				inventoryOK = inventoryOK && err == nil
+				sizes = append(sizes, len(raw))
+				payloadBytes += len(raw)
+				clear(raw)
+			}
+		}
+		sort.Ints(sizes)
+		t.Fatalf("lost-complete boundary: err=%v code=%s phase=%s state=%s pending=%t other_before=%t other_after=%t storage_fault=%t prepare_posts=%d complete_posts=%d drop_triggered=%t has_record=%t namespaces=%d payload_bytes=%d sizes=%v inventory_ok=%t",
+			dispatchErr, s.ErrorCode, s.Phase, s.AppBinding.State, s.AppBinding.Pending, otherBefore, f.c.appBindingHasOtherPending(), f.c.storageFault,
+			f.posts[wire.AppBindingHTTPPath(wire.OperationAppUnbindPrepare)], f.posts[completePath], f.dropOperation == "", f.c.appBinding.unbind != nil, len(sizes), payloadBytes, sizes, inventoryOK)
 	}
 	saved, _ := appUnbindSaved(f, appUnbindNamespace)
 	original := bytes.Clone(saved.CompletePacket)
@@ -572,7 +608,7 @@ func TestAppUnbindLostCompleteColdRecoveryKeepsTrafficUntilSecurityRevoke(t *tes
 	if f.c.session != nil || f.c.Snapshot().AppBinding.State != AppBindingUnbound {
 		t.Fatal("cold unbound fence resurrected the historical session")
 	}
-	if !a.heartbeat(http.StatusOK) {
+	if !a.nodeCurrent(http.StatusOK) || !a.heartbeat(http.StatusNoContent) {
 		t.Fatal("same original Node heartbeat denied after voluntary unbind")
 	}
 	peer := a.sendAndOpen("after voluntary unbind and restart")
@@ -583,10 +619,48 @@ func TestAppUnbindLostCompleteColdRecoveryKeepsTrafficUntilSecurityRevoke(t *tes
 	if _, err = f.db.RevokeClientDevice(a.ownerID, oldDevice, device.Version); err != nil {
 		t.Fatal("genuine existing security revocation failed", err)
 	}
-	a.heartbeat(http.StatusForbidden)
+	a.nodeCurrent(http.StatusForbidden)
+	a.heartbeat(http.StatusUnauthorized)
 	a.http(http.MethodGet, a.peerPath(), "CicadaNode "+a.node.token, "", nil, http.StatusNotFound)
 	fresh, _, _ := a.message(peer, "fresh after security revoke")
-	a.http(http.MethodPost, a.base()+"send", "CicadaNode "+a.node.token, "", fresh, http.StatusForbidden)
+	before := appUnbindRelayRows(f, fresh.MessageID)
+	// Hub-Nodes selects this dedicated domain SEND carrier. Its current-source
+	// guard hides an unavailable Group route with exactly 404, before enqueue.
+	a.http(http.MethodPost, a.base()+"send", "CicadaNode "+a.node.token, "", fresh, http.StatusNotFound)
+	if !reflect.DeepEqual(before, appUnbindRelayRows(f, fresh.MessageID)) {
+		t.Fatal("security-revoked SEND changed durable Relay counts or sequence counters")
+	}
+}
+
+func appUnbindRelayRows(f *scopedAppHTTPFixture, messageID string) map[string]int64 {
+	f.t.Helper()
+	dsn := (&url.URL{Scheme: "file", Path: filepath.Join(f.root, "SYNTHETIC-hub.sqlite3"), RawQuery: "mode=ro"}).String()
+	db, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	defer db.Close()
+	counts := map[string]int64{}
+	for _, table := range []string{"fabric_messages", "relay_v2_message_security", "relay_v2_message_payloads", "relay_v2_outbox", "relay_v2_inbox", "relay_v2_delivery_attempts"} {
+		var total, target int64
+		column := "message_id"
+		if table == "fabric_messages" {
+			column = "id"
+		}
+		if err := db.QueryRow("SELECT count(*) FROM " + table).Scan(&total); err != nil {
+			f.t.Fatal("read-only Relay count", err)
+		}
+		if err := db.QueryRow("SELECT count(*) FROM "+table+" WHERE "+column+"=?", messageID).Scan(&target); err != nil || target != 0 {
+			f.t.Fatal("fresh rejected SEND acquired a durable Relay row", err)
+		}
+		counts[table] = total
+	}
+	var sequenceRows, sequenceTotal int64
+	if err := db.QueryRow("SELECT count(*),coalesce(sum(next_sequence),0) FROM relay_v2_recipient_sequences").Scan(&sequenceRows, &sequenceTotal); err != nil {
+		f.t.Fatal("read-only Relay recipient sequence count", err)
+	}
+	counts["recipient_sequence_rows"], counts["recipient_sequence_total"] = sequenceRows, sequenceTotal
+	return counts
 }
 
 // Restart the disposable Hub on its original numeric TCP address, with only
@@ -640,8 +714,7 @@ func appUnbindRestartHub(f *scopedAppHTTPFixture) {
 	f.http.StartTLS()
 }
 
-type appUnbindPromotionProtector struct {
-	*appvault.PasswordProtector
+type appUnbindPromotionFault struct {
 	armed, tripped bool
 	writes         int
 	candidate      appvault.AppDeviceCandidate
@@ -649,15 +722,16 @@ type appUnbindPromotionProtector struct {
 	result         []byte
 }
 
-// Discovery opens and closes the same fixture protector before profile resume.
-// Its synthetic passphrase is owned and cleared by the test's final cleanup.
-func (*appUnbindPromotionProtector) Close() {}
+type appUnbindPromotionProtector struct {
+	*appvault.PasswordProtector
+	fault *appUnbindPromotionFault
+}
 
 func (p *appUnbindPromotionProtector) ID() string {
-	if p.armed {
-		p.writes++
-		if p.writes >= 2 {
-			p.tripped = true
+	if p.fault.armed {
+		p.fault.writes++
+		if p.fault.writes >= 2 {
+			p.fault.tripped = true
 			return ""
 		}
 	}
@@ -667,7 +741,7 @@ func (p *appUnbindPromotionProtector) ID() string {
 type appUnbindPromotionHTTP struct {
 	f         *scopedAppHTTPFixture
 	base      *scopedAppHTTPProbe
-	protector *appUnbindPromotionProtector
+	protector *appUnbindPromotionFault
 }
 
 func (p *appUnbindPromotionHTTP) CloseIdleConnections() { p.base.CloseIdleConnections() }
@@ -710,12 +784,7 @@ func TestAppUnbindSoleOwnerRebindSavedCompletionColdPromotionWithoutPOST(t *test
 	if err := f.c.Close(); err != nil {
 		t.Fatal(err)
 	}
-	password, err := appvault.NewPasswordProtector([]byte("SYNTHETIC scoped vault passphrase"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(password.Close)
-	protector := &appUnbindPromotionProtector{PasswordProtector: password}
+	protector := &appUnbindPromotionFault{}
 	defer func() { clear(protector.complete); clear(protector.result) }()
 	root := filepath.Join(f.root, "SYNTHETIC-app-vault")
 	controller, err := NewController(Config{OpenVault: func(_ context.Context, scope appvault.Scope, create bool) (*appvault.Vault, error) {
@@ -726,7 +795,18 @@ func TestAppUnbindSoleOwnerRebindSavedCompletionColdPromotionWithoutPOST(t *test
 		if err != nil {
 			return nil, err
 		}
-		return appvault.Open(path, scope, protector)
+		// The real password backend consumes its passphrase at the first KDF.
+		// Each discovery/resume open therefore owns a fresh protector, while
+		// the fault state and authenticated response observation stay shared.
+		password, err := appvault.NewPasswordProtector([]byte("SYNTHETIC scoped vault passphrase"))
+		if err != nil {
+			return nil, err
+		}
+		vault, err := appvault.Open(path, scope, &appUnbindPromotionProtector{PasswordProtector: password, fault: protector})
+		if err != nil {
+			password.Close()
+		}
+		return vault, err
 	}, DiscoverVaults: NewProfileDiscovery(root), DirectHTTPFactory: func(d hubtransport.Descriptor, dial string, timeout time.Duration) (HTTPDoer, error) {
 		client, err := hubtransport.NewHTTPClient(d, dial, timeout)
 		if err != nil {
@@ -1000,9 +1080,18 @@ func (a *appUnbindTraffic) sendAndOpen(label string) store.SameGroupSealedV1Peer
 	return peer
 }
 
-// Unlike nodeDomain, heartbeat is not a LocalDomain typed operation. Use the
-// real SDK carrier and advance this original Node's replay sequence normally.
+// The published Hub-only heartbeat is a real TLS bearer endpoint. It records
+// liveness without Control inference; it is distinct from the encrypted current
+// binding read below. Its ordinary success and authorization refusal are 204/401.
 func (a *appUnbindTraffic) heartbeat(wantHTTP int) bool {
+	a.f.t.Helper()
+	a.http(http.MethodPost, "/v2/relay/nodes/"+url.PathEscape(a.node.binding.NodeID)+"/heartbeat", "CicadaNode "+a.node.token, "", struct{}{}, wantHTTP)
+	return wantHTTP == http.StatusNoContent
+}
+
+// Obtain a fresh, supported SDK current-binding response with the same Node
+// keys and advancing replay sequence; never substitute it for a heartbeat.
+func (a *appUnbindTraffic) nodeCurrent(wantHTTP int) bool {
 	t, f, n := a.f.t, a.f, a.node
 	t.Helper()
 	b := n.binding
@@ -1012,8 +1101,8 @@ func (a *appUnbindTraffic) heartbeat(wantHTTP int) bool {
 		t.Fatal(err)
 	}
 	n.sequence++
-	route := nodewire.Route{Version: nodewire.Version, Direction: nodewire.DirectionRequest, HubID: b.HubID, NodeID: b.NodeID, BindingID: b.OwnerBindingID, BindingVersion: b.BindingVersion, NodeKeyEpoch: b.NodeKeyEpoch, Sequence: n.sequence, OperationID: id, Operation: "node.heartbeat", SenderKeyID: binding.NodeKey.ID, SenderKeyVersion: binding.NodeKeyVersion, ReceiverKeyID: binding.HubKey.ID, ReceiverKeyVersion: binding.HubKeyVersion}
-	packet, err := nodewire.SealRequest(n.key, binding.HubKey, binding, route, []byte(`{"status":"ready"}`))
+	route := nodewire.Route{Version: nodewire.Version, Direction: nodewire.DirectionRequest, HubID: b.HubID, NodeID: b.NodeID, BindingID: b.OwnerBindingID, BindingVersion: b.BindingVersion, NodeKeyEpoch: b.NodeKeyEpoch, Sequence: n.sequence, OperationID: id, Operation: "node.binding.status", SenderKeyID: binding.NodeKey.ID, SenderKeyVersion: binding.NodeKeyVersion, ReceiverKeyID: binding.HubKey.ID, ReceiverKeyVersion: binding.HubKeyVersion}
+	packet, err := nodewire.SealRequest(n.key, binding.HubKey, binding, route, []byte(`{}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1029,19 +1118,19 @@ func (a *appUnbindTraffic) heartbeat(wantHTTP int) bool {
 	}
 	response, err := f.client.Do(req)
 	if err != nil {
-		t.Fatal("actual fresh Node heartbeat transport", err)
+		t.Fatal("actual fresh Node binding transport", err)
 	}
 	defer response.Body.Close()
 	raw, err := io.ReadAll(io.LimitReader(response.Body, 1<<20+1))
 	if err != nil || len(raw) > 1<<20 || response.StatusCode != wantHTTP {
-		t.Fatalf("actual fresh Node heartbeat status=%d want=%d read=%v", response.StatusCode, wantHTTP, err)
+		t.Fatalf("actual fresh Node binding status=%d want=%d read=%v", response.StatusCode, wantHTTP, err)
 	}
 	if wantHTTP != http.StatusOK {
 		return false
 	}
 	opened, err := nodewire.OpenResponse(n.key, binding.HubKey, binding, raw)
 	if err != nil {
-		t.Fatal("actual Node heartbeat authentication", err)
+		t.Fatal("actual Node binding authentication", err)
 	}
 	want := route
 	want.Direction = nodewire.DirectionResponse
@@ -1054,7 +1143,7 @@ func (a *appUnbindTraffic) heartbeat(wantHTTP int) bool {
 		Sequence    uint64 `json:"sequence"`
 	}
 	if opened.Route != want || json.Unmarshal(opened.Plaintext, &reply) != nil || reply.OperationID != id || reply.Sequence != n.sequence {
-		t.Fatal("actual fresh Node heartbeat reply target")
+		t.Fatal("actual fresh Node binding reply target")
 	}
 	return reply.OK
 }
