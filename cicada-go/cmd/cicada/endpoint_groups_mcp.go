@@ -43,11 +43,15 @@ func (m *mcpServer) endpointGroupsRequest(operation, group string) (localEndpoin
 }
 
 func (m *mcpServer) endpointGroupsSelf(operation, group string) (*localEndpointGroupsResult, error) {
+	return m.endpointGroupsSelfContext(context.Background(), operation, group)
+}
+
+func (m *mcpServer) endpointGroupsSelfContext(ctx context.Context, operation, group string) (*localEndpointGroupsResult, error) {
 	q, err := m.endpointGroupsRequest(operation, group)
 	if err != nil {
 		return nil, err
 	}
-	result, err := requestMachineAgentEndpointGroups(context.Background(), m.joinSocketPath(harness.SessionContext{MachineID: m.codexContext.nodeID}), q)
+	result, err := requestMachineAgentEndpointGroups(ctx, m.joinSocketPath(harness.SessionContext{MachineID: m.codexContext.nodeID}), q)
 	if err != nil {
 		return nil, err
 	}
@@ -60,7 +64,11 @@ func (m *mcpServer) endpointGroupsSelf(operation, group string) (*localEndpointG
 }
 
 func (m *mcpServer) refreshEndpointGroupsSession(native harness.SessionContext) (*localEndpointGroupsResult, error) {
-	result, err := m.endpointGroupsSelf("endpoint_groups_self", "")
+	return m.refreshEndpointGroupsSessionContext(context.Background(), native)
+}
+
+func (m *mcpServer) refreshEndpointGroupsSessionContext(ctx context.Context, native harness.SessionContext) (*localEndpointGroupsResult, error) {
+	result, err := m.endpointGroupsSelfContext(ctx, "endpoint_groups_self", "")
 	if err != nil {
 		return nil, err
 	}
@@ -82,7 +90,7 @@ func (m *mcpServer) refreshEndpointGroupsSession(native harness.SessionContext) 
 			return nil, err
 		}
 		if cached != nil {
-			if validateCodexCachedConnection(cached, m.localNode) != nil || cached.EndpointID != a.Registration.EndpointID || cached.BindingID != a.BindingID || cached.BindingEpoch != a.BindingEpoch || cached.SessionToken != result.SessionToken {
+			if m.validateCachedConnection(cached) != nil || cached.EndpointID != a.Registration.EndpointID || cached.BindingID != a.BindingID || cached.BindingEpoch != a.BindingEpoch || cached.SessionToken != result.SessionToken {
 				return nil, errEndpointGroupsRegistration
 			}
 			if cached.EndpointGroupsVersion == 1 {
@@ -149,6 +157,9 @@ func (m *mcpServer) persistEndpointGroupsSession() error {
 	m.sessionMu.RLock()
 	t := m.sessionContext
 	entry := mcpCachedSession{ConnectionPin: m.localNodePin(), Scope: m.sessionScope, APIOrigin: m.baseURL, Harness: t.Harness, NativeSessionID: t.NativeSessionID, NodeID: t.NodeID, Workspace: t.Workspace, GroupID: m.sessionGroupID, EndpointID: m.endpointID, OwnerID: m.sessionPublic.Endpoint.Owner, BindingID: m.sessionPublic.BindingID, BindingEpoch: m.sessionPublic.BindingEpoch, LeaseExpiresAt: m.sessionPublic.LeaseExpiresAt, SessionToken: m.sessionToken, codexDomainBinding: m.sessionDomain, EndpointGroupAuthority: m.sessionEndpointGroupAuthority, EndpointGroupsLocalAccessRevision: m.sessionEndpointGroupsLocalAccessRevision}
+	if m.sessionStoragePin != nil {
+		entry.ConnectionPin = m.sessionStoragePin
+	}
 	m.sessionMu.RUnlock()
 	if state := m.sessionStateStore(); state != nil {
 		return state.saveEndpointGroupsAuthenticated(entry)
@@ -247,6 +258,10 @@ func (m *mcpServer) endpointGroupsList(arguments map[string]any) (any, error) {
 }
 
 func endpointGroupsMCPToolAllowed(name string, arguments map[string]any) bool {
+	if name == "cicada_use_group" {
+		_, err := parseMCPGroupRouteChoice(arguments)
+		return err == nil
+	}
 	if stringArgument(arguments, "network_id") != "" || stringArgument(arguments, "link_id") != "" || len(strings.TrimSpace(stringArgument(arguments, "data_scope"))) > 0 {
 		return false
 	}

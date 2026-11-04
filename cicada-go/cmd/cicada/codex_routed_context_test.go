@@ -47,6 +47,8 @@ func TestCodexRoutedContextClosedBoundsAndExactChildSet(t *testing.T) {
 		"unknown_parent":        bytes.Replace(raw, []byte(`{"connection_nonce"`), []byte(`{"sid":"SYNTHETIC-forged","connection_nonce"`), 1),
 		"duplicate_parent":      bytes.Replace(raw, []byte(`{"connection_nonce"`), []byte(`{"routing_version":1,"connection_nonce"`), 1),
 		"unknown_child":         bytes.Replace(raw, []byte(`{"route_id"`), []byte(`{"hub":"SYNTHETIC-forged","route_id"`), 1),
+		"aliased_parent":        bytes.Replace(raw, []byte(`"connection_nonce"`), []byte(`"Connection_nonce"`), 1),
+		"aliased_child":         bytes.Replace(raw, []byte(`"route_id"`), []byte(`"Route_ID"`), 1),
 		"duplicate_child_field": bytes.Replace(raw, []byte(`{"route_id"`), []byte(`{"ticket":"SYNTHETIC-forged","route_id"`), 1),
 		"duplicate_route":       []byte(fmt.Sprintf(`{"connection_nonce":%q,"routing_version":1,"children":[%s,%s]}`, value.ConnectionNonce, first, first)),
 		"trailing":              append(append([]byte(nil), raw...), []byte(`{}`)...),

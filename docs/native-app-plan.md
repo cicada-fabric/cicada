@@ -2149,3 +2149,80 @@ Earlier development runs rejected an incorrectly upper-case fixture origin and
 a stale hard-coded 71-tool expectation; both were corrected before this result.
 Full-package regression, disposable Docker interop, actual dual-Hub routing,
 real native Runtime, Windows and public HTTPS are **NOT_RUN for this checkpoint**.
+
+
+### Routing consumer business preparation — IN_PROGRESS
+
+The injected production `newRoutedLocalNodeMCPServer(root, verifiedList)` and
+`codexPreToolUseRouted` now compose the one-schema front and original children.
+The actual Hook/Unix issuer-consumer/client producer covers qualified second-page
+Group selection and an ordinary call, per-Hub nonce/ticket isolation, cold
+selection, removed-selected-Hub refusal, argument-digest tampering, registered
+self read and exact old single-Hub choice. Two top-level producers passed against
+synthetic private Node/HTTP peers; this is component evidence, not actual Hub
+Guard or current-NPT authority. A further stalled-A/healthy-B producer passed
+both issue and consume cases (8.01 s / 18.02 s), with B independently authenticated
+without waiting for A and unavailable/partial status retained. The existing
+transport now accepts Context deadlines; read-only aggregation is bounded by
+8-second Hook and 18-second front budgets rather than multiplying 35 seconds
+by the child count. Ordinary calls still use only their original selected child.
+
+Three private adoption-adapter tests passed: exact common-proof-only pin-0 to
+epoch-1 relationship, original SID/Endpoint/Owner/key/path/session storage pin
+and outbox DB/WAL preservation, and byte-identical uncertain intent retention
+across a lost reply plus epoch-2 refusal. Two Linux alias-selector tests passed;
+`--hub` and `--hub-id` are mutually exclusive and exact ENABLED DTO selection
+must still pass full live pin/connection fence validation. No fake resolver is
+intended for actual Manager acceptance. Default factory/CLI/Hook calls will bind
+the real reviewed list/adoption functions when that carrier is integrated.
+
+An initial original consumer test failed under the task shell's `umask 0002`:
+pinned Go 1.27.3 `testing.go:1636` creates numbered TempDir children with mode
+0777, yielding a group-writable 0775 ancestor. Existing discovery correctly
+refused it. Root independently passed the one original test on clean `b34fbce`
+and clean `0844115` under its private execution wrapper; these passing receipts
+remain attributed to those sources. No production validation, existing directory
+permissions or old fixture was weakened. After removing temporary diagnostics,
+the same dirty consumer test plus three adoption tests passed with an explicitly
+recorded **umask 0077** for disposable fixtures. Further checks keep that test
+environment distinction. Focused race/vet results and actual default wiring are
+pending; actual current NPT/Hub Guard/native writer, Docker, Runtime, Windows and
+public HTTPS stay in their separate, unexecuted lanes here.
+
+
+The reviewed Manager carrier `c55f17d` is now the consumer parent. Formal
+`mcp --user-root ... --codex-context` without an explicit Hub/Node filter selects
+the facade and actual `ListVerifiedLocalNodeConnections`; exact legacy filters
+retain their strict single-child path. Default PreToolUse dispatch recognizes
+the routed envelope and invokes the actual list/adoption APIs. The facade
+factory itself binds `ResolveAdoptedLocalNodeConnection`, including direct QA
+factory callers. Linux join/leave now bind actual `ListLocalNodeHubConnections`
+and adoption functions. No live service or installation was replaced.
+
+On the previous dirty `0844115` source snapshot, focused **8 top-level race
+tests passed, exit 0**, and `go vet ./cmd/cicada` passed with empty output. Source
+manifest and result/log hashes are retained under
+`/home/zyf/Cicada/.local/evidence/n2-app/node-hub-routing-business-l46au92r/`.
+A post-test check confirmed **zero Go source changes** while those checks ran;
+documentation additions followed the snapshot. These results do not attribute
+the later Manager carrier or default glue to `0844115`. Necessary final merged
+consumer checks are recorded separately before committing; actual current NPT,
+Hub Guard, native writer, Docker and physical/user lanes remain QA/Root-owned.
+
+
+Final merged default-consumer qualification on dirty `c55f17d` plus this task's
+consumer sources passed **9 normal top-level tests**, **6 race top-level tests**
+and **vet exit 0**, with **0 failures / 0 skips**. The exact normal set includes
+the actual default verified-list/factory/Hook entry, offline/conflicting flags,
+closed context/Group arguments, adoption and Linux alias guards; the race set
+selects the newly wired default entry and affected adoption/alias paths. It does
+not rerun the whole historical App/Node suites. Exact commands, all source file
+hashes, logs and results are retained under
+`/home/zyf/Cicada/.local/evidence/n2-app/node-hub-routing-final-8sm3bgiv/`.
+`source-after-tests.json` records zero Go-source changes during these checks.
+The earlier stalled-peer/page-two/compatibility component receipts retain their
+own pre-carrier source attribution. Actual CLI NPT join/leave, Manager adoption,
+Hub Guard, shared native writer and disposable Docker interop remain independent
+QA/Root targets; real native Runtime, Windows physical behavior and public HTTPS
+are **NOT_RUN** in this producer scope. No resident deployment, real key,
+installation or publishing action was performed.

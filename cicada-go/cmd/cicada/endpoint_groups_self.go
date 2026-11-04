@@ -76,8 +76,13 @@ func parseEndpointGroupsMCPArguments(arguments map[string]any) (string, int, err
 				return "", 0, errCodexMCPContext
 			}
 			limit = int(n)
+		case "hub_id", "network_id":
+			text, ok := value.(string)
+			if !ok || !localContextText(text, 256) {
+				return "", 0, errCodexMCPContext
+			}
 		default:
-			return "", 0, errors.New("cicada_groups accepts only cursor and limit; identity and scope are derived by the trusted Node")
+			return "", 0, errors.New("cicada_groups accepts only cursor, limit and optional exact Hub/Network qualifiers")
 		}
 	}
 	return cursor, limit, nil
@@ -104,7 +109,8 @@ func (b *machineAgentJoinBridge) endpointGroupsSelf(q localEndpointGroupsRequest
 		return nil, errCodexMCPContext
 	}
 	if q.Operation == "endpoint_groups_select" {
-		if q.ToolName != "cicada_use_group" || len(arguments) != 1 || stringArgument(arguments, "group_id") != q.GroupID || q.GroupID == "" || q.Cursor != "" {
+		choice, choiceErr := parseMCPGroupRouteChoice(arguments)
+		if q.ToolName != "cicada_use_group" || choiceErr != nil || choice.GroupID != q.GroupID || q.Cursor != "" {
 			return nil, errCodexMCPContext
 		}
 	} else if q.GroupID != "" {
@@ -125,6 +131,14 @@ func (b *machineAgentJoinBridge) endpointGroupsSelf(q localEndpointGroupsRequest
 	r, enrolled, err := c.endpointGroupsRegistrationCandidate(q.NativeSessionID, q.Workspace)
 	if err != nil || !enrolled || r.Anchor.RegistrationDigest != q.RegistrationDigest || r.Anchor.RegistrationRevision != q.RegistrationRevision || r.Anchor.BindingID != q.RegistrationBindingID || r.Anchor.BindingEpoch != q.RegistrationBindingEpoch || r.Anchor.NodeKeyEpoch != q.RegistrationNodeKeyEpoch {
 		return nil, errEndpointGroupsRegistration
+	}
+	if q.ToolName == "cicada_groups" || q.ToolName == "cicada_use_group" {
+		if hub := stringArgument(arguments, "hub_id"); hub != "" && hub != r.Anchor.Registration.HubID {
+			return nil, errEndpointGroupsRegistration
+		}
+		if network := stringArgument(arguments, "network_id"); network != "" && network != r.Anchor.NetworkID {
+			return nil, errEndpointGroupsRegistration
+		}
 	}
 	if r.LocallyOffline {
 		return nil, errEndpointGroupsOffline

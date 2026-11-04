@@ -46,6 +46,9 @@ type mcpServer struct {
 	heartbeatOnce     sync.Once
 	stop              chan struct{}
 	codexContext      *codexMCPContextState
+	codexFacade       *codexMCPFacade
+	adoptConnection   codexAdoptionResolver
+	sessionStoragePin *LocalNodeConnectionPin
 	localNode         *LocalNodeConnection
 	nativeHTTPOnce    sync.Once
 	nativeHTTP        *localNodeHTTPPool
@@ -147,7 +150,11 @@ func runMCP(args []string) error {
 			return codexLocalNodeError(ErrLocalNodeConfigRequired)
 		}
 		var err error
-		server, err = newLocalNodeMCPServer(LocalNodeSelection{UserRoot: *userRoot, HubID: *hubID, NodeID: *nodeID})
+		if *hubID == "" && *nodeID == "" {
+			server, err = newRoutedLocalNodeMCPServer(*userRoot, ListVerifiedLocalNodeConnections)
+		} else {
+			server, err = newLocalNodeMCPServer(LocalNodeSelection{UserRoot: *userRoot, HubID: *hubID, NodeID: *nodeID})
+		}
 		if err != nil {
 			return err
 		}
@@ -220,7 +227,14 @@ func runMCP(args []string) error {
 			server.outbox = newMCPOutbox(filepath.Join(hubStateDir, "mcp", "outbox.sqlite3"))
 		}
 	}
-	defer func() { close(server.stop); server.stopCodexHeartbeat(); server.selectedNodeHTTPPool().close() }()
+	defer func() {
+		if server.codexFacade != nil {
+			server.codexFacade.close()
+		}
+		close(server.stop)
+		server.stopCodexHeartbeat()
+		server.selectedNodeHTTPPool().close()
+	}()
 	// A cached credential is considered usable only after the trusted harness
 	// context and the server both validate it. Missing state is ordinary: MCP
 	// starts unjoined and never performs an implicit management join.
@@ -325,7 +339,7 @@ func cicadaMCPTools() []map[string]any {
 		return map[string]any{"type": "string", "description": description}
 	}
 	return []map[string]any{
-		{"name": "cicada_groups", "description": "List only this registered Thread's currently usable Groups. No Group is selected automatically. Requires a fresh verified OWNER_ENDPOINT_GROUPS_V1 context.", "inputSchema": object(map[string]any{"cursor": stringField("Opaque self-scope page cursor"), "limit": map[string]any{"type": "integer", "minimum": 1, "maximum": 64, "default": 64}}), "annotations": map[string]any{"readOnlyHint": true, "idempotentHint": true, "destructiveHint": false, "openWorldHint": false}},
+		{"name": "cicada_groups", "description": "List only this registered Thread's currently usable Groups. No Group is selected automatically. Qualify a Hub for its original page cursor. Requires a fresh verified OWNER_ENDPOINT_GROUPS_V1 context.", "inputSchema": object(map[string]any{"hub_id": stringField("Optional exact Hub qualifier"), "network_id": stringField("Optional exact Network qualifier"), "cursor": stringField("Original opaque self-scope page cursor for the qualified Hub"), "limit": map[string]any{"type": "integer", "minimum": 1, "maximum": 64, "default": 64}}), "annotations": map[string]any{"readOnlyHint": true, "idempotentHint": true, "destructiveHint": false, "openWorldHint": false}},
 		{"name": "cicada_select_peer", "description": "Ask the human to select one exact authorized peer in the current Group or an explicitly joined Network. Requires Host form elicitation. The short-lived selection is a reference, not a grant; pass peer_selection_id to a later send or ask with a fresh tool context.", "inputSchema": object(map[string]any{"scope": map[string]any{"type": "string", "enum": []string{"group", "network"}}, "network_id": stringField("Explicitly joined Network ID; only with network scope"), "query": stringField("Optional bounded name/Endpoint filter within the authorized directory")}, "scope")},
 		{"name": "cicada_network_join", "description": "Explicitly join this verified native Session to an invited Network. Invitation and Owner-signed consent are read from private local files configured outside model input; the Node and Hub independently verify them.", "inputSchema": object(map[string]any{"network_id": stringField("Invited Network ID")}, "network_id")},
 		{"name": "cicada_network_renew", "description": "Renew this native Session's existing Network access through the trusted local Node, rechecking current membership and Owner authority.", "inputSchema": object(map[string]any{"network_id": stringField("Joined Network ID")}, "network_id")},
@@ -342,7 +356,7 @@ func cicadaMCPTools() []map[string]any {
 		{"name": "cicada_network_broadcast", "description": "Publish one Broadcast only for a previously reviewed exact preview digest. The local Node seals an independent copy for each eligible Endpoint before route metadata is committed. Optional record_refs are resolved in the currently selected Group and kept inside each Endpoint-sealed body; Network-only sessions cannot attach Group refs. If recipient authority changes, publication fails closed and any early routes stay unclaimable.", "inputSchema": object(map[string]any{"network_id": stringField("Explicitly joined Network ID"), "snapshot_digest": stringField("Exact 64-character digest from cicada_network_broadcast_preview"), "body": stringField("Broadcast body, at most 64 KiB"), "record_refs": groupSpaceMessageRefsSchema(), "expires_at": stringField("RFC3339 deadline within 24 hours"), "idempotency_key": stringField("Stable retry key for this exact broadcast")}, "network_id", "snapshot_digest", "body", "expires_at", "idempotency_key")},
 		{"name": "cicada_network_broadcast_status", "description": "Read the publishing Endpoint's bounded Broadcast metadata and per-recipient transport states. Other Network members do not receive the roster or status projection.", "inputSchema": object(map[string]any{"network_id": stringField("Explicitly joined Network ID"), "broadcast_id": stringField("Broadcast ID returned by the publish operation")}, "network_id", "broadcast_id"), "annotations": map[string]any{"readOnlyHint": true, "idempotentHint": true, "destructiveHint": false, "openWorldHint": false}},
 		{"name": "cicada_join", "description": "Explicitly join the current Codex session through the local Node. For an Owner-created reserved Pair, provide only pair_id and slot A or B; this joins with zero peer rights until both Owner consents. Otherwise use group_id, optional when trusted CICADA_GROUP_ID is configured. Native identity/workspace come from the checked local record; same-OS-user processes remain the local trust boundary.", "inputSchema": object(map[string]any{"group_id": stringField("Fabric Group ID; omit for a reserved Pair"), "pair_id": stringField("Exact Owner-created Pair ID"), "slot": stringField("Reserved Pair slot A or B")})},
-		{"name": "cicada_use_group", "description": "Select an already joined Group for this native session. The server verifies both Endpoint and Principal memberships; selection does not grant access.", "inputSchema": object(map[string]any{"group_id": stringField("Joined Group ID")}, "group_id")},
+		{"name": "cicada_use_group", "description": "Select an already joined Group for this native session. Qualify Hub/Network when Group IDs are ambiguous. The server verifies both Endpoint and Principal memberships; selection does not grant access.", "inputSchema": object(map[string]any{"group_id": stringField("Joined Group ID"), "hub_id": stringField("Optional exact Hub qualifier"), "network_id": stringField("Optional exact Network qualifier")}, "group_id")},
 		{"name": "cicada_leave_group", "description": "Leave only the selected Group; preserve this native Thread in its other authorized Groups.", "inputSchema": object(map[string]any{"reason": stringField("Optional reason")})},
 		{"name": "cicada_leave", "description": "Leave the current Fabric Endpoint and all its Groups while keeping native work intact.", "inputSchema": object(map[string]any{"reason": stringField("Optional reason for leaving")})},
 		{"name": "cicada_whoami", "description": "Read the current authorized Group session or explicitly joined Network identity.", "inputSchema": object(map[string]any{"network_id": stringField("Explicit joined Network; omit for Group")})},
@@ -402,6 +416,9 @@ func cicadaMCPTools() []map[string]any {
 }
 
 func (m *mcpServer) callTool(name string, arguments map[string]any) (any, error) {
+	if m.codexFacade != nil {
+		return m.codexFacade.call(name, arguments)
+	}
 	if m.codexContext != nil {
 		return m.callContextualTool(name, arguments)
 	}
@@ -426,6 +443,9 @@ func (m *mcpServer) callToolWithContext(name string, arguments map[string]any) (
 	if name == "cicada_groups" {
 		return m.endpointGroupsList(arguments)
 	}
+	if name == "cicada_use_group" && (stringArgument(arguments, "hub_id") != "" || stringArgument(arguments, "network_id") != "") && domain.EndpointGroupsVersion != 1 {
+		return nil, errEndpointGroupsUnsupported
+	}
 	if domain.EndpointGroupsVersion == 1 {
 		if !endpointGroupsMCPToolAllowed(name, arguments) {
 			return nil, errors.New("TARGET_NOT_AUTHORIZED: this Group source grants only directory and communication rights")
@@ -445,7 +465,7 @@ func (m *mcpServer) callToolWithContext(name string, arguments map[string]any) (
 	}
 	// The formal discovery pin does not select legacy Network invitation or
 	// Monitor configuration. Do not obtain another deployment's paths from env.
-	if m.localNode != nil && ((strings.HasPrefix(name, "cicada_network_") || stringArgument(arguments, "network_id") != "") && !trustedNodeNetworkTool(name) || strings.HasPrefix(name, "cicada_monitor_broadcast")) {
+	if m.localNode != nil && ((strings.HasPrefix(name, "cicada_network_") || stringArgument(arguments, "network_id") != "" && name != "cicada_use_group") && !trustedNodeNetworkTool(name) || strings.HasPrefix(name, "cicada_monitor_broadcast")) {
 		return nil, codexLocalNodeError(ErrLocalNodeConfigRequired)
 	}
 	// Validate reviewer operation inputs before the active-session precondition.
@@ -744,8 +764,9 @@ func validateMCPArguments(name string, arguments map[string]any) error {
 		_, _, err := parseEndpointGroupsMCPArguments(arguments)
 		return err
 	}
-	if name == "cicada_use_group" && (len(arguments) != 1 || stringArgument(arguments, "group_id") == "") {
-		return errors.New("cicada_use_group accepts only group_id")
+	if name == "cicada_use_group" {
+		_, err := parseMCPGroupRouteChoice(arguments)
+		return err
 	}
 	if handled, err := validateMCPPeerArguments(name, arguments); handled {
 		return err
@@ -935,7 +956,7 @@ func (m *mcpServer) restoreSession(context harness.SessionContext) error {
 	if cached == nil {
 		return nil
 	}
-	if err := validateCodexCachedConnection(cached, m.localNode); err != nil {
+	if err := m.validateCachedConnection(cached); err != nil {
 		m.clearSessionMemory()
 		return err
 	}
@@ -1017,6 +1038,7 @@ func (m *mcpServer) clearSessionMemory() {
 	m.sessionDomain = codexDomainBinding{}
 	m.sessionEndpointGroupAuthority = wire.EndpointGroupCurrentEndpoint{}
 	m.sessionEndpointGroupsLocalAccessRevision = 0
+	m.sessionStoragePin = nil
 	m.sessionMu.Unlock()
 }
 

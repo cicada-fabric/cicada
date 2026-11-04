@@ -71,6 +71,48 @@ func nativeThreadOperatorRecord(sid string) (string, string, error) {
 }
 
 func nativeThreadOperatorCommand(action string, args []string, out io.Writer) error {
+	return nativeThreadOperatorWithManager(action, args, out, ListLocalNodeHubConnections, ResolveAdoptedLocalNodeConnection)
+}
+
+type nativeThreadHubListFunc func(context.Context, string) (LocalNodeHubList, error)
+
+func nativeThreadHubAlias(ctx context.Context, root, alias, node string, list nativeThreadHubListFunc) (LocalNodeHubView, error) {
+	var zero LocalNodeHubView
+	if list == nil || !localNodeHubText(alias, 128) {
+		return zero, ErrLocalNodeHubConfig
+	}
+	view, err := list(ctx, root)
+	if err != nil {
+		return zero, err
+	}
+	raw, err := json.Marshal(view)
+	if err != nil {
+		return zero, ErrLocalNodeHubConfig
+	}
+	if _, err := DecodeLocalNodeHubList(raw); err != nil {
+		return zero, err
+	}
+	var found *LocalNodeHubView
+	for _, connection := range view.Connections {
+		if !strings.EqualFold(connection.Alias, alias) {
+			continue
+		}
+		if connection.DesiredState != "ENABLED" || connection.HubID == "" || node != "" && node != connection.NodeID {
+			return zero, ErrLocalNodeNotReady
+		}
+		if found != nil {
+			return zero, ErrLocalNodeSelectionAmbiguous
+		}
+		copy := connection
+		found = &copy
+	}
+	if found == nil {
+		return zero, ErrLocalNodeNotRunning
+	}
+	return *found, nil
+}
+
+func nativeThreadOperatorWithManager(action string, args []string, out io.Writer, list nativeThreadHubListFunc, adopt codexAdoptionResolver) error {
 	if action != "join" && action != "leave" {
 		return errors.New("unsupported Thread operator action")
 	}
@@ -80,9 +122,15 @@ func nativeThreadOperatorCommand(action string, args []string, out io.Writer) er
 	name := flags.String("name", "", "registration name")
 	rootArg := flags.String("user-root", "", "selected Cicada user root")
 	hubID := flags.String("hub-id", "", "exact Hub selection")
+	hubAlias := flags.String("hub", "", "exact enabled Hub alias in this installation")
 	nodeID := flags.String("node-id", "", "exact Node selection")
 	if flags.Parse(args) != nil || len(flags.Args()) != 0 || *thread == "" || action == "leave" && *name != "" || action == "join" && (!localContextText(*name, 256) || strings.TrimSpace(*name) != *name) {
-		return errors.New("usage: cicada join --thread ID --name NAME [--user-root ABS] [--hub-id ID] [--node-id ID]; cicada leave --thread ID [same selection flags]")
+		return errors.New("usage: cicada join --thread ID --name NAME [--user-root ABS] [--hub ALIAS | --hub-id ID] [--node-id ID]; cicada leave --thread ID [same selection flags]")
+	}
+	selected := map[string]bool{}
+	flags.Visit(func(f *flag.Flag) { selected[f.Name] = true })
+	if selected["hub"] && (selected["hub-id"] || !localNodeHubText(*hubAlias, 128)) {
+		return ErrLocalNodeHubConfig
 	}
 	path, workspace, err := nativeThreadOperatorRecord(*thread)
 	if err != nil {
@@ -92,9 +140,22 @@ func nativeThreadOperatorCommand(action string, args []string, out io.Writer) er
 	if err != nil {
 		return err
 	}
-	connection, err := ResolveLocalNodeConnection(context.Background(), LocalNodeSelection{UserRoot: root, HubID: *hubID, NodeID: *nodeID}, nil)
+	selection := LocalNodeSelection{UserRoot: root, HubID: *hubID, NodeID: *nodeID}
+	var alias *LocalNodeHubView
+	if selected["hub"] {
+		view, err := nativeThreadHubAlias(context.Background(), root, *hubAlias, *nodeID, list)
+		if err != nil {
+			return codexLocalNodeError(err)
+		}
+		alias = &view
+		selection.HubID, selection.NodeID = view.HubID, view.NodeID
+	}
+	connection, err := ResolveLocalNodeConnection(context.Background(), selection, nil)
 	if err != nil {
 		return codexLocalNodeError(err)
+	}
+	if alias != nil && (connection.Pin.ConnectionID != alias.ConnectionID || connection.Pin.ConnectionEpoch != alias.LocalFence) {
+		return codexLocalNodeError(ErrLocalNodeBindingChanged)
 	}
 	native := harness.SessionContext{Harness: "codex", NativeSessionID: *thread, MachineID: connection.Pin.NodeID, Workspace: workspace}
 	scope, trusted, err := mcpSessionScope(connection.Pin.APIOrigin, native)
@@ -109,6 +170,18 @@ func nativeThreadOperatorCommand(action string, args []string, out io.Writer) er
 	client, err := openCodexOperatorIntent(filepath.Join(filepath.Dir(connection.Pin.MCPSessionStateFile), "scopes", scope, "operator-intent.json"))
 	if err != nil {
 		return err
+	}
+	client.adoptConnection = adopt
+	storagePin := &connection.Pin
+	cached, err := newMCPSessionStateStore(connection.Pin.MCPSessionStateFile).load(q.APIOrigin, native)
+	if err != nil {
+		return err
+	}
+	if err := validateCodexCachedAdoption(cached, &connection, adopt); err != nil {
+		return err
+	}
+	if cached != nil && cached.ConnectionPin != nil {
+		storagePin = cached.ConnectionPin
 	}
 	q, recovering, err := client.pendingDomainJoin(q, connection.Pin.NodeID, &connection.Pin)
 	if err != nil {
@@ -156,7 +229,7 @@ func nativeThreadOperatorCommand(action string, args []string, out io.Writer) er
 		}
 		if result.LocalDomain == nil || verified.LocalDomainVersion == q.LocalDomainVersion && verified.LocalDomain == q.LocalDomain {
 			j := result.Join
-			if err := newMCPSessionStateStore(connection.Pin.MCPSessionStateFile).save(mcpCachedSession{ConnectionPin: &connection.Pin, Scope: scope, APIOrigin: q.APIOrigin, Harness: trusted.Harness, NativeSessionID: trusted.NativeSessionID, NodeID: trusted.NodeID, Workspace: trusted.Workspace, GroupID: j.Endpoint.GroupID, EndpointID: j.Endpoint.ID, OwnerID: j.Endpoint.Owner, BindingID: j.BindingID, BindingEpoch: j.BindingEpoch, LeaseExpiresAt: j.LeaseExpiresAt, SessionToken: j.SessionToken, codexDomainBinding: codexDomainBinding{LocalDomainVersion: q.LocalDomainVersion, LocalDomain: q.LocalDomain}}); err != nil {
+			if err := newMCPSessionStateStore(connection.Pin.MCPSessionStateFile).save(mcpCachedSession{ConnectionPin: storagePin, Scope: scope, APIOrigin: q.APIOrigin, Harness: trusted.Harness, NativeSessionID: trusted.NativeSessionID, NodeID: trusted.NodeID, Workspace: trusted.Workspace, GroupID: j.Endpoint.GroupID, EndpointID: j.Endpoint.ID, OwnerID: j.Endpoint.Owner, BindingID: j.BindingID, BindingEpoch: j.BindingEpoch, LeaseExpiresAt: j.LeaseExpiresAt, SessionToken: j.SessionToken, codexDomainBinding: codexDomainBinding{LocalDomainVersion: q.LocalDomainVersion, LocalDomain: q.LocalDomain}}); err != nil {
 				return err
 			}
 		}

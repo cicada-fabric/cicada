@@ -9,6 +9,7 @@ import (
 
 func syntheticMCPGroupRoute(hub, network, group string) mcpGroupRoute {
 	return mcpGroupRoute{Pin: LocalNodeConnectionPin{HubID: hub, APIOrigin: "https://" + hub + ".synthetic.invalid", NodeID: "SYNTHETIC-node",
+		Binding:  LocalNodeBinding{HubKeyID: "SYNTHETIC-" + hub + "-hub-key", HubFingerprint: strings.Repeat("b", 64), HubKeyVersion: 1},
 		StateDir: "/SYNTHETIC/" + hub, MCPSessionStateFile: "/SYNTHETIC/" + hub + "/sessions", MCPOutboxStateFile: "/SYNTHETIC/" + hub + "/outbox"},
 		Native:    mcpTrustedContext{Harness: "codex", NativeSessionID: "SYNTHETIC-original-thread", NodeID: "SYNTHETIC-node", Workspace: "/SYNTHETIC/workspace"},
 		NetworkID: network, GroupID: group, EndpointID: "SYNTHETIC-" + hub + "-endpoint", OwnerID: "SYNTHETIC-owner", PrincipalID: "SYNTHETIC-" + hub + "-principal", RegistrationDigest: strings.Repeat("a", 64), RegistrationRevision: 1}
@@ -66,7 +67,7 @@ func TestMCPOriginalSenderReadOnlyLookupSurvivesGrantAndLocalEpochChange(t *test
 	current := original
 	current.GroupID = "" // A registered sender survives its last Group removal.
 	current.RegistrationRevision++
-	current.Pin.ConnectionID, current.Pin.ConnectionEpoch = "SYNTHETIC-connection", 7
+	current.Pin.ConnectionID, current.Pin.ConnectionEpoch = strings.Repeat("d", 32), 7 // synthetic managed ID
 	current.Pin.Binding.BindingVersion++
 	got, err := resolveMCPOriginalSenderRoute([]mcpGroupRoute{current}, original)
 	if err != nil || got != current {
@@ -82,6 +83,9 @@ func TestMCPOriginalSenderReadOnlyLookupSurvivesGrantAndLocalEpochChange(t *test
 		func(r *mcpGroupRoute) { r.NetworkID = "SYNTHETIC-other-network" },
 		func(r *mcpGroupRoute) { r.Pin.NodeID = "SYNTHETIC-other-node"; r.Native.NodeID = r.Pin.NodeID },
 		func(r *mcpGroupRoute) { r.Native.NativeSessionID = "SYNTHETIC-other-thread" },
+		func(r *mcpGroupRoute) { r.Pin.Binding.HubKeyID = "SYNTHETIC-cloned-hub-key" },
+		func(r *mcpGroupRoute) { r.Pin.Binding.HubFingerprint = strings.Repeat("c", 64) },
+		func(r *mcpGroupRoute) { r.Pin.Binding.HubKeyVersion++ },
 	} {
 		changed := current
 		mutate(&changed)

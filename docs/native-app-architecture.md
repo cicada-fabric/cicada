@@ -743,3 +743,28 @@ offers reauthorization; pending state offers exact recovery. Both precede old
 Connect/setup decisions. One consent checkbox is tied to the current review and
 is cleared on submission, scope change and input reset. These source behaviors
 need separate actual service and physical Windows acceptance.
+
+
+## Node Group routing consumer — preparation (2026-11-04)
+
+The Node MCP facade is separate from the App's selected Hub management view.
+It retains one existing 73-tool schema and distinct verified per-Hub children,
+then routes this actual native Thread's selected Group through its original
+Network/Hub. Session/outbox state, tickets, nonce and HTTP pools stay per child;
+the existing shared native delivery owner/serial writer is unchanged. Cross-Hub
+Group selection does not isolate the original Thread's memory or create a new
+native SID. See the [local consumer contract](native-endpoint-directory-contract.md#local-multi-hub-mcp-facade-contract--2026-11-04).
+
+Private route hints cannot grant rights. Cold/unavailable selection remains
+retained without falling back to a remaining Hub. Exact historical operation
+reads are distinct from dispatch authorization and retain original Hub crypto
+trust. Only the verified explicit Manager adoption receipt may bridge an old
+unmanaged pin to its exact managed epoch 1; credential-store pins, old DB fence,
+original packets and uncertain intents remain retained. New calls still require
+fresh original-sender context, current Group Guard and final managed epoch check.
+
+Front/Hook/CLI selector and storage-adapter components now bind the reviewed
+Manager list/adoption APIs from `c55f17d` through their formal default entries. Synthetic
+private peer producers do not qualify current NPT, production Hub authority,
+Manager lifecycle or native Runtime. These remain **IN_PROGRESS / NOT_RUN** in
+this checkpoint's independent acceptance lanes.

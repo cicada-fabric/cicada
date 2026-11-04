@@ -25,10 +25,11 @@ var errCodexOperatorIntentBusy = errors.New("CODEX_OPERATOR_INTENT_BUSY: another
 var errCodexOperatorIntentResponse = errors.New("CODEX_OPERATOR_INTENT_RESPONSE_INVALID: original command retained")
 
 type codexOperatorIntentClient struct {
-	path     string
-	mu       sync.Mutex
-	exchange func(string, localEndpointRequest) (*localEndpointResult, error)
-	persist  func(string, []byte, string) error
+	path            string
+	mu              sync.Mutex
+	exchange        func(string, localEndpointRequest) (*localEndpointResult, error)
+	persist         func(string, []byte, string) error
+	adoptConnection codexAdoptionResolver
 }
 
 type codexOperatorIntentDisk struct {
@@ -223,7 +224,7 @@ func (c *codexOperatorIntentClient) originalVerifiedCommand(q localEndpointReque
 		if p == nil {
 			return nil
 		}
-		if p.NodeID != nodeID || !sameCodexOperatorConnectionPin(pin, p.ConnectionPin) {
+		if p.NodeID != nodeID || !c.sameConnectionPin(pin, p.ConnectionPin) {
 			return errCodexOperatorIntentConflict
 		}
 		old, current := p.Request, q
@@ -255,7 +256,7 @@ func (c *codexOperatorIntentClient) pendingDomainJoin(q localEndpointRequest, no
 		if p == nil || (p.Request.LocalDomainVersion != 1 && p.Request.EndpointGroupsVersion != 1) || p.Request.Operation != "endpoint_register" {
 			return nil
 		}
-		if p.NodeID != nodeID || !sameCodexOperatorConnectionPin(pin, p.ConnectionPin) {
+		if p.NodeID != nodeID || !c.sameConnectionPin(pin, p.ConnectionPin) {
 			return errCodexOperatorIntentConflict
 		}
 		old, current := p.Request, q
@@ -303,7 +304,7 @@ func (c *codexOperatorIntentClient) prepareWithConnectionPin(q localEndpointRequ
 			if pin != nil && p.ConnectionPin == nil {
 				return ErrLocalNodeConfigRequired
 			}
-			if (pin == nil) != (p.ConnectionPin == nil) || pin != nil && !sameLocalNodeAuthority(*pin, *p.ConnectionPin) {
+			if !c.sameConnectionPin(pin, p.ConnectionPin) {
 				return ErrLocalNodeBindingChanged
 			}
 			if p.NodeID != nodeID || p.SemanticDigest != semantic {
@@ -446,7 +447,7 @@ func (c *codexOperatorIntentClient) callWithConnectionPin(socketPath string, q l
 	var cachedErr error
 	err = c.withLocked(func(disk *codexOperatorIntentDisk) error {
 		p := disk.Pending
-		if p == nil || p.Request != original || p.NodeID != nodeID || !sameCodexOperatorConnectionPin(pin, p.ConnectionPin) {
+		if p == nil || p.Request != original || p.NodeID != nodeID || !c.sameConnectionPin(pin, p.ConnectionPin) {
 			return errCodexOperatorIntentConflict
 		}
 		cached, cachedErr = p.Result, codexOperatorStoredError(p)
@@ -473,7 +474,7 @@ func (c *codexOperatorIntentClient) callWithConnectionPin(socketPath string, q l
 	}
 	err = c.withLocked(func(disk *codexOperatorIntentDisk) error {
 		p := disk.Pending
-		if p == nil || p.Request != original || p.NodeID != nodeID || p.IntentDigest != result.IntentDigest || !sameCodexOperatorConnectionPin(pin, p.ConnectionPin) {
+		if p == nil || p.Request != original || p.NodeID != nodeID || p.IntentDigest != result.IntentDigest || !c.sameConnectionPin(pin, p.ConnectionPin) {
 			return errCodexOperatorIntentConflict
 		}
 		if p.Result != nil {

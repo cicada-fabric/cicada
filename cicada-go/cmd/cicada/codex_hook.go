@@ -94,9 +94,16 @@ func runCodexHook(args []string, input io.Reader, output io.Writer) error {
 	}
 	switch event.Event {
 	case "PreToolUse":
+		if selection != nil && selection.HubID == "" && selection.NodeID == "" {
+			if input, ok := event.ToolInput[codexMCPContextArgument].(map[string]any); ok {
+				if _, routed := input["routing_version"]; routed {
+					return codexPreToolUseRouted(event, output, selection.UserRoot, ListVerifiedLocalNodeConnections, ResolveAdoptedLocalNodeConnection)
+				}
+			}
+		}
 		return codexPreToolUseWithSelection(event, output, selection)
 	case "UserPromptSubmit":
-		return codexUserPromptWithSelection(event, output, selection)
+		return codexUserPromptWithAdoption(event, output, selection, ResolveAdoptedLocalNodeConnection)
 	default:
 		return codexHookOutput(output, map[string]any{})
 	}
@@ -276,6 +283,10 @@ func codexUserPrompt(event codexHookInput, output io.Writer) error {
 }
 
 func codexUserPromptWithSelection(event codexHookInput, output io.Writer, selection *LocalNodeSelection) error {
+	return codexUserPromptWithAdoption(event, output, selection, nil)
+}
+
+func codexUserPromptWithAdoption(event codexHookInput, output io.Writer, selection *LocalNodeSelection, adopt codexAdoptionResolver) error {
 	command, matched, err := parseCodexOperatorPrompt(event.Prompt)
 	if !matched {
 		return codexHookOutput(output, map[string]any{})
@@ -324,6 +335,7 @@ func codexUserPromptWithSelection(event codexHookInput, output io.Writer, select
 	if connection != nil {
 		pin = &connection.Pin
 	}
+	storagePin := pin
 	intentPath := filepath.Join(filepath.Dir(base), "scopes", scope, "operator-intent.json")
 	var client *codexOperatorIntentClient
 	recoveringDomain := false
@@ -337,6 +349,7 @@ func codexUserPromptWithSelection(event codexHookInput, output io.Writer, select
 		if info != nil {
 			client, err = openCodexOperatorIntent(intentPath)
 			if err == nil {
+				client.adoptConnection = adopt
 				q, recoveringDomain, err = client.pendingDomainJoin(q, trusted.NodeID, pin)
 			}
 			if err != nil {
@@ -356,8 +369,11 @@ func codexUserPromptWithSelection(event codexHookInput, output io.Writer, select
 			if loadErr != nil {
 				return codexHookBlock(output, "Cicada 原缓存需要恢复，未创建替代状态。 / Restore the original Cicada cache; no replacement state was created.")
 			}
-			if err := validateCodexCachedConnection(cached, connection); err != nil {
+			if err := validateCodexCachedAdoption(cached, connection, adopt); err != nil {
 				return codexHookBlock(output, err.Error())
+			}
+			if cached != nil && cached.ConnectionPin != nil {
+				storagePin = cached.ConnectionPin
 			}
 		}
 		if command.operation == "endpoint_register" || command.operation == "endpoint_leave" && verifiedDomain.EndpointGroupsVersion == 1 {
@@ -372,6 +388,7 @@ func codexUserPromptWithSelection(event codexHookInput, output io.Writer, select
 			return codexHookBlock(output, "Cicada 原命令状态不可用；请重试上一条命令。 / Original Cicada command state is unavailable; retry the previous command.")
 		}
 	}
+	client.adoptConnection = adopt
 	q, err = client.originalVerifiedCommand(q, trusted.NodeID, pin)
 	if err != nil {
 		return codexHookBlock(output, "Cicada 原命令需要按原范围恢复，请精确重试上一条命令。 / Retry the exact previous Cicada command in its original scope.")
@@ -428,11 +445,14 @@ func codexUserPromptWithSelection(event codexHookInput, output io.Writer, select
 		store := newMCPSessionStateStore(base)
 		if recoveringDomain {
 			cached, loadErr := store.load(origin, coordinates)
-			if loadErr != nil || validateCodexCachedConnection(cached, connection) != nil {
+			if loadErr != nil || validateCodexCachedAdoption(cached, connection, adopt) != nil {
 				return codexHookBlock(output, "Cicada 原缓存需要恢复，未创建替代状态。 / Restore the original Cicada cache; no replacement state was created.")
 			}
+			if cached != nil && cached.ConnectionPin != nil {
+				storagePin = cached.ConnectionPin
+			}
 		}
-		if err := store.save(mcpCachedSession{ConnectionPin: pin, Scope: scope, APIOrigin: origin, Harness: trusted.Harness, NativeSessionID: trusted.NativeSessionID, NodeID: trusted.NodeID,
+		if err := store.save(mcpCachedSession{ConnectionPin: storagePin, Scope: scope, APIOrigin: origin, Harness: trusted.Harness, NativeSessionID: trusted.NativeSessionID, NodeID: trusted.NodeID,
 			Workspace: trusted.Workspace, GroupID: joined.Endpoint.GroupID, EndpointID: joined.Endpoint.ID, OwnerID: joined.Endpoint.Owner,
 			BindingID: joined.BindingID, BindingEpoch: joined.BindingEpoch, LeaseExpiresAt: joined.LeaseExpiresAt, SessionToken: joined.SessionToken, codexDomainBinding: codexDomainBinding{LocalDomainVersion: q.LocalDomainVersion, LocalDomain: q.LocalDomain}}); err != nil {
 			return codexHookBlock(output, "Cicada 接入结果尚未安全保存，原命令已保留。请精确重试。 / Cicada connection state is not safely saved; the original command is retained for retry.")

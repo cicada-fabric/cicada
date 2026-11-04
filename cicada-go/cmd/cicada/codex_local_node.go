@@ -14,6 +14,17 @@ func newLocalNodeMCPServer(selection LocalNodeSelection) (*mcpServer, error) {
 	if err != nil {
 		return nil, codexLocalNodeError(err)
 	}
+	server, err := newLocalNodeChildMCPServer(connection)
+	if err != nil {
+		return nil, err
+	}
+	server.adoptConnection = ResolveAdoptedLocalNodeConnection
+	return server, nil
+}
+
+// The caller obtained this exact connection from verified discovery. A child
+// retains its own session, outbox, transport pool and immutable Node pin.
+func newLocalNodeChildMCPServer(connection LocalNodeConnection) (*mcpServer, error) {
 	p := connection.Pin
 	server := newMCPServerWithPaths(p.APIOrigin, "", p.MCPSessionStateFile, p.MCPOutboxStateFile)
 	server.localNode = &connection

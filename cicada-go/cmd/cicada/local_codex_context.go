@@ -403,32 +403,48 @@ func machineAgentJoinSocketOwnerOrZero(info os.FileInfo) (uint32, bool) {
 }
 
 func requestLocalNodeOperation(socketPath string, q any) (*localJoinResponse, error) {
+	return requestLocalNodeOperationContext(context.Background(), socketPath, q)
+}
+
+func requestLocalNodeOperationContext(ctx context.Context, socketPath string, q any) (*localJoinResponse, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if err := validateMachineAgentJoinSocketForDial(socketPath); err != nil {
 		return nil, errLocalJoinBridgeUnavailable
 	}
-	c, err := net.DialTimeout("unix", socketPath, 2*time.Second)
+	c, err := (&net.Dialer{Timeout: 2 * time.Second}).DialContext(ctx, "unix", socketPath)
 	if err != nil {
-		return nil, errLocalJoinBridgeUnavailable
+		return nil, localNodeOperationContextError(ctx, errLocalJoinBridgeUnavailable)
 	}
 	defer c.Close()
-	_ = c.SetDeadline(time.Now().Add(35 * time.Second))
+	stop := context.AfterFunc(ctx, func() { _ = c.Close() })
+	defer stop()
+	deadline := time.Now().Add(35 * time.Second)
+	if parent, ok := ctx.Deadline(); ok && parent.Before(deadline) {
+		deadline = parent
+	}
+	_ = c.SetDeadline(deadline)
 	if err := json.NewEncoder(c).Encode(q); err != nil {
-		return nil, errLocalJoinBridgeUnavailable
+		return nil, localNodeOperationContextError(ctx, errLocalJoinBridgeUnavailable)
 	}
 	if u, ok := c.(*net.UnixConn); ok {
 		if err := u.CloseWrite(); err != nil {
-			return nil, errLocalJoinBridgeUnavailable
+			return nil, localNodeOperationContextError(ctx, errLocalJoinBridgeUnavailable)
 		}
 	}
 	d := json.NewDecoder(io.LimitReader(c, 2<<20))
 	d.DisallowUnknownFields()
 	var r localJoinResponse
 	if d.Decode(&r) != nil || r.Version != localJoinProtocolVersion {
-		return nil, errors.New("invalid local Node response")
+		return nil, localNodeOperationContextError(ctx, errors.New("invalid local Node response"))
 	}
 	var extra any
 	if d.Decode(&extra) != io.EOF {
-		return nil, errors.New("invalid local Node response framing")
+		return nil, localNodeOperationContextError(ctx, errors.New("invalid local Node response framing"))
 	}
 	if r.Error != "" {
 		return &r, errors.New(r.Error)
@@ -436,8 +452,23 @@ func requestLocalNodeOperation(socketPath string, q any) (*localJoinResponse, er
 	return &r, nil
 }
 
+func localNodeOperationContextError(ctx context.Context, fallback error) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	// Socket and Context deadlines may become observable in either order.
+	if deadline, ok := ctx.Deadline(); ok && !time.Now().Before(deadline) {
+		return context.DeadlineExceeded
+	}
+	return fallback
+}
+
 func requestMachineAgentCodexContextIssue(socketPath string, q localCodexContextIssue) (*localCodexContextIssueResult, error) {
-	r, err := requestLocalNodeOperation(socketPath, q)
+	return requestMachineAgentCodexContextIssueContext(context.Background(), socketPath, q)
+}
+
+func requestMachineAgentCodexContextIssueContext(ctx context.Context, socketPath string, q localCodexContextIssue) (*localCodexContextIssueResult, error) {
+	r, err := requestLocalNodeOperationContext(ctx, socketPath, q)
 	if err != nil {
 		return nil, err
 	}
@@ -448,7 +479,11 @@ func requestMachineAgentCodexContextIssue(socketPath string, q localCodexContext
 }
 
 func requestMachineAgentCodexContextConsume(socketPath string, q localCodexContextConsume) (*localCodexContextConsumeResult, error) {
-	r, err := requestLocalNodeOperation(socketPath, q)
+	return requestMachineAgentCodexContextConsumeContext(context.Background(), socketPath, q)
+}
+
+func requestMachineAgentCodexContextConsumeContext(ctx context.Context, socketPath string, q localCodexContextConsume) (*localCodexContextConsumeResult, error) {
+	r, err := requestLocalNodeOperationContext(ctx, socketPath, q)
 	if err != nil {
 		return nil, err
 	}

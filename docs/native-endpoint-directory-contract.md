@@ -1664,3 +1664,87 @@ with additional 64/224/560 KiB profile packet bounds. The inventory defines all
 new closed Node result field orders. The Hub candidate installs these bounded
 Node handlers behind the existing authenticated RPC route; a completed native
 Runtime gate remains a separate result.
+
+
+## Local multi-Hub MCP facade contract — 2026-11-04
+
+This is a local consumer addition; it does not change Hub wire versions,
+account capabilities or caller authorization. The original **73** tool names
+remain one schema. Only `cicada_groups` and `cicada_use_group` gain optional
+exact `hub_id` / `network_id` qualifiers. `group_id` remains mandatory for
+`cicada_use_group`; unknown fields and malformed qualifiers refuse. Qualifiers,
+original opaque cursor and every other business argument stay in the complete
+Hook/Node argument digest. They are never stripped or rewritten for a child.
+The self IPC independently compares any qualifier with its authenticated
+registration's Hub and Network before returning a result.
+
+An installation facade enumerates only verified live Node connections through
+the local Manager API, with at most eight children. Each retains its original
+pin, Hub cryptographic trust, Node identity, private session/outbox files,
+one-use ticket authority and HTTP pool. One parent connection has a fresh
+random nonce. Each child has a domain-separated nonce bound to that parent
+and its opaque immutable-pin route ID. The closed routed context is version 1,
+at most 8 KiB / eight children, with exact route ID, child nonce and opaque
+ticket fields. The trusted Host event supplies the original SID/cwd/transcript;
+MCP arguments supply neither caller identity nor connection configuration.
+
+Ordinary calls issue a fresh ticket only to their selected original child.
+Read-only `cicada_groups` may issue distinct tickets concurrently, with a shared
+8-second Hook budget including enumeration; each child is attempted once in
+that request. The facade concurrently consumes/reads the authorized children
+under a shared 18-second budget. It retains unavailable children as
+`UNAVAILABLE`, sets `complete=false`, and never invents a default Hub. A failed
+or removed selected connection cannot fall back to another live child. The
+parent reports flat qualified Group cards plus per-Hub status and original
+page cursors. A nonempty cursor in a multi-Hub installation requires exact
+qualification; it is sent unchanged to that original Hub. A partial page never
+proves a Group absent. Exact Group selection follows the existing targeted
+Node select under its original deadline; subsequent calls preserve that selected
+scope and its final Node/Hub Guard, including Groups beyond the first 64 rows.
+
+Private routing hints contain no bearer, ticket, packet or private key. Their
+key uses the actual verified native harness/SID/cwd evidence; the fresh Node
+context still verifies the original transcript and registration. Cold selection
+is retained as unverified metadata until the same original sender and current
+Guard succeed. OS UID/HOME do not establish a cloud account or memory isolation.
+With no retained parent choice, a single live child's already authenticated
+private cached Group selection may locate the original route. Only successful
+fresh verification and its existing Guard allow normalizing that old choice.
+A newly listed Group is never promoted automatically. Registered, unselected
+`whoami` may return only its verified self snapshot with
+`selection_required=true`. Existing single-Hub legacy behavior requires its
+original complete authenticated cache/scope. A retained unavailable parent
+choice always takes precedence over this compatibility path.
+
+Operation IDs are located in original private outboxes by the actual native
+sender; matching IDs in multiple Hubs refuse ambiguity. Read-only lookup uses
+SQLite read-only WAL visibility and verifies the original Hub key ID,
+fingerprint/version, origin, Node, native coordinates, Endpoint, Principal,
+registration digest and saved Network. A cloned Hub ID/origin with another key
+cannot supply an old result. Historical reads do not require the old membership
+or local connection epoch to equal a current grant. Retry retains original
+operation/input bytes, idempotency key, Group and complete source binding. It
+cannot borrow a new grant; the original Node repeats its targeted current-source
+Guard before dispatch. An unseen partial page does not itself authorize a retry
+or establish absence. The explicit retry's original scope is temporary for
+that invocation and never changes the Thread's persisted current Group.
+
+Explicit `from-service` adoption is the only pin bridge. The common Manager
+verifies the protected original-pin-to-exact-connection/epoch-1 receipt and live
+state for each private adapter use. Shared pin equality stays strict. Session
+storage keeps its previous pin; the outbox retains its original DB fence and
+packet/WAL bytes; uncertain operator intents retain their original request and
+pin. Actual calls still use the managed live child and final epoch fence.
+Changed keys, paths, sender, epoch 2, removal or re-add cannot borrow this proof.
+Linux `join` / `leave` accept `--hub ALIAS` mutually exclusively with
+`--hub-id`: exact unique ENABLED management metadata is only a selector, followed
+by full live Resolve and connection/fence comparison. Native record verification
+and original intent recovery still establish the caller; CLI arguments alone
+do not prove identity or grant access.
+
+Implementation status: the production facade factory and default installed MCP/Hook
+now bind the reviewed Manager verified-list and adoption APIs from `c55f17d`.
+Linux join/leave bind the real list/adoption functions as well. Synthetic private
+peer producers cover the consumer path; actual current NPT/Hub Guard, shared
+native writer, Docker, real Runtime, Windows and public acceptance remain
+separately **NOT_RUN** until their independent scoped receipts execute.

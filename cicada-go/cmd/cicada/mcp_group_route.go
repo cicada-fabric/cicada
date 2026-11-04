@@ -36,6 +36,9 @@ func validMCPSenderRoute(route mcpGroupRoute) bool {
 		!localContextHex(route.RegistrationDigest, 64) {
 		return false
 	}
+	if !localContextText(route.Pin.Binding.HubKeyID, 256) || !localContextHex(route.Pin.Binding.HubFingerprint, 64) || route.Pin.Binding.HubKeyVersion == 0 {
+		return false
+	}
 	for _, id := range []string{route.Pin.HubID, route.Pin.NodeID, route.NetworkID, route.EndpointID, route.OwnerID, route.PrincipalID} {
 		if !localContextText(id, 256) {
 			return false
@@ -118,13 +121,16 @@ func resolveMCPOriginalGroupRoute(routes []mcpGroupRoute, original mcpGroupRoute
 
 type mcpOriginalSender struct {
 	HubID, APIOrigin, NetworkID, EndpointID, OwnerID, PrincipalID string
+	HubKeyID, HubFingerprint                                      string
+	HubKeyVersion                                                 uint64
 	Native                                                        mcpTrustedContext
 	RegistrationDigest                                            string
 }
 
 func (route mcpGroupRoute) originalSender() mcpOriginalSender {
 	return mcpOriginalSender{HubID: route.Pin.HubID, APIOrigin: route.Pin.APIOrigin, NetworkID: route.NetworkID, EndpointID: route.EndpointID,
-		OwnerID: route.OwnerID, PrincipalID: route.PrincipalID, Native: route.Native, RegistrationDigest: route.RegistrationDigest}
+		OwnerID: route.OwnerID, PrincipalID: route.PrincipalID, Native: route.Native, RegistrationDigest: route.RegistrationDigest,
+		HubKeyID: route.Pin.Binding.HubKeyID, HubFingerprint: route.Pin.Binding.HubFingerprint, HubKeyVersion: route.Pin.Binding.HubKeyVersion}
 }
 
 // This locates the original sender for read-only local history/reconciliation,

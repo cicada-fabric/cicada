@@ -65,6 +65,21 @@ func decodeCodexRoutedContext(raw []byte, parentNonce string, expected map[strin
 		len(value.Children) != len(expected) {
 		return zero, errCodexMCPContext
 	}
+	// encoding/json matches struct fields case-insensitively. The envelope
+	// uses exact field names, so reject aliases as well as unknown fields.
+	var shape map[string]json.RawMessage
+	if json.Unmarshal(raw, &shape) != nil || len(shape) != 3 || shape["connection_nonce"] == nil || shape["routing_version"] == nil || shape["children"] == nil {
+		return zero, errCodexMCPContext
+	}
+	var children []map[string]json.RawMessage
+	if json.Unmarshal(shape["children"], &children) != nil {
+		return zero, errCodexMCPContext
+	}
+	for _, child := range children {
+		if len(child) != 3 || child["route_id"] == nil || child["connection_nonce"] == nil || child["ticket"] == nil {
+			return zero, errCodexMCPContext
+		}
+	}
 	seen := make(map[string]bool, len(expected))
 	seenNonces := make(map[string]bool, len(expected))
 	for _, child := range value.Children {

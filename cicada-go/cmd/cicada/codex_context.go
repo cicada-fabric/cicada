@@ -98,6 +98,10 @@ func codexArgumentsDigest(arguments map[string]any) (string, error) {
 }
 
 func (m *mcpServer) contextualMCPTools() []map[string]any {
+	if m.codexFacade != nil {
+		tools, _ := codexRoutedMCPTools(m.codexFacade.nonce)
+		return tools
+	}
 	tools := cicadaMCPTools()
 	if m.codexContext == nil {
 		return tools
@@ -123,13 +127,29 @@ func (m *mcpServer) contextualMCPTools() []map[string]any {
 }
 
 func (m *mcpServer) callContextualTool(name string, arguments map[string]any) (any, error) {
+	return m.callContextualToolVerified(name, arguments, nil)
+}
+
+// The callback runs only inside the consumed child's active context, after
+// fresh self-view validation and before any business operation. It cannot
+// replace the signed business map, tool, Node issuer or connection nonce.
+type codexVerifiedToolCall func(harness.SessionContext, localCodexContext, *localEndpointGroupsResult, map[string]any) (any, error)
+
+func (m *mcpServer) callContextualToolVerified(name string, arguments map[string]any, call codexVerifiedToolCall) (any, error) {
+	return m.callContextualToolVerifiedContext(context.Background(), name, arguments, call)
+}
+
+func (m *mcpServer) callContextualToolVerifiedContext(callCtx context.Context, name string, arguments map[string]any, call codexVerifiedToolCall) (any, error) {
+	if callCtx == nil {
+		callCtx = context.Background()
+	}
 	state := m.codexContext
 	if state == nil {
 		return nil, errCodexMCPContext
 	}
 	state.callMu.Lock()
 	defer state.callMu.Unlock()
-	if err := revalidateCodexLocalNode(context.Background(), m.localNode); err != nil {
+	if err := revalidateCodexLocalNode(callCtx, m.localNode); err != nil {
 		m.stopCodexHeartbeat()
 		m.clearSessionMemory()
 		return nil, err
@@ -158,11 +178,17 @@ func (m *mcpServer) callContextualTool(name string, arguments map[string]any) (a
 		return nil, err
 	}
 	socketPath := m.joinSocketPath(harness.SessionContext{MachineID: state.nodeID})
-	consumed, err := requestMachineAgentCodexContextConsume(socketPath, localCodexContextConsume{
+	consumed, err := requestMachineAgentCodexContextConsumeContext(callCtx, socketPath, localCodexContextConsume{
 		Version: localJoinProtocolVersion, Operation: "codex_context_consume", APIOrigin: m.baseURL,
 		ConnectionNonce: nonce, ToolName: name, ArgumentsDigest: digest, Ticket: ticket,
 	})
 	if err != nil || consumed == nil {
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+			return nil, err
+		}
+		if cause := callCtx.Err(); cause != nil {
+			return nil, cause
+		}
 		return nil, errCodexMCPContext
 	}
 	verifiedDomain, err := codexContextBinding(consumed.Context)
@@ -211,9 +237,16 @@ func (m *mcpServer) callContextualTool(name string, arguments map[string]any) (a
 		state.mu.Unlock()
 	}()
 	defer m.reconcileCodexHeartbeat()
+	if call != nil && isMCPFacadeOperationStatus(name) && verifiedDomain.EndpointGroupsVersion == 1 {
+		return call(context, consumed.Context, nil, business)
+	}
+	var fresh *localEndpointGroupsResult
 	if verifiedDomain.EndpointGroupsVersion == 1 {
-		fresh, err := m.refreshEndpointGroupsSession(context)
+		fresh, err = m.refreshEndpointGroupsSessionContext(callCtx, context)
 		if err != nil {
+			if cause := callCtx.Err(); cause != nil {
+				return nil, cause
+			}
 			return nil, err
 		}
 		state.mu.Lock()
@@ -223,6 +256,9 @@ func (m *mcpServer) callContextualTool(name string, arguments map[string]any) (a
 		if err := m.restoreSession(context); err != nil {
 			return nil, err
 		}
+	}
+	if call != nil {
+		return call(context, consumed.Context, fresh, business)
 	}
 	return m.callToolWithContext(name, business)
 }

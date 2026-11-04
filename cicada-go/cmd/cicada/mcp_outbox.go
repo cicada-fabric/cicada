@@ -674,6 +674,9 @@ func (m *mcpServer) ensureMCPOutbox() (*mcpOutboxStore, error) {
 		m.outbox = newMCPOutbox(path)
 		m.outbox.connectionPin = m.localNodePin()
 	}
+	if err := m.bridgeOriginalOutbox(); err != nil {
+		return nil, err
+	}
 	return m.outbox, nil
 }
 
