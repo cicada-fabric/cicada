@@ -10918,3 +10918,151 @@ original receipt. This gate is existing Client/Hub compatibility over disposable
 TCP; it does not establish real user profiles, Windows GUI/DPAPI/ACL, physical
 Hub switching or background Runtime behavior. Root performs package review and
 user delivery separately. No deployment or real-key/state change was made.
+
+## Voluntary self-App unbinding: independent acceptance preparation (2026-11-04)
+
+The frozen protocol is [app-hub-binding-v1](app-hub-binding-contract.md), shared
+codec checkpoint `ee84a480d8de6a22b9afc26c7fc1e8e75b7e1e49`. QA's linked worktree
+is `v01-app-unbind-qa`, branch `task/v01-app-unbind-qa`, based on the encrypted
+device-generation checkpoint `bb08031766be112e350ed6bdeda902c3c2e79ad9` after
+Root-authorized fast forwards. QA owns only
+`cicada-go/internal/appcore/app_unbind_acceptance_test.go` and this validation
+document. Hub and App owners implement production behavior. The new HTTP/Core
+acceptance is **NOT_RUN** at this preparation checkpoint; protocol and vault
+component results below do not establish an unbind or rebind acceptance pass.
+
+The assets are the original Owner/Root identity, per-Hub App signing/KEM keys,
+account/device/client epochs, retained original packets and authenticated
+receipts, original Node provenance and existing Group authority. Adversaries
+include a retained old App key or session, wrong Owner/device/Hub, delayed or
+replayed requests, concurrency, unauthenticated intermediaries, response loss,
+process interruption and failed local persistence. The trusted fixture boundary
+is the synthetic host and original full Hub/Owner public pins. Public capability
+discovery and account login confer no Root authority. No Control inference or
+native/model Runtime is needed to perform the identity ceremony or traffic
+probes.
+
+The approved distinction is narrow: an Owner-proved voluntary **UNBOUND**
+tombstone permits only its exact historical Node provenance to continue under
+current Root/account/restore/key/version fences. Generic **REVOKED** is never
+equivalent. Subsequent security revocation must close that exception. Rebind
+uses the original previous-device ID and unbind digest, one replacement maximum,
+fresh candidate keys and independent Owner proof. **BOUND_ZERO** supplies no
+account session, Node management lease or transferred business authority.
+Unknown complete outcomes recover only the original ciphertext; an unsigned
+HTTP error is not a terminal result. A saved authenticated completion must
+survive failure before atomic local device promotion and recover without another
+POST or candidate key.
+
+The private precontract inventory remains immutable and **PREPARATION_ONLY**:
+`v01-app-unbind-qa/precontract-20261104T054759Z-v060nw4x/` under private evidence.
+Its `preparation-receipt.json` SHA-256 is
+`4f34ff6c6efae923a9491f031eeb7b59338e657aaab5057cb7f13e2633897bd4`.
+It records the original 18 cases, source hashes and then-unresolved contracts;
+the later approved-direction supplement adds expired-complete case UA19. The
+following mapping updates the intended oracles without relabelling those
+unexecuted records as passing evidence.
+
+| Cases | Required independent oracle | Execution at preparation |
+| --- | --- | --- |
+| UA01–UA03 | Exact current self scope and explicit review; wrong Hub/Owner/key/session/epoch cannot mutate the target | NOT_RUN; Hub/Core production cases must be attributed separately |
+| UA04–UA07 | Lost committed response and cold reopen retain byte-identical original; duplicate/conflicting requests have one durable effect; local persistence failure cannot erase custody | NOT_RUN; narrow real-HTTP/Core tests planned |
+| UA08 | Pre-existing uncertain account/Client/Node/Group writes block a new unbind; recover that original first, with no replacement or silent discard | NOT_RUN; independent Core refusal/recovery case planned, operation-family server guards remain Hub scope |
+| UA09 | A separately authorized App B keeps its own authority and keys; no account-wide revocation or copied enrollment | NOT_RUN; requires supported independent enrollment fixture |
+| UA10 | Same current NPT ACK Node heartbeat and existing Group traffic work before/after voluntary unbind, using fresh ciphertext, claim and final authorization | NOT_RUN; independent real-TLS/SQLite/crypto path prepared |
+| UA11–UA12 | Genuine security revoke blocks fresh heartbeat/traffic; retained old App keys/session/history never grant fresh authority | NOT_RUN; same original-provenance negative control planned |
+| UA13 | Offline, unsigned 403/429/503, malformed or foreign receipt never creates success or deletes an uncertain request | NOT_RUN; actual forward/drop transport with authenticated recovery planned |
+| UA14 | Sole Owner follows the explicit rebind path, retains Owner identity and promotes exactly one fresh generation into BOUND_ZERO | NOT_RUN; saved-completion-before-promotion fault and cold zero-POST recovery planned |
+| UA15–UA16 | Hub/profile/generation scope, bounds and history retention hold; historical receipts never restore current authority | NOT_RUN for HTTP/Core; component-only checks below are scoped separately |
+| UA17 | Control remains unused and login/capabilities never become Root | NOT_RUN for the new ceremony; no Runtime is started by the selected fixture |
+| UA18 | Exact source, commands, exits, hashes and cleanup accompany every result | Windows GUI/DPAPI/ACL, physical device, native Runtime and public HTTPS NOT_RUN |
+| UA19 | Real expired Complete returns an authenticated durable REJECTED closed result, with no mutation or endless unsigned-403 recovery loop | NOT_RUN; use the Hub owner's trusted Store clock seam and actual HTTP, never a forged challenge/result |
+
+The dedicated test file uses the existing build tag
+`cicada_scoped_app_integration`. Its current scoped NPT SDK actors perform real
+ACK, distinct native sessions and independent Endpoint keys. Traffic obtains
+fresh peer/current evidence, validates original Owner-signed policies and Node
+grants, sends a newly sealed message with advancing sequence, claims the actual
+stored ciphertext, validates the exact delivery attempt and decrypts under the
+original receiver key. A status assertion cannot pass on timeout, rate limit or
+malformed transport. These are controlled SDK actors, not real Node/Runtime or
+Windows execution. Tests and the sole existing disposable client interop gate
+are owned by Root after the Hub/Core source freeze; QA has not run either gate.
+
+Root's component-only execution on clean `bb080317` is **SCOPED_PASS / 0**:
+13 top-level targets / 41 terminal pass events, zero failure/skip, 29.466s.
+The exact command from `cicada-go` is
+`go test -json -mod=readonly -p=1 -count=1 -timeout=180s ./internal/appvault ./internal/hubaccountwire -run '^(TestAppDevice.*|TestAppBinding.*)$'`.
+Receipt `v01-app-unbind-root-20261104/component-tests/result.json`, SHA-256
+`bf8cb9ea90e092c11ad8e1ce43863a3d90061799838cd3eb4a70a0a397af2676`;
+log SHA-256
+`934cab1e177ec3d2b42c1cb02454363b372d18659465cf8fb551ea5e3656bc92`.
+Source inputs remained stable. This proves codec/vault components only.
+
+The producer's broad App regression remains **FAIL / 1**, with 32 top-level
+failures. Its selected failed-name set was independently compared against the
+producer's clean `55fb1754f2962ad21e59e56bc662e4a72a56f165` rerun: 32/32 exact
+names match, 40.354s / exit 1. Receipt
+`n2-app/unbind-vault-20261104/clean-baseline-failed-set.json`, SHA-256
+`159d10b7f96126120dddef4d7d814ee64c145d570f1d2190c1ed68552b4506bc`;
+log SHA-256
+`be970ca739411b84593e1333e6506bff061ca589c621280404df4ce4b6df7e76`.
+That selected baseline rerun is not a full baseline pass. The broad log did not
+enable `cicada_scoped_app_integration` and executed zero `TestScopedApp` targets;
+its legacy Node-actor failures establish neither a pass nor a failure for the
+new scoped HTTP fixture. QA does not rewrite unrelated legacy fixtures.
+
+The independently authored draft now has seven top-level targets, selected by
+`go test -json -mod=readonly -p=1 -count=1 -tags=cicada_scoped_app_integration -run '^TestAppUnbind' ./internal/appcore`
+from `cicada-go`. This is the **proposed replay command, NOT_EXECUTED** by QA;
+Root runs the focused check against the integrated frozen source with its
+offline toolchain, read-only shared modules and private build/evidence paths.
+Its actual timeout, environment, exit code and source inventory must accompany
+the eventual execution receipt. The seven targets cover prior uncertain scoped
+original refusal/recovery; lost Complete with Hub/App reopen, real traffic and
+security revoke; sole-Owner completion-before-promotion failure; fake Owner
+without prepare; expired Complete through real Core/HTTP; strict writer-time
+deadline; and bounded prepare admission/chronological GC.
+
+Root's additional review findings are represented by explicit negative tests:
+a PQ-valid fake Owner without an admitted prepare must allocate no permanent
+receipt or authority state; after an original UNBOUND or REJECTED, changing the
+Complete ID/nonce while reusing the binding proof must allocate no second floor,
+while the exact original still returns the identical receipt. Expiry coverage
+separates real HTTP writer-time refusal from trusted Store boundary probes.
+The historical fixture admits a genuine Hub challenge and independent Owner
+proof using the trusted Store clock, then persists only that authenticated
+pending original in the App vault. Complete was issued one second before the
+challenge deadline, so its timestamp remains fresh when actual HTTP rejects the
+expired challenge. Core must save the genuine rejection, settle uncertainty,
+retain the old keys/session and stay settled after cold reopen. No terminal
+state, fabricated response or SQL mutation is injected. Separate Store probes
+exercise deadline minus/exact/plus one nanosecond, and finite per-device prepare
+capacity with canonical integral and `.1` timestamps. They are controlled-clock
+tests, not elapsed physical-time expiry or native execution. All these new
+targets remain **NOT_RUN** until the integrated source is actually tested.
+
+Root subsequently authorized QA to fast-forward the Hub carrier
+`a4a5c3344f64a8832f204294c262bbd601cd1263` and App consumer
+`96d9c9f9b34916593c5ee4f2f06bd4a58a035eb1`. QA's new acceptance file then
+completed **COMPILE_ONLY_PASS / 0**, 102.728s; all seven test targets remain
+**NOT_RUN**. Exact source was `96d9c9f9` **dirty=true**, including the new test
+file, whose SHA-256 is
+`3574815da1dcb3de6af80e67d360acc2133ba73bec96d1b0b542ffeb8908c91a`.
+The full Go/module/sum inventory stayed identical before/after compilation;
+`source-before.json` SHA-256 is
+`077aaa96c133f34b5fff5609dff7eba6e9d97c623bc2d6aaa501bbd6d8d08a41`.
+The check used `go test -c -mod=readonly -p=1 -tags=cicada_scoped_app_integration -o /out/appcore-acceptance.test ./internal/appcore`
+in the pinned offline Go 1.27.3 image, with read-only source/modules, private
+build/temp/output directories, `CGO_ENABLED=0`, `GOTOOLCHAIN=local`,
+`GOPROXY=off`, `GOSUMDB=off`, `GOWORK=off`, `GOENV=off` and `GOMAXPROCS=2`.
+This generated a test binary without executing it; it was not the disposable
+client interop gate. The exact Docker argv and evidence are retained in
+`v01-app-unbind-qa/compile-20261104T064658Z-38xmnlf6/result.json`, SHA-256
+`46d42bae0fceb09000a110956244000bd4951e020a838adbc27f719be772d033`.
+Binary SHA-256 is
+`8035512e5da988960ed77b8b24ce83a7326a23b5e79e69353720a64adbd2e837`.
+The single owned container is **EXACT_ABSENT**; no shared state, deployment or
+keys were changed. Root owns the next actual focused execution and client
+Docker gate. Windows GUI/DPAPI/ACL, physical device, native Runtime and public
+HTTPS remain **NOT_RUN**.
