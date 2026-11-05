@@ -63,29 +63,34 @@ portable production renderer, enabling real Gio layout/input tests without an
 OS window. This is not a non-Windows GUI entry point or physical Windows/IME,
 DPAPI/ACL, Runtime or public HTTPS acceptance.
 
-## Thread Network, Owner roles and Group protocol locks — target 2026-11-05
+## Thread Network, Owner roles and Group protocol locks — 2026-11-05
 
-Status: **CONFIRMED_TARGET / CONSUMER_CONTRACT_PENDING** on consumer base
-`381842d`. The internal read-only projection and Gio noticeboard are implemented;
-live reads, roles, policy and lock operations are not connected. Every original
+Status: **OWNER_APP_CONSUMER_IMPLEMENTED / SCOPED_VALIDATION** on integrated
+backend base `43c071c`. Core and Gio connect the approved typed Owner read,
+prepare, explicit apply and original recovery operations. Native MCP/CLI
+integration and end-to-end availability acceptance remain separate; public
+capabilities stay gated by the backend. Every original
 Thread is limited to one Network; one physical Node can serve multiple Networks
 for different Threads. Owner assigns roles:
 Worker is limited to one Group, while Advisor and Manager roles may have
 several Groups within the Thread's single Network. Role assignment does not
 itself expand business permissions. The Hub/Node contract and adopted-spec
-alignment are owned by the Hub implementation and require Root review before
-these consumer changes connect. Earlier multi-Network implementation/evidence
+alignment are owned by the Hub implementation; this consumer uses the approved
+shared packet constructors and verifiers. Earlier multi-Network implementation/evidence
 keeps its source attribution.
 
 Each Group has eight generic protocol lock slots. A slot records occupancy, an
 authorized holder identity and optional free-form purpose text for the Group's
 own coordination. Slots are not bound to a physical resource, GPU, Task or FIFO
 queue, and their protocol state does not establish execution isolation. The
-existing task-bound ResourceLease is a different facility. Disconnected-holder
-retention versus expiry remains an unanswered lifecycle question; this consumer
-design specifies neither a timeout nor automatic release/renewal.
+existing task-bound ResourceLease is a different facility. Confirmed lifecycle:
+held slots expire automatically with default TTL 300 seconds or an explicit
+1..3600 seconds. AI members deliberately release when finished and deliberately
+renew when more time is needed. Refreshing does neither. Cicada records the
+protocol state; members contact the visible holder themselves, and Cicada does
+not judge actual usage. There is no hidden renewal or occupancy-based release.
 
-The App places a read-only eight-slot noticeboard in the existing authorized
+The App places an eight-slot noticeboard in the existing authorized
 Group detail under Sessions, using the delivered sidebar, secondary actions,
 small-window scrolling and disclosed technical identifiers. It shows only
 authenticated, readable holder/purpose/status data and observation freshness.
@@ -104,13 +109,27 @@ the Endpoint. Native MCP/CLI consumers use the common Node NativeContextRegistry
 decision; local profiles, labels and session filenames are not another identity
 authority. The Windows Owner App uses its own authenticated Hub read/management
 path, without impersonating a remote Thread. Public availability still does not
-authorize a caller. New public DTOs/routes/tools await the approved typed contract.
+authorize a caller. The Owner App does not use the native Host proof boundary.
 
-The display-only checkpoint adds no I/O or actions. Existing read consumers leave
+The Core persists each exact encrypted request before POST and reserves receipt
+and recovery capacity under the existing vault limits. Transport errors and
+unsigned HTTP failures preserve uncertainty. Restart recovery reuses the saved
+original or its saved authenticated query; only a verified original receipt or
+authenticated no-effect fence settles it. Apply pins the exact prepared review,
+Owner/device/session and expected versions. Gio places consent, Apply and Back
+in the fixed footer, with technical source/version details disclosed separately.
+The implemented Owner actions classify/narrow a unique-Network Thread, create a
+Group with policy, enable/revoke policy, and clear one exact live slot, including
+under a revoked policy. Role and board reads retain independent freshness.
+
+The earlier display-only checkpoint added no I/O or actions. Existing read consumers leave
 the board absent until an approved adapter supplies scoped data and `CanView`.
 Eight fixed positions project unknown/missing/stale rows as UNKNOWN and redact
 their holder/purpose; no display timer decides lock expiry. EN/ZH Gio disclosure
 uses actual layout, pointer and wheel handling, retaining the delivered shell.
+With the confirmed TTL rule, the App displays observed expiry and resamples its
+snapshot at that deadline without I/O. Core invalidates an expired HELD observation
+to UNKNOWN; only a new authenticated read establishes FREE or a new holder.
 
 ## Composable installation and shared authority target
 

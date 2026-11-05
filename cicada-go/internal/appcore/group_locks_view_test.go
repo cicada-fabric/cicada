@@ -13,6 +13,7 @@ func syntheticGroupLockBoard() GroupLockBoardView {
 		b.Slots[i] = GroupLockSlotView{Number: i + 1, State: GroupLockFree, Version: uint64(i + 1)}
 	}
 	b.Slots[0].State, b.Slots[0].HolderName, b.Slots[0].Purpose = GroupLockHeld, "SYNTHETIC holder", "SYNTHETIC optional purpose"
+	b.Slots[0].ExpiresAt = "2026-11-05T00:05:00Z"
 	return b
 }
 
@@ -36,7 +37,7 @@ func TestGroupLockProjectionNeverTurnsMissingOrStaleIntoFree(t *testing.T) {
 			}
 			projected := ProjectGroupLockBoard(b)
 			for i, slot := range projected.Slots {
-				if slot.Number != i+1 || slot.State != GroupLockUnknown || slot.HolderName != "" || slot.Purpose != "" {
+				if slot.Number != i+1 || slot.State != GroupLockUnknown || slot.HolderName != "" || slot.Purpose != "" || slot.ExpiresAt != "" {
 					t.Fatal("missing/stale data became available or moved to another slot")
 				}
 			}
@@ -44,8 +45,9 @@ func TestGroupLockProjectionNeverTurnsMissingOrStaleIntoFree(t *testing.T) {
 	}
 	b := syntheticGroupLockBoard()
 	b.Slots[1].HolderName = "SYNTHETIC stale holder"
+	b.Slots[1].Purpose, b.Slots[1].ExpiresAt = "SYNTHETIC stale note", "2026-11-05T00:05:00Z"
 	projected := ProjectGroupLockBoard(b)
-	if projected.Slots[0] != b.Slots[0] || projected.Slots[1].State != GroupLockFree || projected.Slots[1].HolderName != "" {
+	if projected.Slots[0] != b.Slots[0] || projected.Slots[1].State != GroupLockFree || projected.Slots[1].HolderName != "" || projected.Slots[1].Purpose != "" || projected.Slots[1].ExpiresAt != "" {
 		t.Fatal("projection changed confirmed holding or attached a holder to FREE")
 	}
 }
@@ -78,7 +80,7 @@ func TestGroupLockSnapshotClonesAndRedactsItsDisplayPermission(t *testing.T) {
 
 func TestGroupLockBoardCannotOutliveParentAuthority(t *testing.T) {
 	now := time.Date(2026, 11, 5, 0, 0, 0, 0, time.UTC)
-	for _, mode := range []string{"fresh", "expired-read", "pending", "expired-login"} {
+	for _, mode := range []string{"fresh", "expired-read", "pending", "expired-login", "expired-hold"} {
 		t.Run(mode, func(t *testing.T) {
 			b := syntheticGroupLockBoard()
 			s := Snapshot{
@@ -96,6 +98,8 @@ func TestGroupLockBoardCannotOutliveParentAuthority(t *testing.T) {
 				s.ThreadGroups.Pending = true
 			case "expired-login":
 				s.Account.SessionExpiresAt = now.Format(time.RFC3339Nano)
+			case "expired-hold":
+				b.Slots[0].ExpiresAt = now.Format(time.RFC3339Nano)
 			}
 			expireThreadGroupsView(&s, now)
 			if mode == "expired-login" {
@@ -111,7 +115,7 @@ func TestGroupLockBoardCannotOutliveParentAuthority(t *testing.T) {
 				}
 				return
 			}
-			if board.Current || board.Slots[0].State != GroupLockUnknown || board.Slots[0].HolderName != "" || board.Slots[0].Purpose != "" {
+			if (mode != "expired-hold" && board.Current) || board.Slots[0].State != GroupLockUnknown || board.Slots[0].HolderName != "" || board.Slots[0].Purpose != "" || board.Slots[0].ExpiresAt != "" {
 				t.Fatal("pending/expired parent retained current lock metadata")
 			}
 		})

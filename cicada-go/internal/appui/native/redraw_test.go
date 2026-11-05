@@ -35,6 +35,29 @@ func redrawFrame(snapshot appcore.Snapshot, now time.Time) (time.Time, bool) {
 	return router.WakeupTime()
 }
 
+func TestNativeRedrawGroupLockExpiryOnlyResamplesObservation(t *testing.T) {
+	now := time.Date(2026, 11, 5, 0, 0, 0, 0, time.UTC)
+	deadline := now.Add(time.Minute)
+	b := &appcore.GroupLockBoardView{CanView: true, Current: true}
+	b.Slots[0] = appcore.GroupLockSlotView{Number: 1, State: appcore.GroupLockHeld, ExpiresAt: deadline.Format(time.RFC3339Nano)}
+	s := appcore.Snapshot{ThreadGroups: appcore.ThreadGroupsSnapshot{Current: true, Selected: &appcore.GroupThreadView{Relations: []appcore.ThreadGroupRelation{{Locks: b}}}}}
+	if at, wake := redrawFrame(s, now); !wake || !at.Equal(now.Add(time.Second)) {
+		t.Fatal("held slot countdown did not schedule a display-only frame")
+	}
+	if at, wake := redrawFrame(s, deadline); !wake || !at.IsZero() {
+		t.Fatal("crossed slot expiry lost its resample")
+	}
+	b.Slots[0] = appcore.GroupLockSlotView{Number: 1, State: appcore.GroupLockUnknown}
+	if _, wake := redrawFrame(s, deadline); wake {
+		t.Fatal("expired unknown row caused an idle redraw loop")
+	}
+	b.Slots[0] = appcore.GroupLockSlotView{Number: 1, State: appcore.GroupLockHeld, ExpiresAt: deadline.Format(time.RFC3339Nano)}
+	b.CanView = false
+	if _, wake := redrawFrame(s, deadline); wake {
+		t.Fatal("hidden board scheduled a private deadline")
+	}
+}
+
 func TestNativeRedrawLocalCollaborationDeadlinesResampleOnce(t *testing.T) {
 	now := time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC)
 	deadline := now.Add(time.Minute)

@@ -99,10 +99,64 @@ The cross-built App test artifact SHA-256 is
 `77e152b9c682ff3304d9cb20fd192ad1b94f02f32e5a762bb457743096f16c52`.
 `source-after-tests.json` records zero changes across 1825 Go/module files.
 
-Thread Network/role/lock scope — **CONFIRMED_TARGET / CONSUMER_CONTRACT_PENDING**,
-2026-11-05, consumer base `381842d`. Internal read-only projection/Gio layout is
-implemented; live reads, Owner roles/policy and slot operations remain
-**NOT_IMPLEMENTED**:
+Thread Network/role/lock scope — **OWNER_APP_CONSUMER_IMPLEMENTED /
+SCOPED_VALIDATION**, 2026-11-05, integrated backend base `43c071c`.
+Core/Gio implement authenticated Owner reads, role classification, policy
+management, exact one-slot clearing and restart recovery. Native MCP/CLI and
+actual Store/Guard/Runtime acceptance remain pending separately; the backend's
+public availability flags remain gated until that integration completes.
+
+The Owner App uses shared packet constructors and verification, its retained
+local Owner key and the encrypted vault. It persists before first POST and
+reserves receipt/query capacity within existing vault limits. Apply requires the
+exact current review and explicit consent; signed effect verification precedes
+management success. Lost responses and unsigned HTTP errors retain the original.
+Recovery replays saved original/query bytes; authenticated original no-effect
+fences alone can end uncertainty without an effect. Fresh reads are required
+after mutation. Role and board observations have independent freshness; local
+TTL expiry invalidates HELD to UNKNOWN without sending or inferring FREE.
+OwnerClear uses the observed exact version/generation/holder and remains usable
+for a live slot under revoked policy. Core also supports create-with-policy.
+Gio exposes role, policy and one-slot clear reviews with fixed consent/Apply/Back
+footer and folded technical identifiers, in English and Chinese.
+
+Owner Core/Gio validation — **SCOPED_PASS**, 2026-11-05. Tested dirty compile
+inputs on `43c071cd0d114d742bf8acffe99bff744e9bae5b`, not that HEAD alone.
+Evidence: `/home/zyf/Cicada/.local/evidence/n2-app/owner-coordination-core-c3qqjeeq/`.
+The `go list`-derived `source.json` covers 1281 repository compile-input files
+for these App lanes, SHA-256
+`914e4e294041fc7f536789e5c032c4a79ef03f1165fe82f37a6865009f2347eb`.
+Uncompiled `cmd/cicada` MCP/CLI WIP is explicitly excluded. Post-test hashes and
+index blobs match all 1281 inputs; this is not a whole-repository suite result.
+
+- Go 1.27.3 normal and race each passed 19 top-level / 71 named results,
+  zero failures and zero skips. The focused regex is
+  `^Test(Coordination|GroupLock|ThreadGroups|NativeRedrawGroupLock|CatalogParity)`:
+  appcore 12/25, appui 1/1, native 6/45 (top-level/named).
+- Synthetic PQC Hub actors exercise actual Controller/vault/shared codecs:
+  exact role/policy/slot-eight consent; apply/query response loss and restart;
+  unsigned HTTP denial retaining the original; independent read freshness;
+  revoked-policy clear and stale generation; UTC clock boundaries at ±31s and
+  ±10ms. These actors are not actual Store/Guard/Runtime acceptance.
+- Production Gio pointer/wheel tests reach role selection, policy and slot-eight
+  actions, disclosure and fixed consent/Apply/Back in EN/ZH at 1100×1200 / 100%
+  and 640×480 / 200%. Changed/fenced reviews cannot reuse consent; Enter alone
+  cannot approve. Local redraw/expiry never dispatches a network operation.
+- `go vet` passed for appcore, appui, native and `cmd/cicada-app`. Windows amd64
+  `-trimpath -ldflags=-H=windowsgui` cross-build passed, artifact SHA-256
+  `717ee1fa7038eb76247914cc7c8a121ceabf371eabda70d9f4f7341fb73bd994`.
+- Disposable Docker interop, actual native Runtime/f.tool, public HTTPS, Android,
+  physical Windows GUI/IME/DPAPI/ACL and new rendered PNG scenes are **NOT_RUN**
+  in this checkpoint. Public capability gates and installed/resident state were
+  not changed. Native MCP/CLI consumer work continues in a separate checkpoint.
+
+Root-authorized dependency replay, 2026-11-05: unpublished display checkpoint
+`39b8e6b82547cfbb6eed7eff58d67b69050cfc52` was replayed as
+`b6fa465e80dac2e9ff351d5c61ab5474563a58a0` on approved shared contract
+`a00b6391ede9d773773c268af0c277c823fe75fa`. Its earlier 1832-file display
+validation remains attributed to the original dirty source manifest below,
+not to the replay or the later consumer implementation. Current consumer WIP
+was saved and restored without dropping existing changes.
 
 - Every original Thread has one Network; a machine may serve multiple Networks
   through different Threads. Owner assigns Worker/Advisor/Manager roles.
@@ -110,26 +164,29 @@ implemented; live reads, Owner roles/policy and slot operations remain
   Groups within that same Network. Roles do not grant extra business rights.
 - Each Group has eight generic protocol lock slots, showing holder, optional
   free-form purpose and status. The Group agrees its own use; these are not
-  resource/Task/GPU locks or FIFO waiting places. The sole pending user question
-  is how a held slot behaves after holder disconnection: retained versus TTL.
-  No timeout, automatic release or renewal rule is chosen here.
+  resource/Task/GPU locks or FIFO waiting places. The final lifecycle decision is
+  automatic release at TTL expiry: default 300 seconds, explicit 1..3600 seconds.
+  AI members deliberately release when finished and renew when needed. Cicada
+  records the state without judging actual usage; members contact the visible
+  holder by name. Reads never acquire or renew, and no hidden renewal is added.
 - Existing task-bound ResourceLease has management Acquire and Fabric
   release/renew/quarantine, with no native/MCP Acquire or eight-slot model. It
   will not be relabeled as this new protocol lock. The Hub owns shared protocol,
-  Node enforcement, backend and `CICADA.md`; Root must review its contract before
-  App/MCP/CLI/skill integration. Old dated results are not renewed authorization.
+  Node enforcement, backend and `CICADA.md`; App integration uses Root's approved
+  contract on `43c071c`. Native consumer acceptance remains separate. Old dated
+  results are not renewed authorization.
 
-Consumer file/design preparation: extend the App core's existing exact Owner
-review, encrypted record and recovery mechanisms with separate lock/role
-consumers; add the noticeboard to `appui/native/thread_groups.go` through a
-focused Group-lock view; reuse current i18n/secondary/scrolling presentation.
+Consumer implementation extends the App core's existing exact Owner review,
+encrypted record and recovery mechanisms with separate lock/role consumers;
+the noticeboard in `appui/native/thread_groups.go` reuses the current
+i18n/secondary/scrolling presentation.
 MCP/CLI use the original selected Hub/Network/Group, fresh native proof and
 common Node decision, without another profile-based identity registry. Windows
 Owner App read/management uses its own Hub authentication, not a remote Thread's
 native proof. The single skill source stays
 `.agents/plugins/cicada/skills/cicada-network/SKILL.md`.
-New tool names, DTOs, grants, paths and errors await the approved shared contract.
-No parallel protocol or lock implementation is prepared in this checkpoint.
+Core/Gio use the approved shared contract without a parallel protocol or lock
+implementation. Native consumer work is a separate checkpoint.
 
 The read-only Group noticeboard must not acquire a slot or infer eight free
 slots from missing data. Acquisition is a separate explicit atomic operation;
@@ -147,6 +204,8 @@ absent, malformed or stale slot data never becomes FREE. Existing read consumers
 leave it nil, preserving delivered behavior until an approved adapter connects.
 The EN/ZH Sessions disclosure renders eight rows with holder, optional purpose,
 observed time and disclosed snapshot version; viewing/scrolling emits no request.
+TTL follow-up adds the observed expiry and a local redraw deadline: expiry makes
+the old HELD observation UNKNOWN, with no acquire/renew/release or inferred FREE.
 
 Backend/physical acceptance remains **NOT_RUN** in this display checkpoint:
 
@@ -155,7 +214,7 @@ Backend/physical acceptance remains **NOT_RUN** in this display checkpoint:
 | Single Thread / machine scope | A second Network for the same original Thread refuses without identity changes; another Thread on that machine may use another Network. Legacy multi-Network history stays fenced. |
 | Owner roles / membership | Worker second-Group addition refuses; approved Advisor/Manager multi-Group use remains scoped to one Network. Self-reported roles do not alter authority. |
 | Eight protocol slots | One concurrent claim wins a slot, other claims report busy; Group/Network scopes remain distinct and read-only views never acquire. |
-| Persistence / uncertainty | Persist before send, recover identical original after lost response/restart, and reject stale authority without rebinding. Disconnection lifecycle cases remain undefined until answered. |
+| Persistence / uncertainty | Persist before send, recover identical original after lost response/restart, and reject stale authority without rebinding. TTL expiry, explicit renewal/release and stale generation must preserve the exact original result. |
 | Native presentation | Real Gio layout/input checks for eight read-only rows, stale/unavailable data and narrow/DPI behavior are recorded below. Role consent remains pending consumer integration; physical Windows and real Runtime remain separate. |
 
 Display-only validation — **SCOPED_PASS**, 2026-11-05: tested the dirty source

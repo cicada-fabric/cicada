@@ -19,13 +19,15 @@ func groupLockLayoutSnapshot() appcore.Snapshot {
 	s.Account.State, s.Account.RootState, s.Account.LocalOwnerKeyPresent = appcore.AccountStateOwnerReady, appcore.RootStateActive, true
 	s.Node.Pairing = nil
 	s.Node.Binding = &appcore.NodeBindingSnapshot{NodeID: "SYNTHETIC-lock-node", Name: "SYNTHETIC computer"}
-	b := &appcore.GroupLockBoardView{CanView: true, Current: true, Version: 7, ObservedAt: time.Now().UTC().Format(time.RFC3339Nano)}
+	observed := time.Now().UTC()
+	b := &appcore.GroupLockBoardView{CanView: true, Current: true, Version: 7, ObservedAt: observed.Format(time.RFC3339Nano)}
 	for i := range b.Slots {
 		b.Slots[i] = appcore.GroupLockSlotView{Number: i + 1, Version: uint64(i), State: appcore.GroupLockFree}
 		if i%2 == 0 {
 			b.Slots[i].State = appcore.GroupLockHeld
 			b.Slots[i].HolderName = "SYNTHETIC holder"
 			b.Slots[i].Purpose = "SYNTHETIC optional protocol note"
+			b.Slots[i].ExpiresAt = observed.Add(5 * time.Minute).Format(time.RFC3339Nano)
 		}
 	}
 	thread := appcore.GroupThreadView{EndpointID: "SYNTHETIC-endpoint", Name: "SYNTHETIC Thread", RelationsComplete: true, Relations: []appcore.ThreadGroupRelation{{GroupID: "SYNTHETIC-group", Name: "SYNTHETIC Group", State: "ACTIVE", Locks: b}}}
@@ -88,7 +90,8 @@ func TestGroupLockBoardEightRowsAreReadOnlyAndScrollable(t *testing.T) {
 				if pixels.X == 640 {
 					scale = 2
 				}
-				v, r := newLayoutView(t, groupLockLayoutSnapshot())
+				s := groupLockLayoutSnapshot()
+				v, r := newLayoutView(t, s)
 				v.locale = locale
 				layoutFrame(v, r, pixels, scale)
 				v.workspacePage = "sessions"
@@ -105,6 +108,9 @@ func TestGroupLockBoardEightRowsAreReadOnlyAndScrollable(t *testing.T) {
 					if _, ok := semanticLabel(nodes, label); !ok {
 						t.Fatalf("slot %d missing from actual production board", i)
 					}
+				}
+				if _, ok := semanticLabel(nodes, appui.Text(locale, "locks.expires")+": "+displayNodeTime(s.ThreadGroups.Selected.Relations[0].Locks.Slots[0].ExpiresAt)); !ok {
+					t.Fatal("held slot did not disclose its observed expiry")
 				}
 				last := fmt.Sprintf("%s 8 · %s", appui.Text(locale, "locks.slot"), appui.Text(locale, "locks.free"))
 				scrollLockLabel(t, v, r, pixels, scale, last, false)

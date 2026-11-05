@@ -47,6 +47,34 @@ func scheduleSnapshotRedraw(gtx layout.Context, snapshot appcore.Snapshot, now t
 	consider(snapshot.LocalCollaboration.ReviewExpiresAt, slices.Contains(snapshot.AvailableActions, appcore.ActionActivateLocalCollaboration))
 	consider(snapshot.LocalCollaboration.ExpiresAt, snapshot.LocalCollaboration.State == "ACTIVE")
 	consider(snapshot.OwnerEndpoints.ParkAfter, snapshot.OwnerEndpoints.Pending && !slices.Contains(snapshot.AvailableActions, appcore.ActionParkOwnerEndpoints))
+	consider(snapshot.Coordination.FreshUntil, slices.Contains(snapshot.AvailableActions, appcore.ActionPrepareCoordination))
+	if review := snapshot.Coordination.Review; review != nil {
+		consider(review.ExpiresAt, review.CanApply)
+	}
+	if snapshot.ThreadGroups.Current {
+		lockDeadlines := func(thread appcore.GroupThreadView) {
+			for _, relation := range thread.Relations {
+				if board := relation.Locks; board != nil && board.CanView && board.Current {
+					for _, slot := range board.Slots {
+						if slot.State == appcore.GroupLockHeld {
+							consider(slot.ExpiresAt, true)
+							if expiry, err := time.Parse(time.RFC3339Nano, slot.ExpiresAt); err == nil && now.Before(expiry) {
+								// Display-only countdown; this never dispatches a refresh
+								// or renewal and cannot extend the recorded lease.
+								consider(now.Truncate(time.Second).Add(time.Second).Format(time.RFC3339Nano), true)
+							}
+						}
+					}
+				}
+			}
+		}
+		for _, thread := range snapshot.ThreadGroups.Threads {
+			lockDeadlines(thread)
+		}
+		if thread := snapshot.ThreadGroups.Selected; thread != nil {
+			lockDeadlines(*thread)
+		}
+	}
 	if immediate {
 		gtx.Execute(op.InvalidateCmd{})
 	} else if scheduled {

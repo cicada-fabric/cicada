@@ -34,29 +34,34 @@ type ThreadGroupsSnapshot struct {
 }
 
 type GroupThreadView struct {
-	EndpointID        string
-	Name              string
-	Workspace         string
-	Harness           string
-	GestureID         string
-	Relations         []ThreadGroupRelation
-	RelationsComplete bool
-	RelationsCursor   string
+	EndpointID            string
+	Name                  string
+	Workspace             string
+	Harness               string
+	GestureID             string
+	Relations             []ThreadGroupRelation
+	RelationsComplete     bool
+	RelationsCursor       string
+	CanReadClassification bool
+	CoordinationGestureID string
+	Classification        *ThreadClassificationView `json:",omitempty"`
 }
 
 type ThreadGroupRelation struct {
-	GroupID           string
-	Name              string
-	State             string
-	KeyState          string
-	ExpiresAt         string
-	OwnerMode         string
-	DenyReason        string
-	CanRemove         bool
-	UnavailableReason string
-	GestureID         string
-	Contributions     []ThreadGroupContribution
-	Locks             *GroupLockBoardView `json:",omitempty"`
+	GroupID               string
+	Name                  string
+	State                 string
+	KeyState              string
+	ExpiresAt             string
+	OwnerMode             string
+	DenyReason            string
+	CanRemove             bool
+	UnavailableReason     string
+	GestureID             string
+	Contributions         []ThreadGroupContribution
+	Locks                 *GroupLockBoardView `json:",omitempty"`
+	CanReadCoordination   bool
+	CoordinationGestureID string
 }
 
 type ThreadGroupContribution struct {
@@ -157,7 +162,7 @@ func expireThreadGroupsView(view *Snapshot, now time.Time) {
 	if g.Current && !now.Before(parseExpiry(g.FreshUntil)) {
 		g.Current = false
 	}
-	projectThreadGroupLocks(g)
+	projectThreadGroupLocks(g, now)
 	view.AvailableActions = slices.DeleteFunc(view.AvailableActions, func(kind ActionKind) bool {
 		if !threadGroupActionKind(kind) {
 			return false
@@ -190,6 +195,10 @@ func expireThreadGroupsView(view *Snapshot, now time.Time) {
 func cloneThreadGroups(source ThreadGroupsSnapshot) ThreadGroupsSnapshot {
 	copy := source
 	cloneThread := func(thread GroupThreadView) GroupThreadView {
+		if source := thread.Classification; source != nil {
+			classification := *source
+			thread.Classification = &classification
+		}
 		thread.Relations = slices.Clone(thread.Relations)
 		for i := range thread.Relations {
 			thread.Relations[i].Contributions = slices.Clone(thread.Relations[i].Contributions)
@@ -213,17 +222,24 @@ func cloneThreadGroups(source ThreadGroupsSnapshot) ThreadGroupsSnapshot {
 		review := *source.Review
 		copy.Review = &review
 	}
-	projectThreadGroupLocks(&copy)
+	projectThreadGroupLocks(&copy, time.Time{})
 	return copy
 }
 
-func projectThreadGroupLocks(view *ThreadGroupsSnapshot) {
+func projectThreadGroupLocks(view *ThreadGroupsSnapshot, now time.Time) {
 	project := func(thread *GroupThreadView) {
 		for i := range thread.Relations {
 			if source := thread.Relations[i].Locks; source != nil {
 				board := *source
 				board.Current = board.Current && view.Current
 				board = ProjectGroupLockBoard(board)
+				for i, slot := range board.Slots {
+					if !now.IsZero() && slot.State == GroupLockHeld && !now.Before(parseExpiry(slot.ExpiresAt)) {
+						// A local clock can invalidate an old observation. Only a
+						// new authenticated read may establish that the slot is FREE.
+						board.Slots[i] = GroupLockSlotView{Number: slot.Number, State: GroupLockUnknown}
+					}
+				}
 				thread.Relations[i].Locks = nil
 				if board.CanView {
 					thread.Relations[i].Locks = &board

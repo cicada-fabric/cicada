@@ -153,6 +153,7 @@ type Snapshot struct {
 	Storage          StorageSnapshot         `json:"storage"`
 	OwnerEndpoints   OwnerEndpointSnapshot   `json:"owner_endpoints"`
 	ThreadGroups     ThreadGroupsSnapshot    `json:"thread_groups"`
+	Coordination     CoordinationSnapshot    `json:"coordination"`
 	Targets          TargetSelectionSnapshot `json:"targets"`
 
 	LocalCollaboration LocalCollaborationSnapshot `json:"local_collaboration"`
@@ -243,6 +244,7 @@ type Action struct {
 	Pair           PairAction
 	OwnerEndpoints OwnerEndpointReadAction
 	ThreadGroups   ThreadGroupAction
+	Coordination   CoordinationAction
 	NodeSelection  NodeSelectionAction
 
 	LocalCollaboration LocalCollaborationAction

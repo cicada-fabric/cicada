@@ -34,6 +34,11 @@ func (v *view) threadGroupsSection(s appcore.Snapshot) layout.Widget {
 			v.threadGroupConsent.Value = false
 		}
 		rows := []layout.FlexChild{layout.Rigid(v.headingRow(appui.Text(v.locale, "groups.title")))}
+		coordination, holds := v.coordinationStatusRows(s)
+		rows = append(rows, coordination...)
+		if holds {
+			return layout.Flex{Axis: layout.Vertical}.Layout(gtx, rows...)
+		}
 		nodeName, networkName := d.NodeName, d.NetworkName
 		if d.Review != nil {
 			nodeName, networkName = d.Review.NodeName, d.Review.NetworkName
@@ -98,6 +103,7 @@ func (v *view) threadGroupsSection(s appcore.Snapshot) layout.Widget {
 func (v *view) threadGroupRelations(s appcore.Snapshot) []layout.FlexChild {
 	d, t := s.ThreadGroups, s.ThreadGroups.Selected
 	rows := []layout.FlexChild{layout.Rigid(v.headingRow(appui.Text(v.locale, "groups.memberships")))}
+	rows = append(rows, v.threadClassificationRows(s)...)
 	rows = append(rows, v.publicFieldRows("groups/selected/", []appui.PublicField{
 		{Key: "directory.name", Value: safeDisplay(t.Name, 256)},
 		{Key: "directory.workspace", Value: safeDisplay(t.Workspace, 1024)},
@@ -145,10 +151,13 @@ func (v *view) threadGroupRelations(s appcore.Snapshot) []layout.FlexChild {
 				rows = append(rows, layout.Rigid(v.nodeCaption(appui.Text(v.locale, "groups.key_pending"))))
 			}
 		}
+		if r.CanReadCoordination {
+			rows = append(rows, layout.Rigid(v.coordinationButton(s, appcore.ActionReadGroupCoordination, "read-locks/"+r.GroupID, "coord.read_locks", appcore.CoordinationAction{GroupID: r.GroupID, GestureID: r.CoordinationGestureID}, true)))
+		}
 		if r.Locks != nil {
 			board := *r.Locks
 			board.Current = board.Current && d.Current
-			rows = append(rows, layout.Rigid(v.groupLockBoardEntry(s.Hub.HubID+"/"+d.NetworkID+"/"+t.EndpointID+"/"+r.GroupID, board)))
+			rows = append(rows, layout.Rigid(v.groupLockBoardEntry(s.Hub.HubID+"/"+d.NetworkID+"/"+t.EndpointID+"/"+r.GroupID, board, s, r.GroupID)))
 		}
 		if r.CanRemove {
 			rows = append(rows, layout.Rigid(v.threadGroupButton(s, appcore.ActionPrepareThreadGroup, "remove/"+r.GroupID, "groups.remove", appcore.ThreadGroupAction{GestureID: r.GestureID, Change: "REMOVE_ENDPOINT", EndpointID: t.EndpointID, GroupID: r.GroupID}, true)))

@@ -106,6 +106,7 @@ func (c *nativeController) registerScopedSelection(n *scopedNodeRecord) error {
 }
 
 func (c *nativeController) invalidateSelectedNodeViews() {
+	c.coordination.observations = nil
 	c.nodeChecked = false
 	c.localDomain.checkedTarget = ""
 	c.localDomain.state.View.Current = false

@@ -112,6 +112,10 @@ type view struct {
 	threadGroupSearch        widget.Editor
 	threadGroupDuration      widget.Enum
 	threadGroupConsent       widget.Bool
+	coordinationConsent      widget.Bool
+	coordinationReviewID     string
+	coordinationRoleScope    string
+	coordinationRole         widget.Enum
 }
 
 func newView(controller appcore.Controller, ctx context.Context, cancel context.CancelFunc, window nativeWindow) *view {

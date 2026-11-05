@@ -107,6 +107,7 @@ type nativeController struct {
 
 	localDomain  localDomainRuntime
 	threadGroups threadGroupsRuntime
+	coordination coordinationRuntime
 	scoped       scopedNodesRuntime
 }
 
@@ -173,6 +174,7 @@ func (c *nativeController) Snapshot() Snapshot {
 	expireLocalCollaborationView(&view, c.cfg.Now().UTC())
 	expireOwnerEndpointView(&view, c.cfg.Now().UTC())
 	expireThreadGroupsView(&view, c.cfg.Now().UTC())
+	expireCoordinationView(&view, c.cfg.Now().UTC())
 	expireTargetSelectionView(&view, c.cfg.Now().UTC())
 	return view
 }
@@ -227,6 +229,12 @@ func (c *nativeController) Dispatch(ctx context.Context, action Action) (dispatc
 	if c.appBindingHoldsBusiness() && !appBindingLocalAction(action.Kind) {
 		return ErrInvalidAction
 	}
+	if (c.hasCoordinationPending() || c.coordination.review != nil) && (nodeActionKind(action.Kind) || threadGroupActionKind(action.Kind) || pairActionKind(action.Kind) || localCollaborationActionKind(action.Kind) || ownerEndpointActionKind(action.Kind) || action.AutoNodeStatus != nil) {
+		return ErrInvalidAction
+	}
+	if coordinationActionKind(action.Kind) && (c.scopedBusy() || c.nodePairTrustBusy()) {
+		return ErrInvalidAction
+	}
 	if c.nodePairTrustBusy() && (nodeActionKind(action.Kind) || pairActionKind(action.Kind) || localCollaborationActionKind(action.Kind) || ownerEndpointActionKind(action.Kind) || action.AutoNodeStatus != nil) {
 		return ErrInvalidAction
 	}
@@ -277,6 +285,9 @@ func (c *nativeController) Dispatch(ctx context.Context, action Action) (dispatc
 	defer func() { stop(); cancel() }()
 	defer func() {
 		if dispatchErr == nil && !threadGroupActionKind(action.Kind) && !nodeActionKind(action.Kind) && !pairActionKind(action.Kind) && !ownerEndpointActionKind(action.Kind) && action.Kind != ActionExportOwnerPublic {
+			if coordinationActionKind(action.Kind) {
+				return
+			}
 			c.initializeNode(operationCtx)
 		}
 		if dispatchErr == nil && !threadGroupActionKind(action.Kind) && !localCollaborationActionKind(action.Kind) {
@@ -301,6 +312,16 @@ func (c *nativeController) Dispatch(ctx context.Context, action Action) (dispatc
 	switch action.Kind {
 	case ActionReadThreadGroups, ActionReadThreadRelations, ActionReadGroupCandidates:
 		return c.readThreadGroups(operationCtx, action.Kind, action.ThreadGroups)
+	case ActionReadThreadCoordination, ActionReadGroupCoordination:
+		return c.readCoordination(operationCtx, action.Kind, action.Coordination)
+	case ActionPrepareCoordination:
+		return c.prepareCoordination(operationCtx, action.Coordination)
+	case ActionApplyCoordination:
+		return c.applyCoordination(operationCtx, action.Coordination)
+	case ActionDismissCoordination:
+		return c.dismissCoordination(action.Coordination)
+	case ActionRecoverCoordination:
+		return c.recoverCoordination(operationCtx)
 	case ActionPrepareThreadGroup:
 		return c.prepareThreadGroup(operationCtx, action.ThreadGroups)
 	case ActionApplyThreadGroup:

@@ -184,7 +184,7 @@ func (c *nativeController) persistThreadGroupReview(original, response *threadGr
 
 func (c *nativeController) ensureThreadGroupsLoaded() error {
 	if c.threadGroups.loaded {
-		return nil
+		return c.ensureCoordinationLoaded()
 	}
 	if c.vault == nil {
 		return appvault.ErrClosed
@@ -259,7 +259,7 @@ func (c *nativeController) ensureThreadGroupsLoaded() error {
 		}
 	}
 	c.threadGroups.loaded = true
-	return nil
+	return c.ensureCoordinationLoaded()
 }
 
 func (c *nativeController) hasThreadGroupPending() bool {

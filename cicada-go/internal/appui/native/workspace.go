@@ -43,6 +43,9 @@ func (v *view) workspaceLayout(gtx layout.Context, s appcore.Snapshot, flow appu
 	if v.workspacePage == "devices" && s.Node.Pairing != nil {
 		actions = v.devicePairingActionRows(s)
 	}
+	if v.workspacePage == "sessions" && appcore.ThreadGroupsVisible(s, time.Now()) {
+		actions = v.coordinationActionRows(s)
+	}
 	return v.dockedPage(gtx, appui.Text(v.locale, "workspace."+v.workspacePage), rows, actions)
 }
 

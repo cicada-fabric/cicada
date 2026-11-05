@@ -351,6 +351,7 @@ func (c *nativeController) applyResponse(operation string, value any, request, r
 }
 
 func (c *nativeController) clearSession() {
+	c.coordination.observations = nil
 	c.threadGroups.view.Current = false
 	c.threadGroups.view.GestureID = ""
 	c.threadGroups.view.Review = nil
@@ -370,6 +371,7 @@ func (c *nativeController) clearSession() {
 }
 
 func (c *nativeController) clearRuntimeSecrets() {
+	c.clearCoordinationRuntime()
 	c.clearAppBindingRuntime()
 	c.clearThreadGroupsRuntime()
 	c.clearLocalDomainRuntime()
@@ -544,6 +546,7 @@ func (c *nativeController) publish() {
 		view.AvailableActions = kept
 	}
 	c.populateScopedNode(&view)
+	c.populateCoordination(&view)
 	c.populateAppBinding(&view)
 	if c.storageFault {
 		view.Phase = PhaseError
@@ -661,6 +664,11 @@ func cloneSnapshot(source Snapshot) Snapshot {
 	copy.Node = cloneNodeSnapshot(source.Node)
 	copy.OwnerEndpoints.Endpoints = append([]OwnerEndpointView(nil), source.OwnerEndpoints.Endpoints...)
 	copy.ThreadGroups = cloneThreadGroups(source.ThreadGroups)
+	if source.Coordination.Review != nil {
+		review := *source.Coordination.Review
+		review.Details = append([]CoordinationDetail(nil), source.Coordination.Review.Details...)
+		copy.Coordination.Review = &review
+	}
 	copy.Targets.Nodes = append([]SavedNodeView(nil), source.Targets.Nodes...)
 	copy.Targets.Networks = append([]SavedNetworkView(nil), source.Targets.Networks...)
 	return copy

@@ -108,6 +108,9 @@ func validateLocalTargets(d *localTargetDirectory) error {
 }
 
 func (c *nativeController) targetSelectionLocked() bool {
+	if c.hasCoordinationPending() || c.coordination.review != nil {
+		return true
+	}
 	return c.storageFault || c.profileRecoveryRequired || !canBeginOperation(c.state.Pending) || c.state.Recovery != nil || c.hasNodePending() || c.node.Proposal != nil || c.hasPairPending() || c.pairReview != nil || c.hasLocalDomainPending() || c.localDomain.state.View.State == wire.LocalDomainPrepared || c.hasThreadGroupPending() || c.threadGroups.review != nil || c.nodePairTrustBusy() || c.scopedBusy() || len(c.node.OwnerDirectoryUnknown) != 0
 }
 
