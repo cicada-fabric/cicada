@@ -98,7 +98,7 @@ func TestNativeContextHistoryFreshScopeReportsCicadaOnlyCoverage(t *testing.T) {
 	}
 }
 
-func TestNativeContextHistoryAcceptsGroupOnlyScopeWithoutNetworkID(t *testing.T) {
+func TestNativeContextHistoryRefusesUnresolvedGroupOnlyNetwork(t *testing.T) {
 	for _, policy := range []string{
 		NativeContextPolicyGroupScoped,
 		NativeContextPolicyDedicatedThread,
@@ -113,8 +113,8 @@ func TestNativeContextHistoryAcceptsGroupOnlyScopeWithoutNetworkID(t *testing.T)
 			input.NetworkID = ""
 			input.ContextPolicy = policy
 			decision, err := registry.CheckAndRecordNativeContext(context.Background(), input)
-			if err != nil || decision == nil || !decision.Accepted || decision.ContextPolicy != policy {
-				t.Fatalf("Group-only scope with no Network was rejected: decision=%#v err=%v", decision, err)
+			if !errors.Is(err, ErrNativeContextScopeConflict) || decision != nil {
+				t.Fatalf("unresolved Group-only Network was admitted: decision=%#v err=%v", decision, err)
 			}
 		})
 	}
