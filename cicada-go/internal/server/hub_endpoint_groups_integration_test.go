@@ -94,6 +94,10 @@ func (f *endpointGroupsHTTPFixture) nodeHTTP(t *testing.T, operation string, bod
 // the actual isolated TCP Router. It never installs test grants or invokes a
 // Runtime; new Endpoint Group requests use their real SDK and PQ envelopes.
 func endpointGroupsRealHTTP(t *testing.T) *endpointGroupsHTTPFixture {
+	return endpointGroupsRealHTTPBeforeKeys(t, nil)
+}
+
+func endpointGroupsRealHTTPBeforeKeys(t *testing.T, before func(*endpointGroupsHTTPFixture, int)) *endpointGroupsHTTPFixture {
 	t.Helper()
 	f := &endpointGroupsHTTPFixture{a: nativePairTCP(t)}
 	a := f.a
@@ -157,6 +161,9 @@ func endpointGroupsRealHTTP(t *testing.T) *endpointGroupsHTTPFixture {
 			t.Fatal(err)
 		}
 		a.pairHTTP(t, http.MethodPost, "/v2/fabric/endpoint-keys", "CicadaSession "+f.joins[i].SessionToken, f.domain.Policy.GroupID, map[string]any{"attestation": json.RawMessage(attestation)}, http.StatusOK)
+		if before != nil {
+			before(f, i)
+		}
 		f.sequence++
 		var keyChallenge wire.LocalDomainKeyChallenge
 		localDomainNodeHTTP(t, a, wire.OperationLocalDomainNodeKeyPrepare, f.sequence, wire.LocalDomainNodeKeyPrepare{ContractRevision: wire.LocalDomainContractRevision, Selection: selection, MemberID: m.MemberID, ExpectedRevision: m.Revision}, &keyChallenge)

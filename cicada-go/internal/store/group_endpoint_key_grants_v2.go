@@ -394,6 +394,15 @@ func readGroupEndpointKeyGrantManifest(tx *sql.Tx, ownerID, groupID, endpointID,
 // strict nonempty finite interval; delegated domain callers validate their own
 // signed persistent policy before using an optional expiry here.
 func readGroupEndpointKeyGrantSnapshotTx(tx *sql.Tx, ownerID, groupID, endpointID, ownerKeyID, issuedAt, expiresAt string, at time.Time) (*GroupEndpointKeyGrantManifest, error) {
+	return readGroupEndpointKeyGrantSnapshotWithAdmissionTx(tx, ownerID, groupID, endpointID, ownerKeyID, issuedAt, expiresAt, at, networkGuardGroupEndpointTx)
+}
+
+// Only an internal, already authenticated bootstrap may replace the admission
+// check. Ordinary previews retain the complete current business-source Guard.
+func readGroupEndpointKeyGrantSnapshotWithAdmissionTx(tx *sql.Tx, ownerID, groupID, endpointID, ownerKeyID, issuedAt, expiresAt string, at time.Time, admit func(*sql.Tx, string, string, string, time.Time) error) (*GroupEndpointKeyGrantManifest, error) {
+	if admit == nil {
+		return nil, ErrGroupEndpointKeyGrantScope
+	}
 	ownerKey, err := scanOwnerApprovalKey(tx.QueryRow(`SELECT owner_id, key_id, public_identity_json,
 state, version, created_at, updated_at, revoked_at FROM owner_approval_keys_v2
 WHERE owner_id = ? AND key_id = ?`, ownerID, ownerKeyID))
@@ -479,7 +488,7 @@ WHERE e.id = ?`, groupID, groupID, groupID, endpointID).Scan(
 			return nil, ErrGroupEndpointKeyGrantScope
 		}
 	}
-	if err := networkGuardGroupEndpointTx(tx, snapshot.principalID, endpointID, groupID, at); err != nil {
+	if err := admit(tx, snapshot.principalID, endpointID, groupID, at); err != nil {
 		return nil, ErrGroupEndpointKeyGrantScope
 	}
 	if err := requireCurrentOwnerBoundGroupNodeTx(tx, snapshot.endpointNodeID, ownerID, hubID); err != nil {

@@ -15,7 +15,29 @@ func localDomainGroupGrants() []string {
 }
 
 func localDomainProjectedManifestTx(tx *sql.Tx, p *hubLocalDomain, m wire.LocalDomainMember, issued string, at time.Time) (wire.LocalDomainKeyManifest, error) {
-	current, err := readGroupEndpointKeyGrantSnapshotTx(tx, p.policy.OwnerID, p.policy.GroupID, m.EndpointID, p.policy.OwnerPublic.ID, issued, p.policy.ExpiresAt, at)
+	admit := networkGuardGroupEndpointTx
+	if m.State == wire.LocalDomainMemberJoinedZero {
+		admit = func(tx *sql.Tx, principal, endpoint, group string, at time.Time) error {
+			if principal != m.PrincipalID || endpoint != m.EndpointID || group != p.policy.GroupID {
+				return ErrNetworkPermission
+			}
+			if _, err := localDomainMemberSnapshotTx(tx, p, m, at); err != nil {
+				return err
+			}
+			r, err := endpointGroupsManagedTx(tx, endpoint)
+			if err != nil {
+				return err
+			}
+			if r == nil {
+				return networkGuardGroupEndpointTx(tx, principal, endpoint, group, at)
+			}
+			if r.originPolicy != p.policy.PolicyID || r.originMember != m.MemberID || endpointGroupsRegistrationLeaseTx(tx, r, at) != nil || endpointGroupsDefaultAdmissionTx(tx, endpoint, group) != nil {
+				return ErrNetworkPermission
+			}
+			return threadCollaborationActivationTx(tx, r, group, at)
+		}
+	}
+	current, err := readGroupEndpointKeyGrantSnapshotWithAdmissionTx(tx, p.policy.OwnerID, p.policy.GroupID, m.EndpointID, p.policy.OwnerPublic.ID, issued, p.policy.ExpiresAt, at, admit)
 	if err != nil {
 		return wire.LocalDomainKeyManifest{}, err
 	}
