@@ -75,7 +75,7 @@ func TestCodexPluginInstallMaterializesOnlyFiles(t *testing.T) {
 	assets, expected := codexFixture(t)
 	args := append(f.installArgs("hub,node"), "--codex-plugin-assets", assets, "--codex-plugin-sha256", expected)
 	var output bytes.Buffer
-	if err := command(args, &output, f.target); err != nil {
+	if err := fileOnlyCommand(args, &output, f.target); err != nil {
 		t.Fatal(err)
 	}
 	var installed result
@@ -151,7 +151,7 @@ func TestCodexPluginInstallMaterializesOnlyFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := command(args, io.Discard, f.target); err != nil {
+	if err := fileOnlyCommand(args, io.Discard, f.target); err != nil {
 		t.Fatal("identical repeat", err)
 	}
 	after, err := os.ReadFile(filepath.Join(base, "node", manifestName))
@@ -235,7 +235,7 @@ func TestCodexPluginInvalidInputsDoNotCreateDestination(t *testing.T) {
 			if name != "missing-digest" {
 				args = append(args, "--codex-plugin-sha256", expected)
 			}
-			if err := command(args, io.Discard, f.target); err == nil {
+			if err := fileOnlyCommand(args, io.Discard, f.target); err == nil {
 				t.Fatal("accepted invalid asset installation")
 			}
 			if _, err := os.Lstat(f.prefix); !errors.Is(err, fs.ErrNotExist) {
@@ -278,7 +278,7 @@ func TestCodexPluginLegacyPromptHookRemainsOptionalAndStrict(t *testing.T) {
 				t.Fatal(err)
 			}
 			args := append(f.installArgs("node"), "--codex-plugin-assets", assets, "--codex-plugin-sha256", codexFixtureDigest(t, assets))
-			err = command(args, io.Discard, f.target)
+			err = fileOnlyCommand(args, io.Discard, f.target)
 			if name != "original-dual-hook" {
 				if err == nil {
 					t.Fatal("legacy prompt hook bypassed its original strict shape")
@@ -307,7 +307,7 @@ func TestCodexPluginChangedInstallRefusedAndRemovalPreservesState(t *testing.T) 
 	f := newFixture(t, platform{"linux", "amd64"}, "node")
 	assets, expected := codexFixture(t)
 	args := append(f.installArgs("node"), "--codex-plugin-assets", assets, "--codex-plugin-sha256", expected)
-	if err := command(args, io.Discard, f.target); err != nil {
+	if err := fileOnlyCommand(args, io.Discard, f.target); err != nil {
 		t.Fatal(err)
 	}
 	base := filepath.Join(f.prefix, "components", "node")
@@ -325,7 +325,7 @@ func TestCodexPluginChangedInstallRefusedAndRemovalPreservesState(t *testing.T) 
 		t.Fatal(err)
 	}
 	args[len(args)-1] = codexFixtureDigest(t, assets)
-	if err := command(args, io.Discard, f.target); err == nil {
+	if err := fileOnlyCommand(args, io.Discard, f.target); err == nil {
 		t.Fatal("changed source replaced an existing installation")
 	}
 	after, err := os.ReadFile(manifestPath)
@@ -340,7 +340,7 @@ func TestCodexPluginChangedInstallRefusedAndRemovalPreservesState(t *testing.T) 
 	if err := os.WriteFile(state, []byte("ORIGINAL STATE\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := command([]string{"remove", "--prefix", f.prefix, "--components", "node"}, io.Discard, f.target); err != nil {
+	if err := fileOnlyCommand([]string{"remove", "--prefix", f.prefix, "--components", "node"}, io.Discard, f.target); err != nil {
 		t.Fatal(err)
 	}
 	for _, file := range []string{unknown, state} {
@@ -357,12 +357,12 @@ func TestCodexPluginChangedInstallRefusedAndRemovalPreservesState(t *testing.T) 
 
 func TestCodexPluginOldInstallDoesNotUpgradeInPlace(t *testing.T) {
 	f := newFixture(t, platform{"linux", "amd64"}, "node")
-	if err := command(f.installArgs("node"), io.Discard, f.target); err != nil {
+	if err := fileOnlyCommand(f.installArgs("node"), io.Discard, f.target); err != nil {
 		t.Fatal(err)
 	}
 	assets, expected := codexFixture(t)
 	args := append(f.installArgs("node"), "--codex-plugin-assets", assets, "--codex-plugin-sha256", expected)
-	if err := command(args, io.Discard, f.target); err == nil {
+	if err := fileOnlyCommand(args, io.Discard, f.target); err == nil {
 		t.Fatal("adding plugin material upgraded an old installation")
 	}
 	if _, err := os.Lstat(filepath.Join(f.prefix, "components/node/share")); !errors.Is(err, fs.ErrNotExist) {
@@ -376,7 +376,7 @@ func TestCodexPluginMaterialTamperRefused(t *testing.T) {
 			f := newFixture(t, platform{"linux", "amd64"}, "node")
 			assets, expected := codexFixture(t)
 			args := append(f.installArgs("node"), "--codex-plugin-assets", assets, "--codex-plugin-sha256", expected)
-			if err := command(args, io.Discard, f.target); err != nil {
+			if err := fileOnlyCommand(args, io.Discard, f.target); err != nil {
 				t.Fatal(err)
 			}
 			base := filepath.Join(f.prefix, "components/node")
@@ -410,7 +410,7 @@ func TestCodexPluginMaterialTamperRefused(t *testing.T) {
 				}
 			}
 			for _, action := range []string{"list", "remove"} {
-				if err := command([]string{action, "--prefix", f.prefix, "--components", "node"}, io.Discard, f.target); err == nil {
+				if err := fileOnlyCommand([]string{action, "--prefix", f.prefix, "--components", "node"}, io.Discard, f.target); err == nil {
 					t.Fatal("accepted tampered installation", action)
 				}
 			}

@@ -88,6 +88,14 @@ func syntheticBinary(t *testing.T, target platform, component string) []byte {
 	return data
 }
 
+// Existing file-only fixtures opt out explicitly, just like package verification.
+func fileOnlyCommand(args []string, output io.Writer, target platform) error {
+	if len(args) > 0 && (args[0] == "install" || args[0] == "remove" || args[0] == "list") {
+		args = append(append([]string(nil), args...), "--shell-integration=off")
+	}
+	return command(args, output, target)
+}
+
 type fixture struct {
 	prefix, binary, licenses, sha string
 	target                        platform
@@ -159,7 +167,7 @@ func TestComponentSelfContainedVariantsOnly(t *testing.T) {
 			if err != nil || !interpreter && len(needed) == 0 {
 				t.Fatal("synthetic artifact must require an external loader or shared library", err)
 			}
-			if err := command(f.installArgs("node"), io.Discard, f.target); err == nil {
+			if err := fileOnlyCommand(f.installArgs("node"), io.Discard, f.target); err == nil {
 				t.Error("installer accepted an artifact requiring an external loader or shared library")
 			}
 			if _, err := os.Lstat(f.prefix); !errors.Is(err, fs.ErrNotExist) {
@@ -231,7 +239,7 @@ func TestComponentInstallRemovePreservesStateAndOtherComponents(t *testing.T) {
 	mustWrite(t, state, "SYNTHETIC_RETAINED_IDENTITY_AND_ORIGINAL_PACKET")
 	var output bytes.Buffer
 	for i := 0; i < 2; i++ {
-		if err := command(f.installArgs("hub,node"), &output, f.target); err != nil {
+		if err := fileOnlyCommand(f.installArgs("hub,node"), &output, f.target); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -246,7 +254,7 @@ func TestComponentInstallRemovePreservesStateAndOtherComponents(t *testing.T) {
 	mustWrite(t, localState, "SYNTHETIC_NODE_IDENTITY")
 	mustWrite(t, localOutbox, "SYNTHETIC_UNCERTAIN_ORIGINAL")
 	mustWrite(t, unknown, "UNMANAGED_FILE")
-	if err := command([]string{"remove", "--prefix", f.prefix, "--components", "node"}, io.Discard, f.target); err != nil {
+	if err := fileOnlyCommand([]string{"remove", "--prefix", f.prefix, "--components", "node"}, io.Discard, f.target); err != nil {
 		t.Fatal(err)
 	}
 	for name, expected := range map[string]string{state: "SYNTHETIC_RETAINED_IDENTITY_AND_ORIGINAL_PACKET", localState: "SYNTHETIC_NODE_IDENTITY", localOutbox: "SYNTHETIC_UNCERTAIN_ORIGINAL", unknown: "UNMANAGED_FILE"} {
@@ -259,7 +267,7 @@ func TestComponentInstallRemovePreservesStateAndOtherComponents(t *testing.T) {
 		t.Fatal("removed Node executable remains")
 	}
 	output.Reset()
-	if err := command([]string{"list", "--prefix", f.prefix}, &output, f.target); err != nil {
+	if err := fileOnlyCommand([]string{"list", "--prefix", f.prefix}, &output, f.target); err != nil {
 		t.Fatal(err)
 	}
 	var listed result
@@ -322,7 +330,7 @@ func TestComponentInvalidInputCreatesNoDestination(t *testing.T) {
 			case "relative-prefix":
 				item.prefix = "relative-installation"
 			}
-			if command(item.installArgs(components), io.Discard, target) == nil {
+			if fileOnlyCommand(item.installArgs(components), io.Discard, target) == nil {
 				t.Fatal("unsafe input was accepted")
 			}
 			if _, err := os.Lstat(item.prefix); !errors.Is(err, fs.ErrNotExist) {
@@ -336,7 +344,7 @@ func TestComponentRemoveValidatesAllBeforeDeleting(t *testing.T) {
 	for _, mode := range []string{"changed-file", "traversal", "symlink"} {
 		t.Run(mode, func(t *testing.T) {
 			f := newFixture(t, platform{"linux", "amd64"}, "hub")
-			if err := command(f.installArgs("hub,node"), io.Discard, f.target); err != nil {
+			if err := fileOnlyCommand(f.installArgs("hub,node"), io.Discard, f.target); err != nil {
 				t.Fatal(err)
 			}
 			base := filepath.Join(f.prefix, "components")
@@ -364,7 +372,7 @@ func TestComponentRemoveValidatesAllBeforeDeleting(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if command([]string{"remove", "--prefix", f.prefix, "--components", "hub,node"}, io.Discard, f.target) == nil {
+			if fileOnlyCommand([]string{"remove", "--prefix", f.prefix, "--components", "hub,node"}, io.Discard, f.target) == nil {
 				t.Fatal("unsafe removal was accepted")
 			}
 			if _, err := readInstalled(base, "hub", f.target); err != nil {
@@ -438,7 +446,7 @@ func TestComponentNoticesCoverActualModulesAndRejectOtherFiles(t *testing.T) {
 
 func TestComponentRootSurvivesParentReplacementAndLockRelease(t *testing.T) {
 	f := newFixture(t, platform{"linux", "amd64"}, "hub")
-	if err := command(f.installArgs("hub"), io.Discard, f.target); err != nil {
+	if err := fileOnlyCommand(f.installArgs("hub"), io.Discard, f.target); err != nil {
 		t.Fatal(err)
 	}
 	base := filepath.Join(f.prefix, "components")
@@ -504,7 +512,7 @@ func TestInstallUsesSelectedUserRootWhenPrefixIsOmitted(t *testing.T) {
 	t.Setenv("CICADA_USER_ROOT", f.prefix)
 	args := f.installArgs("node")
 	args = append(args[:1], args[3:]...)
-	if err := command(args, io.Discard, f.target); err != nil {
+	if err := fileOnlyCommand(args, io.Discard, f.target); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(f.prefix, "components", "node", "INSTALL-MANIFEST.json")); err != nil {

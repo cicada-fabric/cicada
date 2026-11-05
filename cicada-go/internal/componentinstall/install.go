@@ -18,7 +18,7 @@ import (
 	"github.com/cicada-ai/cicada/internal/apppaths"
 )
 
-const Usage = "usage: cicada components install [--prefix ABS] --components hub,node --binary FILE --sha256 HEX --licenses DIR [--codex-plugin-assets ABS --codex-plugin-sha256 HEX] | remove [--prefix ABS] --components hub,node | list [--prefix ABS]\nThe default user-file root is ~/.cicada (or CICADA_USER_ROOT); --prefix selects a custom absolute root. Only local component files are installed or removed. Services, enrollment, grants and existing state are unchanged. Optional Codex assets accompany Linux node only: the five reviewed .agents/plugins files are checked and materialized under components/node/share/codex, without running Codex or Node. Linux amd64/arm64 supports hub,node; Windows amd64 supports app. Only self-contained standard CGO_ENABLED=0 builds are supported; Linux ELF must not require an external loader or dynamic libraries. Install supports a new component or an identical repeat; changed installations are refused. An I/O failure may leave earlier selected components completed; multi-component rollback is not promised."
+const Usage = "usage: cicada components install [--prefix ABS] --components hub,node --binary FILE --sha256 HEX --licenses DIR [--codex-plugin-assets ABS --codex-plugin-sha256 HEX] | remove [--prefix ABS] --components hub,node | list [--prefix ABS]\nThe default user-file root is ~/.cicada (or CICADA_USER_ROOT); --prefix selects a custom absolute root. Linux Bash shell integration defaults to --shell-integration=auto: an owned ~/.cicada/bin/cicada launcher and managed ~/.bashrc PATH block; --shell-integration=off preserves file-only operations. Existing external commands retain PATH precedence. Open a new Bash shell or source ~/.bashrc after install. Only local component and explicitly managed shell files are installed or removed. Services, enrollment, grants and existing state are unchanged. Optional Codex assets accompany Linux node only: the five reviewed .agents/plugins files are checked and materialized under components/node/share/codex, without running Codex or Node. Linux amd64/arm64 supports hub,node; Windows amd64 supports app. Only self-contained standard CGO_ENABLED=0 builds are supported; Linux ELF must not require an external loader or dynamic libraries. Install supports a new component or an identical repeat; changed installations are refused. An I/O failure may leave earlier selected components completed; multi-component rollback is not promised."
 
 type plan struct {
 	manifest manifest
@@ -27,12 +27,13 @@ type plan struct {
 }
 
 type result struct {
-	Action          string     `json:"action"`
-	Prefix          string     `json:"prefix"`
-	Components      []manifest `json:"components"`
-	StatePreserved  bool       `json:"state_preserved"`
-	ServicesChanged bool       `json:"services_changed"`
-	PathExport      string     `json:"path_export,omitempty"`
+	Action           string                  `json:"action"`
+	Prefix           string                  `json:"prefix"`
+	Components       []manifest              `json:"components"`
+	StatePreserved   bool                    `json:"state_preserved"`
+	ServicesChanged  bool                    `json:"services_changed"`
+	PathExport       string                  `json:"path_export,omitempty"`
+	ShellIntegration *shellIntegrationResult `json:"shell_integration,omitempty"`
 }
 
 func Command(args []string, output io.Writer) error {
@@ -40,6 +41,10 @@ func Command(args []string, output io.Writer) error {
 }
 
 func command(args []string, output io.Writer, target platform) error {
+	return commandWithHome(args, output, target, os.UserHomeDir)
+}
+
+func commandWithHome(args []string, output io.Writer, target platform, home func() (string, error)) error {
 	if output == nil || len(args) == 0 {
 		return errors.New(Usage)
 	}
@@ -60,8 +65,12 @@ func command(args []string, output io.Writer, target platform) error {
 	licenses := flags.String("licenses", "", "matching compiled-dependency license directory")
 	codexAssets := flags.String("codex-plugin-assets", "", "absolute package root containing the five reviewed .agents/plugins assets")
 	codexDigest := flags.String("codex-plugin-sha256", "", "independently checked canonical five-asset manifest SHA-256")
+	shellMode := flags.String("shell-integration", "auto", "auto installs the Linux Bash command entry; off keeps file-only installation")
 	if flags.Parse(args[1:]) != nil || len(flags.Args()) != 0 {
 		return errors.New(Usage)
+	}
+	if *shellMode != "auto" && *shellMode != "off" {
+		return errors.New("--shell-integration must be auto or off")
 	}
 	resolved, err := apppaths.ResolveUserRoot(*prefix)
 	if err != nil {
@@ -180,7 +189,20 @@ func command(args []string, output io.Writer, target platform) error {
 			return err
 		}
 	}
+	var shellResult *shellIntegrationResult
 	if action != "list" {
+		var shell shellIntegrationChange
+		if *shellMode == "auto" && target.os == "linux" {
+			selectedHome, err := home()
+			if err != nil {
+				return err
+			}
+			shell, err = prepareShellIntegration(selectedHome, *prefix, action)
+			if err != nil {
+				return fmt.Errorf("shell integration preflight; components unchanged: %w", err)
+			}
+			defer shell.close()
+		}
 		root, err := openDirectory(base, true)
 		if err != nil {
 			return err
@@ -194,6 +216,21 @@ func command(args []string, output io.Writer, target platform) error {
 			return err
 		}
 		defer lock.Close()
+		remaining := action == "install"
+		if shell != nil && shell.status().State == "installed" {
+			// Validate an unselected fallback before changing the first byte.
+			// The stable launcher must not quietly adopt an unknown component.
+			for _, name := range []string{"hub", "node"} {
+				if action == "remove" && containsComponent(components, name) {
+					continue
+				}
+				if _, e := readInstalledAt(root, name, target); e == nil {
+					remaining = true
+				} else if !errors.Is(e, fs.ErrNotExist) {
+					return fmt.Errorf("shell fallback preflight; components unchanged: %w", e)
+				}
+			}
+		}
 		if action == "install" {
 			if err := checkInstallTargetsAt(root, plans, target); err != nil {
 				return err
@@ -221,10 +258,30 @@ func command(args []string, output io.Writer, target platform) error {
 				}
 			}
 		}
+		if shell != nil {
+			if err := shell.apply(remaining); err != nil {
+				return fmt.Errorf("components %s completed; shell integration incomplete, rerun an identical install then remove if intended: %w", action, err)
+			}
+			status := shell.status()
+			shellResult = &status
+		}
 	}
 	r := result{Action: action, Prefix: *prefix, StatePreserved: true}
+	if action != "list" {
+		r.ShellIntegration = shellResult
+		if r.ShellIntegration == nil {
+			state := "off"
+			if *shellMode == "auto" {
+				state = "unsupported"
+			}
+			r.ShellIntegration = &shellIntegrationResult{State: state}
+		}
+	}
 	if action == "install" && target.os == "linux" && containsComponent(components, "node") {
 		r.PathExport = "export PATH=" + codexShellQuote(filepath.Join(*prefix, "components", "node", "bin")) + `:"$PATH"`
+	}
+	if action == "install" && target.os == "linux" && *shellMode == "auto" {
+		r.PathExport = shellPathUpdate(filepath.Dir(r.ShellIntegration.Entry))
 	}
 	for _, p := range plans {
 		r.Components = append(r.Components, p.manifest)

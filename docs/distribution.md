@@ -257,26 +257,138 @@ Node identity and inbox state. A real native Thread still needs the local Codex
 runtime; queue acceptance is not a general model-consumption or cold-wake
 receipt.
 
-## Explicit background Node control on Linux
+## Installed shell command on Linux Bash
 
-`cicada on`, `cicada off` and `cicada status` control one already paired,
-single-Hub, relay-only Node through the existing `machine agent` and a transient
-systemd **user** service. They require systemd 254 or newer and an available
-user manager. File installation does not start a Node. These commands do not
-enroll a Node, grant membership, revoke authorization, or change Owner keys.
-
-The successful Linux Node component installation JSON includes `path_export`.
-Copy that exact, shell-quoted export to the current shell. For an ordinary
-selected root it has this shape:
+Linux `components install` defaults to `--shell-integration=auto`. After the
+component manifest, executable and notices pass validation, it creates the
+owned stable command `~/.cicada/bin/cicada` and appends one managed PATH block
+to the actual user's `~/.bashrc`. This stable shell entry is under the actual
+home even when the installed file prefix is custom. A new Bash shell can run
+`cicada on`, `cicada off` and `cicada status` directly. To activate the entry
+in the current interactive Bash shell:
 
 ```sh
-export PATH='/home/USER/.cicada/components/node/bin':"$PATH"
+source ~/.bashrc
+command -v cicada
+cicada status
 ```
 
-This retains the previous PATH. Custom paths with spaces or shell punctuation
-must use the installer's quoted output. A shell startup file may contain the
-PATH export only; installation and shell startup never run `on`, enable a
-service, or start an agent.
+The launcher forwards arguments exactly to the installed Node executable when
+its manifest/executable exist, otherwise to the installed Hub executable. It
+does not set a user root, change the environment, enroll anything or start a
+daemon. `--prefix` still selects installed files; Node commands retain existing
+`--user-root` / `CICADA_USER_ROOT` semantics. Custom installations therefore
+still use `cicada status --user-root /absolute/selected/root` when that root is
+not already selected. Starting and stopping the daemon remain explicit user
+commands after file installation.
+
+The PATH block appends the stable bin directory once, preserves prior command
+precedence, works with empty/unset PATH and `set -u`, and produces no output.
+It introduces no current-directory search entry. Existing aliases/functions,
+external commands, user bashrc content and its existing mode/group are preserved.
+If another `cicada` already takes precedence, inspect `command -v cicada` or use
+the stable absolute entry; installation never overwrites that external command.
+Spaces, quotes, dollar signs and backticks are literal path data. A home path
+containing `:` cannot be represented as one PATH entry and is refused; a custom
+installed prefix containing `:` remains supported by the quoted launcher.
+
+One prefix owns this shell entry at a time. An automatic install for another
+prefix refuses before changing its components; `--shell-integration=off`
+allows independent file installation without redirecting the active command.
+The installer refuses an external or changed stable entry, a symlinked bashrc,
+unsafe ownership/write permissions or an unknown/edited/duplicate managed block
+before changing component files. It follows no bashrc symlink and performs no
+permission repair. Linux users of another shell may opt out; automatic setup
+still creates a Bash startup file when absent and reports how Bash activates it.
+Other platforms do not claim Bash integration.
+
+Use `--shell-integration=off` for file-only install/remove operations and for
+actual CLI package verification. The flag accepts only `auto` or `off`; `list`
+is observational and never changes shell files. Successful mutation JSON retains
+the existing fields and adds `shell_integration` with `state` and, for a managed
+entry, `entry`, `bashrc` and `activation`. States distinguish `installed`,
+`removed`, `absent`, `other_prefix_preserved`, `off` and `unsupported`.
+`path_export` remains a shell-quoted manual activation fragment; in automatic
+mode it uses the same idempotent stable-directory logic as the managed block.
+
+Removing one component preserves the shared launcher while the other remains.
+Removing the final component from its active prefix removes only the owned
+launcher, private shell receipt and exact managed bashrc block. A bashrc created
+by this installer is removed only when nothing else was added. User data, keys,
+outboxes, unrelated plugin files and pre-existing shell content remain. The
+ordinary remove/install update flow recreates the same stable command; changed
+component installations still require their existing explicit removal flow.
+
+The shell lock is taken before the existing per-prefix component lock. The
+private `~/.cicada/.shell-command.json` receipt contains only intended local
+ownership metadata, not credentials, and is not emitted to stdout. Known shell
+conflicts are checked before component changes. A later I/O/concurrent-edit
+failure is reported as “components install/remove completed; shell integration
+incomplete”; cross-file rollback is not promised. The receipt allows an identical
+install to finish a partial shell publication without overwriting changed user
+bytes. If the intended action was removal, complete that same original install
+and then remove it. A new version/changed payload must not be substituted during
+this recovery. The persistent private lock is coordination metadata, not state
+or permission to run a daemon.
+
+The 2026-11-05 producer qualification used
+`92c2c476b2d1a1b07073e0a10720dd3fd5cf7aff` plus this checkpoint's dirty shell
+implementation, not a clean build of that parent. The seven changed/new Go
+source hashes are retained in
+`/home/zyf/Cicada/.local/evidence/v01-shell-command-producer-20261105-01/tested-go-source.json`
+(manifest SHA256 `031ccf942fbaa81b20f916513bbf48253814de44915866bfff6fe46f34dbd9e5`).
+The aggregate `qualification.json` SHA256 is
+`7ed407d1b9ebf7971edc98f7ab9534aef8358e8facf02377844022fa41e75e3f`.
+With the existing Go 1.27.3 image, offline module cache and `GOMAXPROCS=2`:
+
+```text
+go test ./internal/componentinstall -count=1 -timeout=3m -json
+go test -race ./internal/componentinstall -run '^TestShell' -count=1 -timeout=3m -json
+go vet ./internal/componentinstall
+```
+
+The package regression passed 22 top-level / 66 leaf tests (76 passing test
+events), zero FAIL/SKIP, exit 0, 18.060 seconds including build. The shell race
+selector passed 5 top-level / 13 leaf tests (15 events), zero FAIL/SKIP, exit 0,
+3.868 seconds; vet passed, exit 0, 0.255 seconds. Tests exercise real filesystem
+installation through the production common command with an explicit disposable
+home provider, real Bash source/quoting and a synthetic argv-only launcher
+backend. Existing file-only fixtures explicitly pass `--shell-integration=off`.
+Neither process HOME/CODEX_HOME nor real user bashrc/state was changed.
+
+Covered boundaries include literal quoted paths/argv, Node-to-Hub fallback,
+repeated install/source, empty/unset PATH with `set -u`, no added current-directory
+lookup, unchanged bashrc bytes/mode, partial receipt recovery after concurrent
+user editing, external file/symlink/hardlink/write-mode conflicts before component
+mutation, a second prefix refusing to redirect the entry, off/list not consulting
+shell home, final removal and an ordinary remove/install update with retained
+state. An initial fixture mode assertion failed because inherited umask077
+masked its requested 0640 before installation; the fixture now explicitly sets
+0640, without relaxing production checks. Raw test JSON/stderr, failure excerpts,
+commands and qualification metadata remain beside the source manifest.
+
+This is scoped component/shell qualification. Root's unified disposable Docker
+and full-package gates, actual Node/systemd startup through the launcher and
+non-Linux/physical/real-model/public-HTTPS acceptance are **NOT_RUN** by this
+producer checkpoint. Shell installation itself is not a daemon startup receipt.
+
+## Retained original single-service control and adoption on Linux
+
+Current `on/off/status` and `node hubs add/list/remove` use the zero-to-eight
+connection [Node Hub manager](#current-node-hub-manager-on-linux) described below.
+The shell entry only makes those commands available; it changes no lifecycle
+semantics and does not automatically start a Hub component. The following
+single-Hub foreground/first-on argument procedure is the retained original
+service and explicit adoption compatibility path, not the current fresh-manager
+setup. It uses the original `machine agent` and transient systemd **user**
+service, requiring systemd 254 or newer and an available user manager. File
+installation does not start a Node or Hub. These commands do not grant membership,
+revoke authorization or change Owner keys.
+
+The shell entry above makes the command available after installation. For an
+explicit file-only install, the legacy `path_export` output can still be applied
+manually; use its exact quoted bytes for custom paths. Neither the installer nor
+its managed shell block runs `on`, enables a service or starts an agent.
 
 Complete the normal foreground pairing first. The App's “Hub pairing confirmed”
 reports the Hub result; local Node admission is a separate step. Before service
@@ -305,6 +417,8 @@ The last three commands use the default `~/.cicada` root (or
 for a custom installation. Ordinary `cicada on` reuses the saved selection.
 Do not copy a device code, token, ticket, nonce, private key or bearer into any
 argument or configuration file.
+
+## Current Node Hub manager on Linux
 
 The [local multi-Hub manager](node-hub-manager-contract.md) now has a Linux
 producer for zero to eight independently configured connections under one
@@ -340,6 +454,8 @@ old Hub offline and reports `remote_revocation=NOT_REQUESTED`; STOP_PENDING
 must be resolved with the same retained originals. A cold start retains only
 the configured entries and never re-enables a removed old connection. No
 manual JSON deletion, key regeneration or credential copying belongs here.
+
+### Retained original service contract
 
 The local `cicada.node-service.v1` contract is one strictly decoded, same-user
 `0600` file at `<root>/node-service.json`. Only `on` produces it, by atomic
