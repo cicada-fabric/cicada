@@ -133,7 +133,9 @@ func threadCollaborationOpenNode(t *testing.T, f *endpointGroupsHTTPFixture, ori
 }
 
 func TestThreadCollaborationHTTPFiniteLeaseAndOwnerPolicy(t *testing.T) {
-	f := endpointGroupsRealHTTP(t)
+	f := endpointGroupsRealHTTPBeforeKeys(t, func(f *endpointGroupsHTTPFixture, i int) {
+		threadCollaborationClassifyBeforeKeys(t, f, i, wire.ThreadClassificationWorker)
+	})
 	a := f.a
 	if a.f.http.Config.Handler.(*hubNodesHandler).base.control != nil {
 		t.Fatal("Control must be absent")
@@ -145,12 +147,9 @@ func TestThreadCollaborationHTTPFiniteLeaseAndOwnerPolicy(t *testing.T) {
 		var original wire.EndpointGroupsNodeDescribeResult
 		f.nodeHTTP(t, wire.OperationEndpointGroupsNodeDescribe, wire.EndpointGroupsNodeDescribe{EndpointID: f.joins[i].Member.EndpointID, NetworkID: network, Limit: 64}, &original)
 		threadCollaborationNodeHTTP(t, f, wire.OperationThreadScopeRead, wire.ThreadScopeNodeRead{EndpointID: f.joins[i].Member.EndpointID, NetworkID: network}, &views[i], "")
-		if views[i].State != "CLASSIFICATION_REQUIRED" || views[i].ActiveGroupCount != 1 {
-			t.Fatal("legacy anonymous member was silently classified", views[i])
+		if views[i].State != "CURRENT" || views[i].Classification != wire.ThreadClassificationWorker || views[i].ActiveGroupCount != 1 {
+			t.Fatal("explicitly classified original member lost its effective source", views[i])
 		}
-		v := views[i]
-		_, result := threadCollaborationOwnerApply(t, f, wire.ThreadCollaborationOwnerPrepareBody{Action: wire.ThreadCollaborationSetClassification, Role: &wire.ThreadRoleChange{NetworkID: network, NodeID: v.NodeID, EndpointID: v.EndpointID, Source: v.Source, Classification: wire.ThreadClassificationWorker, ExpectedClassificationRevision: v.ClassificationRevision, ExpectedRelationsRevision: v.RelationsRevision, RegistrationDigest: v.RegistrationDigest}})
-		views[i] = *result.Thread
 	}
 	read, err := wire.NewThreadCollaborationOwnerRead(a.session, a.scope.Actor, wire.ThreadCollaborationOwnerReadBody{View: "GROUP_LOCKS", NetworkID: network, GroupID: group}, a.owner, time.Now().UTC())
 	if err != nil {
@@ -333,4 +332,17 @@ func TestThreadCollaborationHTTPFiniteLeaseAndOwnerPolicy(t *testing.T) {
 	if exact != held {
 		t.Fatal("historical recovery was reapplied")
 	}
+}
+
+func threadCollaborationClassifyBeforeKeys(t *testing.T, f *endpointGroupsHTTPFixture, i int, classification string) {
+	t.Helper()
+	m := f.joins[i].Member
+	var d wire.EndpointGroupsNodeDescribeResult
+	f.nodeHTTP(t, wire.OperationEndpointGroupsNodeDescribe, wire.EndpointGroupsNodeDescribe{EndpointID: m.EndpointID, NetworkID: f.domain.Policy.NetworkID, Limit: 64}, &d)
+	var v wire.ThreadScopeView
+	threadCollaborationNodeHTTP(t, f, wire.OperationThreadScopeRead, wire.ThreadScopeNodeRead{EndpointID: m.EndpointID, NetworkID: f.domain.Policy.NetworkID}, &v, "")
+	if v.State != "CLASSIFICATION_REQUIRED" || v.ActiveGroupCount != 0 {
+		t.Fatal("zero admission silently gained classification or business rights")
+	}
+	threadCollaborationOwnerApply(t, f, wire.ThreadCollaborationOwnerPrepareBody{Action: wire.ThreadCollaborationSetClassification, Role: &wire.ThreadRoleChange{NetworkID: v.NetworkID, NodeID: v.NodeID, EndpointID: v.EndpointID, Source: v.Source, Classification: classification, ExpectedClassificationRevision: v.ClassificationRevision, ExpectedRelationsRevision: v.RelationsRevision, RegistrationDigest: v.RegistrationDigest}})
 }

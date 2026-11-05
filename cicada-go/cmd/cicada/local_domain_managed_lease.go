@@ -22,15 +22,50 @@ const localDomainLeaseReserveBytes = 768 << 10
 // bounded record points to it; worker recovery reuses the original AttemptID,
 // which the Hub permanently fences after Leave instead of admitting a new one.
 type machineManagedLocalDomainLease struct {
-	IntentID            string                   `json:"intent_id"`
-	IntentDigest        string                   `json:"intent_digest"`
-	Join                wire.LocalDomainNodeJoin `json:"join"`
-	TranscriptPath      string                   `json:"transcript_path"`
-	State               string                   `json:"state"`
-	KnownLeaseExpiresAt string                   `json:"known_lease_expires_at,omitempty"`
-	FrozenDigest        string                   `json:"frozen_digest,omitempty"`
-	StopCode            string                   `json:"stop_code,omitempty"`
-	Reuses              localDomainOriginalRef   `json:"reuses,omitzero"`
+	ThreadNetworkReservation *nodeinbox.ThreadNetworkReservation `json:"thread_network_reservation,omitempty"`
+	IntentID                 string                              `json:"intent_id"`
+	IntentDigest             string                              `json:"intent_digest"`
+	Join                     wire.LocalDomainNodeJoin            `json:"join"`
+	TranscriptPath           string                              `json:"transcript_path"`
+	State                    string                              `json:"state"`
+	KnownLeaseExpiresAt      string                              `json:"known_lease_expires_at,omitempty"`
+	FrozenDigest             string                              `json:"frozen_digest,omitempty"`
+	StopCode                 string                              `json:"stop_code,omitempty"`
+	Reuses                   localDomainOriginalRef              `json:"reuses,omitzero"`
+}
+
+func (c *machineNodeControlClient) rememberLocalDomainNetworkReservation(m machineManagedLocalDomainLease, r *nodeinbox.ThreadNetworkReservation) (machineManagedLocalDomainLease, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	old := cloneMachineNodeControlState(c.state)
+	if r == nil {
+		return m, errLocalEndpointIntentConflict
+	}
+	id := localEndpointStepID(m.IntentID, m.IntentDigest, "domain.join")
+	current, ok := c.state.ManagedLocalDomainLeases[id]
+	if !ok || current.IntentDigest != m.IntentDigest {
+		return m, errLocalEndpointIntentConflict
+	}
+	if previous := current.ThreadNetworkReservation; previous != nil {
+		if previous.ReservationID != r.ReservationID || previous.Revision != r.Revision || previous.HubID != r.HubID || previous.NetworkID != r.NetworkID || previous.OperationID != r.OperationID || previous.RequestDigest != r.RequestDigest {
+			return m, errLocalEndpointIntentConflict
+		}
+		if previous.State == nodeinbox.ThreadNetworkAccepted || previous.State == nodeinbox.ThreadNetworkNoEffect {
+			if previous.State != r.State {
+				return m, errLocalEndpointIntentConflict
+			}
+		} else if previous.State == nodeinbox.ThreadNetworkUnresolved && r.State == nodeinbox.ThreadNetworkReserved {
+			return m, errLocalEndpointIntentConflict
+		}
+	}
+	copy := *r
+	current.ThreadNetworkReservation = &copy
+	c.state.ManagedLocalDomainLeases[id] = current
+	if err := c.persistLocked(); err != nil {
+		c.state = old
+		return m, err
+	}
+	return current, nil
 }
 
 func localDomainStateReserve(s machineNodeControlState) int {

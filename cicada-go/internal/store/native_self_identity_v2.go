@@ -9,6 +9,9 @@ import (
 // guardNativeSelfTx checks identity and current selected Group membership without
 // granting an operation on peers. Keep this separate from named action checks.
 func guardNativeSelfTx(tx *sql.Tx, scope NativeActorScope, at time.Time) error {
+	if zero, err := threadCollaborationZeroSelfTx(tx, scope, at); zero {
+		return err
+	}
 	if err := guardNativeActorTx(tx, scope, "", at); err != nil {
 		return err
 	}

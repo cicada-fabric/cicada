@@ -693,3 +693,89 @@ checks remain attributed to that overlay, not this isolated backend test.
 Registry pre-effect and zero-stage Node bootstrap remain in progress, and both
 new public capability flags remain false. No Docker, real Runtime, physical
 device, public HTTPS or resident deployment acceptance is claimed here.
+
+## Native zero admission, Registry consumer and current classification Guards
+
+The Node reserves the actual harness/SID's exact Hub/Network in the shared
+Registry before dispatching LocalDomain zero Join. The original immutable
+reservation ID/revision and body digest are retained with the protected managed
+lease. Lost/invalid/unsigned responses retain RESERVED/UNRESOLVED; they never
+become no-effect fences. An authenticated exact zero-Join receipt settles the
+Network before any Group key activation. Retry keeps the first expected
+revision, immutable claim and original encrypted request/response; mutable
+reservation state advances without changing its identity. Rollback clones do
+not alias the persisted claim. Network-only Join also reserves before POST;
+current enrollment retries renew the original Endpoint, and ordinary renewal
+checks CURRENT scope without spending a fresh reservation each heartbeat.
+Network response identity is checked before Registry settlement or recording.
+
+Local registration now has an explicit private ZERO_ATTESTED phase. It checks
+the original sealed Join, native transcript, UID, existing private key and
+retained attestation against an authenticated Hub Describe anchor. This permits
+registration/classification reads and exact registration lease recovery. It
+does not manufacture a completed member/grant or weaken the existing completed
+validator. Unclassified registration returns CLASSIFICATION_REQUIRED and keeps
+the original intent. Owner prepare/apply classifies that original; exact retry,
+or a fresh explicit register proof, resumes the protected original command and
+completes its original key. Generic Node state load now validates dedicated
+originals, and the fresh Host issuer uses the dedicated pending-original identity
+path before ordinary Describe/recovery. App owns the corresponding CLI
+nonterminal error adapter checkpoint.
+
+Zero members need to attest before a classification anchor exists. Therefore
+only the exact HubNodes self identity/attestation routes can authenticate a
+currently valid LocalDomain JOINED_ZERO member, with all original lease,
+Root/Node/policy/member/source coordinates rechecked. Ordinary business actor
+authentication, directory and message authorization still reject it. There is
+no wire bypass flag. Current classification/effective Group count is checked
+for membership upsert, Owner Add and Node key completion, ordinary source
+Guard, bilateral peer-key evidence and final current delivery evidence. Worker
+activation accepts at most one effective Group; advisor/manager have no product
+Group-count ceiling. The previous activation/cache ceiling of 32 is removed.
+Frozen legacy capability metadata is not the new profile's role policy.
+
+An Owner downgrade from two effective Groups refuses without evicting either.
+The current Guard independently fences an already persisted incompatible Worker
+row and stale Actor; exact Owner removal of one source restores only the
+remaining lawful Group. Undocumented legacy native admissions with no original
+zero-registration anchor are explicitly refused; old NPT/manual entry cannot
+allocate a new local identity or dispatch another admission RPC. This checkpoint
+adds no old-NPT migration, identity regeneration or fallback authorization.
+
+The configured `--hub-nodes-only` service now enables both closed profiles. The
+bare wire DTO factory stays unavailable, and metadata grants no caller rights.
+Actual HTTP qualification exposed the capability decoder rejecting the server's
+trailing JSON newline; public metadata now trims surrounding whitespace under
+the same 4096-byte limit, matching existing metadata decoders. Signed business
+bodies and original digests remain strictly canonical.
+
+Qualification is source-bound to base `25876b29f573fa98495ea36271c5decc8b0505b3`
+plus recorded changed-source hashes, not the clean base alone. Evidence root is
+`/home/zyf/Cicada/.worktrees/cicada/v01-thread-network-locks-hub/.local/evidence/`:
+
+- `v01-thread-network-locks-bootstrap-20261105-06`: cmd normal/race each
+  12 top-level / 37 named PASS, zero failures/skips, 6.510/91.390 seconds. This
+  includes lost Join ACK, process-state reload, exact original and fresh explicit
+  register restoration with unchanged Endpoint/binding/key/Registry claim, plus
+  the dedicated RPC/issuer tests. Five-package vet passes.
+- `v01-thread-network-locks-activation-20261105-04`: real TCP normal/race
+  each four PASS, zero failures/skips, 19.247/224.479 seconds, with actual
+  Owner classification, current Worker ceiling, precise cleanup, relay/current
+  Guard and lease/original behavior.
+- `v01-thread-network-locks-capability-20261105-02`: actual public HTTP
+  capabilities and zero bootstrap normal/race each one PASS, zero failures/skips,
+  2.571/37.460 seconds; hubaccountwire/hubauth/Server vet passes. The preceding
+  `...-01` retains the identified newline failure as development evidence.
+- `v01-thread-network-locks-legacy-fence-20261105-01`: normal/race tests
+  cover zero local identity allocation and zero HTTP dispatch on refused legacy
+  register/named-Pair admissions.
+
+Earlier bootstrap 01–05 and activation 01–03 receipts remain attributed to their
+actual sources; initial private-directory/fixture argument and zero-self Guard
+failures are retained, not counted as passes. This checkpoint does not claim
+full CLI/MCP/App Core acceptance, disposable Docker interop, real native Runtime,
+physical Windows/Android devices, public HTTPS or resident deployment results.
+Those checks remain separate integration/QA work. In particular, the legacy
+Network-only unsigned-error path conservatively retains unresolved admission;
+only authenticated exact accepted evidence settles it. No credentials, original
+keys or sensitive payloads are included in evidence.

@@ -222,6 +222,9 @@ func endpointGroupsNodeKeyPrepareTx(tx *sql.Tx, in HubEndpointGroupsNodeInput, r
 }
 
 func endpointGroupsNodeInstallMembershipTx(tx *sql.Tx, r *hubEndpointGroupsRegistration, group string, c wire.OwnerEndpointGroupsCAS, at time.Time) error {
+	if err := threadCollaborationActivationTx(tx, r, group, at); err != nil {
+		return err
+	}
 	_, _, member, join, err := endpointGroupsNodeMembershipProjectionTx(tx, r, group, c, at)
 	if err != nil {
 		return err

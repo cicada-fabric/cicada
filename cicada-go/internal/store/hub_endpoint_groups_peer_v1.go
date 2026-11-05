@@ -9,6 +9,9 @@ import (
 )
 
 func readEndpointGroupsPeerEndpointTx(tx *sql.Tx, r *hubEndpointGroupsRegistration, group string, at time.Time) (SameGroupSealedV1EndpointEvidence, error) {
+	if threadCollaborationActivationTx(tx, r, group, at) != nil {
+		return SameGroupSealedV1EndpointEvidence{}, ErrSameGroupSealedV1Denied
+	}
 	if endpointGroupsRegistrationLeaseTx(tx, r, at) != nil {
 		return SameGroupSealedV1EndpointEvidence{}, ErrSameGroupSealedV1Denied
 	}
@@ -51,6 +54,9 @@ func endpointGroupsPeerCurrentTx(tx *sql.Tx, pair sameGroupEndpointPair, at time
 	// A managed conversation requires independent original registration evidence
 	// for both sides. It never falls through to a legacy or Pair grant.
 	if a == nil || b == nil || pair.nativeEvidence != nil || pair.sender.Grant != nil || pair.receiver.Grant != nil || a.anchor.Registration.OwnerID != b.anchor.Registration.OwnerID || a.anchor.NetworkID != b.anchor.NetworkID {
+		return nil, ErrSameGroupSealedV1Denied
+	}
+	if threadCollaborationActivationTx(tx, a, pair.groupID, at) != nil || threadCollaborationActivationTx(tx, b, pair.groupID, at) != nil {
 		return nil, ErrSameGroupSealedV1Denied
 	}
 	_, ac, as, err := endpointGroupsResolveTx(tx, a, pair.groupID, at, false)

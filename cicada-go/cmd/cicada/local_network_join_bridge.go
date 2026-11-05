@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -61,6 +63,31 @@ func (b *machineAgentJoinBridge) joinNetworkWithScope(request localNetworkJoinRe
 	if err != nil {
 		return nil, nil, err
 	}
+	if hub, ok := machineHubFrom(b.ctx); ok && hub.NativeContexts != nil {
+		v, e := hub.NativeContexts.InspectThreadNetwork(b.ctx, hub.WriterScope, request.Harness, request.NativeSessionID)
+		if e != nil {
+			return nil, nil, e
+		}
+		if v.State == nodeinbox.ThreadNetworkCurrent {
+			if v.HubID != hub.HubID || v.NetworkID != request.NetworkID {
+				return nil, nil, nodeinbox.ErrNativeContextScopeConflict
+			}
+			endpoint, e := hub.NativeContexts.ExistingNetworkEnrollmentEndpoint(b.ctx, hub.WriterScope, request.Harness, request.NativeSessionID, hub.HubID, request.NetworkID)
+			if e != nil {
+				return nil, nil, e
+			}
+			joined, e := b.renewNetwork(localNetworkRenewRequest{Version: localJoinProtocolVersion, Operation: "network_renew", NetworkID: request.NetworkID, EndpointID: endpoint, Harness: request.Harness, NativeSessionID: request.NativeSessionID, Workspace: request.Workspace})
+			if e != nil {
+				return joined, nil, e
+			}
+			return b.completeNetworkNativeJoin(joined, request.Harness, request.NativeSessionID)
+		}
+	}
+	original := sha256.Sum256(payload)
+	admission, err := reserveMachineThreadNetwork(b.ctx, request.Harness, request.NativeSessionID, request.NetworkID, "network.join."+hex.EncodeToString(original[:]), payload, nil)
+	if err != nil {
+		return nil, nil, err
+	}
 	ctx, cancel := context.WithTimeout(b.ctx, 30*time.Second)
 	defer cancel()
 	client, err := machineNodeHTTPClient(ctx, 30*time.Second)
@@ -76,22 +103,36 @@ func (b *machineAgentJoinBridge) joinNetworkWithScope(request localNetworkJoinRe
 	httpRequest.Header.Set("Authorization", "CicadaNode "+b.nodeToken)
 	response, err := client.Do(httpRequest)
 	if err != nil {
+		admission.unresolved(b.ctx)
 		return nil, nil, errors.New("could not reach the Hub for Network Join")
 	}
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		admission.unresolved(b.ctx)
 		return nil, nil, fmt.Errorf("Hub rejected Network Join with HTTP %d", response.StatusCode)
 	}
 	var joined fabricpkg.NetworkJoinResult
-	if err := json.NewDecoder(io.LimitReader(response.Body, 2*1024*1024)).Decode(&joined); err != nil ||
+	raw, readErr := io.ReadAll(io.LimitReader(response.Body, 2*1024*1024+1))
+	if readErr != nil || len(raw) > 2*1024*1024 || decodeStrictBridgeJSON(raw, &joined) != nil ||
 		strings.TrimSpace(joined.SessionToken) == "" || strings.TrimSpace(joined.Endpoint.ID) == "" ||
-		joined.NetworkID != request.NetworkID {
+		joined.NetworkID != request.NetworkID || joined.Endpoint.PrincipalID == "" || joined.Endpoint.MachineID != b.nodeID || joined.Endpoint.NativeSessionID != request.NativeSessionID || joined.Endpoint.Harness != request.Harness || joined.BindingID == "" || joined.BindingEpoch == 0 {
+		admission.unresolved(b.ctx)
 		return nil, nil, errors.New("Hub returned an invalid Network Join result")
+	}
+	scope, err := machineNativeContextScopeFromMetadata(b.ctx, request.Harness, request.NativeSessionID, joined.Endpoint.ID, joined.BindingID, joined.BindingEpoch, joined.NativeContextScope)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err = admission.accepted(b.ctx, scope, raw); err != nil {
+		return nil, nil, err
 	}
 	return b.completeNetworkNativeJoin(&joined, request.Harness, request.NativeSessionID)
 }
 
 func (b *machineAgentJoinBridge) completeNetworkNativeJoin(joined *fabricpkg.NetworkJoinResult, runtime, nativeID string) (*fabricpkg.NetworkJoinResult, *nodeinbox.NativeContextScopeDecision, error) {
+	if joined == nil || joined.Endpoint.PrincipalID == "" || joined.Endpoint.MachineID != b.nodeID || joined.Endpoint.NativeSessionID != nativeID || joined.Endpoint.Harness != runtime || joined.BindingID == "" || joined.BindingEpoch == 0 {
+		return nil, nil, errors.New("Hub returned a Network Join identity inconsistent with this original Thread")
+	}
 	var err error
 	decision := &nodeinbox.NativeContextScopeDecision{Accepted: true, ContextPolicy: joined.NativeContextScope.NetworkContextPolicy,
 		NativeHistoryCoverage: nodeinbox.NativeContextHistoryCoverageNotChecked}
@@ -147,6 +188,9 @@ func (b *machineAgentJoinBridge) renewNetwork(request localNetworkRenewRequest) 
 		return nil, errors.New("invalid local Network Renew request")
 	}
 	if err := verifyCodexSessionRecord(request.NativeSessionID, request.Workspace); err != nil {
+		return nil, err
+	}
+	if err := checkMachineThreadNetworkCurrent(b.ctx, request.Harness, request.NativeSessionID, request.NetworkID); err != nil {
 		return nil, err
 	}
 	if request.EndpointID == "" {

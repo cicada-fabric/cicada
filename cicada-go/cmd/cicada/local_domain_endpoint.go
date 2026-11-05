@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"path/filepath"
 	"reflect"
@@ -165,11 +166,46 @@ func (b *machineAgentJoinBridge) localDomainEndpointOperation(q localEndpointReq
 	if err != nil {
 		return r, err
 	}
+	originalCommand := q
+	originalCommand.InvocationProof = nil
+	if _, err = client.prepareLocalEndpointStep(q.RequestID, digest, "domain.command", "local.domain.command", originalCommand); err != nil {
+		return r, err
+	}
+	joinBody, e := json.Marshal(join)
+	if e != nil {
+		return r, e
+	}
+	admission, e := reserveMachineThreadNetwork(b.ctx, q.Harness, q.NativeSessionID, p.Policy.NetworkID, join.AttemptID, joinBody, managed.ThreadNetworkReservation)
+	if e != nil {
+		return r, e
+	}
+	managed, e = client.rememberLocalDomainNetworkReservation(managed, admission.claim)
+	if e != nil {
+		return r, e
+	}
 	if err = client.callLocalEndpoint(b.ctx, b.nodeToken, q.RequestID, digest, "domain.join", wire.OperationLocalDomainNodeJoin, join, &original); err != nil {
+		admission.unresolved(b.ctx)
 		return r, err
 	}
 	if err = validateLocalDomainZeroJoin(join, original, *p); err != nil {
+		admission.unresolved(b.ctx)
 		return r, err
+	}
+	joinStep, ok, e := client.localEndpointStep(q.RequestID, digest, "domain.join")
+	if e != nil || !ok {
+		return r, errMachineNodeControlOutcomeUncertain
+	}
+	nativeScope, e := machineNativeContextScopeFromMetadata(b.ctx, q.Harness, q.NativeSessionID, original.Member.EndpointID, original.Member.BindingID, original.Member.BindingEpoch, localDomainFabricJoin(original, *p, fabricCardFromDomain(original, wire.LocalDomainNodeKeyResult{})).NativeContextScope)
+	if e != nil {
+		return r, e
+	}
+	if e = admission.accepted(b.ctx, nativeScope, joinStep.ResponsePacket); e != nil {
+		return r, e
+	}
+	admission.claim.State = nodeinbox.ThreadNetworkAccepted
+	managed, e = client.rememberLocalDomainNetworkReservation(managed, admission.claim)
+	if e != nil {
+		return r, e
 	}
 	managed, err = client.resolveLocalDomainLease(managed, original)
 	if err != nil {
@@ -197,6 +233,26 @@ func (b *machineAgentJoinBridge) localDomainEndpointOperation(q localEndpointReq
 		candidate, e := b.publishLocalDomainCandidate(state, *p, original)
 		if e != nil {
 			return r, e
+		}
+		registration := machineEndpointGroupsRegistration{Phase: endpointGroupsZeroAttested, LeaseID: localEndpointStepID(managed.IntentID, managed.IntentDigest, "domain.join"), IntentID: managed.IntentID, IntentDigest: managed.IntentDigest, TranscriptPath: managed.TranscriptPath}
+		if saved, enrolled, _ := client.endpointGroupsRegistrationCandidate(q.NativeSessionID, q.Workspace); enrolled {
+			registration = saved
+		}
+		registration, _, e = b.describeEndpointGroups(b.ctx, client, registration, "", 64)
+		if e != nil {
+			return r, e
+		}
+		var thread wire.ThreadScopeView
+		if e = client.callThreadCollaboration(b.ctx, b.nodeToken, wire.OperationThreadScopeRead, wire.ThreadScopeNodeRead{EndpointID: original.Member.EndpointID, NetworkID: p.Policy.NetworkID}, &thread); e != nil {
+			return r, e
+		}
+		if wire.ValidateThreadScopeView(thread) != nil || thread.RegistrationDigest != registration.Anchor.RegistrationDigest || thread.EndpointID != original.Member.EndpointID || thread.NetworkID != p.Policy.NetworkID || thread.HubID != p.Hub.HubID {
+			return r, errEndpointGroupsRegistration
+		}
+		if thread.State != "CURRENT" {
+			r.State = thread.State
+			r.Registration = &original.Endpoint
+			return r, errors.New(thread.State)
 		}
 		var challenge wire.LocalDomainKeyChallenge
 		prepare := wire.LocalDomainNodeKeyPrepare{ContractRevision: wire.LocalDomainContractRevision, Selection: q.LocalDomain, MemberID: original.Member.MemberID, ExpectedRevision: original.Member.Revision}
@@ -244,6 +300,13 @@ func (b *machineAgentJoinBridge) localDomainEndpointOperation(q localEndpointReq
 		}
 		if err = state.RememberLocalDomainGrant(b.ctx, completed.Grant, time.Now().UTC()); err != nil {
 			return r, err
+		}
+		registration.Phase = ""
+		if e = b.validateEndpointGroupsRegistration(b.ctx, client, registration, registration.Anchor, p.Hub); e != nil {
+			return r, e
+		}
+		if e = client.saveEndpointGroupsRegistration(registration); e != nil {
+			return r, e
 		}
 	}
 	if !decision.Accepted {

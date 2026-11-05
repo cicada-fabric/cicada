@@ -36,3 +36,38 @@ func threadCollaborationActivationTx(tx *sql.Tx, r *hubEndpointGroupsRegistratio
 	}
 	return nil
 }
+
+// Current schemas do not silently promote an unclassified legacy native
+// Endpoint. Zero-authority row creation is separate and grants no Group rights.
+func threadCollaborationUnregisteredNativeTx(tx *sql.Tx, endpoint string) error {
+	var present int
+	if err := tx.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type='table' AND name='thread_classifications_v1'`).Scan(&present); err != nil {
+		return err
+	}
+	if present == 0 {
+		return nil
+	}
+	var native bool
+	err := tx.QueryRow(`SELECT native_session_id<>'' FROM fabric_endpoints WHERE id=?`, endpoint).Scan(&native)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if native {
+		return errors.New(wire.ThreadCollaborationErrorClassificationRequired)
+	}
+	return nil
+}
+
+func threadCollaborationEndpointActivationTx(tx *sql.Tx, endpoint, group string, at time.Time) error {
+	r, err := endpointGroupsManagedTx(tx, endpoint)
+	if err != nil {
+		return err
+	}
+	if r == nil {
+		return threadCollaborationUnregisteredNativeTx(tx, endpoint)
+	}
+	return threadCollaborationActivationTx(tx, r, group, at)
+}

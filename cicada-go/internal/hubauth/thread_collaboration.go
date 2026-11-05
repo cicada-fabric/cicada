@@ -19,7 +19,10 @@ func (s *Service) ThreadCollaborationCapabilities(serveMode string) (wire.Thread
 		return wire.ThreadCollaborationCapabilities{}, err
 	}
 	caps, err := wire.NewThreadCollaborationCapabilities(hub, serveMode)
-	// Publish live availability only after the native admission/Guard checkpoint.
+	if err == nil && serveMode == "--hub-nodes-only" {
+		caps.ThreadScopeRoleAvailable = true
+		caps.GroupLocksAvailable = true
+	}
 	return caps, err
 }
 

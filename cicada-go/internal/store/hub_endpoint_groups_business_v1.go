@@ -214,20 +214,10 @@ func endpointGroupsAdmissionSafeTx(tx *sql.Tx, r *hubEndpointGroupsRegistration,
 // The limit counts effective Group relations, including default sources;
 // terminal history and a second source for the same active Group do not count.
 func endpointGroupsAddWithinLimitTx(tx *sql.Tx, r *hubEndpointGroupsRegistration, target wire.OwnerEndpointGroupsRelationCard, at time.Time) (bool, error) {
-	if target.State == "ACTIVE" {
-		return true, nil
-	}
-	cards, err := endpointGroupsRelationCardsTx(tx, r, at)
-	if err != nil {
+	if err := threadCollaborationActivationTx(tx, r, target.GroupID, at); err != nil {
 		return false, err
 	}
-	active := 0
-	for _, card := range cards {
-		if card.State == "ACTIVE" {
-			active++
-		}
-	}
-	return active < 32, nil
+	return true, nil
 }
 
 func endpointGroupsApplyTx(tx *sql.Tx, in HubEndpointGroupsInput, a *hubAppNodeActor, q wire.OwnerEndpointGroupsApplyRequest, review wire.OwnerEndpointGroupsReview) (wire.OwnerEndpointGroupsOperation, string, error) {

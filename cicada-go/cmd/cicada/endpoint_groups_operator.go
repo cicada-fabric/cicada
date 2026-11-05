@@ -121,7 +121,13 @@ func (b *machineAgentJoinBridge) endpointGroupsOperatorRegister(q localEndpointR
 	if err != nil || !enrolled || r.Anchor.RegistrationDigest != q.RegistrationDigest || r.Anchor.RegistrationRevision != q.RegistrationRevision || r.Anchor.BindingID != q.RegistrationBindingID || r.Anchor.BindingEpoch != q.RegistrationBindingEpoch || r.Anchor.NodeKeyEpoch != q.RegistrationNodeKeyEpoch {
 		return result, errEndpointGroupsRegistration
 	}
-	_, original, _, err := c.endpointGroupsOriginal(r)
+	if r.Phase == endpointGroupsZeroAttested && q.Operation == "endpoint_register" {
+		r, err = b.resumeEndpointGroupsZeroRegistration(c, r)
+		if err != nil {
+			return result, err
+		}
+	}
+	_, original, err := c.endpointGroupsOriginalJoin(r)
 	if err != nil {
 		return result, err
 	}

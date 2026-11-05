@@ -163,6 +163,8 @@ func endpointGroupsRealHTTPBeforeKeys(t *testing.T, before func(*endpointGroupsH
 		a.pairHTTP(t, http.MethodPost, "/v2/fabric/endpoint-keys", "CicadaSession "+f.joins[i].SessionToken, f.domain.Policy.GroupID, map[string]any{"attestation": json.RawMessage(attestation)}, http.StatusOK)
 		if before != nil {
 			before(f, i)
+		} else {
+			threadCollaborationClassifyBeforeKeys(t, f, i, wire.ThreadClassificationAdvisor)
 		}
 		f.sequence++
 		var keyChallenge wire.LocalDomainKeyChallenge

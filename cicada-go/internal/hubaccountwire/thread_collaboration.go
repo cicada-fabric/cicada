@@ -1,6 +1,7 @@
 package hubaccountwire
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
@@ -125,6 +126,10 @@ func NewThreadCollaborationCapabilities(hub HubIdentity, serveMode string) (Thre
 }
 func DecodeThreadCollaborationCapabilities(raw []byte, hub HubIdentity) (ThreadCollaborationCapabilities, error) {
 	var v ThreadCollaborationCapabilities
+	if len(raw) > 4096 {
+		return v, ErrInvalid
+	}
+	raw = bytes.TrimSpace(raw)
 	fp, err := HubFingerprint(hub)
 	if err != nil || decodeCanonical(raw, 4096, &v) != nil || ValidateThreadCollaborationCapabilities(v) != nil || v.HubID != hub.HubID || v.HubFingerprint != fp {
 		return v, ErrInvalid

@@ -90,6 +90,9 @@ func endpointGroupsRegistrationLeaseTx(tx *sql.Tx, r *hubEndpointGroupsRegistrat
 func endpointGroupsGuardTx(tx *sql.Tx, endpoint, group, action string, at time.Time) (bool, error) {
 	r, err := endpointGroupsManagedTx(tx, endpoint)
 	if err != nil || r == nil {
+		if err == nil {
+			err = threadCollaborationUnregisteredNativeTx(tx, endpoint)
+		}
 		return r != nil, err
 	}
 	if action != "" {
@@ -105,6 +108,9 @@ func endpointGroupsGuardTx(tx *sql.Tx, endpoint, group, action string, at time.T
 	}
 	if endpointGroupsRegistrationLeaseTx(tx, r, at) != nil {
 		return true, ErrNetworkPermission
+	}
+	if err := threadCollaborationActivationTx(tx, r, group, at); err != nil {
+		return true, err
 	}
 	_, authority, _, err := endpointGroupsResolveTx(tx, r, group, at, false)
 	if err != nil || authority == nil {

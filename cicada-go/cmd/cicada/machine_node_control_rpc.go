@@ -293,6 +293,9 @@ func openMachineNodeControlClientMode(stateDir, base, nodeID string, requireExis
 		client.state.NodeKeyFingerprint != nodewire.IdentityFingerprint(public)) {
 		return nil, errors.New("Node-Control private key does not match the approved local key pin")
 	}
+	if err := validateMachineThreadCollaborationState(client.state, identity); err != nil {
+		return nil, err
+	}
 	actual, loaded := machineNodeControlClients.LoadOrStore(statePath, client)
 	if loaded {
 		other := actual.(*machineNodeControlClient)

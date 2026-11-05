@@ -53,6 +53,7 @@ func endpointGroupsVerificationRefusal(ctx context.Context, substage string, cau
 // This protected record pins that receipt and its original writer/key identity;
 // it grants no Group permission and survives the last Group's removal.
 type machineEndpointGroupsRegistration struct {
+	Phase                 string                                `json:"phase,omitempty"`
 	Anchor                wire.EndpointGroupsRegistrationAnchor `json:"anchor"`
 	LeaseID               string                                `json:"lease_id"`
 	IntentID              string                                `json:"intent_id"`
@@ -142,6 +143,9 @@ func (c *machineNodeControlClient) endpointGroupsOriginalLocked(r machineEndpoin
 // private key are checked before accepting a Hub registration projection.
 // The default policy's CURRENT state is deliberately not an identity source.
 func (b *machineAgentJoinBridge) validateEndpointGroupsRegistration(ctx context.Context, c *machineNodeControlClient, r machineEndpointGroupsRegistration, a wire.EndpointGroupsRegistrationAnchor, hub wire.HubIdentity) error {
+	if r.Phase == endpointGroupsZeroAttested {
+		return b.validateEndpointGroupsZeroRegistration(ctx, c, r, a, hub)
+	}
 	if wire.ValidateEndpointGroupsRegistrationAnchor(a, hub) != nil || a.Profile != LocalCodexContextProfileEndpointGroups || a.RegistrationSource != "CODEX_LOCAL_DOMAIN" || a.State == "REVOKED" {
 		return endpointGroupsVerificationRefusal(ctx, "ANCHOR_SHAPE", nil)
 	}
@@ -207,6 +211,9 @@ func (c *machineNodeControlClient) saveEndpointGroupsRegistration(r machineEndpo
 	previous := cloneMachineNodeControlState(c.state)
 	id := r.Anchor.RegistrationDigest
 	if old, ok := c.state.EndpointGroupsRegistrations[id]; ok {
+		if old.Phase != r.Phase && !(old.Phase == endpointGroupsZeroAttested && r.Phase == "") {
+			return errEndpointGroupsRegistration
+		}
 		if !sameEndpointGroupsAnchor(old.Anchor, r.Anchor) || old.LeaseID != r.LeaseID || old.IntentID != r.IntentID || old.IntentDigest != r.IntentDigest || old.TranscriptPath != r.TranscriptPath || r.RelationsRevision < old.RelationsRevision || r.LocalAccessRevision < old.LocalAccessRevision {
 			return errEndpointGroupsRegistration
 		}

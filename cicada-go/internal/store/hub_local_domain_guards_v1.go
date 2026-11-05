@@ -173,6 +173,9 @@ func (s *Store) RequireHubNativeCollaborationSelf(scope NativeActorScope) error 
 		return err
 	}
 	defer tx.Rollback()
+	if zero, err := threadCollaborationZeroSelfTx(tx, scope, time.Now().UTC()); zero {
+		return err
+	}
 	if managed, err := endpointGroupsGuardTx(tx, scope.EndpointID, scope.GroupID, "", time.Now().UTC()); err != nil {
 		return err
 	} else if managed {

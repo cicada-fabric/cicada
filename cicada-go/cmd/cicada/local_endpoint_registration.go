@@ -148,6 +148,9 @@ func (b *machineAgentJoinBridge) endpointOperation(q localEndpointRequest) (*loc
 		}
 		return b.localDomainEndpointOperation(q)
 	}
+	if (q.Operation == "endpoint_register" || q.Operation == "native_pair_join_named") && q.Harness != "" {
+		return nil, errors.New(wire.ThreadCollaborationErrorClassificationRequired + ": native admission requires an original zero-permission registration")
+	}
 	origin, err := normalizeMCPAPIOrigin(q.APIOrigin)
 	expected, expectedErr := normalizeMCPAPIOrigin(b.baseURL)
 	if err != nil || expectedErr != nil || origin != expected || origin != q.APIOrigin {

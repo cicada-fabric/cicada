@@ -18,6 +18,21 @@ func (s *Service) RequireNativeCollaborationSelf(actor Actor) error {
 	return s.store.RequireHubNativeCollaborationSelf(nativeActorScope(actor))
 }
 
+// Hub's exact self routes may publish the original zero-member key before
+// Owner classification. Every business route retains AuthenticateForGroup.
+func (s *Service) AuthenticateNativeCollaborationSelf(token, group string) (Actor, error) {
+	scope, err := s.store.AuthenticateLocalDomainZeroSelf(HashSessionCredential(token), group)
+	if err != nil {
+		return s.AuthenticateForGroup(token, group)
+	}
+	b, err := s.store.GetSessionBinding(scope.BindingID)
+	if err != nil {
+		return Actor{}, ErrUnauthenticated
+	}
+	a := Actor{PrincipalID: scope.PrincipalID, EndpointID: scope.EndpointID, GroupID: scope.GroupID, NetworkID: scope.NetworkID, MembershipID: scope.MembershipID, MembershipRevision: scope.MembershipRevision, BindingID: scope.BindingID, BindingEpoch: scope.BindingEpoch, LeaseOwner: scope.LeaseOwner, LeaseExpiresAt: b.LeaseExpiresAt}
+	return a, a.Validate()
+}
+
 func (s *Service) RequireLocalDomainRelay(nodeToken, groupID string) error {
 	return s.store.RequireHubLocalDomainRelay(HashSessionCredential(nodeToken), groupID)
 }

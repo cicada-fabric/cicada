@@ -24,7 +24,12 @@ func (h *hubNodesHandler) nativePairSelf(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusUnauthorized, fabric.ErrUnauthenticated)
 		return
 	}
-	actor, err := h.nodes.Fabric().AuthenticateForGroup(token, r.Header.Get("Cicada-Group-Scope"))
+	var actor fabric.Actor
+	if r.URL.Path == "/v2/fabric/whoami" || r.URL.Path == "/v2/fabric/endpoint-keys" {
+		actor, err = h.nodes.Fabric().AuthenticateNativeCollaborationSelf(token, r.Header.Get("Cicada-Group-Scope"))
+	} else {
+		actor, err = h.nodes.Fabric().AuthenticateForGroup(token, r.Header.Get("Cicada-Group-Scope"))
+	}
 	if err != nil || h.nodes.Fabric().RequireNativeCollaborationSelf(actor) != nil {
 		writeError(w, http.StatusForbidden, fabric.ErrPermissionDenied)
 		return

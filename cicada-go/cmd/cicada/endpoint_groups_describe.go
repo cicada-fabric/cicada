@@ -53,6 +53,10 @@ func (c *machineNodeControlClient) endpointGroupsIssuePendingReadLocked(scope *e
 }
 
 func (b *machineAgentJoinBridge) endpointGroupsOriginalHub(ctx context.Context, c *machineNodeControlClient, r machineEndpointGroupsRegistration) (wire.HubIdentity, error) {
+	if r.Phase == endpointGroupsZeroAttested {
+		p, err := b.endpointGroupsZeroPolicy(ctx, c, r)
+		return p.Hub, err
+	}
 	_, _, completed, err := c.endpointGroupsOriginal(r)
 	if err != nil {
 		return wire.HubIdentity{}, err
@@ -144,7 +148,7 @@ func (b *machineAgentJoinBridge) describeEndpointGroups(ctx context.Context, c *
 	if err := b.endpointGroupsAvailable(ctx, hub); err != nil {
 		return r, wire.EndpointGroupsNodeDescribeResult{}, err
 	}
-	_, _, original, err := c.endpointGroupsOriginal(r)
+	_, original, err := c.endpointGroupsOriginalJoin(r)
 	if err != nil {
 		return r, wire.EndpointGroupsNodeDescribeResult{}, err
 	}
@@ -218,9 +222,6 @@ func (b *machineAgentJoinBridge) describeEndpointGroups(ctx context.Context, c *
 			return r, d, errEndpointGroupsRegistration
 		}
 	}
-	if len(r.Authorities) > 32 {
-		return r, d, errManagedPairLeaseFull
-	}
 	r.Anchor, r.RelationsRevision, r.ObservedAt = d.Registration, d.RelationsRevision, d.ObservedAt
 	if err := c.saveEndpointGroupsRegistration(r); err != nil {
 		return r, d, err
@@ -259,6 +260,11 @@ func (b *machineAgentJoinBridge) endpointGroupsVerificationProfile(q localCodexC
 	}
 	if enrolled && r.LocallyOffline && q.ToolName != "codex.operator.endpoint_register" {
 		return localCodexContext{}, true, errEndpointGroupsOffline
+	}
+	if enrolled {
+		if prepared, handled, err := b.threadCollaborationVerificationProfile(verification, c, r, q); handled {
+			return prepared, true, err
+		}
 	}
 	// Known enrollment is never downgraded if the Hub later becomes unsupported.
 	scope := &endpointGroupsIssueReadScope{}

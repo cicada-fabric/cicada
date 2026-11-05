@@ -57,6 +57,9 @@ ON CONFLICT(endpoint_id, group_id) DO NOTHING;
 }
 
 func upsertEndpointGroupMembershipTx(tx *sql.Tx, endpointID, groupID string) error {
+	if err := threadCollaborationEndpointActivationTx(tx, endpointID, groupID, time.Now().UTC()); err != nil {
+		return err
+	}
 	if err := guardDedicatedThreadGroupEndpointTx(tx, endpointID, groupID, time.Now().UTC()); err != nil {
 		return err
 	}

@@ -43,6 +43,10 @@ func cloneMachineLocalDomainState(state machineNodeControlState) machineNodeCont
 		original := state.ManagedLocalDomainLeases
 		state.ManagedLocalDomainLeases = make(map[string]machineManagedLocalDomainLease, len(original))
 		for id, m := range original {
+			if m.ThreadNetworkReservation != nil {
+				copy := *m.ThreadNetworkReservation
+				m.ThreadNetworkReservation = &copy
+			}
 			state.ManagedLocalDomainLeases[id] = m
 		}
 	}

@@ -31,7 +31,7 @@ func (b *machineAgentJoinBridge) renewEndpointGroupsRegistration(ctx context.Con
 	if b.validateEndpointGroupsRegistration(ctx, c, r, r.Anchor, hub) != nil {
 		return r, errEndpointGroupsRegistration
 	}
-	_, original, _, err := c.endpointGroupsOriginal(r)
+	_, original, err := c.endpointGroupsOriginalJoin(r)
 	if err != nil {
 		return r, err
 	}

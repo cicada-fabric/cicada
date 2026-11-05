@@ -153,7 +153,7 @@ func (b *machineAgentJoinBridge) endpointGroupsSelf(q localEndpointGroupsRequest
 	if err != nil {
 		return nil, err
 	}
-	_, original, _, err := c.endpointGroupsOriginal(r)
+	_, original, err := c.endpointGroupsOriginalJoin(r)
 	if err != nil {
 		return nil, err
 	}
