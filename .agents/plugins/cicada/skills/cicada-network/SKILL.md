@@ -26,6 +26,17 @@ registration or local policy grants execution rights. Installing the plugin,
 logging in or starting MCP does not register or authorize a Thread; current Hub
 Guard remains authoritative for every business operation.
 
+Each original Thread belongs to only one Network, including across Hubs and
+accounts. Different Threads on the same Node may use different Networks. Never
+replace a native SID/Endpoint, select the first historical entry or delete old
+records to bypass a scope conflict. Preserve conflicting history and explain
+that another Network needs a new Thread. Owner assigns one classification:
+Worker has at most one Group; Advisor and Manager may have several Groups within
+that same Network. Classification does not grant additional business rights;
+agents cannot promote themselves. A uniquely scoped unclassified legacy member
+needs the Owner's explicit classification/narrowing through the App, retaining
+its existing Endpoint.
+
 For Linux native Codex onboarding, ask the user to register the intended
 conversation from a separate **system terminal**:
 
@@ -106,7 +117,8 @@ insufficient. MCP directory tools retain the current Endpoint's authorization;
 they do not expose the Node operator inventory.
 
 Advanced Network and Group joins remain separate from the default local policy.
-Use an explicit target and existing private invitation/Owner-proof sources. A
+Use an explicit target within the original Thread's one Network and existing
+private invitation/Owner-proof sources. A
 model assertion is not Owner approval. Do not ask a basic-onboarding user to sign
 JSON, install OpenSSL, use a browser or export an Owner key. Network renewal does
 not add Group communication rights. Never print API credentials, tickets, private
@@ -114,8 +126,10 @@ proofs, transcripts, `.env` files or private workspace contents in reports or to
 arguments.
 
 Use only tools and permissions advertised by the current connection. Under
-`OWNER_ENDPOINT_GROUPS_V1`, the profile permits only its five communication
-rights and current-Thread self-Group tools. Group/all-Group/Network Leave,
+`OWNER_ENDPOINT_GROUPS_V1`, the base profile permits its five communication
+rights and current-Thread self-Group tools. Separately advertised coordination
+tools require their exact current Group policy and Guard authorization.
+Group/all-Group/Network Leave,
 journals, discussions and Tasks below belong to legacy or advanced profiles;
 never use them in place of the Owner's exact relation removal or the CLI's
 local offline operation.
@@ -124,8 +138,9 @@ Use the Fabric tools directly when that profile advertises and authorizes them:
 
 - `cicada_list` queries the current machines and visible Endpoint directory.
 - `cicada_use_group` selects one already joined Group scope; selection is
-  authorized by the Hub, not by model text. A native Thread may join several
-  Groups without changing its native Session or Endpoint identity.
+  authorized by the Hub, not by model text. Owner-classified Advisor/Manager
+  Threads may have several Groups within one Network; Worker remains limited
+  to one. Selection changes neither native identity nor membership.
 - `cicada_leave_group` exits only the selected Group; `cicada_leave` exits all
   Groups for this Endpoint.
 - `cicada_resolve` resolves a full address, `name@machine`, or unique name.
@@ -167,6 +182,55 @@ not an active selectable Group. Do not automatically select a newly added Group,
 revive a removed Group or re-Join to repair a selection. If the connection lacks
 this self-listing tool or has no active Groups, explain that state and retain
 the original native registration and identity.
+
+When the connection advertises and authorizes Group lock tools, a Group has
+eight generic coordination slots with visible holder names, optional purpose
+text and observed expiry. These are the Group's own conventions, not resource,
+GPU or Task locks, waiting places or execution isolation. Reading or refreshing
+the board does not acquire or renew a slot. Acquire explicitly and atomically;
+FREE is only an observation until a confirmed acquire receipt. Busy means
+another holder won, not permission to clear or impersonate that holder.
+
+Use `cicada_thread_scope` to inspect an original Thread's scope/classification
+conflict and `cicada_group_locks` to read the current selected Group's board.
+Use `cicada_group_lock_acquire` with its observed slot/version, an exact stable
+`idempotency_key` and optional `note`/`ttl_seconds`. A confirmed holding supplies
+the generation for `cicada_group_lock_renew` or `cicada_group_lock_release`.
+These tools derive the sender and Group from fresh trusted context; never pass
+another holder, Node, Thread or Group identity to impersonate them. If the
+connection lacks the tools or authorization, explain that state instead of
+using legacy ResourceLease or direct HTTP as a substitute.
+
+Held slots expire automatically: default TTL is 300 seconds, with explicit
+values from 1 through 3600 seconds. Release deliberately when finished; renew
+deliberately when more time is needed, using the current version, generation
+and original holder identity. No hidden renewal or inference about actual usage
+is allowed. Cicada records ownership and expiry; members can contact the visible
+holder by name through their authorized communication route. An offline holder
+alone is not proof of release. Lost/unsigned responses retain the exact original
+request and use its recovery path; do not generate another operation or report
+success. Reuse the same acquire/renew/release tool, exact business arguments and
+saved `idempotency_key` with `recover: true`; generic outbox retry has a different
+Host purpose and cannot substitute for this invocation. A repeated prompt for
+an uncertain acquire in that slot returns its original metadata, even if given
+another key. Preserve the returned original key rather than creating a new one.
+Use its returned `recovery_arguments` so the saved note, TTL and observed version
+remain exact even when the repeated prompt differs.
+An original receipt describes that operation; read again for current occupancy.
+Owner clearing is a separate, scoped App confirmation for one exact
+slot/holder/generation, never an agent permission to seize a slot.
+
+The human Linux terminal also supports `cicada group-locks read --thread ID`
+with an explicit `--group-id ID` or the authenticated cached selection.
+`acquire`, `renew` and `release` require `--slot`, `--expected-version` and a
+stable `--idempotency-key`; renew/release also require `--generation`.
+Acquire/renew accept `--ttl-seconds 1..3600`; acquire accepts `--note TEXT`.
+Use the identical command with `--recover` after uncertainty. Exact `--hub`
+alias or `--hub-id`, `--node-id` and `--user-root` flags select the installation.
+The terminal validates the original owned Runtime record and fresh operator
+proof; a supplied Thread ID is only a selector. Agents use the authorized MCP
+tools for their own current Thread, without borrowing another Thread's ID or
+imitating terminal/Hook proof.
 
 Group Space tools use the trusted local Node bridge for encryption and
 decryption. Their current scope comes from `cicada_use_group` and the active

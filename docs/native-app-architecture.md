@@ -67,8 +67,10 @@ DPAPI/ACL, Runtime or public HTTPS acceptance.
 
 Status: **OWNER_APP_CONSUMER_IMPLEMENTED / SCOPED_VALIDATION** on integrated
 backend base `43c071c`. Core and Gio connect the approved typed Owner read,
-prepare, explicit apply and original recovery operations. Native MCP/CLI
-integration and end-to-end availability acceptance remain separate; public
+prepare, explicit apply and original recovery operations. Native MCP/CLI source
+is implemented against the approved private Node producer and validated with
+actual frozen provider sources; integrated end-to-end availability acceptance
+remains separate. Public
 capabilities stay gated by the backend. Every original
 Thread is limited to one Network; one physical Node can serve multiple Networks
 for different Threads. Owner assigns roles:
@@ -130,6 +132,29 @@ uses actual layout, pointer and wheel handling, retaining the delivered shell.
 With the confirmed TTL rule, the App displays observed expiry and resamples its
 snapshot at that deadline without I/O. Core invalidates an expired HELD observation
 to UNKNOWN; only a new authenticated read establishes FREE or a new holder.
+
+The native consumer exposes `cicada_thread_scope`, `cicada_group_locks`, and
+explicit `cicada_group_lock_acquire`, `_renew`, `_release`; the full catalog has
+78 entries. These tools obtain identity only from the current one-use Host
+context and selected authenticated Group. The Linux human terminal has
+`cicada group-locks read|acquire|renew|release --thread ID` through the existing
+owned Runtime record, discovery/adoption and real operator proof path. Terminal
+Thread IDs and cached Groups remain selectors. Neither consumer calls Hub HTTP
+directly or substitutes the task-bound ResourceLease.
+
+The existing private SQLite outbox persists mutation intent and timestamped
+wire original IDs before the Node RPC; the Node supplies the trusted-caller
+digest and retains the sealed packet. The insertion transaction reserves the
+SQLite writer before reading a pending slot, so independent MCP processes and
+new prompt keys return one uncertain acquire's original. Responses expose exact
+`recovery_arguments`; explicit same-tool `recover: true` preserves that input.
+Before any new describe RPC, recovery locates the saved complete original scope
+and binding, verifies fresh Host/operator registration, and sends the original
+typed IDs directly to the Node. Routed MCP retains the facade's selected Hub
+and Group. This does not restore cached authority as permission. Only verified
+immutable original evidence settles SENT or fenced FAILED; current Guard denial,
+transport errors and missing evidence preserve UNKNOWN. A receipt always needs
+a new read to establish current occupancy. No Context/session token is returned.
 
 ## Composable installation and shared authority target
 

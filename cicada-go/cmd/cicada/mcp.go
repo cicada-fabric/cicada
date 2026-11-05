@@ -339,7 +339,7 @@ func cicadaMCPTools() []map[string]any {
 	stringField := func(description string) map[string]any {
 		return map[string]any{"type": "string", "description": description}
 	}
-	return []map[string]any{
+	tools := []map[string]any{
 		{"name": "cicada_groups", "description": "List only this registered Thread's currently usable Groups. No Group is selected automatically. Qualify a Hub for its original page cursor. Requires a fresh verified OWNER_ENDPOINT_GROUPS_V1 context.", "inputSchema": object(map[string]any{"hub_id": stringField("Optional exact Hub qualifier"), "network_id": stringField("Optional exact Network qualifier"), "cursor": stringField("Original opaque self-scope page cursor for the qualified Hub"), "limit": map[string]any{"type": "integer", "minimum": 1, "maximum": 64, "default": 64}}), "annotations": map[string]any{"readOnlyHint": true, "idempotentHint": true, "destructiveHint": false, "openWorldHint": false}},
 		{"name": "cicada_select_peer", "description": "Ask the human to select one exact authorized peer in the current Group or an explicitly joined Network. Requires Host form elicitation. The short-lived selection is a reference, not a grant; pass peer_selection_id to a later send or ask with a fresh tool context.", "inputSchema": object(map[string]any{"scope": map[string]any{"type": "string", "enum": []string{"group", "network"}}, "network_id": stringField("Explicitly joined Network ID; only with network scope"), "query": stringField("Optional bounded name/Endpoint filter within the authorized directory")}, "scope")},
 		{"name": "cicada_network_join", "description": "Explicitly join this verified native Session to an invited Network. Invitation and Owner-signed consent are read from private local files configured outside model input; the Node and Hub independently verify them.", "inputSchema": object(map[string]any{"network_id": stringField("Invited Network ID")}, "network_id")},
@@ -414,6 +414,7 @@ func cicadaMCPTools() []map[string]any {
 		{"name": "cicada_link_review_decide", "description": "Explicitly approve or reject metadata review for the exact assigned sealed message using its current version and reviewer epoch. Approval releases the already sealed delivery; rejection makes it terminal. Neither action decrypts or returns ciphertext or body.", "inputSchema": object(map[string]any{"message_id": stringField("Exact sealed message ID"), "expected_version": map[string]any{"type": "integer", "minimum": 1}, "expected_owner_epoch": map[string]any{"type": "integer", "minimum": 1}, "decision": map[string]any{"type": "string", "enum": []string{"APPROVED", "REJECTED"}}}, "message_id", "expected_version", "expected_owner_epoch", "decision")},
 		{"name": "cicada_artifact_read", "description": "Read one explicitly scoped ArtifactRef after current Group/Grant authorization and digest checks.", "inputSchema": object(map[string]any{"artifact_ref_id": stringField("Opaque ArtifactRef ID"), "scopes": map[string]any{"type": "array", "items": map[string]any{"type": "string"}}}, "artifact_ref_id")},
 	}
+	return append(tools, groupLocksMCPTools()...)
 }
 
 func (m *mcpServer) callTool(name string, arguments map[string]any) (any, error) {
@@ -441,6 +442,9 @@ func (m *mcpServer) callToolWithContext(name string, arguments map[string]any) (
 	if err != nil {
 		return nil, err
 	}
+	if name == "cicada_thread_scope" {
+		return m.threadCollaborationTool(name, arguments)
+	}
 	if name == "cicada_groups" {
 		return m.endpointGroupsList(arguments)
 	}
@@ -460,6 +464,9 @@ func (m *mcpServer) callToolWithContext(name string, arguments map[string]any) (
 	}
 	if name == "cicada_select_peer" {
 		return m.selectPeer(arguments)
+	}
+	if isGroupLocksMCPTool(name) {
+		return m.threadCollaborationTool(name, arguments)
 	}
 	if (name == "cicada_send" || name == "cicada_ask") && stringArgument(arguments, "peer_selection_id") != "" {
 		return m.sendSelectedPeer(name, arguments)
@@ -761,6 +768,10 @@ func (m *mcpServer) callToolWithContext(name string, arguments map[string]any) (
 }
 
 func validateMCPArguments(name string, arguments map[string]any) error {
+	if isGroupLocksMCPTool(name) {
+		_, _, _, err := parseGroupLockMCPArguments(name, arguments)
+		return err
+	}
 	if name == "cicada_groups" {
 		_, _, err := parseEndpointGroupsMCPArguments(arguments)
 		return err
@@ -1592,6 +1603,9 @@ func sanitizeMCPToolResult(value any) any {
 }
 
 func isCicadaMCPTool(name string) bool {
+	if isGroupLocksMCPTool(name) {
+		return true
+	}
 	if name == "cicada_select_peer" || name == "cicada_groups" {
 		return true
 	}

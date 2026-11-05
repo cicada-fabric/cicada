@@ -7,10 +7,13 @@ import (
 	"strings"
 
 	"github.com/cicada-ai/cicada/internal/harness"
+	wire "github.com/cicada-ai/cicada/internal/hubaccountwire"
 )
 
 func codexOperatorContextTool(operation string) string {
 	switch operation {
+	case wire.OperationThreadScopeRead, wire.OperationGroupLocksRead, wire.OperationGroupLocksAcquire, wire.OperationGroupLocksRenew, wire.OperationGroupLocksRelease:
+		return "codex.operator." + operation
 	case "endpoint_register", "endpoint_leave", "endpoint_directory", "native_pair_available", "native_pair_join_named":
 		return "codex.operator." + operation
 	}

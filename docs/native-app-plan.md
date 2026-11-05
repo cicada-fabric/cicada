@@ -102,8 +102,9 @@ The cross-built App test artifact SHA-256 is
 Thread Network/role/lock scope — **OWNER_APP_CONSUMER_IMPLEMENTED /
 SCOPED_VALIDATION**, 2026-11-05, integrated backend base `43c071c`.
 Core/Gio implement authenticated Owner reads, role classification, policy
-management, exact one-slot clearing and restart recovery. Native MCP/CLI and
-actual Store/Guard/Runtime acceptance remain pending separately; the backend's
+management, exact one-slot clearing and restart recovery. Native MCP/CLI source
+and its scoped frozen-provider validation are implemented below. Integrated
+Store/Guard/Runtime acceptance remains pending separately; the backend's
 public availability flags remain gated until that integration completes.
 
 The Owner App uses shared packet constructors and verification, its retained
@@ -149,6 +150,72 @@ index blobs match all 1281 inputs; this is not a whole-repository suite result.
   physical Windows GUI/IME/DPAPI/ACL and new rendered PNG scenes are **NOT_RUN**
   in this checkpoint. Public capability gates and installed/resident state were
   not changed. Native MCP/CLI consumer work continues in a separate checkpoint.
+
+Native MCP/CLI consumer checkpoint — **IMPLEMENTED / FROZEN_PROVIDER_SCOPED_PASS**,
+2026-11-05, base `66ff79d23bf8ef1746e0a40dc4dcd477be90212b`. Five approved tools
+are connected (78 total catalog entries); Linux human terminal `group-locks`
+read/acquire/renew/release uses exact owned Runtime records and real operator
+proof. Mutations persist timestamped original IDs and immutable input before
+the private Node RPC. Concurrent SQLite processes reserve the writer before
+checking pending slots: a repeated prompt/key cannot create a second same-slot
+uncertain acquire. The result returns the original key and exact
+`recovery_arguments`. TTL omitted means 300 seconds; explicit 0/null, values
+outside 1..3600, unknown fields and caller-supplied identities refuse.
+
+Explicit recovery loads the complete saved original scope/authority before any
+new describe RPC, matches fresh Host/operator registration and preserves the
+facade's original selected Hub/Group. It reuses saved typed original IDs; the
+Node owns final caller digest and sealed packet. This uses no zero-binding
+adapter or cached permission. Transport/current Guard denial/missing evidence
+stay UNKNOWN. Only verified original effect or exact no-effect fence settles.
+Historical receipts require a new read for current occupancy. CLI and MCP share
+the same sender/settlement code, never direct Hub HTTP. The single skill source
+documents explicit release/renew/recovery and keeps terminal selectors separate
+from an agent's own current-Thread MCP context.
+
+Evidence: `/home/zyf/Cicada/.local/evidence/n2-app/native-consumer-checkpoint-sdl07_4o/`.
+`source.json` covers 1740 repository input files plus explicit source provenance
+for three real frozen provider replacements, SHA-256
+`29395ab4feda6eadeef2c66f690d1943bfc96384f738bf796d572610c43eaa0d`.
+Those replacements are QA's `machine_thread_collaboration.go` and
+`thread_collaboration_rpc.go`, and Hub's `local_join_bridge.go`; they are
+actual WIP producers, not success stubs. They were not yet in this branch's
+base, so this is an overlay result, not an integrated-commit claim. All 1740
+post-test input hashes match. Test artifacts use `-buildvcs=false` and this source
+manifest rather than attributing the combined dirty build solely to its HEAD.
+
+- Go 1.27.3 normal/race each passed 25 top-level / 46 named results, zero failures
+  and skips. Scope:
+  `^Test(GroupLockConsumer|MCPOutbox|CicadaMCPAdvertisesExplicitFabricTools|CodexDomainStorage|MCPFacade.*Operation)`.
+  New consumer tests account for 5/22, including closed numeric/TTL arguments,
+  purpose/schema alignment, reopen/original recovery data, twelve concurrent
+  prompts over two SQLite connections and CLI choice boundaries. These storage
+  tests do not represent a native business invocation.
+- CLI `go vet`, Linux CLI build, Windows amd64 CLI build and Windows GUI App
+  cross-build passed. The actual Linux binary dispatches `group-locks` to its
+  closed usage parser. Artifact SHA-256: Linux CLI
+  `92c95b7a743cd4fb824906f2db4416989ba8241a82e8f169d571b0387f9622d7`;
+  Windows CLI `7501ca6f68de33c124831c375b97ab14914dbfbceb98b933d1520d0979e1c5ed`;
+  Windows App `e74158db260e726b735a5262d429ac4c42150224f94390855d6b91f534c131df`.
+- Skill `quick_validate.py` passes; componentinstall `^TestCodex` passes
+  7 top-level / 29 named results, zero failures/skips. Installed/resident state
+  is unchanged.
+- Six changed EN/ZH Gio/EGL scenes pass the opt-in
+  `TestCoordinationProductionPixels` (1 top-level / 7 named, zero skips), using
+  `cicada_ui_acceptance,novulkan,nowayland,nox11`, private graphics headers and
+  the read-only Microsoft YaHei fixture. All six PNGs were visually inspected:
+  role review, policy review, narrow high-DPI clear footer, role choices,
+  scrolled eighth slot and original recovery. Evidence is
+  `/home/zyf/Cicada/.local/evidence/n2-app/coordination-pixels-40nlsj55/`.
+  CJK fixture SHA-256
+  `1575bfede7e6ad00d72642c549cb944480cfd3ea51b0dd3fa24734149146f01c`.
+  At 640×480 / 200%, the review body scrolls above the fixed consent/actions.
+  Initial Vulkan/pkg-config and test-field compile failures are retained in
+  separate logs; only the corrected EGL run passes.
+- Actual one-Hook `f.tool` calls and replay denial, real Runtime, disposable
+  Docker/Store/Guard/HTTPS and physical Windows GUI/IME/DPAPI/ACL are **NOT_RUN**
+  by these consumer lanes. They require the coordinated producer integration
+  and actual gate; public capabilities remain false. Android was not changed.
 
 Root-authorized dependency replay, 2026-11-05: unpublished display checkpoint
 `39b8e6b82547cfbb6eed7eff58d67b69050cfc52` was replayed as
