@@ -2,6 +2,8 @@ package server
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	wire "github.com/cicada-ai/cicada/internal/hubaccountwire"
 	"github.com/cicada-ai/cicada/internal/nodewire"
@@ -97,7 +99,10 @@ func threadCollaborationOpenNode(t *testing.T, f *endpointGroupsHTTPFixture, ori
 	if opened.Route != want {
 		t.Fatal("Node response route")
 	}
-	var reply nativePairNodeReply
+	var reply struct {
+		nativePairNodeReply
+		OriginalEvidence *wire.ThreadCollaborationNodeEvidence `json:"original_evidence"`
+	}
 	d := json.NewDecoder(bytes.NewReader(opened.Plaintext))
 	d.DisallowUnknownFields()
 	if d.Decode(&reply) != nil || reply.OperationID != p.Route.OperationID || reply.Sequence != p.Route.Sequence || reply.ErrorCode != wantError || reply.OK != (wantError == "") {
@@ -105,6 +110,25 @@ func threadCollaborationOpenNode(t *testing.T, f *endpointGroupsHTTPFixture, ori
 	}
 	if out != nil && json.Unmarshal(reply.Result, out) != nil {
 		t.Fatal("typed Node result")
+	}
+	if p.Route.Operation == wire.OperationGroupLocksAcquire || p.Route.Operation == wire.OperationGroupLocksRenew || p.Route.Operation == wire.OperationGroupLocksRelease {
+		e := reply.OriginalEvidence
+		sum := sha256.Sum256(original)
+		if e == nil || e.Operation != p.Route.Operation || e.RequestPacketDigest != hex.EncodeToString(sum[:]) || e.ErrorCode != wantError {
+			t.Fatal("missing exact authenticated original evidence")
+		}
+		wantOutcome := wire.ThreadCollaborationOutcomeRejectedFenced
+		if wantError == "" {
+			wantOutcome = wire.ThreadCollaborationOutcomeApplied
+		}
+		if wantError == wire.ThreadCollaborationErrorReceiptUnavailable || wantError == wire.ThreadCollaborationErrorAuthorizationRequired || wantError == wire.ThreadCollaborationErrorClassificationRequired || wantError == wire.ThreadCollaborationErrorOriginalConflict {
+			wantOutcome = wire.ThreadCollaborationOutcomeUnknown
+		}
+		if e.Outcome != wantOutcome {
+			t.Fatal("transport observation misclassified original outcome", e.Outcome, wantOutcome)
+		}
+	} else if reply.OriginalEvidence != nil {
+		t.Fatal("read minted mutation evidence")
 	}
 }
 

@@ -670,3 +670,26 @@ and `...-02/`. The initial probe's key_prepare rejection is retained as the
 identified cycle, not relabeled a pass. Full activation/use guards, Registry
 pre-effect consumer, private Host/Operator execution, App, Docker, Runtime,
 device/public/resident acceptance remain pending; capability flags stay false.
+
+## Node semantic evidence and socket integration
+
+The Hub now emits `original_evidence` inside the exact PQC Node response for
+lock mutations. APPLIED and REJECTED_FENCED require the exact operation, IDs,
+digest, canonical body and trusted caller to match a durable semantic original
+row in the same transaction as the sealed reply. A transport or current Guard
+denial without that row emits UNKNOWN. Previously saved successful packets
+retain their dedicated current-denial HTTP 503 behavior and immutable recovery.
+The real TCP test checks exact request-packet digest and distinguishes expired
+originals from durable semantic rejection; reads never mint mutation evidence.
+
+The shared private socket now dispatches only the closed five operation names
+and returns the typed ThreadCollaboration result. Its private producer is a
+separate QA checkpoint; socket Retryable/error strings are not terminal evidence.
+At base `66ff79d` plus the exact source hashes recorded in local evidence
+`v01-thread-network-locks-node-evidence-20261105-01`, real TCP normal/race pass
+one top-level test each, zero failures/skips (5.491/53.097 seconds). Three-package
+Store/hubnodes/Server vet passes. Root's independent combined-producer overlay
+checks remain attributed to that overlay, not this isolated backend test.
+Registry pre-effect and zero-stage Node bootstrap remain in progress, and both
+new public capability flags remain false. No Docker, real Runtime, physical
+device, public HTTPS or resident deployment acceptance is claimed here.

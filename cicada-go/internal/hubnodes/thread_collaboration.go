@@ -39,6 +39,9 @@ func (s *Service) openThreadCollaborationNode(credential string, raw []byte) (st
 	in := store.HubThreadCollaborationNodeInput{Hub: hub, NodeControlPublic: s.ids.NodeControl.Public(), CredentialDigest: credential, Packet: raw, Body: body, Now: time.Now}
 	seal := func(out store.HubThreadCollaborationNodeOutput) ([]byte, error) {
 		response := map[string]any{"ok": out.ErrorCode == "", "operation_id": opened.Route.OperationID, "sequence": opened.Route.Sequence}
+		if out.OriginalEvidence != nil {
+			response["original_evidence"] = out.OriginalEvidence
+		}
 		if out.ErrorCode != "" {
 			response["error_code"] = out.ErrorCode
 		} else if out.Result != nil {

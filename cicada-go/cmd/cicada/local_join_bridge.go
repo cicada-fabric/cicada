@@ -68,6 +68,7 @@ type localNetworkRenewRequest struct {
 }
 
 type localJoinResponse struct {
+	ThreadCollaboration *localThreadCollaborationResult       `json:"thread_collaboration,omitempty"`
 	EndpointGroups      *localEndpointGroupsResult            `json:"endpoint_groups,omitempty"`
 	EndpointOperation   *localEndpointResult                  `json:"endpoint_operation,omitempty"`
 	CodexContextIssue   *localCodexContextIssueResult         `json:"codex_context_issue,omitempty"`
@@ -470,6 +471,21 @@ func (b *machineAgentJoinBridge) serveConnection(connection net.Conn, deadline t
 	}
 	if header.Operation == "local_node_describe" {
 		b.serveLocalNodeDescribe(requestBytes, connection)
+		return
+	}
+	if threadCollaborationNodeOperation(header.Operation) {
+		var q localThreadCollaborationRequest
+		if decodeLocalBridgeRequest(requestBytes, &q) != nil {
+			_ = json.NewEncoder(connection).Encode(localJoinResponse{Version: localJoinProtocolVersion, Error: "invalid Thread collaboration request"})
+			return
+		}
+		result, err := b.threadCollaboration(q)
+		response := localJoinResponse{Version: localJoinProtocolVersion, ThreadCollaboration: result}
+		if err != nil {
+			response.Error = err.Error()
+			response.Retryable = true
+		}
+		_ = json.NewEncoder(connection).Encode(response)
 		return
 	}
 	if header.Operation == "endpoint_groups_self" || header.Operation == "endpoint_groups_select" {
