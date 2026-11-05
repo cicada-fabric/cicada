@@ -224,6 +224,9 @@ func nativeThreadOperatorWithManager(action string, args []string, out io.Writer
 	}
 	result, err := client.callForConnection(q, connection)
 	if err != nil {
+		if result != nil && result.State == "CLASSIFICATION_REQUIRED" {
+			return fmt.Errorf("请在 Cicada App 中为该 Thread 分配角色，然后重试同一条 Join 命令。 / Assign this Thread a role in the Cicada App, then retry the identical Join command: %w", err)
+		}
 		return err
 	}
 	if result == nil || result.State != "COMPLETED" {

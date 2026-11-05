@@ -151,6 +151,33 @@ end-to-end PASS**. Keep all five original Threads in the same selected Network.
    original; use returned `recovery_arguments` with the same tool and
    `recover: true`. An HTTP error does not settle UNKNOWN.
 
+ZERO Join consumer continuation — **SCOPED_PASS**, 2026-11-05. Hub/QA's actual
+bootstrap exposed that the old intent SDK converted `CLASSIFICATION_REQUIRED`
+into `CODEX_OPERATOR_INTENT_RESPONSE_INVALID`. The consumer now preserves that
+registration-only progress and the known `GROUP_CONFLICT`, `NETWORK_CONFLICT`,
+`UNRESOLVED` and `RESERVED` states for the exact original local-domain-v1 register
+request, with matching intent/operation/Node and pinned Hub. It requires the
+matching error and valid registration, without a Join, grant or native admission
+payload. Such replies remain errors and cannot enter completion cache or ACK;
+restart keeps the same original. CLI classification progress retains the code
+and explains in Chinese/English to assign the role in the App and retry the
+identical Join command. No role is assigned by this consumer.
+
+Evidence: `/home/zyf/Cicada/.local/evidence/n2-app/zero-progress-consumer-awbde4lq/`.
+The 1535-input source manifest is based on dirty `3cbd98e257a63c61b3a6633b74416311204175b1`,
+SHA-256 `07e0c978fbea4652ba92230a566fe54f5272c87c5084acd8135ca19991f9e269`.
+Go 1.27.3 normal/race each pass 7 top-level / 57 named results, zero failures/skips,
+regex `^Test(CodexZeroProgress|CodexOperator(LostReply|PersistenceFailure|ReplyBinding)|CodexDomainResult)`.
+New scripted-private-Node consumer tests are 3/29: five progress states preserve
+the pending bytes across restart and refuse ACK, foreign/malformed/authority-bearing
+replies refuse, and a later complete receipt validates under the same original.
+CLI `go vet` and Windows amd64 CLI cross-build pass. The process-local test umask
+is `0077`; the initial inherited-`0002` run failed existing temporary-root
+permission fixtures and is retained at `zero-progress-consumer-gymak_ro/`.
+Production permission checks were not changed. Actual CLI ZERO → Owner
+classification → original Join completion and the full Runtime/Docker gate
+remain separate QA acceptance; these consumer tests do not activate profiles.
+
 The Owner App uses shared packet constructors and verification, its retained
 local Owner key and the encrypted vault. It persists before first POST and
 reserves receipt/query capacity within existing vault limits. Apply requires the

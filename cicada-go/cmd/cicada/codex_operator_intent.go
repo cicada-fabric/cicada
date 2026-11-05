@@ -425,6 +425,30 @@ func validateCodexOperatorResult(p codexOperatorPending, r *localEndpointResult,
 	return nil
 }
 
+// Registration-only progress is never a completion receipt. Preserve the
+// existing original while the Owner resolves its classification/history; no
+// session cache or acknowledgment may be derived from this private Node reply.
+func codexOperatorUnconfirmedResult(p codexOperatorPending, r *localEndpointResult, responseErr error) bool {
+	q := p.Request
+	if r == nil || responseErr == nil || r.RequestID != q.RequestID || r.IntentDigest != p.IntentDigest || r.Operation != q.Operation || r.NodeID != p.NodeID || r.HubID == "" || p.ConnectionPin != nil && r.HubID != p.ConnectionPin.HubID {
+		return false
+	}
+	if r.State == "UNKNOWN" {
+		return true
+	}
+	if q.Operation != "endpoint_register" || q.LocalDomainVersion != 1 || q.EndpointGroupsVersion != 0 || wire.ValidateLocalDomainSelection(q.LocalDomain) != nil || !localContextText(r.HubID, 256) || responseErr.Error() != r.State {
+		return false
+	}
+	switch r.State {
+	case "CLASSIFICATION_REQUIRED", "GROUP_CONFLICT", "NETWORK_CONFLICT", "UNRESOLVED", "RESERVED":
+	default:
+		return false
+	}
+	registration := r.Registration
+	return registration != nil && localContextText(registration.EndpointID, 256) && localContextHex(registration.StateDigest, 64) && registration.Workspace == q.Workspace && registration.Presence != "left" &&
+		r.Join == nil && r.LocalDomain == nil && r.EndpointGroups == nil && r.Directory == nil && r.Pairs == nil && r.NativeContextScope == nil && !r.EndpointGroupsLocalOffline
+}
+
 // call always persists/reloads the exact original before IPC. A verified result
 // is kept privately until the consumer stores its Join session or emits its
 // successful output and explicitly acknowledges. It is historical completion,
@@ -480,7 +504,7 @@ func (c *codexOperatorIntentClient) callWithConnectionPin(socketPath string, q l
 	result, callErr := c.exchange(socketPath, request)
 	p := codexOperatorPending{ConnectionPin: pin, NodeID: nodeID, Request: original, IntentDigest: codexOperatorDigest(original, false)}
 	if validateCodexOperatorResult(p, result, callErr) != nil {
-		if result != nil && result.RequestID == original.RequestID && result.IntentDigest == p.IntentDigest && result.Operation == original.Operation && result.NodeID == nodeID && result.HubID != "" && (pin == nil || result.HubID == pin.HubID) && result.State == "UNKNOWN" && callErr != nil {
+		if codexOperatorUnconfirmedResult(p, result, callErr) {
 			return result, callErr
 		}
 		if result == nil && callErr != nil {
