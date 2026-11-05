@@ -1,6 +1,8 @@
 # Thread Network, classification and Group protocol locks
 
-Status: **DRAFT_FOR_ROOT_REVIEW / BUSINESS_NOT_IMPLEMENTED**, 2026-11-05.
+Status: **REVIEWED_CONTRACT / LIVE_PROFILE_GATED**, 2026-11-05.
+The shared checkpoint is `a00b639`; the gated Store/Owner HTTP/Node RPC producer
+checkpoint is recorded in [implementation evidence](#gated-backend-checkpoint).
 Proposed additive revision: `thread-network-group-locks-v1`. Compilable shared DTOs, pure codecs and client interfaces are in
 [`thread_collaboration_types.go`](../cicada-go/internal/hubaccountwire/thread_collaboration_types.go)
 and [`thread_collaboration.go`](../cicada-go/internal/hubaccountwire/thread_collaboration.go). These install no handler, Store mutation or live profile. This draft defines
@@ -301,8 +303,8 @@ Every replay still checks current caller/Owner authorization.
 Reuse bounded original packet/outbox recovery. No unresolved original or live
 holder record is silently evicted; exhaustion refuses new operations before
 mutation. Restart does not clear slots, reset versions, mint replacement requests
-or discard uncertain packets. Durable receipt/tombstone compaction requires its
-own reviewed retention rule; this draft does not authorize destructive cleanup.
+or discard uncertain packets. The reviewed bounded recovery rule below governs receipt maintenance; it never
+resets slot versions/generations or makes an expired original executable.
 
 Error classes are `UNSUPPORTED_PROFILE`, `AUTHORIZATION_REQUIRED`,
 `THREAD_NETWORK_CONFLICT`, `THREAD_NETWORK_UNRESOLVED`,
@@ -439,3 +441,194 @@ Evidence and exact original→amended draft mapping are in
 PQC codec round trips are demonstrated; Store/Guard/current authority, live
 HTTP/Node handlers, Native local Host RPC, Docker, App, real Runtime/device/public
 and resident acceptance are not established by this shared checkpoint.
+
+## Bounded original recovery
+
+Root approved a 24-hour recovery window for new lock semantic originals.
+`NewGroupLockOriginal(at)` creates `operation_id` and `idempotency_key`, each
+16-byte lowercase hex: the first 48 bits are the same UTC millisecond timestamp,
+the remaining 80 bits are independently random. `request_digest` starts at 64
+zero hex characters and is filled by `GroupLockRequestDigest` from the trusted
+caller/body before the Node packet is sealed. Existing Owner request IDs and
+existing protocol-family identifiers are unchanged.
+
+The server checks both the prefix binding and creation window on every new use
+and replay: future skew at most 30 seconds, age strictly less than 24 hours.
+Outside that window it returns `ORIGINAL_RECEIPT_UNAVAILABLE` and executes no
+lock action, even if the old ID is given a new body, CAS or authenticated carrier.
+Within the window, ID/key/body changes conflict; exact retries return the original
+receipt and never shift expiry. A receipt reports a historical result, never
+current occupancy. Refresh the current Group view.
+
+Bounded maintenance in the existing Store transaction reclaims expired original
+receipts in batches of at most 256, retaining current successful CAS effects
+until the slot version advances and retaining unknown/corrupt originals.
+Rejected originals with no effects may be reclaimed after their ID window;
+they cannot execute later. Node wrapper receipts/inbox rows retain their shared
+sequence highwater; old sequence packets are refused after reclamation. Owner
+read/status/reconcile and expired-prepare caches follow the existing five-minute
+proof window (plus skew); applied or unknown Owner mutation receipts remain
+retained. Capacity exhaustion refuses before mutation. This is bounded recovery,
+not indefinite retention of every read or a lifetime lock-operation quota.
+
+Hub classifications use the real harness/native-session identity scoped to the
+Hub, excluding account, Endpoint, Principal, key and workspace. The original
+registration revision supplies the stable source epoch. Supported paths retain
+the original Endpoint; another registration for the same real Thread is refused.
+Pre-existing multiple registrations are retained and reported/fenced, never
+chosen as a new winning identity. Local cross-Hub history remains the separate
+existing shared NativeContextRegistry responsibility.
+
+## Gated backend checkpoint
+
+This records implementation evidence separately from the adopted specification.
+The earlier sections define the contract.
+The shared contract/Owner PQC checkpoint is `a00b6391ede9d773773c268af0c277c823fe75fa`.
+The backend checkpoint uses base `b6fa465e80dac2e9ff351d5c61ab5474563a58a0`
+plus its exact recorded Go hashes. It is not attributed to that clean base alone.
+
+## Gated backend scope
+
+Schema 72 adds persistent classifications, independently approved Group policies,
+eight numbered finite leases, bounded original receipts and finite Owner reviews.
+No Owner/account/public key/epoch is regenerated. Existing Owner/account signing,
+PQC envelopes, Node bindings, shared sequence counters and transactional Guard
+services are reused. The new Hub Nodes handlers import no Control inference or
+old task-bound ResourceLease service. Public capability flags remain false until
+the complete admission/Guard/native-consumer checkpoint is reviewed.
+
+Owner read/prepare/apply/status/reconcile run through the actual encrypted HTTP
+lane. Read/list requires current independent Owner authority and no remote Host
+ticket. Login alone supplies no Root. Explicit classification checks original
+source and classification/relation revisions; worker downgrade refuses multiple
+effective Groups. Policy enable creates eight rows once, never on a read.
+Create+policy uses one review with a prepared Group ID. Apply consumes one finite
+review, records its exact sealed response atomically and status/reconcile recover
+that response. Reconcile closes an authenticated unseen original with a no-effect
+fence; it never replays old business.
+
+Node RPC checks current Node/registration, classification, exact Group source and
+independently enabled policy before both first use and original recovery. Every
+slot action compares scope, stable holder source, generation and version. Reads
+normalize only existing expired leases. AI explicitly renews/releases; no daemon
+renews. Exact retry preserves original expiry. Expiry increments version once,
+preserves generation and permits a new atomic holder. Old release/renew cannot
+change a successor. Holder names are read only through current same-Group source
+authorization, with an explicit NOT_DISCLOSED marker otherwise.
+
+The 24-hour time-prefixed semantic-original window permits bounded receipt
+maintenance. Daily reads and lock actions do not consume an irreversible lifetime
+quota. Maintenance retains unknown/current originals, reclaims expired completed
+receipts under the existing writer and refuses late execution by ID time or the
+shared Node sequence floor. Owner mutation receipts remain retained and bounded.
+
+## Validation scope
+
+The real isolated TCP fixture uses actual Owner/device/Node keys, account and
+Owner enrollment, Node registration, Group membership/key completion and PQC
+envelopes. The composed handler has Control absent. It exercises classification,
+pre-policy Group metadata without fake FREE slots, policy enable, original Apply
+response recovery, eight slots, held nickname/expiry, acquire/renew exact retry,
+expiry, successor generation, stale release refusal, Owner clear, holder release
+and policy-revoked old-packet refusal. Production codecs also reject nested
+invalid TTLs and expired/future semantic originals.
+
+Separate deterministic Store mechanics use synthetic rows without claiming
+caller authorization: two independent SQLite writers compete for one slot, then
+reopen the database, recover the exact receipt, normalize expiry once and reclaim
+a 25-hour original. Reusing that expired ID with a new body/CAS is refused.
+
+The historical v68/v69 fixture builder removes later 72/71/70 objects before
+claiming an old schema. Production restore coverage remains reviewed through
+schema 67; schema 72 restore is not newly authorized. A development broader
+selector first exposed that stale historical fixture and failed; its corrected
+focused restore checks are recorded separately, not called a first-run pass.
+
+Final raw logs, commands, tested hashes and commit receipt are under
+`/home/zyf/Cicada/.local/evidence/v01-thread-network-locks-backend-20261105-01/`,
+`...-02/` and `...-03/`, with exact source hashes for each run.
+
+## Remaining work
+
+The local NativeContextRegistry reservation producer is assigned separately to
+QA. The Node must consume it before every external Join/registration effect,
+preserve timeout/unknown reservations and settle only an authenticated exact
+original result. Full activation and current-use classification/count guards
+across legacy/default/manual paths and the private verified native CLI/MCP
+consumer are subsequent work. These are required before enabling capability
+flags. The backend checkpoint does not establish cross-Hub native admission.
+
+App integration, disposable Docker interop, real native Runtime, physical device,
+public HTTPS and resident deployment validation remain NOT_RUN here. The producer
+has not pushed, deployed, merged into dev or changed resident state.
+
+### Backend qualification and retained failures
+
+The 01 selector passed 15 top-level tests / 54 PASS events, zero skips, normal
+exit 0 in 31.435 seconds. Its race run passed the 14 non-TCP top-level tests /
+53 PASS events; the TCP case failed because the test's one-second initial lease
+expired during real PQC processing under instrumentation. This was a correct
+LEASE_EXPIRED refusal, not a race pass. The test now acquires 30 seconds and
+explicitly renews for one second, then observes expiry. No production TTL bound
+was increased. The unchanged production sources passed the corrected TCP case
+normal/race in 02, 12.233/62.398 seconds, and five-package vet in 4.768 seconds.
+
+The final 03 checkpoint adds exact unseen-Apply reconciliation: closing the
+original also consumes its one-use review, a late exact packet remains fenced,
+a newly signed request cannot borrow that review, and a consumed review with a
+missing receipt remains uncertain. It records the fence at the actual server
+time. Expired reclaimed diagnostic absence reports receipt unavailable instead
+of asserting that its old read was never performed. The final real TCP case
+passed normal/race, exit 0, zero skips, 13.444/83.276 seconds; vet across Store,
+Server, hubaccountwire, hubauth and hubnodes passed in 12.469 seconds. Only the
+Owner reconciliation producer and its TCP test changed after 02; the unchanged
+Store/common/restore tests retain their exact 01 source attribution.
+
+Development failures remain separately recorded. A preliminary broader selector
+failed the old synthetic v68 reconstruction because it retained later objects;
+the fixture now removes them before claiming a historical schema, with production
+restore coverage still 67. An intermediate late-original test re-sealed a logical
+request with fresh PQC randomness and correctly received packet conflict; it now
+resends the retained exact packet. Neither diagnostic is promoted to acceptance.
+
+The final commit receipt hashes every committed changed file and maps the base,
+normal/race/vet artifacts and these limits. This checkpoint is the gated backend
+producer, not the complete native Thread admission/CLI/MCP acceptance.
+
+### Final review corrections
+
+The 04 Owner-PQC qualification passes two top-level tests / six PASS events in
+normal/race, zero skips, 14.012/25.664 seconds. The review observation lower bound
+is client issued time minus 30 seconds and upper bound client now plus 30 seconds;
+exact packet/body and proof expiry remain bound. Server observation offsets of
+±100 milliseconds pass; ±31 seconds refuse. This handles real clock skew in UTC.
+
+For a saved Node operation, a current policy/member/registration denial cannot
+be sealed as a new ordinary original no-effect rejection. Its original receipt
+remains unchanged and recovery reports transport outcome unavailable. This
+profile's dedicated error maps to HTTP 503; other Node error routes are unchanged.
+The private consumer must retain UNKNOWN, not infer a terminal result from any
+transport authorization denial. Re-enabling the policy allows byte-identical
+recovery of the old success, without reapplying it or claiming a current hold.
+
+The 05 development test first received the old generic HTTP 403 mapping; that
+was unsigned transport denial, not an authenticated original rejection. The
+scoped error now has the explicit retained-original 503 mapping. Final 06 TCP
+normal/race both passed, zero skips, 13.851/89.781 seconds, and five-package vet
+passed in 12.899 seconds. All changed Go hashes are in the 06 snapshot; earlier
+01–05 evidence remains source-bound and is not overwritten. The unpublished
+`abd5a3b58628ecdab91b2e1f135082274f662af1` draft is mapped to the final amended
+checkpoint in the 06 commit receipt; published `a00b639`/`b6fa465` are untouched.
+
+The next private bridge contract is frozen with the consumer: request embeds the
+existing `localEndpointGroupsRequest` Host provenance and optional real
+`endpointGroupsOperatorContextProof`, then exactly one Scope/Acquire/Renew/Release
+payload (scope-read has none). `requestMachineAgentThreadCollaboration(ctx,
+socketPath, request)` returns a typed result with exactly one Scope/Locks/Receipt
+and optional `localThreadCollaborationOriginalEvidence`: Operation, final typed
+Original, RequestPacketDigest, ResponsePacketDigest, Outcome and ErrorCode.
+Outcome is APPLIED, REJECTED_FENCED or UNKNOWN. Only verified exact PQC semantic
+original evidence may settle a mutation; string errors or Retryable flags cannot.
+This seam still requires its actual producer and complete current Guards before
+activation. Local recover metadata remains in exact Host/Operator arguments,
+while the original immutable wire body/digest excludes that control flag.

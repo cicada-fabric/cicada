@@ -19,7 +19,7 @@ func syntheticHubCheckpoint() *HubRestoreCheckpoint {
 }
 
 func TestHubRestoreSchema68OnlyAllowsEmptyNodePairState(t *testing.T) {
-	if CurrentV2SchemaVersion != 70 || hubRestoreReviewedSchemaVersion != 67 {
+	if CurrentV2SchemaVersion != 72 || hubRestoreReviewedSchemaVersion != 67 {
 		t.Fatal("change this explicit unsupported boundary only after a separate restore review")
 	}
 	db, root, _, _ := nativeTLSStoreFixture(t)

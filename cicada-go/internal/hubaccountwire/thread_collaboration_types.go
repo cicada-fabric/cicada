@@ -22,6 +22,7 @@ const (
 	GroupLockDefaultTTLSeconds                     = 300
 	GroupLockMinTTLSeconds                         = 1
 	GroupLockMaxTTLSeconds                         = 3600
+	GroupLockOriginalRecoverySeconds               = 24 * 60 * 60
 	MaxGroupLockNoteBytes                          = 1024
 	MaxThreadCollaborationNodeBodyBytes            = 8 << 10
 	MaxThreadCollaborationViewBytes                = 32 << 10
@@ -66,6 +67,7 @@ const (
 	ThreadCollaborationErrorOriginalConflict       = "ORIGINAL_REQUEST_CONFLICT"
 	ThreadCollaborationErrorOriginalUncertain      = "ORIGINAL_OUTCOME_UNCERTAIN"
 	ThreadCollaborationErrorAtLimit                = "STATE_AT_LIMIT"
+	ThreadCollaborationErrorReceiptUnavailable     = "ORIGINAL_RECEIPT_UNAVAILABLE"
 )
 
 type ThreadCollaborationCapabilities struct {

@@ -12,6 +12,16 @@ import (
 // a real upgrade/restore-boundary check without changing historical migrations.
 func dropSyntheticAppNodeScopedMigration70(t *testing.T, db *Store) {
 	t.Helper()
+	// Reconstruct an actual historical v69 fixture, including removal of the
+	// later v71/v72 objects. This does not expand production restore coverage.
+	for _, objects := range [][]string{threadCollaborationSchemaObjects, appBindingSchemaObjects} {
+		for i := len(objects) - 1; i >= 0; i-- {
+			dropSyntheticMigrationObject(t, db.db, objects[i])
+		}
+	}
+	if _, err := db.db.Exec(`DELETE FROM schema_migrations_v2 WHERE version IN(71,72)`); err != nil {
+		t.Fatal(err)
+	}
 	for i := len(appNodeScopedSchemaObjects) - 1; i >= 0; i-- {
 		dropSyntheticMigrationObject(t, db.db, appNodeScopedSchemaObjects[i])
 	}
@@ -121,7 +131,7 @@ func TestAppNodeScopedSchemaGlobalPendingAndIndependentActiveHeads(t *testing.T)
 }
 
 func TestAppNodeScopedSchema70RestoreRemainsUnsupported(t *testing.T) {
-	if CurrentV2SchemaVersion != 70 || hubRestoreReviewedSchemaVersion != 67 {
+	if CurrentV2SchemaVersion != 72 || hubRestoreReviewedSchemaVersion != 67 {
 		t.Fatal("unreviewed restore boundary changed")
 	}
 	_, root, _, _ := nativeTLSStoreFixture(t)
