@@ -237,6 +237,25 @@ func (m *mcpServer) callContextualToolVerifiedContext(callCtx context.Context, n
 		state.mu.Unlock()
 	}()
 	defer m.reconcileCodexHeartbeat()
+	if name == "cicada_thread_scope" && verifiedDomain.EndpointGroupsVersion == 1 {
+		// Status uses the just-consumed Host proof and original registration.
+		// It needs no Group selection or communication-session restoration.
+		return m.callToolWithContext(name, business)
+	}
+	if isGroupLockOutboxKind(groupLockOperation(name)) && verifiedDomain.EndpointGroupsVersion == 1 {
+		if call != nil {
+			// Routed recovery must retain the facade's selected original Group.
+			value, err := call(context, consumed.Context, nil, business)
+			if !errors.Is(err, errGroupLockNeedsCurrentRead) {
+				return value, err
+			}
+		} else {
+			value, handled, err := m.groupLockOriginalBeforeRefresh(callCtx, name, business, context, verifiedDomain, nil)
+			if handled || err != nil {
+				return value, err
+			}
+		}
+	}
 	if call != nil && isMCPFacadeOperationStatus(name) && verifiedDomain.EndpointGroupsVersion == 1 {
 		return call(context, consumed.Context, nil, business)
 	}

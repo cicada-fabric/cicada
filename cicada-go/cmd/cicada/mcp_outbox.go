@@ -42,31 +42,32 @@ var (
 // The idempotency key is stored in its own column so it cannot accidentally
 // become part of a user payload or be changed during a retry.
 type mcpOutboxInput struct {
-	PeerSelectionID          string `json:"peer_selection_id,omitempty"`
-	PeerIntentDigest         string `json:"peer_intent_digest,omitempty"`
-	PeerBindingID            string `json:"peer_binding_id,omitempty"`
-	PeerBindingEpoch         uint64 `json:"peer_binding_epoch,omitempty"`
-	ApprovalID               string `json:"approval_id,omitempty"`
-	NetworkID                string `json:"network_id,omitempty"`
-	TaskID                   string `json:"task_id,omitempty"`
-	SnapshotDigest           string `json:"snapshot_digest,omitempty"`
-	Targets                  string `json:"targets,omitempty"`
-	OwnerEpoch               int64  `json:"owner_epoch,omitempty"`
-	ExpectedRevision         int64  `json:"expected_revision,omitempty"`
-	Target                   string `json:"target,omitempty"`
-	RequestedTarget          string `json:"requested_target,omitempty"`
-	LinkID                   string `json:"link_id,omitempty"`
-	DataScope                string `json:"data_scope,omitempty"`
-	Body                     string `json:"body,omitempty"`
-	Question                 string `json:"question,omitempty"`
-	RequestID                string `json:"request_id,omitempty"`
-	ParentRequestID          string `json:"parent_request_id,omitempty"`
-	ExpiresAt                string `json:"expires_at,omitempty"`
-	TopicID                  string `json:"topic_id,omitempty"`
-	CorrectsID               string `json:"corrects_id,omitempty"`
-	TopicVersion             int64  `json:"expected_topic_version,omitempty"`
-	SpaceStatus              string `json:"space_status,omitempty"`
-	RequiredArtifactRefsJSON string `json:"required_artifact_refs_json,omitempty"`
+	GroupLock                *mcpGroupLockIntent `json:"group_lock,omitempty"`
+	PeerSelectionID          string              `json:"peer_selection_id,omitempty"`
+	PeerIntentDigest         string              `json:"peer_intent_digest,omitempty"`
+	PeerBindingID            string              `json:"peer_binding_id,omitempty"`
+	PeerBindingEpoch         uint64              `json:"peer_binding_epoch,omitempty"`
+	ApprovalID               string              `json:"approval_id,omitempty"`
+	NetworkID                string              `json:"network_id,omitempty"`
+	TaskID                   string              `json:"task_id,omitempty"`
+	SnapshotDigest           string              `json:"snapshot_digest,omitempty"`
+	Targets                  string              `json:"targets,omitempty"`
+	OwnerEpoch               int64               `json:"owner_epoch,omitempty"`
+	ExpectedRevision         int64               `json:"expected_revision,omitempty"`
+	Target                   string              `json:"target,omitempty"`
+	RequestedTarget          string              `json:"requested_target,omitempty"`
+	LinkID                   string              `json:"link_id,omitempty"`
+	DataScope                string              `json:"data_scope,omitempty"`
+	Body                     string              `json:"body,omitempty"`
+	Question                 string              `json:"question,omitempty"`
+	RequestID                string              `json:"request_id,omitempty"`
+	ParentRequestID          string              `json:"parent_request_id,omitempty"`
+	ExpiresAt                string              `json:"expires_at,omitempty"`
+	TopicID                  string              `json:"topic_id,omitempty"`
+	CorrectsID               string              `json:"corrects_id,omitempty"`
+	TopicVersion             int64               `json:"expected_topic_version,omitempty"`
+	SpaceStatus              string              `json:"space_status,omitempty"`
+	RequiredArtifactRefsJSON string              `json:"required_artifact_refs_json,omitempty"`
 }
 
 type mcpOutboxScope struct {
@@ -408,6 +409,14 @@ func (s *mcpOutboxStore) prepareOperation(scope mcpOutboxScope, kind, requestedK
 		return mcpOutboxOperation{}, false, fmt.Errorf("%w: begin operation transaction: %v", errMCPOutboxPersistence, err)
 	}
 	defer tx.Rollback()
+	if isGroupLockOutboxKind(kind) {
+		// Reserve SQLite's writer before reading a pending slot. Concurrent MCP
+		// processes must see the committed original, not race two deferred
+		// read snapshots into different-key acquisitions. This updates no row.
+		if _, err := tx.Exec(`UPDATE mcp_outbox_operations SET updated_at=updated_at WHERE 0`); err != nil {
+			return mcpOutboxOperation{}, false, fmt.Errorf("%w: reserve Group lock transaction: %v", errMCPOutboxPersistence, err)
+		}
+	}
 	var existing mcpOutboxOperation
 	err = scanMCPOutboxOperation(tx.QueryRow(`
 SELECT operation_id, kind, status, api_origin, scope, harness, native_session_id,
@@ -420,7 +429,12 @@ WHERE api_origin = ? AND native_session_id = ? AND endpoint_id = ? AND group_id 
 		if !mcpOutboxScopeMatches(existing, scope) {
 			return mcpOutboxOperation{}, false, errMCPOutboxContext
 		}
-		if existing.Kind != kind || existing.InputDigest != inputDigest || existing.InputJSON != inputJSON ||
+		if isGroupLockOutboxKind(kind) {
+			var original mcpOutboxInput
+			if existing.Kind != kind || json.Unmarshal([]byte(existing.InputJSON), &original) != nil || !groupLockInputsEqual(original, input) {
+				return mcpOutboxOperation{}, false, errMCPOutboxConflict
+			}
+		} else if existing.Kind != kind || existing.InputDigest != inputDigest || existing.InputJSON != inputJSON ||
 			(reservedID != "" && existing.OperationID != reservedID) {
 			return mcpOutboxOperation{}, false, errMCPOutboxConflict
 		}
@@ -431,6 +445,34 @@ WHERE api_origin = ? AND native_session_id = ? AND endpoint_id = ? AND group_id 
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return mcpOutboxOperation{}, false, fmt.Errorf("%w: inspect operation: %v", errMCPOutboxPersistence, err)
+	}
+	if isGroupLockOutboxKind(kind) {
+		if key == "" || input.GroupLock == nil {
+			return mcpOutboxOperation{}, false, errMCPOutboxConflict
+		}
+		if kind == groupLockOperation("cicada_group_lock_acquire") {
+			pending, err := pendingGroupLockAcquire(tx, scope, input.GroupLock.Slot)
+			if err != nil {
+				return mcpOutboxOperation{}, false, err
+			}
+			if pending != nil {
+				if err := tx.Commit(); err != nil {
+					return mcpOutboxOperation{}, false, err
+				}
+				return *pending, false, nil
+			}
+		}
+		input, reservedID, err = stampGroupLockMCPInput(input)
+		if err != nil {
+			return mcpOutboxOperation{}, false, err
+		}
+		if err := validGroupLockOutboxInput(scope, kind, input); err != nil {
+			return mcpOutboxOperation{}, false, err
+		}
+		inputJSON, inputDigest, err = canonicalMCPOutboxInput(input)
+		if err != nil {
+			return mcpOutboxOperation{}, false, err
+		}
 	}
 	if strings.HasPrefix(kind, "space_") {
 		// A Group Space record cannot outlive 30 days. Preserve all retry
@@ -800,6 +842,9 @@ func (m *mcpServer) dispatchMCPOutbox(store *mcpOutboxStore, scope mcpOutboxScop
 	if op.Kind == "broadcast" {
 		return m.dispatchBroadcastMCPOutbox(store, scope, op)
 	}
+	if isGroupLockOutboxKind(op.Kind) {
+		return m.dispatchGroupLockMCPOutbox(store, scope, op)
+	}
 	if strings.HasPrefix(op.Kind, "space_") {
 		return m.dispatchGroupSpaceMCPOutbox(store, scope, op)
 	}
@@ -957,6 +1002,25 @@ func mcpOutboxPublicResult(op mcpOutboxOperation) map[string]any {
 		result["next_action"] = "cicada_operation_retry"
 	} else {
 		result["next_action"] = "none"
+	}
+	if isGroupLockOutboxKind(op.Kind) && (op.Status == mcpOutboxStatusPending || op.Status == mcpOutboxStatusUnknown) {
+		result["next_action"] = groupLockTool(op.Kind)
+		result["recover"] = true
+		var input mcpOutboxInput
+		if json.Unmarshal([]byte(op.InputJSON), &input) == nil && input.GroupLock != nil {
+			lock := input.GroupLock
+			args := map[string]any{"slot": lock.Slot, "expected_version": lock.ExpectedVersion, "idempotency_key": op.IdempotencyKey, "recover": true}
+			if lock.Generation != 0 {
+				args["generation"] = lock.Generation
+			}
+			if lock.TTLSeconds != nil {
+				args["ttl_seconds"] = *lock.TTLSeconds
+			}
+			if lock.Note != "" {
+				args["note"] = lock.Note
+			}
+			result["recovery_arguments"] = args
+		}
 	}
 	if strings.TrimSpace(op.LastError) != "" {
 		result["error"] = op.LastError

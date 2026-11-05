@@ -47,6 +47,11 @@ func main() {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
+	case "group-locks":
+		if err := groupLocksCommand(os.Args[2:], os.Stdout); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
 	case "on", "off", "status":
 		if err := nodeLifecycleCommand(os.Args[1], os.Args[2:], os.Stdout); err != nil {
 			fmt.Fprintln(os.Stderr, err)
@@ -430,7 +435,7 @@ func printJSON(value any) error {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: cicada join|leave|on|off|status|node|serve|hub|components|owner-signer|client|goal|machine|worker|fabric|network|snapshot|external|connector|mcp|codex-hook|migration|owner-key|owner|version")
+	fmt.Fprintln(os.Stderr, "usage: cicada join|leave|group-locks|on|off|status|node|serve|hub|components|owner-signer|client|goal|machine|worker|fabric|network|snapshot|external|connector|mcp|codex-hook|migration|owner-key|owner|version")
 	fmt.Fprintln(os.Stderr, "  codex-hook: read one Codex hook event from stdin; accepts no arguments")
 }
 

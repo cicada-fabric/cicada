@@ -12,8 +12,12 @@ import (
 )
 
 type HubThreadCollaborationNodeInput = HubLocalDomainNodeInput
-type HubThreadCollaborationNodeOutput = HubLocalDomainNodeOutput
-type HubThreadCollaborationNodeSeal = HubLocalDomainNodeSeal
+type HubThreadCollaborationNodeOutput struct {
+	Result           any
+	ErrorCode        string
+	OriginalEvidence *wire.ThreadCollaborationNodeEvidence
+}
+type HubThreadCollaborationNodeSeal func(HubThreadCollaborationNodeOutput) ([]byte, error)
 
 func (s *Store) ProcessHubThreadCollaborationNode(in HubThreadCollaborationNodeInput, seal HubThreadCollaborationNodeSeal) ([]byte, error) {
 	if seal == nil || s.requireOwnerSetupStartupAllowed() != nil {
@@ -170,6 +174,12 @@ func (s *Store) ProcessHubThreadCollaborationNode(in HubThreadCollaborationNodeI
 		}
 		out = HubThreadCollaborationNodeOutput{ErrorCode: code}
 	}
+	if request != nil {
+		out.OriginalEvidence, err = threadCollaborationNodeEvidenceTx(tx, caller, rpc, request, out)
+		if err != nil {
+			return nil, err
+		}
+	}
 	packet, err := seal(out)
 	if err != nil {
 		return nil, err
@@ -188,6 +198,56 @@ func (s *Store) ProcessHubThreadCollaborationNode(in HubThreadCollaborationNodeI
 		return nil, err
 	}
 	return packet, nil
+}
+
+// A signed transport denial alone never closes a semantic original. Terminal
+// evidence is emitted only for an exact durable row committed with this reply.
+func threadCollaborationNodeEvidenceTx(tx *sql.Tx, caller wire.GroupLockHolder, rpc NodeControlRPCInput, request any, out HubThreadCollaborationNodeOutput) (*wire.ThreadCollaborationNodeEvidence, error) {
+	var original wire.ThreadCollaborationOriginal
+	var scope wire.GroupLockScope
+	switch q := request.(type) {
+	case wire.GroupLockAcquireRequest:
+		original, scope = q.Original, q.Scope
+	case wire.GroupLockRenewRequest:
+		original, scope = q.Original, q.Scope
+	case wire.GroupLockReleaseRequest:
+		original, scope = q.Original, q.Scope
+	default:
+		return nil, ErrHubAccountRejected
+	}
+	e := &wire.ThreadCollaborationNodeEvidence{Operation: rpc.Operation, Original: original, RequestPacketDigest: rpc.RequestDigest, Outcome: wire.ThreadCollaborationOutcomeUnknown, ErrorCode: out.ErrorCode}
+	if caller.Source.RegistrationID == "" || wire.VerifyGroupLockRequestDigest(rpc.Operation, caller, request) != nil {
+		return e, nil
+	}
+	var id, key, op, digest, body, actor, receipt, code string
+	err := tx.QueryRow(`SELECT operation_id,idempotency_key,operation,request_digest,request_json,caller_json,receipt_json,error_code FROM group_lock_originals_v1 WHERE group_id=? AND registration_id=? AND source_epoch=? AND operation_id=?`, scope.GroupID, caller.Source.RegistrationID, caller.Source.SourceEpoch, original.OperationID).Scan(&id, &key, &op, &digest, &body, &actor, &receipt, &code)
+	if errors.Is(err, sql.ErrNoRows) {
+		return e, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	raw, err := json.Marshal(request)
+	if err != nil {
+		return nil, err
+	}
+	who, err := json.Marshal(caller)
+	if err != nil {
+		return nil, err
+	}
+	if id != original.OperationID || key != original.IdempotencyKey || op != rpc.Operation || digest != original.RequestDigest || body != string(raw) || actor != string(who) || code != out.ErrorCode {
+		return e, nil
+	}
+	if code != "" {
+		e.Outcome = wire.ThreadCollaborationOutcomeRejectedFenced
+		return e, nil
+	}
+	var saved wire.GroupLockReceipt
+	if json.Unmarshal([]byte(receipt), &saved) != nil || wire.ValidateGroupLockReceipt(saved) != nil || !reflect.DeepEqual(out.Result, saved) {
+		return e, nil
+	}
+	e.Outcome = wire.ThreadCollaborationOutcomeApplied
+	return e, nil
 }
 func threadCollaborationErrorCode(err error) string {
 	if err == nil {

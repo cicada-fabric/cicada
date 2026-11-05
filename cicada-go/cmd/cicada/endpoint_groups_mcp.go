@@ -258,6 +258,10 @@ func (m *mcpServer) endpointGroupsList(arguments map[string]any) (any, error) {
 }
 
 func endpointGroupsMCPToolAllowed(name string, arguments map[string]any) bool {
+	if isGroupLocksMCPTool(name) {
+		_, _, _, err := parseGroupLockMCPArguments(name, arguments)
+		return err == nil
+	}
 	if name == "cicada_use_group" {
 		_, err := parseMCPGroupRouteChoice(arguments)
 		return err == nil

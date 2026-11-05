@@ -227,6 +227,9 @@ func (f *codexMCPFacade) call(name string, arguments map[string]any) (any, error
 		return nil, err
 	}
 	return child.callContextualToolVerified(name, childArgs, func(native harness.SessionContext, verified localCodexContext, fresh *localEndpointGroupsResult, business map[string]any) (any, error) {
+		if isGroupLockOutboxKind(groupLockOperation(name)) && verified.EndpointGroupsVersion == 1 && fresh == nil {
+			return f.groupLockOriginalBeforeRefresh(child, name, business, native, verified)
+		}
 		if isMCPFacadeOperationTool(name) {
 			connections := make([]LocalNodeConnection, 0, len(f.children))
 			for _, candidate := range f.children {
