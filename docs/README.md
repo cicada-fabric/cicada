@@ -1,12 +1,22 @@
 # CICADA technical documentation
 
-## Current development — 2026-11-04
+## Current development — 2026-11-05
 
 Software **0.0.5 remains unreleased**; **v0.1.0 is the planned first release**.
 The [adopted specification](../CICADA.md) defines the product, while the
 [native App plan and current acceptance ledger](native-app-plan.md#current-feedback-and-acceptance-ledger)
 track implementation and remaining acceptance. Current integrated source includes:
 
+- A shared native Gio sidebar and account/device layouts with visible docked
+  pairing actions, same-frame paste readiness, exact single Enter review and
+  explicit blocked/recovery feedback. Independent acceptance on `3aa9c961`
+  passed 144 real layout/pointer combinations and 12 Linux EGL screenshots;
+  the Linux Bash command installer passed isolated lifecycle, quoting, PATH,
+  cleanup and external-state preservation checks. Root's four-case Docker gate
+  passed on `2c6d6f5`, with unchanged backend inputs explicitly mapped to the
+  GUI-only child. These are **SCOPED_PASS** results; physical Windows
+  GUI/DPAPI/ACL/IME and real native Runtime remain **NOT_RUN**. See the
+  [current App and shell acceptance](native-app-validation.md#app-layout-and-linux-shell-acceptance--2026-11-05).
 - A retained Node multi-Hub manager with `on/off/status`, explicit
   `node hubs list/add/remove`, independent current-NPT credentials/state and a
   shared physical native writer. The local contract permits 0–8 connections;

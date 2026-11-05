@@ -1,5 +1,200 @@
 # Native App validation
 
+## App layout and Linux shell acceptance — 2026-11-05
+
+This scope independently exercises the production Gio renderer, input Router
+and component installer's common command implementation. All UI snapshots are
+explicitly synthetic; the Controller captures actions without network, keys,
+Runtime or model calls. Shell fixtures inject an exclusive disposable home into
+the production implementation and use a real Bash rcfile. The operator's HOME,
+bashrc, resident Node/Hub and deployment are unchanged. Candidate CLI packaging
+uses `--shell-integration=off`; default shell integration is qualified through
+the same production command with an explicit fixture-home provider.
+
+### Retained failure before the fix
+
+The valid producer baseline used `92c2c476` plus an OS/window/font boundary
+extraction and a renderer probe, with production layout/input unchanged. Its
+first frame performed the privacy reset, then the fixture explicitly navigated
+to Devices. The earlier probe that stayed on Overview is diagnostic only.
+
+`/home/zyf/Cicada/.local/evidence/n2-app/layout-baseline-b1ly8m2q/baseline.log`
+has SHA-256 `3bd9b4ba63f1e55ac83691bd2cc9ce44ef4d1c28fa4dcc6c7963da79a1c96ed5`.
+The accompanying `valid-baseline-source.json` attributes the dirty input files;
+`valid-baseline-replay.patch` has SHA-256
+`82c64f09f49d9569c9b468cb188410f5b1b583e76dbabd7e8885548f903523cc`.
+The probe exited 0 while collecting coordinates; **button reachability failed**:
+
+| Scenario | Pixels / scale | Actual button bounds | Classification |
+| --- | --- | --- | --- |
+| Device code | 1100 × 780 / 200% | (96,811)–(396,892) | Outside viewport |
+| Device code | 640 × 480 / 150% | (72,667)–(297,728) | Outside viewport |
+| UNKNOWN recovery | 640 × 480 / 150% | (72,1007)–(404,1068) | Outside viewport |
+
+Short and long codes had the same coordinates. The editor was already single
+line and masked. The complete pairing form occupied one List item, with its
+primary action after details and error text; the header/navigation consumed
+additional space. A compile or probe exit code does not qualify this geometry.
+
+### Independent driver and acceptance boundaries
+
+`scripts/test-app-redesign.sh` compiles only fixture test executables in the
+existing pinned offline Go builder, with source and shared modules mounted
+read-only and exclusive build/output caches. Its optional GPU test tag is
+`cicada_ui_acceptance novulkan`; ordinary portable tests and the Windows product
+build acquire no Linux GL dependency. Host execution submits the production Gio
+operation stream to the existing `gpu/headless` EGL backend, then downloads PNG
+pixels and records actual semantic bounds. No alternate UI or copied layout
+algorithm is used. Linux fixture fonts are recorded separately from Windows.
+
+| Area | Independent assertion | Evidence boundary |
+| --- | --- | --- |
+| Device actions | 16 states × 640/800/1024-pixel windows × 100/150/200% scale; primary entirely in viewport and actual pointer dispatch carries the exact action/review/code | 144 real layout/input combinations |
+| Editor | Actual EditEvent paste enables the footer in the same frame; Return/keypad Enter submit once, preserving case; busy/blocked Enter is not deferred | Production Editor and Router |
+| Authority/privacy | Pre-login semantics hide candidate data; missing action/Root prerequisite is explained; UNKNOWN offers original recovery without fresh review/approval or automatic retry | Synthetic presentation, no authority-grant claim |
+| Pixels | At most 12 representative pages/states, including long code, UNKNOWN, review, populated synthetic Threads/Group, saved Hub, small window/high DPI and Chinese | Actual Linux EGL pixels; physical Windows **NOT_RUN** |
+| Shell | Repeat install/source/remove/reinstall; original bytes/mode and external config/plugin/state preserved; node-first then hub exec route; exact literal special-character argv | Common production command, real filesystem/Bash, inert executable probes |
+| Shell isolation | No component starts during rcfile load; silent noninteractive load; unset/empty PATH with `set -u` adds no cwd entry; existing PATH precedence preserved; conflicting prefix and colon-containing home rejected before component install | HOME unchanged, history disabled only in child Bash |
+| File-only CLI | `off` and list never resolve the shell home; packaging uses exact candidate CLI/metadata/notices with shell integration disabled | Separate packaging receipt |
+
+The final disposable Hub Docker gate belongs to Root and is recorded separately.
+Physical Windows GUI/DPAPI/ACL/IME, Android, actual native Runtime/model
+consumption, public HTTPS and deployment remain **NOT_RUN** for this scope.
+
+Independent shell execution on production `91d970caa9f82f3dfaa1ddb76d7c5121acf64f71`
+plus the separately fingerprinted QA tests passed: build **0**, test **0**,
+3 top-level / 4 leaf cases, with identical before/after Go-source manifests.
+The result is
+`/home/zyf/Cicada/.local/evidence/v01-app-redesign-validation/shell-91d970-attempt2-z11_6v0o/result.json`,
+SHA-256 `3fbe89a46784129428e8dc2ce8982f36c96b44bac4963bef70bb75f080aac86e`.
+The exact test executable has SHA-256
+`fab707d8b4f2902df38de7a8fe4f02396894181b3eb9bfb8664424c74ad49275`.
+Its build/run argv and complete before/after source inventories are retained
+beside the result. The earlier `shell-91d970-4dnfmliv` execution failed because
+QA incorrectly expected PATH prepending; the frozen contract correctly preserves
+existing command precedence and appends the owned entry. This QA expectation was
+corrected without a production change, and the original **build 0 / test 1**
+record remains unchanged.
+
+Production `2c6d6f5baaedc025526c0993dde677b078c64ae4` plus the fingerprinted
+independent tests passed the complete driver: UI build/run and shell build/run
+all **0**, identical before/after source inventories, 144 geometry/pointer
+combinations, the actual paste/Enter/privacy/blocked checks and 12 real PNGs.
+UI emitted 5 top-level / 168 named PASS events; shell emitted 3 / 5, with no
+FAIL or SKIP events. The result at
+`/home/zyf/Cicada/.local/evidence/v01-app-redesign-validation/run-20261105T031750Z-IT8WYn/result.json`
+has SHA-256 `21dbf031bd787c6ea2ed4675bf8f48236c3a88514462c059ef9afe2e0fe7b91b`.
+Its Go/runner manifest is
+`f0fed02dc4bd15378a84856432152f3f9d7a05610f9a3f2a76d08cf64f35c2ef`;
+the geometry JSON is
+`f69dbe605ce5c0fd782234f48b3eceea3300174267fc09a02c17c447f4291030`;
+the 12-image inventory is
+`fc92873cd5448eed258bb859dfc1a072eab59c52415dc664237e1321000cdd96`.
+The native test executable is
+`5cbb05e0f2b40b11ed381cdccb34b71d3953ed08a736ab695f31c3f265581ebe`.
+
+This execution disabled Mesa shader caching explicitly and used the existing
+read-only Microsoft YaHei fixture, SHA-256
+`1575bfede7e6ad00d72642c549cb944480cfd3ea51b0dd3fa24734149146f01c`.
+The private EGL/GLES headers were extracted by Root, without system install or
+product dependency changes; their exact APT/deb hashes are in
+`/home/zyf/Cicada/.local/evidence/v01-app-redesign-root-20261105/graphics-headers/receipt-complete.json`,
+SHA-256 `5041819452732c6f8cf517188d0d1614fd5e40822d78779dc2666a3509ff5d47`.
+The earlier `run-20261105T031354Z-zfSSKU` technical PASS remains a diagnostic:
+its Noto Sans JP fixture lacks several simplified-Chinese glyphs, and it had no
+explicit Mesa shader-cache isolation override. It is not the accepted Chinese
+visual or isolation record. Its result SHA-256 is
+`67e246201092bb5ccc5083fb83d950bf5457531ce10e2648d65ef4d92591ba1f`.
+
+Root's subsequent review of actual PNGs found three remaining presentation
+issues at `2c6d6f5`: the Hub picker Unicode arrow lacks a glyph, secondary
+Thread/Group controls are unnecessarily dominant, and Settings exposes the Canvas
+preview section by default. These were handed to the App owner for a new child
+checkpoint. The technical PASS above remains attributed to its actual source;
+final UI acceptance requires the child's UI/input/PNG recheck. Shell and the
+separate Hub gate do not need repetition for these GUI-only fixes.
+
+### Final source, replay and remaining manual checks
+
+The App owner's child `3aa9c961a997751934ad7cbb0015ce79e5f32053` fixes those
+three presentation issues. Independent UI-only execution is **SCOPED_PASS / 0**:
+UI build/run **0/0**, 144 actual geometry/pointer combinations, the input/privacy
+checks and all 12 actual Linux EGL screenshots passed again. Shell was
+**NOT_RUN** in this last execution; its passing earlier source receipts remain
+separate. No production implementation was changed by QA.
+
+The final run directory is
+`/home/zyf/Cicada/.local/evidence/v01-app-redesign-validation/run-20261105T032931Z-EiyRzM`:
+
+| Artifact | SHA-256 |
+| --- | --- |
+| `result.json` | `ee808f7f528d54a0a5e15da6d3ab7b7625f87018ca13fc40b4bd5b10e4f54500` |
+| Before/after Go and runner manifest | `95e9b607147a6972ca59c33167d045b7cc7ed3b7a3f51f49f354f7e6cbb32df6` |
+| `output/device-primary-geometry.json` | `f69dbe605ce5c0fd782234f48b3eceea3300174267fc09a02c17c447f4291030` |
+| `output/production-pixels.json` | `2c7ffdb6d76fe1e8ec05a6c1116f18d97fd40052786c59f506823aca52aed006` |
+| `output/native-ui.test` | `eaa89c93aee2e69778fc6865186972bf694610ab3b2795959c500eae0f85e86d` |
+
+QA viewed the real Sessions, Settings and Hub-selection PNGs and confirmed the
+vector picker arrow, compact secondary controls and initially folded preview.
+Root independently reviewed the final pages, verified all 12 PNG hashes and
+dimensions, and recorded **SCOPED_PASS** in
+`/home/zyf/Cicada/.local/evidence/v01-app-redesign-root-20261105/final-visual-review.json`,
+SHA-256 `90a9b30a8536d8424372bf293e8cf9e23f0a2bbea2d297701ee48504a8538a9f`.
+Chinese uses the separately hashed existing font fixture above; this is Linux
+software EGL rendering, not execution of the Windows GUI or font loader.
+The source was production `3aa9c96` plus the three independent QA test files and
+runner, with a dirty-source status and complete before/after file inventory.
+The QA checkpoint adds no production Go changes and does not relabel that dirty
+build as a clean production-only build.
+
+Replay the final UI scope from this checkout on the same offline test host:
+
+```sh
+CICADA_UI_SCOPE=ui \
+CICADA_UI_GOMODCACHE=/home/zyf/Cicada/.local/cache/n2-acceptance/gomod-go1.27.2-stable \
+CICADA_UI_HEADERS_ROOT=/home/zyf/Cicada/.local/evidence/v01-app-redesign-root-20261105/graphics-headers/sysroot \
+CICADA_UI_HOST_GO=/home/zyf/Cicada/.local/cache/node-endpoint-registration/toolchain-go1.27.3/image-go/bin \
+CICADA_UI_EVIDENCE_ROOT=/home/zyf/Cicada/.local/evidence/v01-app-redesign-validation \
+CICADA_UI_ACCEPTANCE_CJK_FONT=/home/zyf/.local/share/fonts/microsoft-yahei/msyh.ttc \
+scripts/test-app-redesign.sh
+```
+
+Omit `CICADA_UI_SCOPE=ui` to request UI plus the independent shell scope. Each
+invocation creates an exclusive evidence/output/cache directory; optional
+`CICADA_UI_BUILD_CACHE` reuses only this task's cache under a nonblocking lock.
+Exit **0** means all requested checks passed with stable source; the completed
+check driver returns **1** for a failed build/test/source check and **2** for
+invalid scope/cache use. Setup tools can return their own nonzero exit codes.
+Individual exit codes, argv, manifests, PNGs and semantic bounds remain in the
+receipt. Missing host prerequisites are not a pass.
+
+Root independently ran the one disposable client Docker gate on actual clean
+production `2c6d6f5`: four cases **PASS / exit 0**, 185.411 seconds, cleanup
+**CONFIRMED**. The actual result and cleanup at
+`/home/zyf/Cicada/.local/evidence/v01-app-redesign-root-20261105/client-interop/`
+have SHA-256
+`e60fe0ec66b6b93d639833e48fd59946a7491809e596b3451b6d574246158ce4` and
+`12d68876bb57f468d2f0bd0acf11201fcab50c64c080b6c5933adba6feeb8d10`.
+Root's `docker-review.json` is
+`98b7dc8db639ef8c5ce372f54be07236258827100e6c26f887085aa562f365bc`.
+Its `docker-relevant-source-equivalence.json`,
+`19dda8dd756ea945a83e6d88a1573ebc9ae9b7acb5464b4f9894bce48a358aa5`,
+confirms the child changes only GUI/text/tests/plan; Hub, Node, AppCore and
+protocol inputs are unchanged. The Docker result stays attributed to the
+actual `2c6d6f5` image and does not claim to execute the new GUI. Candidate
+packaging and exact CLI TLS smoke are separate Root receipts.
+Root's complete `3aa9c96` candidate build/archive subsequently returned **0/0**;
+`visual-complete-driver.json` in that Root evidence directory has SHA-256
+`d120d1f1dd08fafd286a8eb902703f95b93146d6fd848525a7abebca83936479`.
+Final package metadata is finalized by Root using the QA checkpoint separately.
+
+No unresolved production defect was found within these executed scopes after
+the child fix. Physical Windows GUI/DPAPI/ACL/IME, Android, actual native Runtime
+or model consumption and public HTTPS/deployment remain **NOT_RUN**. The PNG
+review and cross-build do not remove those manual acceptance requirements.
+
+## Historical foundation record
+
 This record covers the bounded Core, wire-helper, and local issuer checks for
 the Native App foundation. The commands ran on 2026-10-15 against the shared
 dirty development worktree based on `2afcc860da716bf3e9e574d9049a35d6dbba0081`.
