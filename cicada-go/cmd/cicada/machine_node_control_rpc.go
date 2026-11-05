@@ -102,57 +102,58 @@ type machineNodeControlPairingInput struct {
 }
 
 type machineNodeControlState struct {
-	EndpointGroupsRegistrations   map[string]machineEndpointGroupsRegistration `json:"endpoint_groups_registrations,omitempty"`
-	EndpointGroupsDiagnostic      *machineEndpointGroupsDiagnostic             `json:"endpoint_groups_diagnostic,omitempty"`
-	EndpointGroupsLastReadFence   *machineEndpointGroupsDiagnostic             `json:"endpoint_groups_last_read_fence,omitempty"`
-	ManagedLocalDomainLeases      map[string]machineManagedLocalDomainLease    `json:"managed_local_domain_leases,omitempty"`
-	LocalDomainReport             *machineLocalDomainReportState               `json:"local_domain_report,omitempty"`
-	ManagedPairLeases             map[string]machineManagedPairLease           `json:"managed_pair_leases,omitempty"`
-	LocalEndpointAdmissionFloorMS int64                                        `json:"local_endpoint_admission_floor_ms,omitempty"`
-	LocalEndpointIntents          map[string]machineLocalEndpointIntent        `json:"local_endpoint_intents,omitempty"`
-	PendingLocalEndpointIntentID  string                                       `json:"pending_local_endpoint_intent_id,omitempty"`
-	Version                       int                                          `json:"version"`
-	NodeID                        string                                       `json:"node_id"`
-	NodePairTrustAttemptID        string                                       `json:"node_pair_trust_attempt_id,omitempty"`
-	HubOrigin                     string                                       `json:"hub_origin"`
-	HubCandidateID                string                                       `json:"hub_candidate_id,omitempty"`
-	HubCandidateFingerprint       string                                       `json:"hub_candidate_fingerprint,omitempty"`
-	HubCandidateVersion           uint64                                       `json:"hub_candidate_version,omitempty"`
-	HubCandidateIdentity          e2ee.PublicIdentity                          `json:"hub_candidate_identity,omitempty"`
-	PendingPairingUserCode        string                                       `json:"pending_pairing_user_code,omitempty"`
-	PendingPairingURI             string                                       `json:"pending_pairing_uri,omitempty"`
-	HubID                         string                                       `json:"hub_id,omitempty"`
-	HubKeyID                      string                                       `json:"hub_key_id,omitempty"`
-	HubFingerprint                string                                       `json:"hub_fingerprint,omitempty"`
-	HubKeyVersion                 uint64                                       `json:"hub_key_version,omitempty"`
-	HubPublicIdentity             e2ee.PublicIdentity                          `json:"hub_public_identity,omitempty"`
-	NodeKeyID                     string                                       `json:"node_key_id,omitempty"`
-	NodeKeyFingerprint            string                                       `json:"node_key_fingerprint,omitempty"`
-	NodeKeyVersion                uint64                                       `json:"node_key_version,omitempty"`
-	BindingID                     string                                       `json:"binding_id,omitempty"`
-	BindingVersion                uint64                                       `json:"binding_version,omitempty"`
-	NodeKeyEpoch                  uint64                                       `json:"node_key_epoch,omitempty"`
-	ApprovedRequestID             string                                       `json:"approved_request_id,omitempty"`
-	ApprovedRequestVersion        int64                                        `json:"approved_request_version,omitempty"`
-	ApprovedCandidateDigest       string                                       `json:"approved_candidate_digest,omitempty"`
-	PendingPairing                *machineNodeControlCandidate                 `json:"pending_pairing,omitempty"`
-	Sequence                      uint64                                       `json:"sequence"`
-	PendingOperationID            string                                       `json:"pending_operation_id,omitempty"`
-	PendingOperation              string                                       `json:"pending_operation,omitempty"`
-	PendingSequence               uint64                                       `json:"pending_sequence,omitempty"`
-	PendingPlaintextDigest        string                                       `json:"pending_plaintext_digest,omitempty"`
-	PendingPacket                 []byte                                       `json:"pending_packet,omitempty"`
-	PendingResponsePacket         []byte                                       `json:"pending_response_packet,omitempty"`
-	PendingNativePairBody         []byte                                       `json:"pending_native_pair_body,omitempty"`
-	NativePairReceipts            map[string]machineNativePairReceipt          `json:"native_pair_receipts,omitempty"`
-	NativePairDiagnostic          *machineNativePairDiagnostic                 `json:"native_pair_diagnostic,omitempty"`
-	PendingWorkerID               string                                       `json:"pending_worker_id,omitempty"`
-	PendingWorkerAttempt          int                                          `json:"pending_worker_attempt,omitempty"`
-	PendingSnapshotPath           string                                       `json:"pending_snapshot_path,omitempty"`
-	PendingSnapshotManifest       *nodewire.SnapshotManifest                   `json:"pending_snapshot_manifest,omitempty"`
-	ClaimTicket                   *machineNodeControlClaimTicket               `json:"claim_ticket,omitempty"`
-	HubTransportDescriptor        string                                       `json:"hub_transport_descriptor,omitempty"`
-	HubDialAddress                string                                       `json:"hub_dial_address,omitempty"`
+	ThreadCollaborationOriginals  map[string]machineThreadCollaborationOriginal `json:"thread_collaboration_originals,omitempty"`
+	EndpointGroupsRegistrations   map[string]machineEndpointGroupsRegistration  `json:"endpoint_groups_registrations,omitempty"`
+	EndpointGroupsDiagnostic      *machineEndpointGroupsDiagnostic              `json:"endpoint_groups_diagnostic,omitempty"`
+	EndpointGroupsLastReadFence   *machineEndpointGroupsDiagnostic              `json:"endpoint_groups_last_read_fence,omitempty"`
+	ManagedLocalDomainLeases      map[string]machineManagedLocalDomainLease     `json:"managed_local_domain_leases,omitempty"`
+	LocalDomainReport             *machineLocalDomainReportState                `json:"local_domain_report,omitempty"`
+	ManagedPairLeases             map[string]machineManagedPairLease            `json:"managed_pair_leases,omitempty"`
+	LocalEndpointAdmissionFloorMS int64                                         `json:"local_endpoint_admission_floor_ms,omitempty"`
+	LocalEndpointIntents          map[string]machineLocalEndpointIntent         `json:"local_endpoint_intents,omitempty"`
+	PendingLocalEndpointIntentID  string                                        `json:"pending_local_endpoint_intent_id,omitempty"`
+	Version                       int                                           `json:"version"`
+	NodeID                        string                                        `json:"node_id"`
+	NodePairTrustAttemptID        string                                        `json:"node_pair_trust_attempt_id,omitempty"`
+	HubOrigin                     string                                        `json:"hub_origin"`
+	HubCandidateID                string                                        `json:"hub_candidate_id,omitempty"`
+	HubCandidateFingerprint       string                                        `json:"hub_candidate_fingerprint,omitempty"`
+	HubCandidateVersion           uint64                                        `json:"hub_candidate_version,omitempty"`
+	HubCandidateIdentity          e2ee.PublicIdentity                           `json:"hub_candidate_identity,omitempty"`
+	PendingPairingUserCode        string                                        `json:"pending_pairing_user_code,omitempty"`
+	PendingPairingURI             string                                        `json:"pending_pairing_uri,omitempty"`
+	HubID                         string                                        `json:"hub_id,omitempty"`
+	HubKeyID                      string                                        `json:"hub_key_id,omitempty"`
+	HubFingerprint                string                                        `json:"hub_fingerprint,omitempty"`
+	HubKeyVersion                 uint64                                        `json:"hub_key_version,omitempty"`
+	HubPublicIdentity             e2ee.PublicIdentity                           `json:"hub_public_identity,omitempty"`
+	NodeKeyID                     string                                        `json:"node_key_id,omitempty"`
+	NodeKeyFingerprint            string                                        `json:"node_key_fingerprint,omitempty"`
+	NodeKeyVersion                uint64                                        `json:"node_key_version,omitempty"`
+	BindingID                     string                                        `json:"binding_id,omitempty"`
+	BindingVersion                uint64                                        `json:"binding_version,omitempty"`
+	NodeKeyEpoch                  uint64                                        `json:"node_key_epoch,omitempty"`
+	ApprovedRequestID             string                                        `json:"approved_request_id,omitempty"`
+	ApprovedRequestVersion        int64                                         `json:"approved_request_version,omitempty"`
+	ApprovedCandidateDigest       string                                        `json:"approved_candidate_digest,omitempty"`
+	PendingPairing                *machineNodeControlCandidate                  `json:"pending_pairing,omitempty"`
+	Sequence                      uint64                                        `json:"sequence"`
+	PendingOperationID            string                                        `json:"pending_operation_id,omitempty"`
+	PendingOperation              string                                        `json:"pending_operation,omitempty"`
+	PendingSequence               uint64                                        `json:"pending_sequence,omitempty"`
+	PendingPlaintextDigest        string                                        `json:"pending_plaintext_digest,omitempty"`
+	PendingPacket                 []byte                                        `json:"pending_packet,omitempty"`
+	PendingResponsePacket         []byte                                        `json:"pending_response_packet,omitempty"`
+	PendingNativePairBody         []byte                                        `json:"pending_native_pair_body,omitempty"`
+	NativePairReceipts            map[string]machineNativePairReceipt           `json:"native_pair_receipts,omitempty"`
+	NativePairDiagnostic          *machineNativePairDiagnostic                  `json:"native_pair_diagnostic,omitempty"`
+	PendingWorkerID               string                                        `json:"pending_worker_id,omitempty"`
+	PendingWorkerAttempt          int                                           `json:"pending_worker_attempt,omitempty"`
+	PendingSnapshotPath           string                                        `json:"pending_snapshot_path,omitempty"`
+	PendingSnapshotManifest       *nodewire.SnapshotManifest                    `json:"pending_snapshot_manifest,omitempty"`
+	ClaimTicket                   *machineNodeControlClaimTicket                `json:"claim_ticket,omitempty"`
+	HubTransportDescriptor        string                                        `json:"hub_transport_descriptor,omitempty"`
+	HubDialAddress                string                                        `json:"hub_dial_address,omitempty"`
 }
 
 // ClaimTicket retains only the Hub's sealed response. The plaintext job is
@@ -423,6 +424,7 @@ func cloneMachineNodeControlState(state machineNodeControlState) machineNodeCont
 	state = cloneManagedPairLeaseState(state)
 	state = cloneMachineLocalDomainState(state)
 	state = cloneMachineEndpointGroupsState(state)
+	state.ThreadCollaborationOriginals = cloneMachineThreadCollaborationOriginals(state.ThreadCollaborationOriginals)
 	if state.PendingSnapshotManifest != nil {
 		manifest := *state.PendingSnapshotManifest
 		state.PendingSnapshotManifest = &manifest
@@ -496,6 +498,9 @@ func (client *machineNodeControlClient) installApprovedBinding(status machineNod
 
 func (client *machineNodeControlClient) call(ctx context.Context, token, operation string,
 	requestBody any, target any) error {
+	if threadCollaborationNodeOperation(operation) {
+		return errMachineNodeControlOutcomeUncertain
+	}
 	plain, err := json.Marshal(requestBody)
 	if err != nil {
 		return err
@@ -529,6 +534,9 @@ func (client *machineNodeControlClient) call(ctx context.Context, token, operati
 	plainDigest := hex.EncodeToString(plainSum[:])
 	client.mu.Lock()
 	defer client.mu.Unlock()
+	if len(client.state.PendingPacket) > 0 && threadCollaborationNodeOperation(client.state.PendingOperation) {
+		return errMachineNodeControlOutcomeUncertain
+	}
 	if client.state.BindingID == "" || client.state.BindingVersion == 0 || client.state.NodeKeyEpoch == 0 ||
 		client.state.NodeKeyID != client.identity.Public().ID || client.state.HubKeyID != client.state.HubPublicIdentity.ID {
 		return errors.New("Node-Control key binding is not Owner-approved")
@@ -835,6 +843,10 @@ func decodeMachineNodeControlJSON(data []byte, target any) error {
 // response until execution begins, so restart never needs durable plaintext.
 func (client *machineNodeControlClient) recoverPending(ctx context.Context, token string) error {
 	client.mu.Lock()
+	if len(client.state.PendingPacket) > 0 && threadCollaborationNodeOperation(client.state.PendingOperation) {
+		client.mu.Unlock()
+		return errMachineNodeControlOutcomeUncertain
+	}
 	if scope, issuer := ctx.Value(endpointGroupsIssueReadKey{}).(*endpointGroupsIssueReadScope); issuer && !client.endpointGroupsIssuePendingReadLocked(scope) {
 		client.mu.Unlock()
 		return errMachineNodeControlOutcomeUncertain

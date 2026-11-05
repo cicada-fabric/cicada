@@ -632,3 +632,41 @@ original evidence may settle a mutation; string errors or Retryable flags cannot
 This seam still requires its actual producer and complete current Guards before
 activation. Local recover metadata remains in exact Host/Operator arguments,
 while the original immutable wire body/digest excludes that control flag.
+
+## Zero-member bootstrap and private state seams
+
+A real TCP probe confirms JoinZero → candidate attestation → explicit
+EndpointGroups Describe → original anchor → Owner classification → Group key
+completion. Bare active join rows with `grants=[]` count as zero effective Groups.
+The probe first exposed a real cycle: the ordinary key snapshot requires ACTIVE
+source authority once a registration exists, although the first Group key is
+not completed yet. The internal LocalDomain projected-manifest path now uses
+an exact verified ZERO member/policy/registration admission plus current
+classification and projected Group count. Ordinary snapshot/business Guard is
+unchanged, and there is no wire bypass flag. Ordinary snapshot and lock access
+still refuse after classification but before actual key completion.
+
+The bounded existing Node state adds typed ThreadCollaboration originals with
+exact caller/source, immutable body and retained request/response packets.
+Rollback cloning preserves independent packet bytes. Generic Node recovery and
+generic calls fence all five new operations/pending packets as uncertain; only
+the dedicated original-aware producer may consume them. No old loop may clear
+their pending slot or infer completion. Constructor/load validation, the socket
+producer and real original-aware execution remain assigned to the following
+private-producer integration. The new public
+`ThreadCollaborationNodeEvidence{operation,original,request_packet_digest,outcome,error_code?}`
+is reserved for verified Node envelopes; the next server implementation must
+prove a semantic durable fence before REJECTED_FENCED. Declaring this type does
+not activate or manufacture that evidence.
+
+Qualification at base `43c071cd0d114d742bf8acffe99bff744e9bae5b` plus exact Go
+hashes: 01 normal/race pass three top-level tests / eight events, zero skips,
+21.316/74.091 seconds; Store/Server/hubaccountwire/cmd vet passes 15.735 seconds.
+After also fencing generic call entry, the changed cmd tests pass normal/race
+seven events, zero skips, 22.103/33.023 seconds; cmd vet passes 2.741 seconds.
+The server/bootstrap sources are unchanged from 01. Raw evidence is under
+`/home/zyf/Cicada/.local/evidence/v01-thread-network-locks-bootstrap-seams-20261105-01/`
+and `...-02/`. The initial probe's key_prepare rejection is retained as the
+identified cycle, not relabeled a pass. Full activation/use guards, Registry
+pre-effect consumer, private Host/Operator execution, App, Docker, Runtime,
+device/public/resident acceptance remain pending; capability flags stay false.

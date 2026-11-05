@@ -68,7 +68,20 @@ const (
 	ThreadCollaborationErrorOriginalUncertain      = "ORIGINAL_OUTCOME_UNCERTAIN"
 	ThreadCollaborationErrorAtLimit                = "STATE_AT_LIMIT"
 	ThreadCollaborationErrorReceiptUnavailable     = "ORIGINAL_RECEIPT_UNAVAILABLE"
+	ThreadCollaborationOutcomeApplied              = "APPLIED"
+	ThreadCollaborationOutcomeRejectedFenced       = "REJECTED_FENCED"
+	ThreadCollaborationOutcomeUnknown              = "UNKNOWN"
 )
+
+// Carried only inside the authenticated Node response envelope. Transport or
+// current authorization denial alone is never an original no-effect receipt.
+type ThreadCollaborationNodeEvidence struct {
+	Operation           string                      `json:"operation"`
+	Original            ThreadCollaborationOriginal `json:"original"`
+	RequestPacketDigest string                      `json:"request_packet_digest"`
+	Outcome             string                      `json:"outcome"`
+	ErrorCode           string                      `json:"error_code,omitempty"`
+}
 
 type ThreadCollaborationCapabilities struct {
 	Format                   string `json:"format"`
