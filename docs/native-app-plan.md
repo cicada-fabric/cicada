@@ -67,6 +67,48 @@ The resulting test artifact `cicada-app.exe` SHA-256 is
 files. Disposable Docker, full candidate packaging and independent QA are owned
 by Root/QA. No installation, resident state, real key or deployment was changed.
 
+The subsequent Root review of the actual same-source `2c6d6f5` EGL screenshots
+accepted the functional desktop direction and identified three visual issues:
+the font-dependent Hub chevron rendered as a missing glyph; Session read/view
+and navigation buttons had the same full-row dark treatment as primary approval;
+and the local canvas preview occupied Settings by default. The narrow follow-up
+uses the existing Material vector dropdown, a shared natural-width grey secondary
+button (Apply retains primary treatment), and a collapsed Advanced / Local
+preview entry. Original click guards, exact Group gestures, explicit local-only
+preview behavior and authorization remain unchanged. The original `2c6d6f5`
+build and QA receipts retain their source; this follow-up is a new checkpoint.
+
+The visual follow-up's frozen dirty-`2c6d6f5` source passed the same UI normal
+and race lanes once each: **86 top-level / 257 named tests**, **0 failures /
+0 skips**. The two added production-Gio tests verify natural-width read controls
+and exact original dispatch/disabled guards, plus default-collapsed Settings
+preview and its explicit local-only click path. Vet and Windows amd64 GUI
+cross-build passed, exit 0; the latter remains BUILD_ONLY. No old backend or
+Runtime gate was repeated or reattributed. Independent final pixel review and
+Windows physical acceptance remain separate.
+
+Evidence: `/home/zyf/Cicada/.local/evidence/n2-app/native-redesign-visual-dbsty1af/`.
+`source.json` SHA-256 is
+`c2b1bd737d27863bb7123d187a2bb3ba4a9d1d32cd1464d1b77400539d35d04b`.
+Normal/race/vet/Windows result receipt SHA-256 values are respectively
+`9707625a813e418c2fda068bdf78ffcd7ee5ac5dee10486a3b727efbcc7473f1`,
+`fbae21d414fbc00cc1af99d5b063613727ab0e34784c9f33e88fcf6595d8e89a`,
+`507c72b03f6dd90989a294b37e93701c751f3b321fec70c15617706281a396db`,
+`4f40c61ee6fb3dcebe6b028d3c4d263e2b0e8e223e7a13fffc71c6a9930d4ac3`.
+The cross-built App test artifact SHA-256 is
+`77e152b9c682ff3304d9cb20fd192ad1b94f02f32e5a762bb457743096f16c52`.
+`source-after-tests.json` records zero changes across 1825 Go/module files.
+
+Pending user request — **USER_REQUESTED / NOT_IMPLEMENTED**: Worker membership
+in one Group only, no such limit for Advisor or the user's “control” role label,
+initially eight lock slots per Group, and a general background collaboration
+lock. Identity scope/mixed-role behavior, cooperative locking versus enforced
+isolation, and eight named locks versus waiting places still need confirmation.
+Hub's read-only survey found existing task-bound ResourceLease operations without
+native/MCP Acquire, FIFO or an eight-slot model; no new lock protocol, role behavior or lock
+UI is implemented here. This ledger entry does not change adopted `CICADA.md`
+semantics or treat the user's role label as the Hub Control service.
+
 Current Node Hub lifecycle scope — 2026-11-04: production `afb2bad8` is
 **SCOPED_PASS** for six actual disposable current-NPT/TLS/SQLite/Agent/CLI/
 Hook/MCP scenarios across preserved executions. Five cases passed in the

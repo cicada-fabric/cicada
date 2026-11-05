@@ -844,7 +844,7 @@ func (v *view) canvasSection(s appcore.Snapshot, managementAuthorized bool, obje
 			if preview {
 				label = appui.Text(v.locale, "canvas.unavailable")
 			}
-			return v.button(gtx, &v.previewButton, label, true)
+			return v.secondaryButton(gtx, &v.previewButton, label, true)
 		})
 		if preview || (managementAuthorized && s.Canvas.State == appcore.CanvasAvailable) {
 			rows = append(rows, func(gtx layout.Context) layout.Dimensions {

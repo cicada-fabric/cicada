@@ -32,6 +32,7 @@ var (
 		"identity": icons.ActionPermIdentity,
 		"settings": icons.ActionSettings,
 		"hub":      icons.ActionSettingsEthernet,
+		"dropdown": icons.NavigationArrowDropDown,
 	}
 )
 
@@ -162,13 +163,33 @@ func (v *view) hubPickerRow(s appcore.Snapshot, compact bool) layout.Widget {
 					if label == "" {
 						label = appui.Text(v.locale, "connection.hubs")
 					}
-					style := material.Label(v.theme, 13, safeDisplay(label, 128)+"  ▾")
-					style.MaxLines = 1
-					return style.Layout(gtx)
+					return layout.Flex{Alignment: layout.Middle}.Layout(gtx,
+						layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
+							style := material.Label(v.theme, 13, safeDisplay(label, 128))
+							style.MaxLines = 1
+							return style.Layout(gtx)
+						}),
+						layout.Rigid(func(gtx layout.Context) layout.Dimensions { return v.navigationIcon(gtx, "dropdown") }),
+					)
 				})
 			})
 		})
 	}
+}
+
+func (v *view) secondaryButton(gtx layout.Context, button *widget.Clickable, label string, enabled bool) layout.Dimensions {
+	// Read/navigation controls take their text's natural width rather than
+	// inheriting a full-width vertical row's minimum constraint.
+	gtx.Constraints.Min.X = 0
+	style := material.Button(v.theme, button, label)
+	style.TextSize, style.Background, style.Color = 14, sidebarSurface, appInk
+	style.CornerRadius = 8
+	style.Inset = layout.Inset{Top: 8, Bottom: 8, Left: 12, Right: 12}
+	if !enabled {
+		gtx = gtx.Disabled()
+		style.Color = mutedInk
+	}
+	return style.Layout(gtx)
 }
 
 func (v *view) languageRow(compact bool) layout.Widget {

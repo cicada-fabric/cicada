@@ -135,11 +135,13 @@ func (v *view) workspaceRows(s appcore.Snapshot, flow appui.SetupFlow) []layout.
 		}))
 		// Keep the existing explicit local fixture preview reachable after the
 		// navigation change. This entry never reads or claims management data.
-		var objects []appui.CanvasObject
-		if v.preview {
-			objects = appui.PreviewCanvasObjects()
-		}
-		rows = append(rows, v.sectionCard(v.canvasSection(appcore.Snapshot{}, false, objects, v.preview)))
+		rows = append(rows, v.sectionCard(v.disclosure("settings/preview", func(gtx layout.Context) layout.Dimensions {
+			var objects []appui.CanvasObject
+			if v.preview {
+				objects = appui.PreviewCanvasObjects()
+			}
+			return v.canvasSection(appcore.Snapshot{}, false, objects, v.preview)(gtx)
+		}, "workspace.advanced", "workspace.hide_advanced")))
 		return rows
 	}
 	rows := []layout.Widget{v.labelRow(appui.Text(v.locale, "workspace.overview_body"))}
@@ -231,13 +233,11 @@ func (v *view) workspaceLink(page, label string) layout.Widget {
 			v.contentList.Position = layout.Position{}
 			v.window.Invalidate()
 		}
-		style := material.Button(v.theme, button, label)
-		style.TextSize = unit.Sp(14)
-		return layout.Inset{Top: unit.Dp(18), Bottom: unit.Dp(4)}.Layout(gtx, style.Layout)
+		return layout.Inset{Top: unit.Dp(12), Bottom: unit.Dp(4)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions { return v.secondaryButton(gtx, button, label, true) })
 	}
 }
 
-func (v *view) disclosure(key string, body layout.Widget) layout.Widget {
+func (v *view) disclosure(key string, body layout.Widget, captions ...string) layout.Widget {
 	return func(gtx layout.Context) layout.Dimensions {
 		if v.disclosures == nil {
 			v.disclosures = make(map[string]*disclosureState)
@@ -251,9 +251,13 @@ func (v *view) disclosure(key string, body layout.Widget) layout.Widget {
 			state.open = !state.open
 			v.window.Invalidate()
 		}
-		label := appui.Text(v.locale, "workspace.details")
+		closedLabel, openLabel := "workspace.details", "workspace.hide_details"
+		if len(captions) == 2 {
+			closedLabel, openLabel = captions[0], captions[1]
+		}
+		label := appui.Text(v.locale, closedLabel)
 		if state.open {
-			label = appui.Text(v.locale, "workspace.hide_details")
+			label = appui.Text(v.locale, openLabel)
 		}
 		style := material.Button(v.theme, &state.button, label)
 		style.TextSize, style.Background, style.Color = unit.Sp(12), color.NRGBA{}, mutedInk

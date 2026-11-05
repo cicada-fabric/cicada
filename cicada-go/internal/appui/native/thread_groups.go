@@ -251,7 +251,10 @@ func (v *view) threadGroupButton(s appcore.Snapshot, kind appcore.ActionKind, id
 		if button.Clicked(gtx) && enabled {
 			v.startDispatch(appcore.Action{Kind: kind, ThreadGroups: input})
 		}
-		return v.button(gtx, button, appui.Text(v.locale, label), enabled)
+		if kind == appcore.ActionApplyThreadGroup {
+			return v.button(gtx, button, appui.Text(v.locale, label), enabled)
+		}
+		return v.secondaryButton(gtx, button, appui.Text(v.locale, label), enabled)
 	}
 }
 
