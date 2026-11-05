@@ -77,6 +77,15 @@ func ValidateAccountReconcileTarget(result AccountReconcileResult, original []by
 }
 
 func validateExtensionDevice(body any, device e2ee.PublicIdentity) error {
+	if op, _, _, _, _, err := threadCollaborationOwnerMetadata(body); err == nil && threadCollaborationOwnerOperation(op) {
+		_, _, _, _, raw, _ := threadCollaborationOwnerParts(body)
+		var proof e2ee.OwnerEndpointGroupsRequestProof
+		if decodeCanonical(raw, e2ee.MaxEndpointGroupProofBytes, &proof) != nil || !reflect.DeepEqual(proof.Claims.Scope.DevicePublic, device) {
+			return ErrInvalid
+		}
+		return nil
+	}
+
 	if op, _, _, _, _, err := appBindingMetadata(body); err == nil && appBindingOperation(op) {
 		return validateAppBindingDevice(body, device)
 	}

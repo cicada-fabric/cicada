@@ -270,6 +270,9 @@ func DecodeNativePairPacket(raw []byte) (Packet, error) {
 }
 
 func decodePacketForOperation(raw []byte, expected string) (Packet, error) {
+	if threadCollaborationOwnerOperation(expected) {
+		return DecodeThreadCollaborationOwnerPacket(raw)
+	}
 	if ownerEndpointGroupsOperation(expected) {
 		return DecodeOwnerEndpointGroupsPacket(raw)
 	}
@@ -283,6 +286,15 @@ func decodePacketForOperation(raw []byte, expected string) (Packet, error) {
 }
 
 func outerLimitForRoute(r clientwire.Route) int {
+	if threadCollaborationOwnerOperation(r.Operation) {
+		if r.Operation == OperationThreadCollaborationOwnerReconcile {
+			return MaxThreadCollaborationReconcilePacketBytes
+		}
+		if r.Direction == clientwire.DirectionRequest {
+			return MaxThreadCollaborationOriginalBytes
+		}
+		return MaxThreadCollaborationOwnerPacketBytes
+	}
 	if appNodeScopedOperation(r.Operation) {
 		return appNodeScopedOuterLimit(r.Operation)
 	}

@@ -15,6 +15,9 @@ func validScopedPacketLimits(r Route, bodyLimit, packetLimit int, nativePair boo
 	if r.Operation == LocalDomainReconcileOperation && bodyLimit == LocalDomainReconcileBodyBytes && packetLimit == LocalDomainReconcilePacketBytes {
 		return r.Direction == DirectionRequest || r.Direction == DirectionResponse
 	}
+	if r.Operation == ThreadCollaborationOwnerReconcileOperation && bodyLimit == ThreadCollaborationOwnerReconcileBodyBytes && packetLimit == ThreadCollaborationOwnerReconcilePacketBytes {
+		return r.Direction == DirectionRequest || r.Direction == DirectionResponse
+	}
 	if r.Operation == OwnerEndpointGroupsReconcileOperation && bodyLimit == OwnerEndpointGroupsReconcileBodyBytes && packetLimit == OwnerEndpointGroupsReconcilePacketBytes {
 		return r.Direction == DirectionRequest || r.Direction == DirectionResponse
 	}

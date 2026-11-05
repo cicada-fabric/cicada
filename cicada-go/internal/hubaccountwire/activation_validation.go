@@ -10,6 +10,9 @@ import (
 )
 
 func extensionMetadata(body any) (operation, id, owner, device string, epoch uint64, err error) {
+	if op, id, owner, device, epoch, err := threadCollaborationOwnerMetadata(body); err == nil {
+		return op, id, owner, device, epoch, nil
+	}
 	if op, id, owner, device, epoch, err := appBindingMetadata(body); err == nil {
 		return op, id, owner, device, epoch, nil
 	}
@@ -40,6 +43,9 @@ func extensionMetadata(body any) (operation, id, owner, device string, epoch uin
 	return appNodeMetadata(body)
 }
 func extensionOperation(op string) bool {
+	if threadCollaborationOwnerOperation(op) {
+		return true
+	}
 	if appBindingOperation(op) {
 		return true
 	}
@@ -55,6 +61,9 @@ func validateActivationBinding(b ActivationBinding) error {
 	return nil
 }
 func validateExtensionRequest(body any, hub HubIdentity, now time.Time) error {
+	if op, _, _, _, _, err := threadCollaborationOwnerMetadata(body); err == nil && threadCollaborationOwnerOperation(op) {
+		return ValidateThreadCollaborationOwnerRequest(body, hub, now)
+	}
 	if op, _, _, _, _, err := appBindingMetadata(body); err == nil && appBindingOperation(op) {
 		return validateAppBindingRequest(body, hub, now)
 	}
@@ -111,6 +120,9 @@ func validateExtensionRequest(body any, hub HubIdentity, now time.Time) error {
 	return nil
 }
 func validateExtensionResponse(body any, r clientwire.Route) error {
+	if threadCollaborationOwnerOperation(r.Operation) {
+		return validateThreadCollaborationOwnerResponse(body, r)
+	}
 	if appBindingOperation(r.Operation) {
 		return validateAppBindingResponse(body, r)
 	}

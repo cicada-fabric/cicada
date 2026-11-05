@@ -7,8 +7,8 @@
 > 用户通过独立的 Cicada App 管理授权工作。Windows 是当前原生 App 的首要目标；产品入口不依赖浏览器或 WebView。App 的目标管理界面是原生无限画布，支持平移/缩放、拖拽 Group、框选、创建通信连线和指定 Advisor；这些是产品目标，当前 N1 仅有未连接 Live Hub 的预览基础。App 展示经授权的 Hub/Node 状态、Owner 授权和 Manager 操作；它不能凭账户密码或本地 UI 自行授予权限。Hub 与 Node 的身份、业务和安全边界保持独立。
 
 **文档版本：Architecture v2.3 — Network-Scoped Collaboration, Group Spaces & Single-Relay Transport**
-**修订日期：2026-10-15**
-**本次修订：明确 Windows-first 原生 App 入口与管理画布目标；当前仍为 N1 部分实现。**
+**修订日期：2026-11-05**
+**本次修订：真实 Thread 单一 Network、Owner 单一数量分类与每 Group 八个通用协议锁槽；实施合同仍待审，不构成实现完成声明。**
 **文档性质：已采纳的目标架构、产品规范与实施约束；不是功能已经全部实现的声明。**
 **主要基线：此前的 `CICADA(4).md`，以及本次读取的现有仓库开发文档。**
 
@@ -282,12 +282,12 @@ Agent identity continuity ≠ Native context continuity
 | INV-35 | NetworkMembership、Group Membership、Endpoint 加入关系及 NetworkAdmin grant 各自独立、可撤销、带版本；加入 Network 不自动加入其 Group 或获得全网可见/广播权限。 |
 | INV-36 | Network discovery、EndpointCard 可见性、单播发送/接收、广播发送/接收分别授权；默认返回最小卡片并按授权过滤，歧义别名必须拒绝。 |
 | INV-37 | Network 业务对象、消息、授权和相关性使用明确的 Hub+Network scope；Hub 级设备/连接/登记使用独立 Hub+Owner scope，不用伪默认 Network 补齐；跨范围不得复用或推断授权。 |
-| INV-38 | 同一 Thread 可以在多个 Network 注册；完整地址至少为 (hub_id, network_id, endpoint_id)。Node 可有多条 Hub 连接，但本地同一 native Session 仅有一个有效投递 owner 和一个串行 writer。 |
+| INV-38 | 同一真实 Thread 只能归属一个完整 (hub_id, network_id)；Hub、Node、服务器及 Principal 可通过不同 Thread 覆盖多个 Network。各 Hub context 共用原本地 native 身份历史和 writer，在网络登记副作用前原子预占，并在消费/投递时复核；改账号字段、Endpoint、密钥或清历史不得绕过。 |
 | INV-39 | 跨 Network 默认拒绝；允许时必须有双方 Endpoint/Network 范围的显式窄连线，两个 Network 的权威 Hub 必须相同且每条消息只经过该 Hub 一次；禁止隐式 Hub 间桥接。 |
 | INV-40 | NetworkAdmin grant 不拥有成员的设备、Endpoint 私钥、原生 Thread 历史、Workspace 或本地审批权，也不能替用户加入 Thread、批准操作或跨 Network 授权。 |
 | INV-41 | Network task offer 与 Group 内 Task 分离；认领只创建范围明确的责任交接，不授予发布者读取接收方私有 Group、上下文或 Artifact 的权利。 |
 | INV-42 | 外部 Agent 消息和 Task offer 不是用户命令；Monitor 自愿认领不构成用户批准，所有执行仍经现有 Guard、Action 与 Approval 检查。 |
-| INV-43 | 多 Network 共用一个 Thread 时显示共享原生上下文风险；敏感 Network 可要求专用 Thread。撤权阻止后续操作，但不承诺擦除已接收消息或模型记忆。 |
+| INV-43 | 不再允许真实 Thread 跨 Network 复用。历史跨网上下文保留原身份和全部历史并 fence，Owner 不能“选一个”或改历史洗白；匿名 member 由 Owner 显式分类但不改 Endpoint；撤权不承诺擦除已接收消息或模型记忆。 |
 | INV-44 | App 多 Hub/Network 操作显式绑定当前 Hub 与 Network；每 Hub 独立 pin、设备身份、密钥、session 与计数器，不能自动把身份/Group key/信任带到另一 Hub。 |
 | INV-45 | 即时消息、Group Journal、Discussion、Task、Evidence 与 Approval 的持久性和效力各异；模型可选择何时发送、记录或提议，但其文本和讨论结案不授予执行权、不证明结果。 |
 | INV-46 | Journal/Discussion 的作者来自当前认证 Endpoint；每条读写、分页、引用及补读按 Hub+Network+Group+对象和当前授权校验。已有成员断线后的补读可使用其有效历史权限；新成员加入前的历史必须另获明确范围授权。 |
@@ -421,17 +421,18 @@ flowchart LR
     S --> W[Machine + Workspace]
     E --> M1[Membership in Group A]
     E --> M2[Membership in Group B]
-    M1 --> R1[Optional Worker / Monitor role]
-    M2 --> R2[Optional Worker / Monitor role]
+    M1 --> R1[Explicit Group Grant A]
+    M2 --> R2[Explicit Group Grant B]
+    E --> C[Owner classification: worker / advisor / manager]
     G1[Group A] --> M1
     G2[Group B] --> M2
 ```
 
-一个 Principal 和同一个真实原生 Thread 都可以参加多个 Group，也可以分别注册到多个 Network。Thread/Endpoint/SessionBinding 保持一个本地稳定身份；Hub 侧的地址至少为 `(hub_id, network_id, endpoint_id)`，跨 Hub 注册使用各 Hub 自己的 Network-scoped Endpoint 凭据，不要求可公开关联的全局 Thread ID 或自动共享 Owner 真实身份。Principal 的 NetworkMembership、Group Membership 与具体 Endpoint-Group 加入关系分别记录；这些关系均有效才允许该 Thread 在该 Group 行动，不为每个 Network 或 Group 虚构 native session。发送和接收必须绑定所选 Hub、Network、Endpoint-Group 关系、Principal Membership、连线权限、版本及实际 Endpoint；没有唯一且已授权的范围时返回歧义或拒绝。多个 Network/Group 共用同一个模型记忆，不能通过切换 ID、换一套密钥或提示词声称上下文隔离。敏感范围可以要求专用 Thread 与独立 sandbox。
+一个 Principal 可通过不同 Thread 参加多个 Network；同一真实原生 Thread 只能归属一个完整 `(HubID, NetworkID)`。Owner 为该 Thread 的稳定 Endpoint 注册明确指定单一数量分类 `worker`、`advisor` 或 `manager`：worker 的全部有效 Endpoint-Group 关系最多一个，advisor/manager 可在该唯一 Network 内参加多个 Group，不受此数量规则限制。不同 Thread 即使共用 Principal，也不合并计算。Thread/Endpoint/SessionBinding 保持一个本地稳定身份；Hub 侧的地址至少为 `(hub_id, network_id, endpoint_id)`，Node 连接各 Hub 时使用各自的 Network-scoped Endpoint 凭据，但不允许同一真实 Thread 由此参加第二个 Network，不要求可公开关联的全局 Thread ID 或自动共享 Owner 真实身份。Principal 的 NetworkMembership、Group Membership 与具体 Endpoint-Group 加入关系分别记录；这些关系均有效才允许该 Thread 在该 Group 行动，不为每个 Network 或 Group 虚构 native session。发送和接收必须绑定所选 Hub、Network、Endpoint-Group 关系、Principal Membership、连线权限、版本及实际 Endpoint；没有唯一且已授权的范围时返回歧义或拒绝。同一 Network 内的多个 Group 仍共用该 Thread 的模型记忆，历史跨网上下文也不会因本轮限制被擦除，不能通过切换 ID、换一套密钥或提示词声称上下文隔离。敏感范围可以要求专用 Thread 与独立 sandbox。
 
 ### 5.3 角色不是身份等级
 
-Worker 是执行绑定，Monitor 是观察/审阅/代表绑定。一个 Agent 在同一组内可以拥有多个经明确授权的角色，但角色不构成 `Monitor > Worker` 的无限权限关系。
+本轮 Thread 的单一数量分类由 Owner 确定，不允许通过混合标签豁免 worker 的单组限制。advisor/manager 的多组数量资格不授予任何管理或业务权限；现有精确 grant 与 Guard 仍独立生效。用户所称 control 分类归入 manager；Hub Control 仍是服务，不是新的特权用户角色。旧 Monitor 标识保留兼容含义，不能据此自动重分类或升级。多组 advisor/manager 改为 worker 前，Owner 必须先精确收口有效关系，否则角色变更拒绝，不自动踢组。
 
 `OBSERVES` 不推出 `READ_ALL_FILES`；`REPRESENTS_GROUP` 不推出 `SPEND_BUDGET`；`CAN_MESSAGE` 不推出 `CAN_EXECUTE`。
 
@@ -594,7 +595,7 @@ Network 邀请/成员批准、Thread owner 本地确认和 SessionBinding 是独
 
 ### 7.5 Leave、Suspend 和 Revoke 的区别
 
-`Leave(group)` 只退出当前 Group；`Leave(network)` 撤销该 Network 的成员/Endpoint 注册；`Leave all` 才使 Endpoint 整体退出已加入网络；`Suspend` 是暂时停止某类协作；`Revoke` 是授权主体强制撤销访问。上述操作都不自动删除用户本地 Thread 或 Workspace。一个 Thread 的 Group A 或 Network A 权限被撤销，不应误伤它在 Group B/Network B 的独立授权；但对应缓存、待投递消息和解密材料必须更新。
+`Leave(group)` 只退出当前 Group；`Leave(network)` 撤销该 Network 的成员/Endpoint 注册；`Leave all` 才使 Endpoint 整体退出已加入网络；`Suspend` 是暂时停止某类协作；`Revoke` 是授权主体强制撤销访问。上述操作都不自动删除用户本地 Thread 或 Workspace。同一 Thread 在其唯一 Network 内的 Group A 权限被撤销，不应误伤角色允许的 Group B 独立授权；Network 撤销不应误伤该 Node 上其他 Thread 的其他 Network。对应缓存、待投递消息和解密材料必须更新，历史记录不得删除以使原 Thread 换网。
 
 Network 撤权由其权威 Hub 与 Node 投递 Guard 在各自检查点重新核验；可连通的检查点拒绝后续发现、发送、接收和任务操作。离线 Node 无法确认最新授权时必须 fail closed 或遵循明确且有期限的授权缓存策略；系统不承诺网络分区期间全局瞬时撤权，也不声称删除已传出的消息、缓存正文或接收者原生上下文。
 
@@ -620,7 +621,7 @@ Hub 内部使用稳定 `principal_id`、`network_id`、`endpoint_id` 和 `group_
 
 ### 8.3 发现范围
 
-NetworkMembership 不等于 Network-wide discovery。Agent 默认只发现当前已加入 Group policy 授权的成员与能力，以及显式 Link/独立 grant 许可暴露的最小 EndpointCard；Network 级目录同样按 `directory.discover` 授权过滤。私聊发送/接收、Network 广播发送/接收是不同 grant；“发现了卡片”不授予发送权，“Network 内成员”不表示其所有 Group/Thread 可见。卡片只可带 scope-local alias、经批准的能力、可用状态新鲜度和受限联系入口，不含 workspace/path、原生历史、私密 Task 或身份材料。跨组/跨用户发现不因父子 Group、Contact、同一 Hub 或同一 App 画布而公开所有内部 Thread。一个 Thread 加入多个范围时，解析必须携带 Hub/Network/Group 或 Link scope，不能由模型猜测要用哪组身份。
+NetworkMembership 不等于 Network-wide discovery。Agent 默认只发现当前已加入 Group policy 授权的成员与能力，以及显式 Link/独立 grant 许可暴露的最小 EndpointCard；Network 级目录同样按 `directory.discover` 授权过滤。私聊发送/接收、Network 广播发送/接收是不同 grant；“发现了卡片”不授予发送权，“Network 内成员”不表示其所有 Group/Thread 可见。卡片只可带 scope-local alias、经批准的能力、可用状态新鲜度和受限联系入口，不含 workspace/path、原生历史、私密 Task 或身份材料。跨组/跨用户发现不因父子 Group、Contact、同一 Hub 或同一 App 画布而公开所有内部 Thread。一个 Thread 在其唯一 Network 内加入角色允许的多个 Group 时，解析必须携带 Hub/Network/Group 或 Link scope，不能由模型猜测要用哪组身份。
 
 这减少全局信息暴露和不必要候选，但**不保证实际通信复杂度自动从 O(N²) 变成 O(N)**。消息规模取决于工作负载、广播、跨组请求比例与事件订阅，需要测量。
 
@@ -1100,7 +1101,7 @@ capabilities:
 
 会话租约不是资源租约，两者的作用域和失效处理不同。一个仍拥有会话的 Agent 也可能已经失去 Task 或 GPU 租约。
 
-同一 Thread 加入多 Group/Network 时，不能为每条 Network 注册创建独立的 native writer 或相互竞争的 SessionBinding。Endpoint 的本地 Node 持有唯一的当前 binding owner 和串行投递队列；各 Hub 仅提供各自 Network 范围的授权路由请求，Node 按 Hub/Network、当前 Membership/Link、epoch 和撤销水位再次 Guard，再将获准消息送入同一 writer。切换 Hub 或 Network 不改变原生 Thread 身份。
+同一 Thread 在其唯一 Network 内参加角色允许的多个 Group 时，仍只能有一个当前 native writer/binding owner 和串行投递队列。Node 的各 Hub context 必须在原共享 WriterRoot 的 NativeContext 历史中核验真实 Thread 的唯一 Network，在任何网络登记外部副作用前原子预占，并于消费和最终投递时再次 Guard。UI 切换 Hub/Network、变更 Endpoint、账号字段、密钥或连接 epoch 都不能为同一 Thread 创造另一条空历史。Leave 停止接入但不清历史，也不构成跨 Network 转移。
 
 ### 16.3 Wake 必须是适配器能力
 
@@ -1242,6 +1243,14 @@ Old owner presents epoch 41
 
 第一轮至少提供会话投递所有权；共享 Task 阶段提供 Task Claim；执行器协调阶段再提供可强制的资源 Lease。已存在的资源限制不能因新 Lease 尚未完成而被删除。API 必须诚实返回 `advisory` 或 `executor_enforced`，不得用同一个绿色图标混淆。
 
+### 18.7 Group 通用协议锁与物理资源租约分离
+
+每个 Group 初始提供八个编号通用协议锁槽，可带简短的组内说明；用途由 Group 自行约定。它们不绑定 GPU、资源、Workspace、Task 或任何预设业务，不是等待位，不引入 FIFO、调度或物理进程监管。读取、原子占用、显式续租、持有者精确代次释放、Owner 单槽显式清理必须有当前完整 Group scope、版本和原请求幂等检查；重启和响应丢失保留原状态与恢复证据。
+
+Owner 可一次明确批准 Group 级 coordination policy，供该组当前有效成员在每次操作时经 Guard 使用，不逐锁逐次要求人审。Thread 分类、已批准策略及占用属于 Hub 持久状态，不因 App 退出/卸载、账户或十五分钟状态读取会话到期消失；Owner 根、Group、策略或成员的显式撤销仍即时约束后续使用。此协议必须在 `--hub-nodes-only` 且 Control/推理关闭时工作，不能借用旧 Task-bound ResourceLease 或另建 daemon。
+
+通用槽采用有限租约，到期自动释放；默认 TTL 为 300 秒，显式申请/续租仅允许 1–3600 秒。AI 应主动释放并在仍需占用时主动续租，daemon 不暗中续租。续租从原请求服务器时间起算，过期续租拒绝；到期保留代次、单调增加版本并保留原收据，立即允许新持有者原子申请。成员自行联系可见持有者协商，Cicada 仅管理和记录，不判断是否真实使用、不强制物理资源、不提供 FIFO。读取仅可幂等归一已有租约的法定到期，不创建、占用或续租。确认规则、原 NativeContext 历史复用、单一 Network 预占、迁移与待审接口见[Thread/Network/Group 锁合同草案](docs/thread-network-group-locks-contract.md)。规范修订不是实现完成或既有验收通过声明。
+
 ---
 
 <a id="chapter-19"></a>
@@ -1320,7 +1329,7 @@ Personal Memory 属于用户服务范围，不自动暴露给所有 Worker。Gro
 
 有意跨组共享的专家需要经过明确的数据共享政策。Prompt 中一句“不要泄露另一组的内容”不能替代会话、文件、工具和凭据隔离。
 
-跨 Network 复用同一 Thread 具有同样且更明显的上下文混合风险。App 和 Join 流程应显示其已绑定的 Network/Group 范围及“该 Thread 的模型可能记住其他范围内容”的说明；高敏感 Network 可以要求专用 Thread/Endpoint、Workspace 与凭据。无论界面如何隔离，CICADA 都不能保证清除 Harness 已接收的消息或模型记忆。
+同一真实 Thread 不再允许跨 Network 复用。App 与 Join 流程应显示其唯一 Network、Owner 数量分类与有效 Group；发现历史跨网或匿名 member 未分类时保留原件并报告冲突/需 Owner 处理，不静默选取范围。历史模型记忆混合风险仍存在，高敏感范围可要求专用 Thread/Endpoint、Workspace 与凭据。无论界面如何隔离，CICADA 都不能保证清除 Harness 已接收的消息或模型记忆。
 
 ### 20.5 历史访问与撤销
 
@@ -1710,7 +1719,7 @@ Idea 重评、报告和 Monitor 检查若使用定时触发，需要持久 job I
 
 未来 App 可连接多个 Hub、每个 Hub 下多个 Network；本节只定义目标，不表示当前 native App 或 v1.3 Hub 已支持多 Hub Network UI。每条 Hub 连接独立保存并验证完整 Hub identity pin、Owner 与 App device key、session、request/replay counters 和 Network 注册。界面始终显式显示当前 Hub 与 Network，消息、广播和 Task 操作锁定该选择；离线或恢复后不得根据昵称、上次活动或同名 Network 猜测路由。
 
-跨 Hub 的同一 Thread 可由本地 Node 关联不同的 scoped Endpoint 注册，但不要求 App 暴露一个全局公开 Thread ID，不自动共享 Owner 真实身份、Group key 或 Contact 信任。Network 切换、加入或导入协议包时，必须展示信任边界和共享 Thread 上下文风险。
+Node 可为不同真实 Thread 服务于不同 Hub/Network，但同一 Thread 不得跨 Hub 参加第二个 Network；不要求公开全局 Thread ID，也不自动共享 Owner 身份、Group key 或 Contact 信任。App 切换当前连接并不迁移 Thread 的 Network。加入、恢复或导入协议包仍须核验其唯一归属与保留的历史冲突。
 
 ---
 
@@ -2204,7 +2213,7 @@ Monitor 的业务观察覆盖与 Guard 的执行拦截覆盖分别报告，不�
 | V85 | Journal 重要进展与更正、Discussion 回复与结案 | 可信 Endpoint 作者、组内顺序、稳定幂等和追加式更正可核；resolved 不伪造 Task 完成、Evidence 验真或 Approval |
 | V86 | 加密协作空间与游标提示 | Hub 仅有密文及有界元数据，正文不进入索引/通知；按读者快照封装，撤权后新写入不泄露，页大小/保留/扇出有界 |
 | V87 | Monitor 提议与受委托再分组 | 未委托、自授权、陈旧版本、跨 scope、扩大读者/旧历史或复制 key 均拒绝；有效窄委托以 CAS 生效并审计，不重建原 Thread |
-| V88 | 同 Thread 在多 Group/Network 使用协作空间 | 每条操作固定 Hub+Network+Group；模型记忆风险向用户显现，敏感范围可要求专用 Thread；父子 Group 不继承内容 |
+| V88 | 同 Thread 单一 Network 与角色数量边界 | 同 Network 下 worker 至多一组、advisor/manager 可多组；跨 Hub 第二 Network 在副作用前拒绝；历史冲突保留；父子 Group 不继承权限 |
 
 ### 32.8 旧验收项不能丢
 

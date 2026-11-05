@@ -134,6 +134,8 @@ type OwnerEndpointGroupsRequestProof struct {
 
 func ValidOwnerEndpointGroupsPurpose(purpose string) bool {
 	switch purpose {
+	case "owner-thread-collaboration-read:v1", "owner-thread-collaboration-prepare:v1", "owner-thread-collaboration-apply:v1", "owner-thread-collaboration-status:v1", "owner-thread-collaboration-reconcile:v1":
+		return true
 	case "owner-endpoint-groups-read:v1", "owner-endpoint-groups-prepare:v1", "owner-endpoint-groups-apply:v1", "owner-endpoint-groups-status:v1", "owner-endpoint-groups-reconcile:v1":
 		return true
 	}

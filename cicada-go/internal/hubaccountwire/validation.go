@@ -315,6 +315,13 @@ func knownOperation(operation string) bool {
 }
 
 func maxBodyForOperation(operation string) int {
+	if operation == OperationThreadCollaborationOwnerReconcile {
+		return MaxThreadCollaborationReconcileBodyBytes
+	}
+	if threadCollaborationOwnerOperation(operation) {
+		return MaxThreadCollaborationOwnerBodyBytes
+	}
+
 	if operation == OperationOwnerEndpointGroupsReconcile {
 		return MaxOwnerEndpointGroupsReconcileBodyBytes
 	}
