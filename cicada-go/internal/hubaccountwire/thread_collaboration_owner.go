@@ -146,7 +146,7 @@ func ValidateThreadCollaborationOwnerReview(q ThreadCollaborationOwnerPrepareReq
 	end, _ := parseCanonicalUTC(r.ExpiresAt)
 	issued, _ := parseCanonicalUTC(q.Context.IssuedAt)
 	proofEnd, _ := parseCanonicalUTC(proof.Claims.ExpiresAt)
-	if observed.Before(issued) || observed.After(now.Add(30*time.Second)) || !now.Before(end) || end.After(proofEnd) {
+	if observed.Before(issued.Add(-30*time.Second)) || observed.After(now.Add(30*time.Second)) || !now.Before(end) || end.After(proofEnd) {
 		return ErrInvalid
 	}
 	return nil
@@ -391,7 +391,7 @@ func VerifyThreadCollaborationOwnerResult(q any, original []byte, result ThreadC
 		if result.Read != nil && (result.Read.HubID != c.HubID || result.Read.NetworkID != body.NetworkID || result.Read.View != body.View || result.Read.Group != nil && result.Read.Group.GroupID != body.GroupID || result.Read.GroupSlots != nil && result.Read.GroupSlots.Scope.GroupID != body.GroupID) {
 			return ErrInvalid
 		}
-		if result.Read != nil && body.View == "THREAD_SCOPE" && (result.Read.Threads[0].NodeID != body.NodeID || result.Read.Threads[0].EndpointID != body.EndpointID) {
+		if result.Read != nil && body.View == "THREAD_SCOPE" && (result.Read.Threads[0].NodeID != body.NodeID || result.Read.Threads[0].EndpointID != body.EndpointID && result.Read.Threads[0].State != "NETWORK_CONFLICT") {
 			return ErrInvalid
 		}
 	case ThreadCollaborationOwnerPrepareBody:

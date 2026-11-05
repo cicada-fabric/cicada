@@ -1,5 +1,20 @@
 package hubaccountwire
 
+import "github.com/cicada-ai/cicada/internal/nodewire"
+
+func DecodeThreadCollaborationNodePacket(raw []byte) (nodewire.Packet, error) {
+	p, err := nodewire.DecodePacket(raw)
+	if err != nil {
+		return p, ErrInvalid
+	}
+	for _, op := range ThreadCollaborationNativeOperations() {
+		if p.Route.Operation == op {
+			return p, nil
+		}
+	}
+	return nodewire.Packet{}, ErrInvalid
+}
+
 // These closed typed bodies are carried by the existing Node-Control PQC RPC.
 // Caller identity, registered native source and current Group authority must be
 // derived and rechecked on the server; this validates syntax only.

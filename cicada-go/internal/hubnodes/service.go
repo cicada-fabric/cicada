@@ -92,6 +92,9 @@ func (s *Service) RPC(ctx context.Context, token string, raw []byte) ([]byte, er
 		return nil, ErrUnavailable
 	}
 	switch packet.Route.Operation {
+	case wire.OperationThreadScopeRead, wire.OperationGroupLocksRead, wire.OperationGroupLocksAcquire, wire.OperationGroupLocksRenew, wire.OperationGroupLocksRelease:
+		return s.threadCollaborationRPC(ctx, token, raw)
+
 	case wire.OperationEndpointGroupsNodeDescribe, wire.OperationEndpointGroupsNodeKeyPrepare, wire.OperationEndpointGroupsNodeKeyComplete, wire.OperationEndpointGroupsNodeRenew, wire.OperationEndpointGroupsNodeReconcile:
 		return s.endpointGroupsRPC(ctx, token, raw)
 	case wire.OperationLocalDomainNodeAvailable, wire.OperationLocalDomainNodeJoin, wire.OperationLocalDomainNodeKeyPrepare, wire.OperationLocalDomainNodeKeyComplete, wire.OperationLocalDomainNodeDescribe, wire.OperationLocalDomainNodeReconcile:

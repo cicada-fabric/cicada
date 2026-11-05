@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -13,8 +14,13 @@ import (
 func threadCollaborationFixture() (GroupLockScope, GroupLockHolder, GroupLockAcquireRequest) {
 	scope := GroupLockScope{"synthetic-hub", "synthetic-network", "synthetic-group"}
 	holder := GroupLockHolder{"synthetic-node", "synthetic-endpoint", "synthetic-principal", ThreadRegistrationSource{"synthetic-original-registration", 1}}
-	request := GroupLockAcquireRequest{Scope: scope, Slot: 1, ExpectedVersion: 1, Original: ThreadCollaborationOriginal{"synthetic-operation", "synthetic-key", strings.Repeat("0", 64)}, Note: "SYNTHETIC arbitrary Group note"}
+	request := GroupLockAcquireRequest{Scope: scope, Slot: 1, ExpectedVersion: 1, Original: contractGroupLockOriginal("a", "b"), Note: "SYNTHETIC arbitrary Group note"}
 	return scope, holder, request
+}
+
+func contractGroupLockOriginal(a, b string) ThreadCollaborationOriginal {
+	prefix := fmt.Sprintf("%012x", time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC).UnixMilli())
+	return ThreadCollaborationOriginal{prefix + strings.Repeat(a, 20), prefix + strings.Repeat(b, 20), strings.Repeat("0", 64)}
 }
 
 func TestThreadCollaborationContractClosedInventoryAndInactiveLocks(t *testing.T) {
@@ -192,7 +198,7 @@ func TestThreadCollaborationContractSlotSnapshotAndStableHolder(t *testing.T) {
 	}
 	view.ObservedAt = "2026-11-05T12:00:00Z"
 	view.Slots[0] = GroupLockSlot{Slot: 1, State: "HELD", Version: 2, Generation: 1, Holder: &holder, Note: "SYNTHETIC note", ExpiresAt: "2026-11-05T12:05:00Z", HolderName: "Synthetic holder", HolderNameState: "VISIBLE"}
-	request := GroupLockReleaseRequest{Scope: scope, Slot: 1, ExpectedVersion: 2, Generation: 1, Original: ThreadCollaborationOriginal{"synthetic-release", "synthetic-release-key", strings.Repeat("0", 64)}}
+	request := GroupLockReleaseRequest{Scope: scope, Slot: 1, ExpectedVersion: 2, Generation: 1, Original: contractGroupLockOriginal("c", "d")}
 	if ValidateGroupSlotView(view) != nil || ValidateGroupLockReleaseHolder(scope, holder, view.Slots[0], request) != nil {
 		t.Fatal("same original registration cold recovery cannot release")
 	}
@@ -300,6 +306,32 @@ func TestThreadCollaborationContractFiniteTTL(t *testing.T) {
 	renew.TTLSeconds = &x
 	if VerifyGroupLockRequestDigest(OperationGroupLocksRenew, caller, renew) == nil {
 		t.Fatal("TTL change reused original digest")
+	}
+}
+
+func TestThreadCollaborationContractOriginalRecoveryWindow(t *testing.T) {
+	now := time.Date(2026, 11, 5, 12, 0, 0, 123000000, time.UTC)
+	o, err := NewGroupLockOriginal(now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := GroupLockOriginalTime(o.OperationID)
+	if err != nil || created.UnixMilli() != now.UnixMilli() {
+		t.Fatal("48-bit original timestamp")
+	}
+	if len(o.OperationID) != 32 || len(o.IdempotencyKey) != 32 || o.OperationID == o.IdempotencyKey || o.OperationID[:12] != o.IdempotencyKey[:12] {
+		t.Fatal("original entropy/time binding")
+	}
+	if ValidateGroupLockOriginalWindow(o, now.Add(24*time.Hour-time.Millisecond)) != nil {
+		t.Fatal("live recovery window refused")
+	}
+	if ValidateGroupLockOriginalWindow(o, now.Add(24*time.Hour)) == nil || ValidateGroupLockOriginalWindow(o, now.Add(-31*time.Second)) == nil {
+		t.Fatal("expired/future original admitted")
+	}
+	other, _ := NewGroupLockOriginal(now.Add(time.Millisecond))
+	o.IdempotencyKey = other.IdempotencyKey
+	if threadCollaborationOriginal(o) {
+		t.Fatal("changed creation time hid key reuse")
 	}
 }
 

@@ -5,7 +5,9 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"reflect"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -48,7 +50,47 @@ func threadCollaborationHolder(v GroupLockHolder) bool {
 	return validID(v.NodeID) && validID(v.EndpointID) && validID(v.PrincipalID) && threadCollaborationSource(v.Source)
 }
 func threadCollaborationOriginal(v ThreadCollaborationOriginal) bool {
-	return validID(v.OperationID) && validID(v.IdempotencyKey) && isHex(v.RequestDigest, 32)
+	a, e := GroupLockOriginalTime(v.OperationID)
+	b, be := GroupLockOriginalTime(v.IdempotencyKey)
+	return e == nil && be == nil && a.Equal(b) && isHex(v.RequestDigest, 32)
+}
+
+// A 48-bit millisecond prefix makes bounded recovery explicit without keeping
+// an unbounded ID tombstone set. The remaining 80 bits are independently random.
+func NewGroupLockOriginal(at time.Time) (ThreadCollaborationOriginal, error) {
+	if at.IsZero() || at.UnixMilli() <= 0 || at.UnixMilli() >= 1<<48 {
+		return ThreadCollaborationOriginal{}, ErrInvalid
+	}
+	a, err := NewRequestID()
+	if err != nil {
+		return ThreadCollaborationOriginal{}, err
+	}
+	b, err := NewRequestID()
+	if err != nil {
+		return ThreadCollaborationOriginal{}, err
+	}
+	prefix := fmt.Sprintf("%012x", at.UnixMilli())
+	return ThreadCollaborationOriginal{OperationID: prefix + a[12:], IdempotencyKey: prefix + b[12:], RequestDigest: strings.Repeat("0", 64)}, nil
+}
+func GroupLockOriginalTime(id string) (time.Time, error) {
+	if !isHex(id, 16) {
+		return time.Time{}, ErrInvalid
+	}
+	ms, err := strconv.ParseInt(id[:12], 16, 64)
+	if err != nil || ms <= 0 {
+		return time.Time{}, ErrInvalid
+	}
+	return time.UnixMilli(ms).UTC(), nil
+}
+func ValidateGroupLockOriginalWindow(v ThreadCollaborationOriginal, at time.Time) error {
+	if !threadCollaborationOriginal(v) || at.IsZero() {
+		return ErrInvalid
+	}
+	created, _ := GroupLockOriginalTime(v.OperationID)
+	if created.After(at.Add(30*time.Second)) || !at.Before(created.Add(GroupLockOriginalRecoverySeconds*time.Second)) {
+		return fmt.Errorf("%s", ThreadCollaborationErrorReceiptUnavailable)
+	}
+	return nil
 }
 func ThreadCollaborationClassifications() []string {
 	return []string{ThreadClassificationWorker, ThreadClassificationAdvisor, ThreadClassificationManager}

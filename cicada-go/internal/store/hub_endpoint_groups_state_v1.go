@@ -148,6 +148,11 @@ func endpointGroupsEnsureRegistrationTx(tx *sql.Tx, owner, node, network, endpoi
 		return nil, ErrNetworkPermission
 	}
 	reg := e2ee.EndpointGroupRegistration{HubID: hub.HubID, OwnerID: owner, NodeID: node, Harness: v.Runtime, NativeSessionID: v.NativeSessionID, Workspace: v.Workspace, EndpointID: endpoint, PrincipalID: v.PrincipalID}
+	// Another registration must not reset the original Thread's classification
+	// or Worker Group count by changing Endpoint/workspace/Principal/key.
+	var previous int
+	if err=tx.QueryRow(`SELECT count(*) FROM hub_endpoint_groups_registrations_v1 WHERE json_extract(anchor_json,'$.registration.harness')=? AND json_extract(anchor_json,'$.registration.native_session_id')=?`,reg.Harness,reg.NativeSessionID).Scan(&previous);err!=nil{return nil,err}
+	if previous!=0{return nil,ErrNetworkPermission}
 	digest, err := e2ee.EndpointGroupRegistrationDigest(reg)
 	if err != nil {
 		return nil, err

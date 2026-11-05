@@ -133,6 +133,13 @@ func (h *Handler) hubAccount(response http.ResponseWriter, request *http.Request
 		}
 	}
 	limit := wire.MaxPacketBytes
+	if wire.ThreadCollaborationHTTPPath(operation) != "" {
+		limit = wire.MaxThreadCollaborationOriginalBytes
+		if operation == wire.OperationThreadCollaborationOwnerReconcile {
+			limit = wire.MaxThreadCollaborationReconcilePacketBytes
+		}
+	}
+
 	if wire.OwnerEndpointGroupsHTTPPath(operation) != "" {
 		limit = wire.MaxOwnerEndpointGroupsOriginalBytes
 		if operation == wire.OperationOwnerEndpointGroupsReconcile {

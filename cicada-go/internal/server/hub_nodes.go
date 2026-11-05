@@ -40,6 +40,30 @@ func (h *hubNodesHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	path := r.URL.Path
+	if path == wire.ThreadCollaborationCapabilitiesPath {
+		if r.Method != http.MethodGet {
+			writeError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+			return
+		}
+		if r.URL.RawQuery != "" || r.ContentLength != 0 || len(r.TransferEncoding) != 0 || r.Header.Get("Authorization") != "" || r.Header.Get("Cookie") != "" {
+			writeError(w, http.StatusBadRequest, errors.New("public metadata request rejected"))
+			return
+		}
+		caps, err := h.account.ThreadCollaborationCapabilities("--hub-nodes-only")
+		if err != nil {
+			writeError(w, http.StatusServiceUnavailable, errors.New("Thread collaboration unavailable"))
+			return
+		}
+		writeJSON(w, http.StatusOK, caps)
+		return
+	}
+	for _, op := range wire.ThreadCollaborationOwnerOperations() {
+		if path == wire.ThreadCollaborationHTTPPath(op) {
+			h.base.hubAccount(w, r, op)
+			return
+		}
+	}
+
 	if path == wire.OwnerEndpointGroupsCapabilitiesPath {
 		if r.Method != http.MethodGet {
 			writeError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
@@ -399,6 +423,10 @@ func (h *hubNodesHandler) nodeRPC(w http.ResponseWriter, r *http.Request) {
 	}
 	packet, err := h.nodes.RPC(r.Context(), token, raw)
 	if err != nil {
+		if errors.Is(err, hubnodes.ErrOriginalOutcomeUncertain) {
+			writeError(w, http.StatusServiceUnavailable, errors.New("original Node outcome unavailable; retain the original packet"))
+			return
+		}
 		if errors.Is(err, hubnodes.ErrBusy) {
 			w.Header().Set("Retry-After", "1")
 			writeError(w, http.StatusTooManyRequests, errors.New("Node request capacity is busy; retain and retry the original packet"))

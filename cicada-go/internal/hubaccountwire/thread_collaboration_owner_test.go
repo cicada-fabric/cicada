@@ -95,3 +95,31 @@ func PreflightThreadCollaborationTest(raw []byte, op string) error {
 	_, err := PreflightRequest(raw, op)
 	return err
 }
+
+func TestThreadCollaborationOwnerReviewClockSkew(t *testing.T) {
+	f := localDomainCrypto(t).f
+	body := ThreadCollaborationOwnerPrepareBody{Action: ThreadCollaborationCreateGroupWithPolicy, Policy: &GroupPolicyChange{NetworkID: "synthetic-network", Name: "Synthetic skew", SlotCount: 8, Rights: GroupCoordinationRights()}}
+	q, err := NewThreadCollaborationOwnerPrepare(f.session, f.scope, body, f.owner, f.now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	original, err := SealClientRequest(f.device, f.hub, q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest, _ := ThreadCollaborationOwnerBodyDigest(body)
+	base := ThreadCollaborationOwnerReview{TargetGroupID: "synthetic-new-group", HubID: f.hub.HubID, OwnerID: f.scope.OwnerID, DeviceID: f.scope.DeviceID, PrepareRequestID: q.Context.RequestID, PreparePacketDigest: ThreadCollaborationOwnerPacketDigest(original), ObservedAt: formatUTC(f.now), ReviewID: strings.Repeat("a", 32), Action: body.Action, BodyDigest: digest, ExpiresAt: formatUTC(f.now.Add(time.Minute)), Prepared: body}
+	for _, tc := range []struct {
+		name  string
+		skew  time.Duration
+		valid bool
+	}{{"server_slow_100ms", -100 * time.Millisecond, true}, {"server_fast_100ms", 100 * time.Millisecond, true}, {"server_slow_31s", -31 * time.Second, false}, {"server_fast_31s", 31 * time.Second, false}} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := base
+			r.ObservedAt = formatUTC(f.now.Add(tc.skew))
+			if (ValidateThreadCollaborationOwnerReview(q, original, r, f.hub, f.now) == nil) != tc.valid {
+				t.Fatal("review observation skew boundary")
+			}
+		})
+	}
+}
