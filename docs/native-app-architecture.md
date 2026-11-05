@@ -63,6 +63,55 @@ portable production renderer, enabling real Gio layout/input tests without an
 OS window. This is not a non-Windows GUI entry point or physical Windows/IME,
 DPAPI/ACL, Runtime or public HTTPS acceptance.
 
+## Thread Network, Owner roles and Group protocol locks — target 2026-11-05
+
+Status: **CONFIRMED_TARGET / CONSUMER_CONTRACT_PENDING** on consumer base
+`381842d`. The internal read-only projection and Gio noticeboard are implemented;
+live reads, roles, policy and lock operations are not connected. Every original
+Thread is limited to one Network; one physical Node can serve multiple Networks
+for different Threads. Owner assigns roles:
+Worker is limited to one Group, while Advisor and Manager roles may have
+several Groups within the Thread's single Network. Role assignment does not
+itself expand business permissions. The Hub/Node contract and adopted-spec
+alignment are owned by the Hub implementation and require Root review before
+these consumer changes connect. Earlier multi-Network implementation/evidence
+keeps its source attribution.
+
+Each Group has eight generic protocol lock slots. A slot records occupancy, an
+authorized holder identity and optional free-form purpose text for the Group's
+own coordination. Slots are not bound to a physical resource, GPU, Task or FIFO
+queue, and their protocol state does not establish execution isolation. The
+existing task-bound ResourceLease is a different facility. Disconnected-holder
+retention versus expiry remains an unanswered lifecycle question; this consumer
+design specifies neither a timeout nor automatic release/renewal.
+
+The App places a read-only eight-slot noticeboard in the existing authorized
+Group detail under Sessions, using the delivered sidebar, secondary actions,
+small-window scrolling and disclosed technical identifiers. It shows only
+authenticated, readable holder/purpose/status data and observation freshness.
+Viewing a free slot is not acquisition; an unavailable/stale read never becomes
+eight free slots. Native MCP/CLI acquisition must be explicit and atomic under
+the approved contract, with a clear busy result and exact original-request
+recovery for an uncertain outcome.
+
+Owner role management uses a separate scoped review and explicit confirmation;
+agents cannot self-declare Advisor/Manager status to bypass the Worker limit.
+Multi-Network history is retained and fenced; another Network requires a new
+Thread. Owner cannot rewrite history or choose its first entry to clear that
+conflict. An unclassified legacy member in a unique Network may be explicitly
+classified and narrowed by Owner through approved backend primitives, preserving
+the Endpoint. Native MCP/CLI consumers use the common Node NativeContextRegistry
+decision; local profiles, labels and session filenames are not another identity
+authority. The Windows Owner App uses its own authenticated Hub read/management
+path, without impersonating a remote Thread. Public availability still does not
+authorize a caller. New public DTOs/routes/tools await the approved typed contract.
+
+The display-only checkpoint adds no I/O or actions. Existing read consumers leave
+the board absent until an approved adapter supplies scoped data and `CanView`.
+Eight fixed positions project unknown/missing/stale rows as UNKNOWN and redact
+their holder/purpose; no display timer decides lock expiry. EN/ZH Gio disclosure
+uses actual layout, pointer and wheel handling, retaining the delivered shell.
+
 ## Composable installation and shared authority target
 
 2026-10-19 product direction, with the 2026-10-20

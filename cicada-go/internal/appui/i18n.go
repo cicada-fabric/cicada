@@ -262,6 +262,21 @@ const (
 
 var catalog = map[Locale]map[messageID]string{
 	English: {
+		"locks.title":          "Group locks",
+		"locks.read_only":      "Status only. Viewing does not occupy a slot.",
+		"locks.not_current":    "Current status is unknown.",
+		"locks.observed":       "Last observed",
+		"locks.show":           "View eight lock slots",
+		"locks.hide":           "Hide lock status",
+		"locks.slot":           "Slot",
+		"locks.free":           "Free (observed)",
+		"locks.held":           "Held",
+		"locks.unknown":        "Unknown",
+		"locks.holder":         "Held by",
+		"locks.holder_private": "Not disclosed",
+		"locks.purpose":        "Purpose",
+		"locks.version":        "Snapshot version",
+
 		"binding.title":                                "This App and Hub",
 		"binding.unbind":                               "Unbind this App",
 		"binding.unbind_body":                          "End this App's binding to the selected Hub. Your account, Owner identity, independent Nodes and Groups are retained. This App's sessions and access end when the Hub confirms.",
@@ -750,6 +765,21 @@ var catalog = map[Locale]map[messageID]string{
 		msgBackToActivation:          "Back to activation",
 	},
 	Chinese: {
+		"locks.title":          "协作锁状态",
+		"locks.read_only":      "仅查看状态，不会占用锁槽。",
+		"locks.not_current":    "当前状态未知。",
+		"locks.observed":       "观测时间",
+		"locks.show":           "查看八个锁槽",
+		"locks.hide":           "收起锁状态",
+		"locks.slot":           "锁槽",
+		"locks.free":           "空闲（观测值）",
+		"locks.held":           "已占用",
+		"locks.unknown":        "未知",
+		"locks.holder":         "占用者",
+		"locks.holder_private": "未公开",
+		"locks.purpose":        "用途说明",
+		"locks.version":        "视图版本",
+
 		"binding.title":                                "此 App 与 Hub",
 		"binding.unbind":                               "解绑此 App",
 		"binding.unbind_body":                          "解除此 App 与当前 Hub 的绑定。账户、Owner 身份、独立 Node 和 Group 均保留。Hub 确认后，此 App 的会话与访问权限终止。",

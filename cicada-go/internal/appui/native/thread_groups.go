@@ -145,6 +145,11 @@ func (v *view) threadGroupRelations(s appcore.Snapshot) []layout.FlexChild {
 				rows = append(rows, layout.Rigid(v.nodeCaption(appui.Text(v.locale, "groups.key_pending"))))
 			}
 		}
+		if r.Locks != nil {
+			board := *r.Locks
+			board.Current = board.Current && d.Current
+			rows = append(rows, layout.Rigid(v.groupLockBoardEntry(s.Hub.HubID+"/"+d.NetworkID+"/"+t.EndpointID+"/"+r.GroupID, board)))
+		}
 		if r.CanRemove {
 			rows = append(rows, layout.Rigid(v.threadGroupButton(s, appcore.ActionPrepareThreadGroup, "remove/"+r.GroupID, "groups.remove", appcore.ThreadGroupAction{GestureID: r.GestureID, Change: "REMOVE_ENDPOINT", EndpointID: t.EndpointID, GroupID: r.GroupID}, true)))
 		} else if r.UnavailableReason != "" {

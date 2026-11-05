@@ -99,15 +99,87 @@ The cross-built App test artifact SHA-256 is
 `77e152b9c682ff3304d9cb20fd192ad1b94f02f32e5a762bb457743096f16c52`.
 `source-after-tests.json` records zero changes across 1825 Go/module files.
 
-Pending user request — **USER_REQUESTED / NOT_IMPLEMENTED**: Worker membership
-in one Group only, no such limit for Advisor or the user's “control” role label,
-initially eight lock slots per Group, and a general background collaboration
-lock. Identity scope/mixed-role behavior, cooperative locking versus enforced
-isolation, and eight named locks versus waiting places still need confirmation.
-Hub's read-only survey found existing task-bound ResourceLease operations without
-native/MCP Acquire, FIFO or an eight-slot model; no new lock protocol, role behavior or lock
-UI is implemented here. This ledger entry does not change adopted `CICADA.md`
-semantics or treat the user's role label as the Hub Control service.
+Thread Network/role/lock scope — **CONFIRMED_TARGET / CONSUMER_CONTRACT_PENDING**,
+2026-11-05, consumer base `381842d`. Internal read-only projection/Gio layout is
+implemented; live reads, Owner roles/policy and slot operations remain
+**NOT_IMPLEMENTED**:
+
+- Every original Thread has one Network; a machine may serve multiple Networks
+  through different Threads. Owner assigns Worker/Advisor/Manager roles.
+  Worker has at most one Group; Advisor/Manager roles may have multiple
+  Groups within that same Network. Roles do not grant extra business rights.
+- Each Group has eight generic protocol lock slots, showing holder, optional
+  free-form purpose and status. The Group agrees its own use; these are not
+  resource/Task/GPU locks or FIFO waiting places. The sole pending user question
+  is how a held slot behaves after holder disconnection: retained versus TTL.
+  No timeout, automatic release or renewal rule is chosen here.
+- Existing task-bound ResourceLease has management Acquire and Fabric
+  release/renew/quarantine, with no native/MCP Acquire or eight-slot model. It
+  will not be relabeled as this new protocol lock. The Hub owns shared protocol,
+  Node enforcement, backend and `CICADA.md`; Root must review its contract before
+  App/MCP/CLI/skill integration. Old dated results are not renewed authorization.
+
+Consumer file/design preparation: extend the App core's existing exact Owner
+review, encrypted record and recovery mechanisms with separate lock/role
+consumers; add the noticeboard to `appui/native/thread_groups.go` through a
+focused Group-lock view; reuse current i18n/secondary/scrolling presentation.
+MCP/CLI use the original selected Hub/Network/Group, fresh native proof and
+common Node decision, without another profile-based identity registry. Windows
+Owner App read/management uses its own Hub authentication, not a remote Thread's
+native proof. The single skill source stays
+`.agents/plugins/cicada/skills/cicada-network/SKILL.md`.
+New tool names, DTOs, grants, paths and errors await the approved shared contract.
+No parallel protocol or lock implementation is prepared in this checkpoint.
+
+The read-only Group noticeboard must not acquire a slot or infer eight free
+slots from missing data. Acquisition is a separate explicit atomic operation;
+an authenticated busy result is clear, while lost/unsigned responses retain the
+exact uncertain original. Owner role changes require review/confirmation and
+current authorization. Legacy multi-Network history remains preserved and fenced;
+another Network requires a new Thread, without Owner rewriting history or choosing
+the first entry. A uniquely scoped unclassified member may be explicitly
+classified/narrowed through an approved Owner operation without recreating its
+Endpoint. Client-side partial-page counting never resolves these cases.
+
+The display checkpoint adds `GroupLockBoardView` and an optional relation board,
+with no transport or actions. Core-supplied `CanView`/`Current` control redaction:
+absent, malformed or stale slot data never becomes FREE. Existing read consumers
+leave it nil, preserving delivered behavior until an approved adapter connects.
+The EN/ZH Sessions disclosure renders eight rows with holder, optional purpose,
+observed time and disclosed snapshot version; viewing/scrolling emits no request.
+
+Backend/physical acceptance remains **NOT_RUN** in this display checkpoint:
+
+| Boundary | Required observation |
+| --- | --- |
+| Single Thread / machine scope | A second Network for the same original Thread refuses without identity changes; another Thread on that machine may use another Network. Legacy multi-Network history stays fenced. |
+| Owner roles / membership | Worker second-Group addition refuses; approved Advisor/Manager multi-Group use remains scoped to one Network. Self-reported roles do not alter authority. |
+| Eight protocol slots | One concurrent claim wins a slot, other claims report busy; Group/Network scopes remain distinct and read-only views never acquire. |
+| Persistence / uncertainty | Persist before send, recover identical original after lost response/restart, and reject stale authority without rebinding. Disconnection lifecycle cases remain undefined until answered. |
+| Native presentation | Real Gio layout/input checks for eight read-only rows, stale/unavailable data and narrow/DPI behavior are recorded below. Role consent remains pending consumer integration; physical Windows and real Runtime remain separate. |
+
+Display-only validation — **SCOPED_PASS**, 2026-11-05: tested the dirty source
+manifest based on `381842d`, not that HEAD alone. Evidence is retained at
+`/home/zyf/Cicada/.local/evidence/n2-app/group-lock-board-8ujj6yb6/`.
+`source.json` covers 1832 Go/module files and has SHA-256
+`0250aab53ca5689b69824dd2935d205811d899b4c01697877c624c4f5ff9edfd`.
+
+- Go 1.27.3 normal and race each passed six focused appcore top-level tests
+  (14 named results, regex `^Test(GroupLock|ThreadGroups)`) and the complete
+  portable `appui`/`appui/native` suite (92 top-level / 421 named results).
+  Both lanes reported zero failures and zero skips. This is not an unfiltered
+  appcore suite result.
+- Production Gio pointer/wheel handling opens the EN/ZH disclosure and reaches
+  all eight rows at 1100×1200 / 100% and 640×480 / 200%. Stale/unreadable data and
+  login expiry never reveal FREE/private holder/purpose, while reading dispatches
+  no action. Snapshot cloning and parent read/pending/session expiry are covered.
+- `go vet` passed for appcore, appui, native and `cmd/cicada-app`. Windows amd64
+  `-trimpath -ldflags=-H=windowsgui` cross-build passed; test artifact SHA-256 is
+  `8d026c0c70c34e36f33cb577d2bfb9a268125eeff392c8d24efbd4053c38467f`.
+- Disposable Docker interop, real Runtime, public HTTPS, Android and physical
+  Windows GUI/IME/DPAPI/ACL are **NOT_RUN** for this display-only checkpoint.
+  No live lock read, claim/release, role change or lifecycle behavior is accepted
+  by these results. No resident deployment or installed plugin was changed.
 
 Current Node Hub lifecycle scope — 2026-11-04: production `afb2bad8` is
 **SCOPED_PASS** for six actual disposable current-NPT/TLS/SQLite/Agent/CLI/

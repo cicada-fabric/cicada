@@ -56,6 +56,7 @@ type ThreadGroupRelation struct {
 	UnavailableReason string
 	GestureID         string
 	Contributions     []ThreadGroupContribution
+	Locks             *GroupLockBoardView `json:",omitempty"`
 }
 
 type ThreadGroupContribution struct {
@@ -156,6 +157,7 @@ func expireThreadGroupsView(view *Snapshot, now time.Time) {
 	if g.Current && !now.Before(parseExpiry(g.FreshUntil)) {
 		g.Current = false
 	}
+	projectThreadGroupLocks(g)
 	view.AvailableActions = slices.DeleteFunc(view.AvailableActions, func(kind ActionKind) bool {
 		if !threadGroupActionKind(kind) {
 			return false
@@ -191,6 +193,10 @@ func cloneThreadGroups(source ThreadGroupsSnapshot) ThreadGroupsSnapshot {
 		thread.Relations = slices.Clone(thread.Relations)
 		for i := range thread.Relations {
 			thread.Relations[i].Contributions = slices.Clone(thread.Relations[i].Contributions)
+			if source := thread.Relations[i].Locks; source != nil {
+				board := *source
+				thread.Relations[i].Locks = &board
+			}
 		}
 		return thread
 	}
@@ -207,5 +213,28 @@ func cloneThreadGroups(source ThreadGroupsSnapshot) ThreadGroupsSnapshot {
 		review := *source.Review
 		copy.Review = &review
 	}
+	projectThreadGroupLocks(&copy)
 	return copy
+}
+
+func projectThreadGroupLocks(view *ThreadGroupsSnapshot) {
+	project := func(thread *GroupThreadView) {
+		for i := range thread.Relations {
+			if source := thread.Relations[i].Locks; source != nil {
+				board := *source
+				board.Current = board.Current && view.Current
+				board = ProjectGroupLockBoard(board)
+				thread.Relations[i].Locks = nil
+				if board.CanView {
+					thread.Relations[i].Locks = &board
+				}
+			}
+		}
+	}
+	for i := range view.Threads {
+		project(&view.Threads[i])
+	}
+	if view.Selected != nil {
+		project(view.Selected)
+	}
 }
