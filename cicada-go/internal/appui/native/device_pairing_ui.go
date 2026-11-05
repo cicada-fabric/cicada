@@ -1,5 +1,3 @@
-//go:build windows
-
 package native
 
 import (
@@ -8,6 +6,7 @@ import (
 	"gioui.org/widget"
 	"github.com/cicada-ai/cicada/internal/appcore"
 	"github.com/cicada-ai/cicada/internal/appui"
+	"strings"
 	"time"
 )
 
@@ -19,7 +18,7 @@ func (v *view) nodeSection(s appcore.Snapshot) layout.Widget {
 		rows := v.devicePairingRows(s)
 		children := make([]layout.FlexChild, 0, len(rows)*2)
 		for _, row := range rows {
-			children = append(children, layout.Rigid(func(gtx layout.Context) layout.Dimensions { return layout.Inset{Top: 8, Bottom: 8}.Layout(gtx, row) }))
+			children = append(children, layout.Rigid(func(gtx layout.Context) layout.Dimensions { return layout.Inset{Bottom: 12}.Layout(gtx, row) }))
 		}
 		return layout.Flex{Axis: layout.Vertical}.Layout(gtx, children...)
 	}
@@ -30,7 +29,7 @@ func (v *view) devicePairingRows(s appcore.Snapshot) []layout.Widget {
 	var rows []layout.Widget
 	switch flow.Stage {
 	case "code", "ended":
-		rows = append(rows, v.headingRow(appui.Text(v.locale, "node_pairing.title")), v.labelRow(appui.Text(v.locale, "node_pairing.intro")), v.editorRow(&v.devicePairingCode, appui.Text(v.locale, "node_pairing.code"), false))
+		rows = append(rows, v.editorRow(&v.devicePairingCode, appui.Text(v.locale, "node_pairing.code"), false), v.nodeCaption(appui.Text(v.locale, "node_pairing.intro")))
 		if flow.Stage == "ended" {
 			rows = append(rows, v.labelRow(appui.Text(v.locale, "node_pairing.ended")))
 		}
@@ -82,6 +81,29 @@ func (v *view) devicePairingRows(s appcore.Snapshot) []layout.Widget {
 	if p.ErrorCode != "" {
 		rows = append(rows, v.labelRow(appui.ErrorText(v.locale, p.ErrorCode)))
 	}
+	return rows
+}
+
+func (v *view) devicePairingActionRows(s appcore.Snapshot) []layout.Widget {
+	flow := appui.NodePairingFlow(s, time.Now())
+	var rows []layout.Widget
+	if (flow.Stage == "code" || flow.Stage == "ended") && flow.Primary == "" {
+		key := "node_pairing.prerequisite"
+		if !s.Node.Pairing.Available || s.Node.Pairing.Availability == "UNAVAILABLE" {
+			key = "node_pairing.unavailable"
+		}
+		return []layout.Widget{v.nodeCaption(appui.Text(v.locale, key)), v.devicePairingButton(s, appcore.ActionReviewNodePairing, "node_pairing.review_action")}
+	}
+	if flow.Primary == appcore.ActionReviewNodePairing {
+		_, ready := devicePairingReady(&v.devicePairingCode, time.Now())
+		if !ready {
+			key := "node_pairing.code_required"
+			if strings.TrimSpace(v.devicePairingCode.Text()) != "" {
+				key = "node_pairing.code_invalid"
+			}
+			rows = append(rows, v.nodeCaption(appui.Text(v.locale, key)))
+		}
+	}
 	if flow.Primary != "" {
 		label := "node_pairing.check"
 		if flow.Stage == "checking" {
@@ -89,7 +111,7 @@ func (v *view) devicePairingRows(s appcore.Snapshot) []layout.Widget {
 		}
 		switch flow.Primary {
 		case appcore.ActionReviewNodePairing:
-			label = "node.preview"
+			label = "node_pairing.review_action"
 		case appcore.ActionApproveNodePairing:
 			label = "node_pairing.approve"
 		case appcore.ActionCancelNodePairing:
@@ -99,7 +121,7 @@ func (v *view) devicePairingRows(s appcore.Snapshot) []layout.Widget {
 		}
 		rows = append(rows, v.devicePairingButton(s, flow.Primary, label))
 	}
-	if flow.Cancel {
+	if flow.Cancel && flow.Primary != appcore.ActionCancelNodePairing {
 		rows = append(rows, v.devicePairingButton(s, appcore.ActionCancelNodePairing, "node.cancel_review"))
 	}
 	return rows
@@ -112,7 +134,7 @@ func (v *view) devicePairingButton(s appcore.Snapshot, kind appcore.ActionKind, 
 	}
 	return func(gtx layout.Context) layout.Dimensions {
 		enabled := hasAction(s, kind) && !v.busy.Load()
-		code, ready := devicePairingInput(&v.devicePairingCode)
+		code, ready := devicePairingReady(&v.devicePairingCode, time.Now())
 		if kind == appcore.ActionReviewNodePairing {
 			enabled = enabled && ready
 		}

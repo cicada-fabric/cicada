@@ -1,5 +1,3 @@
-//go:build windows
-
 package native
 
 import (
@@ -153,7 +151,9 @@ func (v *view) retainedNodeSection(s appcore.Snapshot) layout.Widget {
 func (v *view) nodeCaption(label string) layout.Widget {
 	return func(gtx layout.Context) layout.Dimensions {
 		style := material.Body2(v.theme, label)
-		style.Color = color.NRGBA{R: 103, G: 127, B: 140, A: 255}
+		style.Color = mutedInk
+		style.TextSize = 12
+		style.LineHeight = 18
 		return style.Layout(gtx)
 	}
 }

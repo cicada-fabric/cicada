@@ -1,5 +1,3 @@
-//go:build windows
-
 package native
 
 import (
@@ -16,7 +14,7 @@ import (
 	"github.com/cicada-ai/cicada/internal/appui"
 )
 
-var workspaceMutedSurface = color.NRGBA{R: 237, G: 243, B: 245, A: 255}
+var workspaceMutedSurface = sidebarSurface
 
 type disclosureState struct {
 	button widget.Clickable
@@ -26,11 +24,8 @@ type disclosureState struct {
 var workspacePages = []string{"overview", "devices", "sessions", "identity", "settings"}
 
 func (v *view) workspaceLayout(gtx layout.Context, s appcore.Snapshot, flow appui.SetupFlow) layout.Dimensions {
-	if v.workspaceButtons == nil {
-		v.workspaceButtons = make(map[string]*widget.Clickable)
-	}
-	if v.workspacePage == "" {
-		v.workspacePage = "overview"
+	if v.hubConnections {
+		return v.dockedPage(gtx, appui.Text(v.locale, "connection.hubs"), v.hubConnectionRows(s), nil)
 	}
 	secondary := make([]appcore.ActionKind, 0, len(flow.Secondary))
 	for _, action := range flow.Secondary {
@@ -39,69 +34,16 @@ func (v *view) workspaceLayout(gtx layout.Context, s appcore.Snapshot, flow appu
 		}
 	}
 	flow.Secondary = secondary
-	sidebar := func(gtx layout.Context) layout.Dimensions {
-		gtx.Constraints.Min.X = gtx.Dp(190)
-		gtx.Constraints.Max.X = gtx.Constraints.Min.X
-		return layout.Inset{Right: unit.Dp(18)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-			children := []layout.FlexChild{layout.Rigid(v.nodeCaption(appui.Text(v.locale, "workspace.navigation")))}
-			for _, page := range workspacePages {
-				children = append(children, layout.Rigid(v.workspaceNavigation(page)))
-			}
-			children = append(children, layout.Flexed(1, func(gtx layout.Context) layout.Dimensions { return layout.Dimensions{Size: gtx.Constraints.Min} }))
-			if hasAction(s, appcore.ActionLogout) {
-				children = append(children, layout.Rigid(v.actionButton(appcore.ActionLogout, appui.Text(v.locale, "account.logout"), s)))
-			}
-			return layout.Flex{Axis: layout.Vertical}.Layout(gtx, children...)
-		})
+	var rows []layout.Widget
+	if banner := v.workspaceAttention(s, flow); banner != nil {
+		rows = append(rows, banner)
 	}
-	content := func(gtx layout.Context) layout.Dimensions {
-		rows := []layout.Widget{v.headingRow(appui.Text(v.locale, "workspace."+v.workspacePage))}
-		if banner := v.workspaceAttention(s, flow); banner != nil {
-			rows = append(rows, banner)
-		}
-		rows = append(rows, v.workspaceRows(s, flow)...)
-		return v.contentList.Layout(gtx, len(rows), func(gtx layout.Context, i int) layout.Dimensions {
-			return layout.Inset{Top: unit.Dp(8), Bottom: unit.Dp(10)}.Layout(gtx, rows[i])
-		})
+	rows = append(rows, v.workspaceRows(s, flow)...)
+	var actions []layout.Widget
+	if v.workspacePage == "devices" && s.Node.Pairing != nil {
+		actions = v.devicePairingActionRows(s)
 	}
-	if gtx.Constraints.Max.X < gtx.Dp(760) {
-		tabs := func(gtx layout.Context) layout.Dimensions {
-			children := make([]layout.FlexChild, 0, len(workspacePages))
-			for _, page := range workspacePages {
-				children = append(children, layout.Flexed(1, v.workspaceNavigation(page)))
-			}
-			return layout.Flex{}.Layout(gtx, children...)
-		}
-		children := []layout.FlexChild{layout.Rigid(tabs), layout.Flexed(1, content)}
-		if hasAction(s, appcore.ActionLogout) {
-			children = append(children, layout.Rigid(v.actionButton(appcore.ActionLogout, appui.Text(v.locale, "account.logout"), s)))
-		}
-		return layout.Flex{Axis: layout.Vertical}.Layout(gtx, children...)
-	}
-	return layout.Flex{}.Layout(gtx, layout.Rigid(sidebar), layout.Flexed(1, content))
-}
-
-func (v *view) workspaceNavigation(page string) layout.Widget {
-	return func(gtx layout.Context) layout.Dimensions {
-		button := v.workspaceButtons[page]
-		if button == nil {
-			button = new(widget.Clickable)
-			v.workspaceButtons[page] = button
-		}
-		if button.Clicked(gtx) {
-			v.workspacePage = page
-			v.contentList.Position = layout.Position{}
-			v.window.Invalidate()
-		}
-		style := material.Button(v.theme, button, appui.Text(v.locale, "workspace."+page))
-		style.Background, style.Color = color.NRGBA{}, v.theme.Fg
-		style.TextSize = unit.Sp(14)
-		style.Inset = layout.Inset{Top: unit.Dp(13), Bottom: unit.Dp(13), Left: unit.Dp(12), Right: unit.Dp(12)}
-		if v.workspacePage == page {
-			style.Background, style.Color = workspaceMutedSurface, v.theme.ContrastBg
-		}
-		return layout.Inset{Top: unit.Dp(5), Bottom: unit.Dp(5)}.Layout(gtx, style.Layout)
-	}
+	return v.dockedPage(gtx, appui.Text(v.locale, "workspace."+v.workspacePage), rows, actions)
 }
 
 func (v *view) workspaceRows(s appcore.Snapshot, flow appui.SetupFlow) []layout.Widget {
@@ -112,7 +54,7 @@ func (v *view) workspaceRows(s appcore.Snapshot, flow appui.SetupFlow) []layout.
 			if len(s.Targets.Nodes) != 0 {
 				rows = append(rows, v.sectionCard(v.targetSelectionSection(s)))
 			}
-			rows = append(rows, v.sectionCard(v.nodeSection(s)))
+			rows = append(rows, v.nodeSection(s))
 			if appui.LocalCollaborationFlow(s, time.Now()).Visible {
 				rows = append(rows, v.sectionCard(v.localCollaborationSection(s)))
 			}
@@ -142,7 +84,7 @@ func (v *view) workspaceRows(s appcore.Snapshot, flow appui.SetupFlow) []layout.
 		rows := []layout.Widget{v.labelRow(appui.Text(v.locale, "workspace.identity_body")), func(gtx layout.Context) layout.Dimensions { return v.statusCard(gtx, s) }}
 		if flow.Stage != "ready" && !strings.HasPrefix(flow.Stage, "node-") && flow.Stage != "pair-recovery" {
 			rows = append(rows, v.sectionCard(func(gtx layout.Context) layout.Dimensions {
-				children := v.contentRows(s, flow, true, false, nil, false)
+				children := v.contentRows(s, flow, true, false, nil, false, true)
 				rows := make([]layout.FlexChild, 0, len(children))
 				for _, child := range children {
 					rows = append(rows, layout.Rigid(child))
@@ -170,6 +112,9 @@ func (v *view) workspaceRows(s appcore.Snapshot, flow appui.SetupFlow) []layout.
 		}),
 			v.sectionCard(v.labelRow(appui.Text(v.locale, "workspace.settings_body"))),
 			v.sectionCard(v.labelRow(appui.Text(v.locale, "workspace.storage_body"))),
+		}
+		if hasAction(s, appcore.ActionLogout) {
+			rows = append(rows, v.actionButton(appcore.ActionLogout, appui.Text(v.locale, "account.logout"), s))
 		}
 		if hasAction(s, appcore.ActionUnbindApp) {
 			rows = append(rows, v.sectionCard(func(gtx layout.Context) layout.Dimensions {
@@ -268,7 +213,9 @@ func (v *view) workspaceAttention(s appcore.Snapshot, flow appui.SetupFlow) layo
 }
 
 func (v *view) sectionCard(content layout.Widget) layout.Widget {
-	return func(gtx layout.Context) layout.Dimensions { return v.card(gtx, content) }
+	return func(gtx layout.Context) layout.Dimensions {
+		return layout.Inset{Top: 8, Bottom: 12}.Layout(gtx, content)
+	}
 }
 
 func (v *view) workspaceLink(page, label string) layout.Widget {
@@ -309,7 +256,8 @@ func (v *view) disclosure(key string, body layout.Widget) layout.Widget {
 			label = appui.Text(v.locale, "workspace.hide_details")
 		}
 		style := material.Button(v.theme, &state.button, label)
-		style.TextSize, style.Background, style.Color = unit.Sp(13), color.NRGBA{}, v.theme.ContrastBg
+		style.TextSize, style.Background, style.Color = unit.Sp(12), color.NRGBA{}, mutedInk
+		style.Inset = layout.Inset{Top: 8, Bottom: 8}
 		return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
 			layout.Rigid(style.Layout),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {

@@ -30,6 +30,39 @@ development. See the [migration record](repository-migration.md). This layout
 change does not complete N1, N2/N3, Android interoperability or native Windows
 acceptance; historical results retain their original source attribution.
 
+## Native desktop presentation — 2026-11-05
+
+The Gio desktop shell uses a warm white content surface, a quiet grey sidebar,
+thin separators and a shared 14 sp body / 12 sp supporting text / 22 sp page
+heading hierarchy. Overview, Devices, Sessions, Identity, Settings and the
+connection/login flow use the same spacing and controls. Narrow windows use a
+compact icon rail with named accessibility descriptions and a scrollable
+navigation area; they do not divide five long labels across a tiny header.
+The Hub selector opens existing connection management. Actual switching still
+uses the original core actions, exact selected profile and sensitive-input reset.
+The [official Codex Windows reference](https://learn.chatgpt.com/images/codex/windows/codex-windows-light.webp)
+informs the visual hierarchy, not the product's authorization model.
+
+The Devices pairing flow has a scrollable body and a separately measured bottom
+action area. Code input is masked, single-line and height-bounded. The action
+remains visible when input is empty, malformed or expired, with disabled state
+and a short next-step explanation. Local syntax/expiry uses the existing typed
+codec and grants no trust; the core independently verifies Hub pins, the exact
+candidate and all cryptographic authority. Gio editor events are consumed before
+footer measurement so paste updates readiness in the same frame. Enter may only
+review a code, never approve a reviewed device or replace an uncertain request.
+Busy Enter is consumed without delayed replay. UNKNOWN/FENCED/expired pairing
+continues through the existing exact recovery/check/cleanup choices. Approval
+and ACK remain separate; the UI never presents unconfirmed management success.
+
+Technical identifiers and public fingerprints stay behind disclosure controls
+with their existing selection/copy behavior. The account presentation boundary,
+local key custody, request persistence and cryptographic protocols are unchanged.
+Windows window creation and bounded OS CJK font loading are separated from the
+portable production renderer, enabling real Gio layout/input tests without an
+OS window. This is not a non-Windows GUI entry point or physical Windows/IME,
+DPAPI/ACL, Runtime or public HTTPS acceptance.
+
 ## Composable installation and shared authority target
 
 2026-10-19 product direction, with the 2026-10-20

@@ -1,5 +1,3 @@
-//go:build windows
-
 package native
 
 import (
@@ -7,68 +5,35 @@ import (
 	"errors"
 	"image"
 	"image/color"
-	"io"
 	"math"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 	"unicode"
 
-	"gioui.org/app"
 	"gioui.org/f32"
-	"gioui.org/font"
-	"gioui.org/font/opentype"
 	"gioui.org/io/event"
 	"gioui.org/io/pointer"
 	"gioui.org/layout"
 	"gioui.org/op"
 	"gioui.org/op/clip"
 	"gioui.org/op/paint"
-	"gioui.org/text"
 	"gioui.org/unit"
 	"gioui.org/widget"
 	"gioui.org/widget/material"
 	"github.com/cicada-ai/cicada/internal/appcore"
 	"github.com/cicada-ai/cicada/internal/appui"
-	"golang.org/x/sys/windows"
 )
 
-// RunWindow serves one native Gio window. The process main function must call
-// app.Main on its main goroutine while RunWindow executes in another goroutine.
-func RunWindow(controller appcore.Controller) error {
-	if controller == nil {
-		return errors.New("native app controller unavailable")
-	}
-	window := new(app.Window)
-	window.Option(app.Title("Cicada"), app.Size(unit.Dp(1100), unit.Dp(780)))
-	root, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	view := newView(controller, root, cancel, window)
-	view.startDispatch(appcore.Action{Kind: appcore.ActionDiscoverProfiles})
-	var ops op.Ops
-	for {
-		switch event := window.Event().(type) {
-		case app.DestroyEvent:
-			view.closed.Store(true)
-			view.updates.close()
-			cancel()
-			view.clearSensitiveInputs()
-			view.workerWG.Wait()
-			return event.Err
-		case app.ConfigEvent:
-			view.updates.setMinimized(event.Config.Mode == app.Minimized)
-		case app.FrameEvent:
-			gtx := app.NewContext(&ops, event)
-			view.layout(gtx)
-			event.Frame(gtx.Ops)
-		}
-	}
-}
+// nativeWindow keeps the production renderer testable without creating an OS
+// window. The Windows event loop remains the sole product entry point.
+type nativeWindow interface{ Invalidate() }
 
 type view struct {
+	hubPicker                              widget.Clickable
+	navigationIcons                        map[string]*widget.Icon
+	navigationList                         widget.List
 	appBindingReview                       string
 	appBindingConsent                      widget.Bool
 	hubConnections                         bool
@@ -78,7 +43,7 @@ type view struct {
 	profileRemoveConsent                   widget.Bool
 	cancelReplacement                      widget.Clickable
 	controller                             appcore.Controller
-	window                                 *app.Window
+	window                                 nativeWindow
 	ctx                                    context.Context
 	cancel                                 context.CancelFunc
 	theme                                  *material.Theme
@@ -149,7 +114,7 @@ type view struct {
 	threadGroupConsent       widget.Bool
 }
 
-func newView(controller appcore.Controller, ctx context.Context, cancel context.CancelFunc, window *app.Window) *view {
+func newView(controller appcore.Controller, ctx context.Context, cancel context.CancelFunc, window nativeWindow) *view {
 	v := &view{
 		controller:     controller,
 		window:         window,
@@ -164,9 +129,10 @@ func newView(controller appcore.Controller, ctx context.Context, cancel context.
 	}
 	configureNativeFonts(v.theme)
 	// Layout dimensions use dp/sp so Windows scaling applies to text and controls.
-	v.theme.Bg = color.NRGBA{R: 246, G: 248, B: 250, A: 255}
-	v.theme.Fg = color.NRGBA{R: 26, G: 49, B: 61, A: 255}
-	v.theme.ContrastBg = color.NRGBA{R: 11, G: 127, B: 112, A: 255}
+	v.theme.Bg = appSurface
+	v.theme.Fg = appInk
+	v.theme.ContrastBg = appInk
+	v.theme.TextSize = 14
 	v.theme.ContrastFg = color.NRGBA{R: 255, G: 255, B: 255, A: 255}
 	v.contentList.Axis = layout.Vertical
 	v.activation.Mask = '•'
@@ -185,78 +151,6 @@ func newView(controller appcore.Controller, ctx context.Context, cancel context.
 	return v
 }
 
-var nativeFonts struct {
-	once   sync.Once
-	faces  []font.FontFace
-	family font.Typeface
-}
-
-// Load a bounded OS-provided CJK collection explicitly rather than relying on
-// implicit system-family discovery. Failure leaves Gio's system fallback intact.
-// Font loading happens during window construction, never in the frame loop.
-func configureNativeFonts(theme *material.Theme) {
-	nativeFonts.once.Do(func() {
-		system, err := windows.GetWindowsDirectory()
-		if err != nil || !filepath.IsAbs(system) || filepath.Clean(system) != system {
-			return
-		}
-		const maxBytes = 64 << 20
-		for _, name := range []string{"msyh.ttc", "simsun.ttc"} {
-			path := filepath.Join(system, "Fonts", name)
-			before, err := os.Lstat(path)
-			if err != nil || !before.Mode().IsRegular() || before.Mode()&os.ModeSymlink != 0 || before.Size() <= 0 || before.Size() > maxBytes {
-				continue
-			}
-			wide, err := windows.UTF16PtrFromString(path)
-			if err != nil {
-				continue
-			}
-			attributes, err := windows.GetFileAttributes(wide)
-			if err != nil || attributes&windows.FILE_ATTRIBUTE_REPARSE_POINT != 0 {
-				continue
-			}
-			file, err := os.Open(path)
-			if err != nil {
-				continue
-			}
-			opened, statErr := file.Stat()
-			data, readErr := io.ReadAll(io.LimitReader(file, maxBytes+1))
-			closeErr := file.Close()
-			after, afterErr := os.Lstat(path)
-			if statErr != nil || readErr != nil || closeErr != nil || afterErr != nil || !os.SameFile(before, opened) || !os.SameFile(before, after) || int64(len(data)) != before.Size() {
-				continue
-			}
-			faces, err := opentype.ParseCollection(data)
-			if err != nil || len(faces) == 0 || len(faces) > 32 {
-				continue
-			}
-			for _, face := range faces {
-				if face.Face == nil {
-					continue
-				}
-				parsed := face.Face.Face()
-				if parsed == nil {
-					continue
-				}
-				if _, ok := parsed.NominalGlyph('中'); !ok {
-					continue
-				}
-				nativeFonts.faces, nativeFonts.family = faces, face.Font.Typeface
-				if strings.EqualFold(string(face.Font.Typeface), "Microsoft YaHei UI") {
-					break
-				}
-			}
-			if len(nativeFonts.faces) != 0 {
-				return
-			}
-		}
-	})
-	if len(nativeFonts.faces) != 0 {
-		theme.Shaper = text.NewShaper(text.WithCollection(nativeFonts.faces))
-		theme.Face = nativeFonts.family
-	}
-}
-
 func (v *view) layout(gtx layout.Context) {
 	paint.Fill(gtx.Ops, v.theme.Bg)
 	raw := v.controller.Snapshot()
@@ -271,43 +165,17 @@ func (v *view) layout(gtx layout.Context) {
 	v.inputScope, v.accountVisible = appui.InputScopeFor(raw), presentation.InformationVisible
 	snapshot := presentation.Snapshot
 	scheduleSnapshotRedraw(gtx, raw, now)
-	managementAuthorized := snapshot.Management == appcore.ManagementAuthorized
-	objects, isPreview := v.canvasObjects(snapshot, managementAuthorized)
-	layout.UniformInset(28).Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-		return layout.Flex{Axis: layout.Vertical, Spacing: layout.SpaceBetween}.Layout(gtx,
-			layout.Rigid(v.header),
-			layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
-				if presentation.InformationVisible {
-					return v.workspaceLayout(gtx, snapshot, v.updates.accountFlow(snapshot, now))
-				}
-				flow := presentation.Flow
-				var rows []layout.Widget
-				if presentation.InformationVisible {
-					flow = v.updates.accountFlow(snapshot, now)
-					rows = append(rows, func(gtx layout.Context) layout.Dimensions { return v.statusCard(gtx, snapshot) })
-				} else {
-					rows = append(rows, v.publicStatusRows(snapshot)...)
-				}
-				rows = append(rows, v.contentRows(snapshot, flow, presentation.InformationVisible, managementAuthorized, objects, isPreview)...)
-				content := func(gtx layout.Context) layout.Dimensions {
-					return v.card(gtx, func(gtx layout.Context) layout.Dimensions {
-						return v.contentList.Layout(gtx, len(rows), func(gtx layout.Context, index int) layout.Dimensions {
-							return layout.Inset{Top: 8, Bottom: 8, Left: 4, Right: 4}.Layout(gtx, rows[index])
-						})
-					})
-				}
-				if presentation.InformationVisible {
-					return content(gtx)
-				}
-				return layout.Center.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-					width := min(gtx.Constraints.Max.X, gtx.Dp(440))
-					gtx.Constraints.Min = image.Pt(width, 0)
-					gtx.Constraints.Max.X = width
-					return content(gtx)
-				})
-			}),
-		)
-	})
+	flow := presentation.Flow
+	if presentation.InformationVisible {
+		flow = v.updates.accountFlow(snapshot, now)
+		if v.workspacePage == "devices" && !v.hubConnections {
+			updateDevicePairingEditor(gtx, &v.devicePairingCode, snapshot, now, v.busy.Load() || v.closed.Load(), func(code string) {
+				v.devicePairingCode.SetText("")
+				v.startDispatch(appcore.Action{Kind: appcore.ActionReviewNodePairing, DevicePairingCode: code})
+			})
+		}
+	}
+	v.shellLayout(gtx, snapshot, presentation.InformationVisible, flow)
 	// Foreground controls above have already processed this frame's clicks.
 	// The background due decision can neither block them nor issue I/O here.
 	if presentation.InformationVisible {
@@ -317,36 +185,6 @@ func (v *view) layout(gtx layout.Context) {
 		v.pairingPoll.reset()
 		v.updates.pauseForAccountScreen()
 	}
-}
-
-func (v *view) header(gtx layout.Context) layout.Dimensions {
-	title := func(gtx layout.Context) layout.Dimensions {
-		return layout.Inset{Top: 4, Bottom: 12}.Layout(gtx, material.H5(v.theme, appui.Text(v.locale, "app.title")).Layout)
-	}
-	languages := func(gtx layout.Context) layout.Dimensions {
-		return layout.Flex{Axis: layout.Horizontal, Alignment: layout.Middle}.Layout(gtx,
-			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				if v.langEN.Clicked(gtx) {
-					v.locale = appui.English
-					v.window.Invalidate()
-				}
-				return layout.Inset{Right: 8}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-					return v.button(gtx, &v.langEN, "English", v.locale != appui.English)
-				})
-			}),
-			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				if v.langZH.Clicked(gtx) {
-					v.locale = appui.Chinese
-					v.window.Invalidate()
-				}
-				return v.button(gtx, &v.langZH, "简体中文", v.locale != appui.Chinese)
-			}),
-		)
-	}
-	if gtx.Constraints.Max.X < gtx.Dp(600) {
-		return layout.Flex{Axis: layout.Vertical}.Layout(gtx, layout.Rigid(title), layout.Rigid(languages))
-	}
-	return layout.Flex{Axis: layout.Horizontal, Alignment: layout.Middle}.Layout(gtx, layout.Flexed(1, title), layout.Rigid(languages))
 }
 
 func (v *view) statusCard(gtx layout.Context, s appcore.Snapshot) layout.Dimensions {
@@ -415,19 +253,19 @@ func (v *view) statusCard(gtx layout.Context, s appcore.Snapshot) layout.Dimensi
 	})
 }
 
-func (v *view) contentRows(s appcore.Snapshot, flow appui.SetupFlow, informationVisible, managementAuthorized bool, objects []appui.CanvasObject, preview bool) []layout.Widget {
+func (v *view) contentRows(s appcore.Snapshot, flow appui.SetupFlow, informationVisible, managementAuthorized bool, objects []appui.CanvasObject, preview, includeActions bool) []layout.Widget {
 	if v.hubConnections {
 		return v.hubConnectionRows(s)
 	}
 	if v.replacementInput && s.Setup.ReplacementAllowed {
 		flow = appui.SetupFlow{Stage: "replace", Primary: appcore.ActionConnect}
 	}
-	rows := []layout.Widget{v.hubControl(s, appcore.ActionDiscoverProfiles, "connection.manage_hubs"), v.hubControl(s, appcore.ActionAddHub, "connection.add_hub")}
+	var rows []layout.Widget
 	switch flow.Stage {
 	case "app-rebind":
-		return append(rows, v.appBindingRows(s, appcore.ActionRebindApp)...)
+		return append(rows, v.appBindingRows(s, appcore.ActionRebindApp, includeActions)...)
 	case "app-binding-recovery":
-		return append(rows, v.appBindingRows(s, appcore.ActionRecoverAppBinding)...)
+		return append(rows, v.appBindingRows(s, appcore.ActionRecoverAppBinding, includeActions)...)
 	case "profile-recovery":
 		rows = append(rows, v.headingRow(appui.Text(v.locale, "setup.profile_recovery_title")), v.labelRow(appui.Text(v.locale, "setup.profile_recovery_body")))
 		for index, profile := range s.Profiles {
@@ -514,6 +352,35 @@ func (v *view) contentRows(s appcore.Snapshot, flow appui.SetupFlow, information
 			return material.CheckBox(v.theme, &v.consent, appui.Text(v.locale, "setup.grant_consent")).Layout(gtx)
 		})
 	}
+	if includeActions {
+		rows = append(rows, v.setupActionRows(s, flow, informationVisible)...)
+	}
+	if informationVisible && v.workspacePage == "devices" && appui.NodeCardVisible(s, flow) {
+		rows = append(rows, v.nodeSection(s))
+	}
+	if informationVisible && v.workspacePage == "sessions" && appui.PairFlow(s, time.Now()).Visible {
+		rows = append(rows, v.pairSection(s))
+	}
+	if informationVisible && flow.Stage == "ready" {
+		if !s.Node.Available && !s.Node.Pending {
+			rows = append(rows, v.labelRow(appui.Text(v.locale, "account.management_disabled")), v.canvasSection(s, managementAuthorized, objects, preview))
+		}
+	}
+	return rows
+}
+
+func (v *view) setupActionRows(s appcore.Snapshot, flow appui.SetupFlow, informationVisible bool) []layout.Widget {
+	var rows []layout.Widget
+	if flow.Stage == "app-rebind" || flow.Stage == "app-binding-recovery" {
+		kind, key := appcore.ActionRebindApp, "binding.rebind"
+		if flow.Stage == "app-binding-recovery" {
+			kind, key = appcore.ActionRecoverAppBinding, "binding.recover"
+		}
+		if hasAction(s, kind) {
+			rows = append(rows, v.actionButton(kind, appui.Text(v.locale, key), s))
+		}
+		return rows
+	}
 	if label, ok := v.actionLabel(flow.Primary); ok && !(flow.Stage == "ready" && s.Node.Available) {
 		if !informationVisible && flow.Stage == "session-check" {
 			label = appui.Text(v.locale, "setup.continue_saved_session")
@@ -523,23 +390,12 @@ func (v *view) contentRows(s appcore.Snapshot, flow appui.SetupFlow, information
 		}
 		rows = append(rows, v.actionButton(flow.Primary, label, s, flow))
 	}
-	if informationVisible && v.workspacePage == "devices" && appui.NodeCardVisible(s, flow) {
-		rows = append(rows, v.nodeSection(s))
-	}
-	if informationVisible && v.workspacePage == "sessions" && appui.PairFlow(s, time.Now()).Visible {
-		rows = append(rows, v.pairSection(s))
-	}
 	for _, kind := range flow.Secondary {
 		if label, ok := v.actionLabel(kind); ok {
 			if kind == appcore.ActionConnect && s.Setup.ReplacementAllowed {
 				label = appui.Text(v.locale, "setup.replacement_code")
 			}
 			rows = append(rows, v.actionButton(kind, label, s))
-		}
-	}
-	if informationVisible && flow.Stage == "ready" {
-		if !s.Node.Available && !s.Node.Pending {
-			rows = append(rows, v.labelRow(appui.Text(v.locale, "account.management_disabled")), v.canvasSection(s, managementAuthorized, objects, preview))
 		}
 	}
 	return rows
@@ -604,7 +460,7 @@ func (v *view) resetPresentationInputs() {
 	v.nodePinDetails = false
 	v.details, v.preview, v.replacementInput = false, false, false
 	v.canvas = canvasWidget{}
-	v.contentList.Position, v.canvasList.Position = layout.Position{}, layout.Position{}
+	v.contentList.Position, v.canvasList.Position, v.navigationList.Position = layout.Position{}, layout.Position{}, layout.Position{}
 }
 
 func (v *view) actionButton(kind appcore.ActionKind, label string, s appcore.Snapshot, selectedFlow ...appui.SetupFlow) layout.Widget {
@@ -665,8 +521,8 @@ func (v *view) actionButton(kind appcore.ActionKind, label string, s appcore.Sna
 			style := material.Button(v.theme, button, label)
 			style.Background = workspaceMutedSurface
 			style.Color = v.theme.Fg
-			style.CornerRadius = 10
-			style.Inset = layout.Inset{Top: 12, Bottom: 12, Left: 20, Right: 20}
+			style.CornerRadius = 8
+			style.Inset = layout.Inset{Top: 10, Bottom: 10, Left: 16, Right: 16}
 			return style.Layout(gtx)
 		}
 		return v.button(gtx, button, label, enabled)
@@ -907,12 +763,12 @@ func (v *view) actionLabel(kind appcore.ActionKind) (string, bool) {
 
 func (v *view) button(gtx layout.Context, button *widget.Clickable, label string, enabled bool) layout.Dimensions {
 	style := material.Button(v.theme, button, label)
-	style.CornerRadius = 10
-	style.Inset = layout.Inset{Top: 12, Bottom: 12, Left: 20, Right: 20}
+	style.CornerRadius = 8
+	style.Inset = layout.Inset{Top: 10, Bottom: 10, Left: 16, Right: 16}
 	if !enabled {
 		gtx = gtx.Disabled()
-		style.Background = color.NRGBA{R: 230, G: 236, B: 239, A: 255}
-		style.Color = color.NRGBA{R: 103, G: 124, B: 134, A: 255}
+		style.Background = selectedSurface
+		style.Color = mutedInk
 	}
 	return style.Layout(gtx)
 }
@@ -925,12 +781,38 @@ func (v *view) editorRow(editor *widget.Editor, hint string, password bool) layo
 		if v.busy.Load() {
 			gtx = gtx.Disabled()
 		}
-		return material.Editor(v.theme, editor, hint).Layout(gtx)
+		return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
+			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+				return layout.Inset{Bottom: 8}.Layout(gtx, v.nodeCaption(hint))
+			}),
+			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+				line := appLine
+				if gtx.Focused(editor) {
+					line = appInk
+				}
+				return widget.Border{Color: line, CornerRadius: 8, Width: 1}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+					return layout.UniformInset(12).Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+						gtx.Constraints.Min.Y = 0
+						if editor.SingleLine {
+							gtx.Constraints.Max.Y = min(gtx.Constraints.Max.Y, gtx.Dp(24))
+						}
+						style := material.Editor(v.theme, editor, "")
+						style.TextSize = unit.Sp(14)
+						return style.Layout(gtx)
+					})
+				})
+			}),
+		)
 	}
 }
 
 func (v *view) labelRow(label string) layout.Widget {
-	return func(gtx layout.Context) layout.Dimensions { return material.Body1(v.theme, label).Layout(gtx) }
+	return func(gtx layout.Context) layout.Dimensions {
+		style := material.Body1(v.theme, label)
+		style.TextSize = 14
+		style.LineHeight = 20
+		return style.Layout(gtx)
+	}
 }
 
 func (v *view) canvasSection(s appcore.Snapshot, managementAuthorized bool, objects []appui.CanvasObject, preview bool) layout.Widget {
@@ -1232,7 +1114,7 @@ func finiteBounds(rect appui.CanvasRect) bool {
 func (v *view) card(gtx layout.Context, content layout.Widget) layout.Dimensions {
 	return layout.Stack{}.Layout(gtx,
 		layout.Expanded(func(gtx layout.Context) layout.Dimensions {
-			defer clip.UniformRRect(image.Rectangle{Max: gtx.Constraints.Min}, gtx.Dp(16)).Push(gtx.Ops).Pop()
+			defer clip.UniformRRect(image.Rectangle{Max: gtx.Constraints.Min}, gtx.Dp(8)).Push(gtx.Ops).Pop()
 			paint.Fill(gtx.Ops, color.NRGBA{R: 255, G: 255, B: 255, A: 255})
 			return layout.Dimensions{Size: gtx.Constraints.Min}
 		}),
@@ -1241,7 +1123,11 @@ func (v *view) card(gtx layout.Context, content layout.Widget) layout.Dimensions
 }
 
 func (v *view) headingRow(label string) layout.Widget {
-	return func(gtx layout.Context) layout.Dimensions { return material.H6(v.theme, label).Layout(gtx) }
+	return func(gtx layout.Context) layout.Dimensions {
+		style := material.H6(v.theme, label)
+		style.TextSize = 16
+		return style.Layout(gtx)
+	}
 }
 
 func (v *view) profileRow(profile appcore.ProfileSnapshot, index int) layout.Widget {

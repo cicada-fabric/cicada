@@ -1,9 +1,41 @@
 package native
 
 import (
+	"bytes"
+	"encoding/base64"
+	"encoding/json"
 	"strings"
 	"testing"
+	"time"
+
+	wire "github.com/cicada-ai/cicada/internal/hubaccountwire"
 )
+
+// Visibly synthetic local parser input, never a credential for deployment.
+// It proves no Hub/candidate/authorization property; production still checks
+// the exact independently pinned Hub and cryptographic context in appcore.
+func syntheticDevicePairingCode(t *testing.T, long bool) string {
+	t.Helper()
+	origin, hub, node := "https://synthetic.invalid", "synthetic_hub", "synthetic-node"
+	if long {
+		origin = "https://" + strings.Repeat("a", 60) + "." + strings.Repeat("b", 60) + ".synthetic.invalid"
+		hub = "synthetic_" + strings.Repeat("a", 80)
+		node = "synthetic-" + strings.Repeat("n", 80)
+	}
+	fields := []any{2, origin, hub, strings.Repeat("a", 64), strings.Repeat("b", 64), strings.Repeat("c", 32), strings.Repeat("d", 64), "23456789ABCD", base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{0x23}, 32)), time.Now().UTC().Add(time.Hour).Format(time.RFC3339Nano), node}
+	raw, err := json.Marshal(fields)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clear(raw)
+	code := wire.NodePairTrustScopedCodePrefix + base64.RawURLEncoding.EncodeToString(raw)
+	parsed, err := wire.DecodeNodePairTrustScopedCode(code, time.Now())
+	clear(parsed.OOBSecret)
+	if err != nil {
+		t.Fatal("synthetic UI parser fixture invalid", err)
+	}
+	return code
+}
 
 func TestDevicePairingInputPreservesCaseAndRejectsOverflow(t *testing.T) {
 	for _, test := range []struct {

@@ -6,6 +6,67 @@ Its Go implementation remains in `cicada-go`; Android is maintained under
 native Windows acceptance. “App” is the current product name; older Client-facing wire names,
 code and evidence remain attributed to their original contract and source.
 
+Current native presentation scope — 2026-11-05: the reported device-code action
+visibility failure is reproduced in the actual Gio renderer after extracting
+only the Windows event-loop/font boundary. Short and long codes have identical
+baseline geometry. On the `92c2c47` layout, the code-stage primary is at
+`y=811..892` in a `1100×780` pixel / 200% viewport, and old UNKNOWN recovery is at
+`y=637..678` in a `640×480` / 100% viewport. The cause is the final action inside
+one large scroll-list item, combined with the narrow header/tabs consuming
+available height; input was already single-line. Wheel scrolling could reach
+the old action, but its initial position was outside the visible viewport and
+there was no visible scrollbar. This does not establish a Windows pixel result.
+
+Baseline evidence is preserved at
+`/home/zyf/Cicada/.local/evidence/n2-app/layout-baseline-b1ly8m2q/`:
+`valid-baseline-source.json` records exact dirty source hashes and platform-only
+extraction; `valid-baseline-replay.patch` replays that source from `92c2c47`.
+`baseline.log` SHA-256 is
+`3bd9b4ba63f1e55ac83691bd2cc9ce44ef4d1c28fa4dcc6c7963da79a1c96ed5`;
+replay patch SHA-256 is
+`82c64f09f49d9569c9b468cb188410f5b1b583e76dbabd7e8885548f903523cc`.
+The diagnostic probe logs coordinates and exits 0; it is not an action-visibility
+PASS. An earlier probe accidentally measured Overview after the first-frame
+privacy reset; that invalid diagnostic is excluded from the baseline conclusion.
+
+The current implementation applies one restrained desktop shell across all five
+pages and connection/login, with a compact narrow navigation rail, Hub selector,
+shared typography/spacing and disclosed technical details. Pairing and account
+primary actions use a measured footer above scrollable content. The producer
+checks the actual production view/Router: short/long/empty/invalid-code and old
+pending geometry, paste readiness before pointer/Return/keypad review, no Enter
+approval or busy replay, five-page rendering and pre-login candidate privacy.
+Core/wire/backend, keys and original UNKNOWN packets remain unchanged. Dedicated
+QA layout/pointer and offscreen GPU/pixel review are separate, as are Windows
+physical/IME/DPAPI/ACL, Runtime and public HTTPS.
+
+Final producer qualification uses dirty parent `91d970c` after one nonconflicting
+fast-forward preserving App WIP. `go test ./internal/appui ./internal/appui/native
+-count=1 -json` and its `-race` counterpart each passed **84 top-level / 250 named
+tests**, **zero failures / zero skips**. The set includes four new full-view Gio
+regressions; the primary-action geometry test covers 45 combinations, including
+640×480 pixels at 200%, with the primary at `y=386..456` inside that viewport.
+Actual Gio EditEvent, pointer, Return and keypad Enter execute against an injected
+controller capture; they do not prove a native OS/IME or Hub protocol run.
+`go vet ./internal/appui ./internal/appui/native ./cmd/cicada-app` and the actual
+Windows amd64 GUI cross-build passed, exit 0. Cross-build is BUILD_ONLY.
+
+Exact commands, offline environment, `umask 0077`, logs and source manifest are
+retained under
+`/home/zyf/Cicada/.local/evidence/n2-app/native-redesign-final-v8n9ca40/`.
+`source.json` SHA-256 is
+`653133f4beab6b7919031456415485719a09206f4722de41d877af6af7b99309`.
+Normal/race/vet/Windows result receipt SHA-256 values are respectively
+`9667833b547ef2b458ab4126afc74a5526153962963b02b66497492520c3d051`,
+`9f31c8c68f39288f5a3cd28a40de78e3acd07058a9cd3aeca6e1843d6d0892ba`,
+`bad51b3e4e9e16c663af7739217682776d8c9fd1ac56abf8e2a0d9576b7fe052`,
+`2a627e613f6888e9998e33e2acc4c1bd2a7b78d7acbb1f5c30607893a367eb72`.
+The resulting test artifact `cicada-app.exe` SHA-256 is
+`288ff93fe90738bb9afa56e4533d54ba223e1c1b4cbaf34e55074591f4bf49bd`.
+`source-after-tests.json` records zero changes across 1824 Go/module source
+files. Disposable Docker, full candidate packaging and independent QA are owned
+by Root/QA. No installation, resident state, real key or deployment was changed.
+
 Current Node Hub lifecycle scope — 2026-11-04: production `afb2bad8` is
 **SCOPED_PASS** for six actual disposable current-NPT/TLS/SQLite/Agent/CLI/
 Hook/MCP scenarios across preserved executions. Five cases passed in the

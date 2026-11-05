@@ -1,5 +1,3 @@
-//go:build windows
-
 package native
 
 import (
@@ -9,7 +7,7 @@ import (
 	"github.com/cicada-ai/cicada/internal/appui"
 )
 
-func (v *view) appBindingRows(s appcore.Snapshot, kind appcore.ActionKind) []layout.Widget {
+func (v *view) appBindingRows(s appcore.Snapshot, kind appcore.ActionKind, includeActions ...bool) []layout.Widget {
 	rows := []layout.Widget{v.headingRow(appui.Text(v.locale, "binding.title"))}
 	body, caption, consent := "binding.unbind_body", "binding.unbind", "binding.unbind_consent"
 	if kind == appcore.ActionRebindApp {
@@ -34,7 +32,7 @@ func (v *view) appBindingRows(s appcore.Snapshot, kind appcore.ActionKind) []lay
 			return material.CheckBox(v.theme, &v.appBindingConsent, appui.Text(v.locale, consent)).Layout(gtx)
 		})
 	}
-	if hasAction(s, kind) {
+	if hasAction(s, kind) && (len(includeActions) == 0 || includeActions[0]) {
 		rows = append(rows, v.actionButton(kind, appui.Text(v.locale, caption), s))
 	}
 	return rows
