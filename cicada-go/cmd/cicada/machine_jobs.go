@@ -283,7 +283,7 @@ func machinePublicNodeMetadata(request *http.Request, payload any) bool {
 		return false
 	}
 	switch u.Path {
-	case wire.LocalDomainCapabilitiesPath, wire.OwnerEndpointGroupsCapabilitiesPath, "/v2/client/identity":
+	case wire.LocalDomainCapabilitiesPath, wire.OwnerEndpointGroupsCapabilitiesPath, wire.ThreadCollaborationCapabilitiesPath, "/v2/client/identity":
 		return true
 	}
 	return false

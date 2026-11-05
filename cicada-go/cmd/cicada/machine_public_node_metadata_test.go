@@ -37,7 +37,7 @@ func TestMachinePublicNodeMetadataIsExactUnauthenticatedAndHubPinned(t *testing.
 	defer a.Close()
 	ctxA := withMachineHubContext(context.Background(), machineHubContext{HubID: "synthetic-A", Origin: a.URL, NodeID: "synthetic-node", Token: "SYNTHETIC_NODE_A_DO_NOT_SEND", MultiHub: true})
 	ctxB := withMachineHubContext(context.Background(), machineHubContext{HubID: "synthetic-B", Origin: b.URL, NodeID: "synthetic-node", Token: "SYNTHETIC_NODE_B_DO_NOT_SEND", MultiHub: true})
-	paths := []string{wire.LocalDomainCapabilitiesPath, wire.OwnerEndpointGroupsCapabilitiesPath, "/v2/client/identity"}
+	paths := []string{wire.LocalDomainCapabilitiesPath, wire.OwnerEndpointGroupsCapabilitiesPath, wire.ThreadCollaborationCapabilitiesPath, "/v2/client/identity"}
 	for _, path := range paths {
 		for _, pair := range []struct {
 			ctx         context.Context
@@ -54,7 +54,7 @@ func TestMachinePublicNodeMetadataIsExactUnauthenticatedAndHubPinned(t *testing.
 	for _, input := range []struct {
 		path, method string
 		body         any
-	}{{wire.LocalDomainCapabilitiesPath, http.MethodPost, nil}, {wire.LocalDomainCapabilitiesPath + "?query=1", http.MethodGet, nil}, {wire.OwnerEndpointGroupsCapabilitiesPath + "/other", http.MethodGet, nil}, {"/v2/client/identity", http.MethodGet, map[string]any{"synthetic": true}}, {"/v2/control/management", http.MethodGet, nil}, {"/v2/owner/local-domains", http.MethodGet, nil}} {
+	}{{wire.LocalDomainCapabilitiesPath, http.MethodPost, nil}, {wire.LocalDomainCapabilitiesPath + "?query=1", http.MethodGet, nil}, {wire.OwnerEndpointGroupsCapabilitiesPath + "/other", http.MethodGet, nil}, {"/v2/client/identity", http.MethodGet, map[string]any{"synthetic": true}}, {wire.ThreadCollaborationCapabilitiesPath, http.MethodPost, nil}, {wire.ThreadCollaborationCapabilitiesPath + "?query=1", http.MethodGet, nil}, {wire.ThreadCollaborationCapabilitiesPath + "/other", http.MethodGet, nil}, {wire.ThreadCollaborationCapabilitiesPath, http.MethodGet, map[string]any{"synthetic": true}}, {wire.ThreadCollaborationHTTPPath(wire.OperationThreadCollaborationOwnerRead), http.MethodGet, nil}, {"/v2/control/management", http.MethodGet, nil}, {"/v2/owner/local-domains", http.MethodGet, nil}} {
 		before := callsA.Load()
 		if machineAPIJSON(ctxA, a.URL+input.path, input.method, input.body, nil) == nil {
 			t.Fatal("public GET allowance broadened to another operation")
@@ -68,8 +68,10 @@ func TestMachinePublicNodeMetadataIsExactUnauthenticatedAndHubPinned(t *testing.
 		t.Fatal("public metadata escaped original Hub")
 	}
 	redirect.Store(true)
-	if machineAPIJSON(ctxA, a.URL+paths[0], http.MethodGet, nil, nil) == nil || callsB.Load() != beforeB {
-		t.Fatal("public metadata followed a cross-Hub redirect")
+	for _, path := range paths {
+		if machineAPIJSON(ctxA, a.URL+path, http.MethodGet, nil, nil) == nil || callsB.Load() != beforeB {
+			t.Fatal("public metadata followed a cross-Hub redirect")
+		}
 	}
 	redirect.Store(false)
 	// The same exact public reads also avoid legacy global auth outside the

@@ -779,3 +779,25 @@ Those checks remain separate integration/QA work. In particular, the legacy
 Network-only unsigned-error path conservatively retains unresolved admission;
 only authenticated exact accepted evidence settles it. No credentials, original
 keys or sensitive payloads are included in evidence.
+
+## Managed multi-Hub public metadata correction
+
+QA's actual CLI/Host/App Core chain reached Owner classification Apply, then
+failed its required zero-stage `cicada_thread_scope` read. The registered
+ZERO_ATTESTED identity was intact. The Node's existing exact public-metadata
+allowlist omitted `ThreadCollaborationCapabilitiesPath`, so managed multi-Hub
+mode classified this read as forbidden Control management before any HTTP.
+The private producer reported that transport refusal as UNSUPPORTED_PROFILE.
+
+Only this exact GET is now added to the existing credential-free, pinned-origin,
+no-redirect metadata path. POST, body, query, suffix routes and Owner business
+paths remain outside the allowance. The existing real HTTP two-Hub transport
+regression now includes this profile, synthetic global bearer/Node credentials,
+forbidden variants and cross-Hub redirects for every allowed path. Before the
+fix it reproduces the actual pre-HTTP Control refusal; after the fix normal/race
+each pass one test, zero skips/failures, 0.013/1.045 seconds; cmd vet passes.
+Evidence is under the same worktree evidence root at
+`v01-thread-network-locks-public-metadata-20261105-01/`, with base `9265cdf`, exact
+source hashes and the retained failing-before log. This is the scoped transport
+regression, not a claim that the complete QA lifecycle has passed. QA keeps its
+Owner Apply → actual zero-stage Host/MCP read → original key-completion order.
