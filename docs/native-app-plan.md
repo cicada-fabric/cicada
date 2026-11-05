@@ -107,6 +107,77 @@ and its scoped frozen-provider validation are implemented below. Integrated
 Store/Guard/Runtime acceptance remains pending separately; the backend's
 public availability flags remain gated until that integration completes.
 
+User sequence for the **1 Advisor + 4 Workers** acceptance fixture, source-checked
+on unified `25876b29f573fa98495ea36271c5decc8b0505b3`. This is the order to verify
+after Hub enables the approved profiles; the current gated baseline is **not an
+end-to-end PASS**. Keep all five original Threads in the same selected Network.
+
+1. With the trusted Hub/Node and existing Owner configured in the App, register
+   each original Thread from a separate Linux system terminal:
+   `cicada join --thread ORIGINAL_THREAD_ID --name "DISPLAY NAME" --hub HUB_ALIAS`.
+   Use its actual owned Runtime ID and a distinct display name. Selection also
+   supports `--hub-id ID` instead of `--hub ALIAS`, plus `--node-id ID` and
+   `--user-root ABS`. The first Join establishes ZERO registration and may remain
+   unconfirmed awaiting classification. Retain that original Join and identity;
+   a display name does not assign a role.
+2. In the App's **会话与通信 / Sessions**, choose the exact Hub/Node/Network,
+   **读取当前会话与分组 / Read current Threads and Groups**, then the Thread's
+   **查看所属组 / View Groups**. Use **查看 Thread 角色与 Network / Check Thread
+   role and Network** → **修改角色 / Change role**. Assign one
+   **顾问（Advisor） / Advisor** and four **工作者（Worker） / Worker**. For each,
+   **审阅变更 / Review change**, check **我已审阅此项变更。 / I reviewed this
+   change.**, then **确认变更 / Confirm change**. Refresh after Hub confirmation.
+3. Rerun each identical original `cicada join` command, preserving its Thread ID,
+   name and selection flags. The original Node resumes key completion under the
+   retained registration/Endpoint. Wait for authenticated completion before
+   treating communication or lock access as authorized.
+4. Use **添加到组 / Add to a Group** → **复核添加此会话 / Review adding this
+   Thread**, check **我确认上方显示的准确更改。 / I confirm the exact change shown
+   above.**, then **确认此更改 / Confirm this change**. Give each Worker one
+   Group; a second-Group attempt must refuse without adding a relation. Add the
+   Advisor to two Groups within that same Network, with Owner confirmation and
+   any pending original-Node key verification completed. For each intended
+   Group, **刷新锁状态 / Refresh lock status** → **查看八个锁槽 / View eight lock
+   slots** → **审阅启用 Group 协作锁 / Review enabling Group locks**, then the
+   coordination review/consent/confirmation from step 2. Role alone grants no
+   business permission.
+5. Each AI uses its own current-Thread MCP context: `cicada_thread_scope`,
+   `cicada_groups` / `cicada_use_group`, then `cicada_group_locks`. Observe eight
+   slots before explicit `cicada_group_lock_acquire`; a read never reserves one.
+   Use `cicada_group_lock_release` when finished, or `cicada_group_lock_renew`
+   with the exact version/generation when needed. TTL defaults to 300 seconds;
+   explicit `ttl_seconds` values are 1..3600 seconds,
+   with automatic expiry and no hidden renewal. Lost responses retain the exact
+   original; use returned `recovery_arguments` with the same tool and
+   `recover: true`. An HTTP error does not settle UNKNOWN.
+
+ZERO Join consumer continuation — **SCOPED_PASS**, 2026-11-05. Hub/QA's actual
+bootstrap exposed that the old intent SDK converted `CLASSIFICATION_REQUIRED`
+into `CODEX_OPERATOR_INTENT_RESPONSE_INVALID`. The consumer now preserves that
+registration-only progress and the known `GROUP_CONFLICT`, `NETWORK_CONFLICT`,
+`UNRESOLVED` and `RESERVED` states for the exact original local-domain-v1 register
+request, with matching intent/operation/Node and pinned Hub. It requires the
+matching error and valid registration, without a Join, grant or native admission
+payload. Such replies remain errors and cannot enter completion cache or ACK;
+restart keeps the same original. CLI classification progress retains the code
+and explains in Chinese/English to assign the role in the App and retry the
+identical Join command. No role is assigned by this consumer.
+
+Evidence: `/home/zyf/Cicada/.local/evidence/n2-app/zero-progress-consumer-awbde4lq/`.
+The 1535-input source manifest is based on dirty `3cbd98e257a63c61b3a6633b74416311204175b1`,
+SHA-256 `07e0c978fbea4652ba92230a566fe54f5272c87c5084acd8135ca19991f9e269`.
+Go 1.27.3 normal/race each pass 7 top-level / 57 named results, zero failures/skips,
+regex `^Test(CodexZeroProgress|CodexOperator(LostReply|PersistenceFailure|ReplyBinding)|CodexDomainResult)`.
+New scripted-private-Node consumer tests are 3/29: five progress states preserve
+the pending bytes across restart and refuse ACK, foreign/malformed/authority-bearing
+replies refuse, and a later complete receipt validates under the same original.
+CLI `go vet` and Windows amd64 CLI cross-build pass. The process-local test umask
+is `0077`; the initial inherited-`0002` run failed existing temporary-root
+permission fixtures and is retained at `zero-progress-consumer-gymak_ro/`.
+Production permission checks were not changed. Actual CLI ZERO → Owner
+classification → original Join completion and the full Runtime/Docker gate
+remain separate QA acceptance; these consumer tests do not activate profiles.
+
 The Owner App uses shared packet constructors and verification, its retained
 local Owner key and the encrypted vault. It persists before first POST and
 reserves receipt/query capacity within existing vault limits. Apply requires the
