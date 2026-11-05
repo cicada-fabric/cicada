@@ -225,6 +225,136 @@ defect. Actual Worker cardinality/Owner class changes, lease acquire/renew/
 release/expiry, lost operation responses and Hub/Node recovery remain
 **NOT_RUN** until the business carrier is delivered.
 
+### Private Node collaboration producer checkpoint
+
+Root explicitly delegated only the new
+`cmd/cicada/thread_collaboration_rpc.go` and
+`cmd/cicada/machine_thread_collaboration.go` producer files to QA. Hub owns
+shared state/socket dispatch, public evidence, zero-stage registration and all
+Store/Guard integration; App owns Core/Gio actions and CLI/MCP consumers.
+This checkpoint depends on their separately reviewed App `48c5b673c6c2a379b05dafeebc249f9c01a79310`
+and Hub `aecb` shared integration for the full live carrier. The producer is
+qualified against reviewed source `66ff79d23bf8ef1746e0a40dc4dcd477be90212b`
+plus its three fingerprinted production/test files, without activating a public
+profile or editing Hub/App production implementation.
+
+The private bridge uses the existing consumed Host/Operator context, exact tool,
+arguments, nonce and registered native binding. Metadata preparation does not
+spend the business invocation; execution consumes it once and rejects replay.
+It resolves an explicit Group through authenticated paginated registration
+metadata and exact whoami, retains original possession evidence, and inspects
+the original shared NativeContextRegistry without writing its history. A
+Scope-only read does not require a completed Group key ceremony; actual Group
+business still does. No first-Group, Root/account or caller-declared role
+fallback is introduced.
+
+The dedicated RPC reuses the existing Node-Control identity, counter, pending
+slot, protected state writer and PQC transport. It persists the actual caller,
+final typed digest/body and sealed original **before POST**. It verifies every
+response route coordinate, the authenticated `original_evidence`, complete
+original correlation and typed receipt including CAS, generation and expiry
+anchored to the original observed time, before ending pending. HTTP failures,
+current denial, absent evidence or an unavailable original remain UNKNOWN.
+Both the original packet and private identity survive cold client reopen.
+Recovered receipts are historical results, never evidence of current ownership.
+
+The 128-entry local slot-operation journal is bounded storage, not a lifetime
+operation quota. Proven terminal entries expire after the common 24-hour window
+and may be evicted earlier under capacity pressure; the Hub's semantic original
+journal handles the same inner IDs under a new carrier. Old IDs outside that
+window remain unavailable and cannot execute again. Unknown/current-pending
+records are never collected. Space for bounded PQC replies is reserved before
+sending. This collector never deletes native Thread/Network history.
+
+A pending RPC otherwise blocks the normal issuer's Describe. The new
+`threadCollaborationVerificationProfile` hook allows only the same pending
+tool and protected native/registration source to reverify its original transcript,
+key possession and local history and obtain a fresh identity context. It neither
+dispatches nor settles that packet, and grants no business authority. Hub's
+shared issuer must call it before Describe; actual replay still uses current
+server Guard. This fixes the producer side of the recovery-entry cycle.
+
+Normal and race lanes each **PASS / exit 0**, **7 top-level / 25 named tests,
+zero failure/skip**. `go vet ./cmd/cicada` also **PASS / exit 0**. Tests use real
+PQC, loopback TCP, protected durable JSON outbox/key files, cold client reopen,
+actual local MAC issue/consume and deterministic corrupted/missing evidence,
+receipt substitution, current denial, one-use/replay, source isolation and
+capacity pressure. Their Hub responses are scripted and their verified Host
+input is synthetic: these are Node producer boundary tests, **not** actual
+Hub/Store/Owner/installed Host or physical Runtime acceptance. The final real
+`f.tool`/App gate remains separate and public availability remains false.
+
+Evidence parent:
+`/home/zyf/Cicada/.local/evidence/v01-thread-network-locks-qa`.
+The before/after Go-source inventories match for every lane; inventory SHA-256:
+`155046551d12c709c88a0d894f0a3ed8f46a4da82c72763825e4a15efd738b3c`.
+Each run preserves its exact three files under `tested-source/`, full Docker
+argv and logs. The immutable offline builder, readonly modules and task-only
+cache are unchanged; no shared Hub, resident process, paid model or deployment
+is used. Replay inner commands are:
+
+```sh
+go test -json -mod=readonly -p=1 -count=1 -timeout=180s ./cmd/cicada \
+  -run '^TestThreadCollaboration(RPCRealPQC|TerminalCollection|ReceiptCannotBorrow|HostPreparation|OriginalEvidence|BoundedTerminal|PendingHost)'
+go test -race -json -mod=readonly -p=1 -count=1 -timeout=180s ./cmd/cicada \
+  -run '^TestThreadCollaboration(RPCRealPQC|TerminalCollection|ReceiptCannotBorrow|HostPreparation|OriginalEvidence|BoundedTerminal|PendingHost)'
+go vet -mod=readonly -p=1 ./cmd/cicada
+```
+
+| Lane | Evidence subdirectory | `result.json` SHA-256 |
+| --- | --- | --- |
+| `normal` | `producer-normal-66ff79d-6ei58lb_` | `362d4428c9c64177bb1405b1f22829fe1e1de73570f77ddf751c090f1ebc5af0` |
+| `race` | `producer-race-66ff79d-lvttjqe5` | `b84980f427ae2671f0c7154f41ff9c0a2c8ec66253e8bcd82e958c9ed3c6470f` |
+| `vet` | `producer-vet-66ff79d-1wwxpys8` | `b3a410819d8365d9ecaedfc4f8ac2d061a3a3774f18dd4a8ef287afb11fb192b` |
+
+The first producer compile attempt's original failed receipt/log remains under
+`producer-first-66ff79d-owjm3zyt`: its QA test destructured four returned values
+into three, so no business test executed. The corrected source and subsequent
+16/19-test intermediate checkpoints remain separately attributed; the final
+25-test source supersedes neither historical bytes nor their scope. Windows
+DPAPI/ACL/GUI, physical native Runtime, Android and public deployment remain
+**NOT_RUN**.
+
+### Unified backend preparation after Registry integration
+
+Root's reviewed dependency baseline is
+`43c071cd0d114d742bf8acffe99bff744e9bae5b`, including backend
+`18f35f3a8d7baadbd7a6cbae35751bb4ab05d345` and Registry `0b3006a`.
+The preserved QA WIP fast-forwards without changing those production files.
+Adapted original-ID/PQC codec tests and the expanded SQLite authority oracle
+**PASS / exit 0**, **31 named passes, zero failure/skip**. Both fixture packages
+compile, including the unexecuted actual two-Hub cases. Operation/idempotency
+mutations remain legal timestamped IDs before checking their digests, avoiding
+a format-error false positive. The oracle reads one consistent snapshot of
+21 fixed business tables, including local-domain membership/policy, Endpoint
+registration/relations/key policy, classifications, coordination policies and
+slot holder/version/generation/expiry; it exports hashes, not sensitive rows.
+A same-count real Principal revocation changes its authority hash.
+
+This execution is **preparation only**. The real two-Hub admission and
+lost-Join/cold-manager carriers remain **NOT_RUN** until the pre-side-effect
+consumer checkpoint is delivered. Backend capability remains false. Old
+Registry/common/Store/server suites were not repeated or reattributed.
+
+Evidence:
+`/home/zyf/Cicada/.local/evidence/v01-thread-network-locks-qa/codec-compile-43c071c-qfocch72`.
+`result.json` SHA-256:
+`731e47c2df012bd7c5cd5f155ab56ff8a130d8ca947b2f9b1e1ecae02c23d3d3`.
+`argv.json`, identical before/after Go-source inventories and the two exact QA
+files under `tested-source/` retain the dirty-source identity. This source is
+not attributed solely to its clean production HEAD.
+
+Final bootstrap carrier boundary: Root requires JoinZero/attestation followed
+by the Node's real EndpointGroups Describe anchor, then explicit Owner
+classification through the delivered App Core/Gio read/review/apply actions,
+then recovery of the exact original registration/key completion. No implicit
+Worker, Owner-read-created anchor, blanket Advisor conversion or fake capability
+is accepted. QA exclusively owns the lifecycle/routing registration helpers and
+its new Thread-lock acceptance file. The unexecuted vault/SDK helper draft was
+removed from active source when Root selected the public App actions; its
+compile-only receipt is not App or bootstrap acceptance. The draft remains
+classified **NOT_RUN** under task evidence `owner-sdk-draft-not-run-t4ditmo6`.
+
 ### Durable NativeContextRegistry implementation checkpoint
 
 Root subsequently delegated the local Registry implementation to QA to unblock
