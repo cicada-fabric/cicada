@@ -175,6 +175,10 @@ CREATE INDEX IF NOT EXISTS node_native_context_history_cap_v1_idx
 		_ = db.Close()
 		return nil, fmt.Errorf("initialize shared Node context registry: %w", err)
 	}
+	if err := initializeThreadNetworkSchema(db); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
 	return &NativeContextRegistry{db: db, perIdentityCap: perIdentityCap,
 		globalHistoryCap: globalHistoryCap}, nil
 }
@@ -271,6 +275,23 @@ func (r *NativeContextRegistry) checkAndRecordNativeContext(ctx context.Context,
 		return nil, fmt.Errorf("begin native context history: %w", err)
 	}
 	defer tx.Rollback()
+	decision, err := r.recordNativeContextTx(ctx, tx, input, identityDigest, accountDigest, networkEnrollment, "")
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit native context history: %w", err)
+	}
+	return decision, nil
+}
+
+func (r *NativeContextRegistry) recordNativeContextTx(ctx context.Context, tx *sql.Tx, input NativeContextScopeInput, identityDigest, accountDigest string, networkEnrollment bool, settling string) (*NativeContextScopeDecision, error) {
+	if input.NetworkID == "" {
+		return nil, ErrNativeContextScopeConflict
+	}
+	if err := guardThreadNetworkRecordTx(ctx, tx, identityDigest, accountDigest, input.HubID, input.NetworkID, settling); err != nil {
+		return nil, err
+	}
 	rows, err := tx.QueryContext(ctx, `SELECT hub_id,network_id,group_id,context_policy
 FROM node_native_context_history_v1 WHERE identity_digest=? ORDER BY first_seen_ms,record_id`, identityDigest)
 	if err != nil {
@@ -365,8 +386,10 @@ DO UPDATE SET last_seen_ms=excluded.last_seen_ms`, recordID, identityDigest, acc
 			return nil, fmt.Errorf("record native context scope: %w", err)
 		}
 	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit native context history: %w", err)
+	if settling == "" {
+		if err := assignThreadNetworkRecordTx(ctx, tx, identityDigest, accountDigest, input.HubID, input.NetworkID); err != nil {
+			return nil, err
+		}
 	}
 	return &NativeContextScopeDecision{Accepted: true, SharedMemoryRisk: sharedRisk,
 		KnownScopeCount: len(knownScopes), ContextPolicy: input.ContextPolicy,

@@ -1,5 +1,315 @@
 # Native App validation
 
+## Thread scope, role limits and Group notice-slot preparation — 2026-11-05
+
+Preparation source: clean `381842d848fd52b9cee005406ca1342215fa17ce` in
+`task/v01-thread-network-locks-qa`. This is an independent threat/fault matrix,
+**not an execution PASS**. The current user requirement limits each actual
+native Thread to one Network while a machine/Node/Hub may serve several
+Networks, limits Worker membership to one Group while explicitly authorized
+Advisor/management roles may span Groups, and introduces eight protocol notice
+lock slots per Group without Resource or Task binding. Root owns protocol
+freezing and production integration; QA owns additional tests and this record.
+The older adopted specification's INV-38/INV-43 and general multi-Group wording
+conflicted with the new requirement. The common contract checkpoint `a00b639`
+updates the adopted rules and typed/PQC codecs; it does not implement admission
+or lease business behavior. Historical multi-scope receipts stay historical.
+
+Root's policy clarification fixes one registration class per Thread in its
+unique Network: Worker, Advisor or Manager. Worker counts every active Group
+relation, not only relations carrying a Worker label. Only Owner may explicitly
+change the class; Advisor/Manager with several active Groups cannot become
+Worker until the Owner first reduces those relations. No automatic ejection or
+mixed-role exemption is allowed. Quotas follow the stable Thread/Endpoint,
+not all Threads sharing a Principal. The existing harness/native registry key
+is retained and bound to the verified account; Leave retains history and cannot
+reset the one-Network limit. Slots have no FIFO queue.
+
+The user subsequently confirmed automatic release at TTL expiry, explicit AI
+Release and Renew, default TTL **300 seconds**, and explicit TTL **1–3600
+seconds**. The backend manages protocol records without deciding whether a
+resource is in use. Bounded normalization on reads/writes may free expired
+occupancy but must not acquire, renew, schedule work or stop a process.
+
+The slot protocol must work on the real `serve --hub-nodes-only` path with
+Control inference disabled. It must not call `control.AcquireResourceLease` or
+introduce another daemon, FIFO, Resource or Task. After one explicit Owner
+confirmation, closing/logging out of the App or expiry of its 15-minute status
+access does not release an otherwise unexpired slot or Group policy and does not gate a
+Node's otherwise current protocol authority. Explicit Owner/Root, membership or
+Group revocation must block new operations through the current Guard. Explicit
+Owner clear and TTL expiry remain distinct from App lifetime; neither is proof
+that a physical process stopped.
+
+### Existing reusable boundaries
+
+- `cmd/cicada/node_hub_*acceptance_test.go` already supplies disposable Hubs,
+  current NPT, real TLS/TCP, SQLite, production Node manager/Agent, the current
+  CLI Thread Join and actual Hook/MCP routes. Reuse its original owned native
+  record and trusted Host coordinates; never fabricate a production context
+  from caller SID/role fields or invoke a paid Runtime/model.
+- `appcore/thread_groups_http_test.go` supplies a real Hub/Owner/Core carrier,
+  original apply-packet loss, retained receipts and cold DB/controller restart.
+  Its HTTP loopback fixture and the TLS manager fixture retain distinct scope
+  attribution; the former alone is not TLS acceptance. Actor tests already
+  cover forged nested receipts, wrong heads and account/review changes.
+- Existing Store/Fabric/HTTP ResourceLease tests demonstrate multiple SQLite
+  handles, atomic contention, current actor Guard and stale release assertions.
+  Their physical resource identity, Task binding, TTL and quarantine semantics
+  are **not** the new Group notice-slot protocol. Tests must prove a notice-slot
+  operation creates no Resource/Task and starts no executor.
+
+### Threat and fault matrix awaiting the frozen interface
+
+| Area | Adversarial case | Required observable result |
+| --- | --- | --- |
+| Actual Thread identity | Same original trusted SID joins another Network on the same Hub or another Hub; changed workspace/alias/caller account declaration/profile/Principal tries to evade the original coordinates | Refusal without replacing the first authoritative binding, verified account, private cache or writer; native registry history survives Leave |
+| Node availability | Different original SIDs on the same physical Node join distinct Networks/Hubs | Both work with independent credentials and current Guard; no machine-wide one-Network restriction |
+| Concurrent Join | Two Hub connections concurrently claim the same Thread; reply is lost after either commit; Node/DB restarts | Durable local reservation precedes external Join side effects; one winning Network, with no losing remote registration/grant; uncertain intent cannot become a fresh second Join |
+| Worker quota | Every legacy, Owner Apply, native Pair, local-domain, cross-Owner, direct membership and role-update entry attempts a second Group | One transaction enforces the same limit; no partial membership, key grant or authorization expansion |
+| Role authority | Self-claimed Advisor, mixed role labels, unknown/default role, alternate Principal or concurrent class change bypasses the limit | One Owner-authorized class per Thread; all active Worker relations count; approved Advisor/Manager multi-Group is the positive control |
+| Stale class | Previously valid Advisor actor/token/cache is reused after Owner changes the class to Worker or revokes its authority | Mutation reads the current authoritative class and revision; cached role claims cannot bypass the new quota |
+| Stable quota key | Different actual Threads/Endpoints share the same Principal but each joins one Group | Both succeed; Principal sharing alone cannot combine independent Thread quotas |
+| Role/legacy transitions | Existing multi-Network history, revoked or expired Group relations and a downgrade while several active Groups remain | Preserve conflict evidence and refuse unsafe continuation; refuse downgrade until explicit cleanup, without silently ejecting members or deleting history |
+| Eight notice slots | Every valid boundary, out-of-range index, same-slot contention across distinct SQLite handles | Exactly eight addressable slots and at most one committed holder per slot; no resource/task creation |
+| Control independence | Acquire/list/release through the actual `serve --hub-nodes-only` carrier with Control inference disabled | Real protocol success without a Control ResourceLease call, extra daemon or model consumption |
+| App lifetime | After explicit Owner confirmation, close/log out of the App and cross its status-access deadline while the Node and a longer explicit slot TTL remain current | Occupancy/Group policy persists independently of App access, without automatic renewal; default 300-second expiry is not mistaken for a 15-minute session effect |
+| Explicit revocation | Revoke Owner/Root, current membership or Group while an old slot holder exists | New protocol operations are refused by the current Guard; business authority is unchanged by rejected calls, and holder cleanup follows its separately frozen contract |
+| Scope isolation | Same slot number under different Group/Network/Hub; forged actor, foreign list/get, revoked or stale binding | Independent authorized slots; foreign state is redacted/refused and cannot be mutated |
+| Idempotence | Duplicate acquire/release, same request ID with changed body, stale expected version | Original result or typed conflict, with no second acquisition/version transition |
+| Unknown outcome | Drop reply after actual commit, drop recovery reply, restart Hub/Node against the same persisted DB | Recover only the original request/result or an authoritative saved-state read; never infer absence from an error or timeout |
+| Delayed old success | Original acquire success is recovered after a later release and successor acquisition | Historical success is not treated as current ownership; no state rollback, new acquisition or release of the successor |
+| Stale release/renew | Prior holder/version attempts release or renew after expiry and successor acquisition; membership/epoch is revoked between check and mutation | Successor holder/version/expiry remains byte-identical; old operations cannot free, extend or revive its lease |
+| TTL bounds | Omitted TTL, explicit 1/3600, zero/negative/3601, malformed numbers and overflow | Default 300 and exact explicit bounds follow the frozen codec; invalid requests cannot mutate a slot |
+| Expiry | Read/write at the exact deadline, two concurrent normalizers and acquire racing expiry | One bounded expiry transition, one subsequent winner, monotonic version/generation and no repeated expiry mutation |
+| Explicit renew | Current holder renews before expiry; another holder or expired generation attempts renewal | Only current authority/version/generation extends expiry once; no automatic or retroactive renewal |
+| Disconnection | Holder or Node disconnects or restarts while clock advances | Occupancy persists until its TTL/explicit release/Owner clear; cold restart cannot reset or extend the deadline |
+
+Faults will be deterministic barriers and actual transport wrappers: before
+commit, after commit/before reply, response truncation/loss, duplicate request,
+parallel Store handles and cold reopen of the same disposable database. The
+oracle separates authoritative Thread/membership/role/key/slot rows from
+transport counters, original error receipts and audit rows. A valid denied
+request may advance replay protection or record its original error receipt;
+that is not a business mutation. A stale release must not alter the successor's
+holder, occupancy or version even if the attempt is audited.
+
+Interface-dependent checks remain **NOT_RUN**: the exact verified-account and
+durable-reservation codecs, legacy-conflict carrier, authenticated class-change
+operation, slot numbering/version/idempotency fields, and exact renewal/expiry
+carrier behavior.
+QA will implement against Root's frozen contract and actual delivery
+commit rather than invent these rules. Fixtures, private state, ports, caches
+and output remain task-isolated; shared modules are mounted read-only. A final
+disposable Docker gate is coordinated with Root. Windows DPAPI/ACL/GUI, Android,
+real native Runtime/model consumption and public deployment remain **NOT_RUN**.
+
+### Executed existing-registry baseline — new expectations fail
+
+The independent
+`internal/nodeinbox/native_context_single_network_acceptance_test.go` uses only
+the existing `CheckAndRecordNativeContext` and
+`CheckAndRecordNetworkEnrollmentContext` APIs. It runs real private on-disk
+SQLite, cold close/reopen and two independent handles. It creates no replacement
+registry, reservation stub, Host proof or remote service. Source is production
+`381842d848fd52b9cee005406ca1342215fa17ce` plus that separately fingerprinted QA
+file; the worktree is dirty and is not attributed to production HEAD alone.
+
+The valid baseline **FAIL / exit 1** contains 22 leaf cases: **20 FAIL, 2 PASS,
+0 SKIP** (25 named completion events including parent tests: 23 fail, 2 pass).
+All 22 produced actual SQLite observations, and before/after Go-source
+inventories matched. The old ordinary `group_scoped` behavior accepts all 16
+cross-entry combinations covering another Network, another Hub and a changed
+account declaration. Both cold-reopen cases still accept a second Network.
+Both two-handle contention cases commit **two winners / two scope rows**.
+The same-Network multiple-Group and different-SID multiple-Network positive
+controls pass. This demonstrates gaps against the newly confirmed requirement,
+not a claim that the old contract promised one-Network behavior. Existing SQLite
+transactions alone do not impose the new cross-scope policy.
+
+Evidence directory:
+`/home/zyf/Cicada/.local/evidence/v01-thread-network-locks-qa/registry-baseline-381842d-attempt2-ak37tktt`.
+
+| Artifact | SHA-256 |
+| --- | --- |
+| `result.json` | `0be7c6f964b6ac953807f635052169e00290af8515d0efa6b7aea619cfe3c683` |
+| `source-before.json` / identical after inventory | `a6611c0b46bdcaf9ad5621c9ec33b7ac3530303b312b22074964194df301a2ea` |
+| `output/registry-observations.jsonl` | `1b207269d32db9a5b842e37a46e63316fb0ce30a8d7d1f930596f32457e3cef5` |
+
+The complete isolated Docker argv is retained in `argv.json`; its existing
+offline Go builder is
+`golang:1.27.3-bookworm@sha256:5c3e9b43cfd3bb95c7937462e29d87ada57b481a96fa23ad0eb61778d7a00110`,
+with source/shared modules read-only, network disabled and exclusive task build
+cache/output. The inner replay command is:
+
+```sh
+go test -json -mod=readonly -p=1 -count=1 -timeout=90s \
+  ./internal/nodeinbox -run '^TestAcceptanceNativeThread'
+```
+
+The earlier `registry-baseline-381842d-5h8k7_j_` run returned exit 1 with 25
+failed named events before any business observation: QA supplied a directory
+whose mode was 0755 and the production registry correctly required 0700. Its
+original result/logs remain unchanged; `classification.json` explicitly records
+**FIXTURE_PRECONDITION_FAILURE**, not a product defect. The corrected fixture
+creates an explicit private child, as existing production tests do.
+
+Workspace and connection alias are not fields of these registry APIs; actual
+Leave, trusted Host identity, pre-reservation before remote Join, role/Group
+quota and slot operations are **NOT_RUN** by this baseline. Those checks will
+use their actual current carriers after the contract freezes. At that baseline no production Go
+implementation had been edited. Its failing results are preserved separately
+from the later Registry implementation checkpoint below.
+
+### Actual two-Hub carrier baseline and independent common checks
+
+On common-only `a00b6391ede9d773773c268af0c277c823fe75fa` plus the separately
+fingerprinted QA tests, the actual carrier baseline also **FAILS / exit 1**:
+`TestAcceptanceThreadSameSIDRejectsSecondHubBeforeRemoteAdmission` ran for
+29.018 seconds through two disposable current-NPT Hubs, real TLS/TCP, persistent
+SQLite, Owner Controller, production Node manager, current CLI and
+PreToolUse/Hook/MCP. The same original synthetic owned native record was accepted
+by the second Hub. Its `fabric_endpoints`, `endpoint_group_memberships`,
+`endpoint_network_memberships_v2`, `network_memberships_v2` and `session_bindings`
+counts went 0→1, while Principal and membership counts went 1→2. The original
+Hub's private MCP cache digest stayed unchanged. A different SID registered on
+the second Hub and both Threads' actual Hook/MCP Group views still worked;
+Control calls stayed **0**. No installed native Runtime/model was invoked.
+
+This baseline's 11-table count witness proves those new rows; it does not claim
+to detect an UPDATE that keeps the same count. The later witness adds hashes
+of explicit stable authority columns, excluding heartbeat, expiry timestamps,
+transport counters and original-operation receipts. Its independent real-SQLite
+oracle changes Principal authority without changing the row count and verifies
+that the hash changes. New slot/role authority fields will additionally be
+checked through their actual typed state after business delivery.
+
+Carrier evidence:
+`/home/zyf/Cicada/.local/evidence/v01-thread-network-locks-qa/carrier-baseline-a00b639-mnm8c15k`.
+
+| Artifact | SHA-256 |
+| --- | --- |
+| `result.json` | `b0e12ecd9b4eee3426cedaa387974cf57fee40cb03638a9b03b0eb6324db2c0d` |
+| Stable Go-source inventory | `004afe5c3568d37fdc7644530ee0a12994c083450832b247b4215bdb902dba7c` |
+| `output/carrier-observations.jsonl` | `9a16d87bf2b3b4336afa9167546fc7382596fc4fcd597a44e1959321c3eb9243` |
+
+The independent frozen-common/PQC and witness checks subsequently **PASS / exit
+0**: five top-level tests, 31 named pass events, zero failure/skip, with identical
+before/after Go-source inventories. They cover original digests bound to actor,
+Hub/Network/Group, version, TTL presence/value, operation/key and registration
+epoch; valid lease bounds and original server-time anchoring; a historical
+expired acquire receipt versus a normalized current view; and closed Node
+bodies rejecting invented resource, Task, SID, account and classification fields.
+Five deliberately malicious requests have valid real device PQC encryption but
+missing/corrupt/wrong-purpose Owner proofs or changed approved bodies; the actual
+production packet opener rejects them. A device account key cannot sign for
+the pinned Owner key. These are codec/cryptographic checks, not a claim that a
+Hub has applied a Group policy, classified a Thread or acquired a slot.
+
+Common-check evidence:
+`/home/zyf/Cicada/.local/evidence/v01-thread-network-locks-qa/codec-witness-a00b639-i_d5kvt5`,
+result SHA-256 `71337cd337822447200b31001cd63537073b735c0c9dbfc66cecadc444c5315a`,
+Go-source inventory
+`d677a9dd5a4d58261683ea558cdf87715dcc9562f501b94d2c3bf7fb4c059367`.
+The producer's larger common suite was not repeated. Each valid baseline/common
+run now retains its exact dirty QA source files under `tested-source/`, verified
+against its recorded inventory, while its production base remains recoverable
+from Git. Original results are unchanged.
+
+Root's later bounded-recovery decision changes new lock operation/key encoding
+to timestamped 16-byte hex IDs with a 24-hour recovery window; the next delivered
+business checkpoint will use its `NewGroupLockOriginal(at)` helper. The `a00b639`
+checks above retain their actually tested earlier IDs and source. Refusal of an
+obsolete fixture under the new encoding will not be classified as a production
+defect. Actual Worker cardinality/Owner class changes, lease acquire/renew/
+release/expiry, lost operation responses and Hub/Node recovery remain
+**NOT_RUN** until the business carrier is delivered.
+
+### Durable NativeContextRegistry implementation checkpoint
+
+Root subsequently delegated the local Registry implementation to QA to unblock
+Hub/Node consumer wiring. The exclusive scope is
+`internal/nodeinbox/native_context_history.go` and the adjacent reservation
+implementation/tests. Hub Store, public wire, CLI and App production remain with
+their owners. The producer implements the frozen interfaces in
+`thread_network_reservation.go`; this checkpoint alone does not activate them
+on a remote-admission path.
+
+The original database and `nativeContextDigest("identity", harness, SID)` key
+remain authoritative. Verified-account digest is separate metadata, not an
+alternative identity namespace. All accepted records now require a resolved
+Network; cross-account, Hub or Network changes fail without metadata mutation.
+A legacy single scope remains usable; conflicting accounts, unknown Networks or
+multiple old scopes yield `NETWORK_CONFLICT` without choosing a winner or
+rewriting old history. Same-Network multi-Group records and distinct native SIDs
+on one machine remain positive controls; this local metadata check grants no
+Group rights.
+
+`ReserveThreadNetwork` acquires the existing SQLite immediate writer transaction
+before reading history and recording the original scope, operation, request
+digest and expected revision. It creates no placeholder Endpoint, Binding or
+accepted-history row. Exact retry returns the same immutable claim revision;
+other originals are fenced while it is pending. `MarkThreadNetworkUnresolved`
+retains the original across cold reopen, including its scope and digest; timeout
+never frees it. Only `SettleThreadNetwork` with the caller's authenticated,
+correlated original result may settle it. Accepted results record real trusted
+Endpoint/Binding coordinates in the same transaction. Authenticated no-effect
+can clear only an unassigned reservation, preserves established history and
+retains its original tombstone. Old duplicate settlement cannot clear a newer
+reservation. The caller must use the real wire verifier: the Registry's
+`Authenticated` field is an internal trust boundary, not a cryptographic proof.
+Only hashes of accepted input, account and SID are stored; no raw account/SID
+or request/response payload is retained. Capacity refuses new originals without
+evicting pending outcomes or exact retries. Coverage remains
+`CICADA_KNOWN_ONLY`.
+
+The original 22-leaf acceptance assertions are unchanged and now all pass.
+Additional tests cover unresolved/reopen/exact recovery, authenticated no-effect,
+CAS and changed original requests, incomplete accepted coordinates, unchanged
+metadata on refusal, account/SID privacy, legacy conflicts and bounded storage.
+Two independent handles and two real child processes contend at a pipe barrier
+for the same SQLite writer, for both same-Network and cross-Network originals:
+one durable claim wins and neither fabricates remote admission history. Existing
+cross-process open/lock-budget and retained-scope tests also run.
+
+On base `a00b6391ede9d773773c268af0c277c823fe75fa` plus the five
+Registry production/test files, normal and race lanes each **PASS / exit 0**:
+**103 named test events, zero failure, zero skip**. Vet also **PASS / exit 0**.
+The source inventory is dirty and identical before/after every lane; inventory
+SHA-256 is
+`33adf7eb63194e17f31602421f85168991bddc42c3a5a2d4733102e2bd05eb21`.
+Each run preserves its exact five Registry files under `tested-source/`.
+Other separately fingerprinted QA WIP in the inventory is outside this package
+and is not included in the Registry checkpoint. Evidence parent:
+`/home/zyf/Cicada/.local/evidence/v01-thread-network-locks-qa`.
+
+| Lane | Evidence subdirectory | `result.json` SHA-256 |
+| --- | --- | --- |
+| `normal` | `registry-checkpoint-normal-klkp7wfd` | `5aa2ee49c1d4ad0324023d76dde538ef6c9b76a7e980c9f5b0656149950527c0` |
+| `race` | `registry-checkpoint-race-8k4iuv8t` | `231b1ba7cb59c4dee7974cd6d21ed6fdd030580873bcd67335d6a4fa73fa2022` |
+| `vet` | `registry-checkpoint-vet-72vfa2gk` | `5db21fbff7358c20e46a529ebced6da37960ffdc7e20edb2f1a3c4047ed5a404` |
+
+The immutable offline Docker builder and source/module read-only mounts are the
+same as the baseline above, with `--network none`, task-exclusive cache/output,
+`GOTOOLCHAIN=local`, `GOPROXY=off` and `GOSUMDB=off`. Each lane retains its complete
+Docker invocation in `argv.json`; normal uses `CGO_ENABLED=0`, race uses
+`CGO_ENABLED=1`. Re-run against the checkpoint's source with a new private output
+directory and task cache; do not overwrite the historical evidence. Inner
+commands are:
+
+```sh
+go test -json -mod=readonly -p=1 -count=1 -timeout=150s ./internal/nodeinbox
+go test -race -json -mod=readonly -p=1 -count=1 -timeout=240s ./internal/nodeinbox
+go vet -mod=readonly -p=1 ./internal/nodeinbox
+```
+
+
+This is local durable metadata acceptance. Actual pre-admission consumer wiring,
+real Hub/TCP loss and restart, current epoch/Guard checks, role quotas and live
+slot operations remain separate gates. Windows DPAPI/ACL/GUI, physical native
+Runtime, Android and public deployment remain **NOT_RUN**. Root owns the single
+final disposable integration gate.
+
 ## App layout and Linux shell acceptance — 2026-11-05
 
 This scope independently exercises the production Gio renderer, input Router
