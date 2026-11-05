@@ -107,6 +107,50 @@ and its scoped frozen-provider validation are implemented below. Integrated
 Store/Guard/Runtime acceptance remains pending separately; the backend's
 public availability flags remain gated until that integration completes.
 
+User sequence for the **1 Advisor + 4 Workers** acceptance fixture, source-checked
+on unified `25876b29f573fa98495ea36271c5decc8b0505b3`. This is the order to verify
+after Hub enables the approved profiles; the current gated baseline is **not an
+end-to-end PASS**. Keep all five original Threads in the same selected Network.
+
+1. With the trusted Hub/Node and existing Owner configured in the App, register
+   each original Thread from a separate Linux system terminal:
+   `cicada join --thread ORIGINAL_THREAD_ID --name "DISPLAY NAME" --hub HUB_ALIAS`.
+   Use its actual owned Runtime ID and a distinct display name. Selection also
+   supports `--hub-id ID` instead of `--hub ALIAS`, plus `--node-id ID` and
+   `--user-root ABS`. The first Join establishes ZERO registration and may remain
+   unconfirmed awaiting classification. Retain that original Join and identity;
+   a display name does not assign a role.
+2. In the App's **会话与通信 / Sessions**, choose the exact Hub/Node/Network,
+   **读取当前会话与分组 / Read current Threads and Groups**, then the Thread's
+   **查看所属组 / View Groups**. Use **查看 Thread 角色与 Network / Check Thread
+   role and Network** → **修改角色 / Change role**. Assign one
+   **顾问（Advisor） / Advisor** and four **工作者（Worker） / Worker**. For each,
+   **审阅变更 / Review change**, check **我已审阅此项变更。 / I reviewed this
+   change.**, then **确认变更 / Confirm change**. Refresh after Hub confirmation.
+3. Rerun each identical original `cicada join` command, preserving its Thread ID,
+   name and selection flags. The original Node resumes key completion under the
+   retained registration/Endpoint. Wait for authenticated completion before
+   treating communication or lock access as authorized.
+4. Use **添加到组 / Add to a Group** → **复核添加此会话 / Review adding this
+   Thread**, check **我确认上方显示的准确更改。 / I confirm the exact change shown
+   above.**, then **确认此更改 / Confirm this change**. Give each Worker one
+   Group; a second-Group attempt must refuse without adding a relation. Add the
+   Advisor to two Groups within that same Network, with Owner confirmation and
+   any pending original-Node key verification completed. For each intended
+   Group, **刷新锁状态 / Refresh lock status** → **查看八个锁槽 / View eight lock
+   slots** → **审阅启用 Group 协作锁 / Review enabling Group locks**, then the
+   coordination review/consent/confirmation from step 2. Role alone grants no
+   business permission.
+5. Each AI uses its own current-Thread MCP context: `cicada_thread_scope`,
+   `cicada_groups` / `cicada_use_group`, then `cicada_group_locks`. Observe eight
+   slots before explicit `cicada_group_lock_acquire`; a read never reserves one.
+   Use `cicada_group_lock_release` when finished, or `cicada_group_lock_renew`
+   with the exact version/generation when needed. TTL defaults to 300 seconds;
+   explicit `ttl_seconds` values are 1..3600 seconds,
+   with automatic expiry and no hidden renewal. Lost responses retain the exact
+   original; use returned `recovery_arguments` with the same tool and
+   `recover: true`. An HTTP error does not settle UNKNOWN.
+
 The Owner App uses shared packet constructors and verification, its retained
 local Owner key and the encrypted vault. It persists before first POST and
 reserves receipt/query capacity within existing vault limits. Apply requires the
