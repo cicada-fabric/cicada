@@ -3,8 +3,10 @@ package appcore
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -30,6 +32,7 @@ type coordinationActor struct {
 	posts             map[string][][]byte
 	drop, deny        string
 	replayUnavailable bool
+	noEffectFence     bool
 	effects           int
 	observedSkew      time.Duration
 }
@@ -173,6 +176,7 @@ func (a *coordinationActor) Do(req *http.Request) (*http.Response, error) {
 				a.t.Fatal("reusable review survived before apply POST")
 			}
 			if review.Prepared.Role != nil {
+				a.thread.State = "CURRENT"
 				a.thread.Classification = review.Prepared.Role.Classification
 				a.thread.ClassificationRevision++
 				result.Thread = &a.thread
@@ -209,10 +213,16 @@ func (a *coordinationActor) Do(req *http.Request) (*http.Response, error) {
 				a.t.Fatal(e)
 			}
 			result.OperationID, result.OriginalPacketDigest = original.Packet.Route.OperationID, d
-			if a.receipts[d] == nil {
+			if a.noEffectFence {
+				if a.receipts[d] != nil {
+					a.t.Fatal("cannot fence an original with a committed receipt")
+				}
+				result.State, result.ErrorCode = "ORIGINAL_NOT_APPLIED", "ORIGINAL_NOT_APPLIED"
+			} else if a.receipts[d] == nil {
 				a.t.Fatal("fixture expected an original receipt")
+			} else {
+				result.State, result.ReceiptPacket = "ORIGINAL_RECEIPT", a.receipts[d]
 			}
-			result.State, result.ReceiptPacket = "ORIGINAL_RECEIPT", a.receipts[d]
 		default:
 			a.t.Fatal("unexpected shared operation")
 		}
@@ -227,6 +237,174 @@ func (a *coordinationActor) Do(req *http.Request) (*http.Response, error) {
 		return nil, errors.New("SYNTHETIC loss after effect")
 	}
 	return reply(response, 200)
+}
+
+func coordinationVaultStateBytes(t *testing.T, c *nativeController) int {
+	t.Helper()
+	versions, err := c.vault.StateVersions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	total := 0
+	for name := range versions {
+		raw, _, _, err := c.vault.LoadState(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		total += len(raw)
+		clear(raw)
+	}
+	return total
+}
+
+// Visibly synthetic opaque evidence reproduces the retained byte footprint of
+// the real scoped App fixture. It is not an Owner proof or deployment seed.
+func fillCoordinationRetainedEvidence(t *testing.T, c *nativeController, target int) {
+	t.Helper()
+	remaining := target - coordinationVaultStateBytes(t, c)
+	for i := 0; remaining > 0; i++ {
+		n := min(remaining, 900<<10)
+		raw := bytes.Repeat([]byte{0x5a}, n)
+		_, err := c.vault.CompareAndSwapState(fmt.Sprintf("synthetic.retained-owner-evidence-%d.v1", i), 0, raw)
+		clear(raw)
+		if err != nil {
+			t.Fatal("could not retain synthetic evidence within unchanged vault bounds", err)
+		}
+		remaining -= n
+	}
+}
+
+type coordinationSavedState struct {
+	Version uint64
+	Digest  [32]byte
+}
+
+func coordinationVaultStateHashes(t *testing.T, c *nativeController, protectedOnly bool) map[string]coordinationSavedState {
+	t.Helper()
+	versions, err := c.vault.StateVersions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	excluded := map[string]bool{}
+	if protectedOnly {
+		for _, names := range [][]string{coordinationNamespaces[:], threadGroupNamespaces[:]} {
+			for _, name := range names {
+				excluded[name] = true
+			}
+		}
+	}
+	result := map[string]coordinationSavedState{}
+	for name, version := range versions {
+		if excluded[name] {
+			continue
+		}
+		raw, _, _, err := c.vault.LoadState(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		result[name] = coordinationSavedState{version, sha256.Sum256(raw)}
+		clear(raw)
+	}
+	return result
+}
+
+func TestCoordinationBudgetRealRetainedSizeAllowsFiveZeroClassifications(t *testing.T) {
+	a := newCoordinationActor(t)
+	c := a.base.c
+	owner, device := c.owner.Public().ID, c.device.Public().ID
+	var protected map[string]coordinationSavedState
+	for i := 0; i < 5; i++ {
+		endpoint := fmt.Sprintf("SYNTHETIC-zero-thread-%d", i)
+		digest := sha256.Sum256([]byte(endpoint))
+		a.base.card.EndpointID, a.thread.EndpointID = endpoint, endpoint
+		a.base.card.RegistrationDigest = fmt.Sprintf("%x", digest)
+		a.thread.RegistrationDigest = a.base.card.RegistrationDigest
+		a.thread.Source.RegistrationID = fmt.Sprintf("SYNTHETIC-zero-source-%d", i)
+		a.thread.State, a.thread.Classification = "CLASSIFICATION_REQUIRED", ""
+		a.thread.ClassificationRevision, a.thread.RelationsRevision = 0, 0
+		a.thread.ActiveGroupIDs, a.thread.ActiveGroupCount = []string{}, 0
+		a.base.readAndSelect()
+		a.readRole()
+		if i == 0 {
+			// Measured real failure: 20 records and 1,360,832 raw state bytes.
+			fillCoordinationRetainedEvidence(t, c, 1_360_832)
+			protected = coordinationVaultStateHashes(t, c, true)
+		}
+		role := c.Snapshot().ThreadGroups.Selected.Classification
+		classification := wire.ThreadClassificationWorker
+		if i == 0 {
+			classification = wire.ThreadClassificationAdvisor
+		}
+		if err := c.Dispatch(context.Background(), Action{Kind: ActionPrepareCoordination, Coordination: CoordinationAction{Change: wire.ThreadCollaborationSetClassification, EndpointID: endpoint, Classification: classification, GestureID: role.GestureID}}); err != nil {
+			t.Fatalf("role %d rejected reachable receipt capacity: %s", i, c.Snapshot().Coordination.ErrorCode)
+		}
+		if err := a.apply(); err != nil {
+			t.Fatal("exact zero classification could not apply", err)
+		}
+		if a.effects != i+1 || c.hasCoordinationPending() || c.owner.Public().ID != owner || c.device.Public().ID != device {
+			t.Fatal("classification changed identity, lost original or reported an extra effect")
+		}
+		after := coordinationVaultStateHashes(t, c, true)
+		for name, before := range protected {
+			if after[name] != before {
+				t.Fatal("role budget retired retained Owner/Node evidence", name)
+			}
+		}
+	}
+}
+
+func TestCoordinationBudgetActuallyFullStillRefusesBeforePost(t *testing.T) {
+	a := newCoordinationActor(t)
+	a.readRole()
+	c := a.base.c
+	fillCoordinationRetainedEvidence(t, c, 2_600_000)
+	before := coordinationVaultStateHashes(t, c, false)
+	selected := c.Snapshot().ThreadGroups.Selected
+	err := c.Dispatch(context.Background(), Action{Kind: ActionPrepareCoordination, Coordination: CoordinationAction{Change: wire.ThreadCollaborationSetClassification, EndpointID: selected.EndpointID, Classification: wire.ThreadClassificationAdvisor, GestureID: selected.Classification.GestureID}})
+	if err == nil || c.Snapshot().Coordination.ErrorCode != "APP_COORDINATION_STORAGE_BUDGET" || c.storageFault || len(a.posts[wire.OperationThreadCollaborationOwnerPrepare]) != 0 {
+		t.Fatal("real capacity failure was sent, hidden or treated as corruption")
+	}
+	after := coordinationVaultStateHashes(t, c, false)
+	if len(after) != len(before) {
+		t.Fatal("budget refusal changed the durable record set")
+	}
+	for name, state := range before {
+		if after[name] != state {
+			t.Fatal("budget refusal changed original bytes or CAS", name)
+		}
+	}
+}
+
+func TestCoordinationBudgetFenceWithRetainedEvidenceKeepsExactOriginal(t *testing.T) {
+	a := newCoordinationActor(t)
+	a.preparePolicy()
+	c := a.base.c
+	fillCoordinationRetainedEvidence(t, c, 1_360_832)
+	protected := coordinationVaultStateHashes(t, c, true)
+	a.deny = wire.OperationThreadCollaborationOwnerApply
+	if a.apply() == nil || !c.hasCoordinationPending() {
+		t.Fatal("unsigned denial settled the original")
+	}
+	original := bytes.Clone(c.coordination.original.Packet)
+	a.noEffectFence = true
+	a.drop = wire.OperationThreadCollaborationOwnerReconcile
+	if c.Dispatch(context.Background(), Action{Kind: ActionRecoverCoordination}) == nil || !c.hasCoordinationPending() {
+		t.Fatal("lost fence reply settled the original")
+	}
+	query := bytes.Clone(c.coordination.query.Packet)
+	if c.Dispatch(context.Background(), Action{Kind: ActionRecoverCoordination}) == nil || c.hasCoordinationPending() || a.effects != 0 || c.coordination.response != nil || c.coordination.queryResponse == nil || c.Snapshot().Coordination.Outcome != "" {
+		t.Fatal("exact authenticated no-effect fence was lost or became management success")
+	}
+	posts := a.posts[wire.OperationThreadCollaborationOwnerReconcile]
+	if len(posts) != 2 || !bytes.Equal(query, posts[0]) || !bytes.Equal(posts[0], posts[1]) || !bytes.Equal(original, c.coordination.original.Packet) {
+		t.Fatal("fence recovery replaced the original or query")
+	}
+	after := coordinationVaultStateHashes(t, c, true)
+	for name, state := range protected {
+		if after[name] != state {
+			t.Fatal("fence retirement changed retained Owner/Node evidence", name)
+		}
+	}
 }
 
 func (a *coordinationActor) readRole() {

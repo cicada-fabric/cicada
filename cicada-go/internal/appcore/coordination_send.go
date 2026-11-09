@@ -18,8 +18,18 @@ func coordinationResponseRecord(request *coordinationRecord, raw []byte, now tim
 	return &coordinationRecord{Format: "cicada.app-thread-collaboration.response.v1", Vault: request.Vault, DeviceKeyID: request.DeviceKeyID, OwnerKeyID: request.OwnerKeyID, Route: request.Route, ParentDigest: request.Digest, Digest: wire.ThreadCollaborationOwnerPacketDigest(raw), CreatedAt: now.UTC().Format(time.RFC3339Nano), Packet: append([]byte(nil), raw...)}
 }
 
-// Check every future durable carrier before the first POST, including a maximum
-// receipt and an independently sealed reconcile wrapper. No reserve is sent.
+const (
+	coordinationBudgetStagedOriginal = iota
+	coordinationBudgetDirectReceipt
+	coordinationBudgetRecoveredReceipt
+	coordinationBudgetNoEffectFence
+	coordinationBudgetPhaseCount
+)
+
+// Check each reachable durable phase before the first POST. A recovered
+// original receipt is stored with its query; the outer query response is stored
+// only for a no-effect fence, which has no original receipt or new review.
+// Reserves are never sent and every check retains the unchanged vault limits.
 func (c *nativeController) coordinationBudget(ctx context.Context, record *coordinationRecord) error {
 	scope, err := c.localCollaborationActor(ctx)
 	if err != nil {
@@ -43,6 +53,9 @@ func (c *nativeController) coordinationBudget(ctx context.Context, record *coord
 	response.Digest = strings.Repeat("0", 64)
 	queryResponse := coordinationResponseRecord(reserve, make([]byte, wire.MaxThreadCollaborationReconcilePacketBytes), c.cfg.Now().UTC())
 	defer clearCoordinationRecord(queryResponse)
+	// A future receipt's canonical timestamp can have nine fractional digits.
+	response.CreatedAt = "2000-01-01T00:00:00.999999999Z"
+	queryResponse.CreatedAt = response.CreatedAt
 	updates := map[string][]byte{}
 	defer func() {
 		for _, raw := range updates {
@@ -67,15 +80,38 @@ func (c *nativeController) coordinationBudget(ctx context.Context, record *coord
 			return err
 		}
 		updates[coordinationNamespaces[coordinationReview]] = raw
-	} else if record.Route.Operation == wire.OperationThreadCollaborationOwnerApply {
-		updates[coordinationNamespaces[coordinationReview]] = nil
 	}
-	if err := c.vault.CheckStateUpdates(updates); err != nil {
-		return err
+	for phase := 0; phase < coordinationBudgetPhaseCount; phase++ {
+		planned := coordinationBudgetUpdates(updates, phase)
+		if err := c.vault.CheckStateUpdates(planned); err != nil {
+			return err
+		}
 	}
-	clear(updates[coordinationNamespaces[coordinationReview]])
-	delete(updates, coordinationNamespaces[coordinationReview])
-	return c.vault.CheckStateUpdates(updates)
+	return nil
+}
+
+func coordinationBudgetUpdates(reserves map[string][]byte, phase int) map[string][]byte {
+	updates := map[string][]byte{
+		coordinationNamespaces[coordinationOriginal]:      reserves[coordinationNamespaces[coordinationOriginal]],
+		coordinationNamespaces[coordinationResponse]:      nil,
+		coordinationNamespaces[coordinationQuery]:         nil,
+		coordinationNamespaces[coordinationQueryResponse]: nil,
+	}
+	if phase == coordinationBudgetDirectReceipt || phase == coordinationBudgetRecoveredReceipt {
+		updates[coordinationNamespaces[coordinationResponse]] = reserves[coordinationNamespaces[coordinationResponse]]
+		if review, exists := reserves[coordinationNamespaces[coordinationReview]]; exists {
+			updates[coordinationNamespaces[coordinationReview]] = review
+		}
+	}
+	if phase == coordinationBudgetRecoveredReceipt || phase == coordinationBudgetNoEffectFence {
+		updates[coordinationNamespaces[coordinationQuery]] = reserves[coordinationNamespaces[coordinationQuery]]
+	}
+	if phase == coordinationBudgetNoEffectFence {
+		updates[coordinationNamespaces[coordinationQueryResponse]] = reserves[coordinationNamespaces[coordinationQueryResponse]]
+	}
+	// Omitted review updates retain any prior reviewed packets, including after
+	// a crash between persisting Apply and retiring its review before POST.
+	return updates
 }
 
 func (c *nativeController) sendCoordination(ctx context.Context, request any, review *wire.ThreadCollaborationOwnerReview) error {

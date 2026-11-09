@@ -178,6 +178,47 @@ Production permission checks were not changed. Actual CLI ZERO → Owner
 classification → original Join completion and the full Runtime/Docker gate
 remain separate QA acceptance; these consumer tests do not activate profiles.
 
+Owner coordination budget correction — **SCOPED_PASS**, 2026-11-05, dirty source
+on `9265cdf575a121e7303708df2ceee13cc8a10053`. The real first role Prepare refused
+locally with `APP_COORDINATION_STORAGE_BUDGET`: 20 existing records held
+1,360,832 raw state bytes, but reserving the maximum original receipt, outer
+reconcile response and new review together projected 3,319,164 bytes before
+vault JSON/base64 overhead. Its actual request was 51,511 bytes; the review
+reserve was 466,911 and largest reserved record 918,703 bytes. The 32-record
+limit was not the cause.
+
+Core now checks the staged original, direct receipt, recovered original receipt
+with its query, and authenticated no-effect fence as four separate reachable
+phases. A fence stores the outer query response without an original receipt/new
+review; recovering an original stores that receipt without the outer response.
+Every phase still checks the existing 4 MiB total/1 MiB record/32-record limits
+and CAS. Prior review bytes remain conservatively budgeted across interrupted
+Apply retirement. No GC, capacity increase or removal of retained Owner/Node
+evidence is introduced.
+
+Evidence: `/home/zyf/Cicada/.local/evidence/n2-app/coordination-budget-checkpoint-8gvlwej7/`;
+1282 compile inputs, `source.json` SHA-256
+`a7ebde694bb4429982877f8764243891490f8365d24886ee0f9c41157558d6da`.
+Go 1.27.3 normal/race each pass 6 top-level / 6 named results, zero failures/skips,
+regex `^TestCoordination(Budget|OriginalAndQuery|UnsignedHTTP|OwnerRolePolicy)`.
+New cases retain the measured 1,360,832-byte footprint through five zero-stage
+classifications (one Advisor/four Workers), preserve protected state hashes/CAS,
+recover a lost no-effect fence with identical original/query bytes, and still
+refuse a genuinely full 2,600,000-byte retained footprint before POST without
+changing state. These use actual Core/vault/PQC with synthetic Hub actors.
+Core/App `go vet` and Windows amd64 GUI cross-build pass.
+
+The separate real QA-fixture replay at
+`/home/zyf/Cicada/.local/evidence/n2-app/coordination-budget-actual-bfymu2ol/`
+passes the first actual Owner Prepare → Apply → current-role reread assertions.
+Its overall nominal result remains **FAIL** at the subsequent Native
+classification read (`UNSUPPORTED_PROFILE`); it is not a full-chain pass.
+QA's independent five-Thread/cold-fault gates continue with the coordinated
+metadata correction. Root retains the earlier Docker gate's tested-source
+attribution; this App-only budget correction does not rerun that full gate.
+Physical Windows/IME/DPAPI/ACL, installed Runtime/model and Android remain
+separate **NOT_RUN** scopes here.
+
 The Owner App uses shared packet constructors and verification, its retained
 local Owner key and the encrypted vault. It persists before first POST and
 reserves receipt/query capacity within existing vault limits. Apply requires the
