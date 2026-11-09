@@ -16,6 +16,7 @@ import (
 
 	"github.com/cicada-ai/cicada/internal/apppaths"
 	"github.com/cicada-ai/cicada/internal/harness"
+	wire "github.com/cicada-ai/cicada/internal/hubaccountwire"
 )
 
 // A Thread ID is a filename/header selector under the actual owned Runtime
@@ -232,15 +233,40 @@ func nativeThreadOperatorWithManager(action string, args []string, out io.Writer
 	if result == nil || result.State != "COMPLETED" {
 		return errors.New("original Thread operation is unconfirmed; retry the exact command")
 	}
-	if result.Join != nil {
-		if recovering {
-			verified, _ = verifyCodexOperatorInvocation(path, "", "", *name, native, q.APIOrigin, &connection, codexOperatorCommand{operation: operation, name: *name}, nil)
+	if operation == "endpoint_register" {
+		// The retained zero-Join keeps its LocalDomain intent, while its real
+		// registration now verifies as EndpointGroups. Persist that current
+		// profile before acknowledging the original completed command.
+		var proof endpointGroupsOperatorContextProof
+		verified, err = verifyCodexOperatorInvocation(path, "", "", q.Name, native, q.APIOrigin, &connection, codexOperatorCommand{operation: operation, name: q.Name}, &proof)
+		if err != nil {
+			return err
 		}
-		if result.LocalDomain == nil || verified.LocalDomainVersion == q.LocalDomainVersion && verified.LocalDomain == q.LocalDomain {
+		if verified.EndpointGroupsVersion == 1 {
+			// Match the exact operator invocation's canonical arguments.
+			arguments, digest, err := nativeThreadOperatorSelfArguments(q)
+			if err != nil {
+				return err
+			}
+			selfRequest := localEndpointGroupsRequest{Version: localJoinProtocolVersion, Operation: "endpoint_groups_self", APIOrigin: q.APIOrigin, Harness: native.Harness, NativeSessionID: native.NativeSessionID, Workspace: native.Workspace, ContextTicketID: proof.ContextTicketID, ConnectionNonce: proof.ContextConnectionNonce, ToolName: codexOperatorContextTool(operation), ArgumentsDigest: digest, Arguments: arguments, Limit: 64, codexEndpointGroupsBinding: verified.codexEndpointGroupsBinding}
+			self, err := requestMachineAgentEndpointGroups(context.Background(), connection.Pin.SocketPath, selfRequest)
+			if err != nil {
+				return err
+			}
+			entry, err := nativeThreadEndpointGroupsCache(connection, storagePin, selfRequest, self, result)
+			if err != nil {
+				return err
+			}
+			if err := newMCPSessionStateStore(connection.Pin.MCPSessionStateFile).saveEndpointGroupsAuthenticated(entry); err != nil {
+				return err
+			}
+		} else if result.Join != nil && (result.LocalDomain == nil || verified.LocalDomainVersion == q.LocalDomainVersion && verified.LocalDomain == q.LocalDomain) {
 			j := result.Join
 			if err := newMCPSessionStateStore(connection.Pin.MCPSessionStateFile).save(mcpCachedSession{ConnectionPin: storagePin, Scope: scope, APIOrigin: q.APIOrigin, Harness: trusted.Harness, NativeSessionID: trusted.NativeSessionID, NodeID: trusted.NodeID, Workspace: trusted.Workspace, GroupID: j.Endpoint.GroupID, EndpointID: j.Endpoint.ID, OwnerID: j.Endpoint.Owner, BindingID: j.BindingID, BindingEpoch: j.BindingEpoch, LeaseExpiresAt: j.LeaseExpiresAt, SessionToken: j.SessionToken, codexDomainBinding: codexDomainBinding{LocalDomainVersion: q.LocalDomainVersion, LocalDomain: q.LocalDomain}}); err != nil {
 				return err
 			}
+		} else {
+			return errEndpointGroupsRegistration
 		}
 	}
 	if operation == "endpoint_leave" {
@@ -252,6 +278,39 @@ func nativeThreadOperatorWithManager(action string, args []string, out io.Writer
 		return err
 	}
 	return client.ack(result.RequestID, result.IntentDigest)
+}
+
+func nativeThreadOperatorSelfArguments(q localEndpointRequest) ([]byte, string, error) {
+	arguments := map[string]any{"operation": q.Operation, "name": q.Name, "pair_label": "", "slot": ""}
+	raw, err := json.Marshal(arguments)
+	if err != nil {
+		return nil, "", err
+	}
+	digest, err := codexArgumentsDigest(arguments)
+	return raw, digest, err
+}
+
+func nativeThreadEndpointGroupsCache(connection LocalNodeConnection, storagePin *LocalNodeConnectionPin, q localEndpointGroupsRequest, self *localEndpointGroupsResult, completed *localEndpointResult) (mcpCachedSession, error) {
+	var empty mcpCachedSession
+	if q.codexEndpointGroupsBinding.validate() != nil || validateEndpointGroupsSelfResult(q, connection.Pin.NodeID, self) != nil || completed == nil || completed.State != "COMPLETED" || completed.Operation != "endpoint_register" || completed.HubID != connection.Pin.HubID || completed.NodeID != connection.Pin.NodeID || completed.Registration == nil || completed.Join == nil && completed.EndpointGroups == nil {
+		return empty, errEndpointGroupsRegistration
+	}
+	a := self.Description.Registration
+	if a.Registration.HubID != completed.HubID || a.Registration.EndpointID != completed.Registration.EndpointID || a.Registration.Workspace != completed.Registration.Workspace || a.State == "REVOKED" {
+		return empty, errEndpointGroupsRegistration
+	}
+	if joined := completed.Join; joined != nil && (joined.Endpoint.ID != a.Registration.EndpointID || joined.Endpoint.PrincipalID != a.Registration.PrincipalID || joined.Endpoint.Owner != a.Registration.OwnerID || joined.BindingID != a.BindingID || joined.BindingEpoch != a.BindingEpoch || joined.SessionToken != self.SessionToken) {
+		return empty, errEndpointGroupsRegistration
+	}
+	if described := completed.EndpointGroups; described != nil && !sameEndpointGroupsAnchor(described.Registration, a) {
+		return empty, errEndpointGroupsRegistration
+	}
+	scope, trusted, err := mcpSessionScope(q.APIOrigin, harness.SessionContext{Harness: q.Harness, NativeSessionID: q.NativeSessionID, MachineID: connection.Pin.NodeID, Workspace: q.Workspace})
+	if err != nil {
+		return empty, err
+	}
+	// Registration is durable; selecting a Group remains a separate action.
+	return mcpCachedSession{ConnectionPin: storagePin, Scope: scope, APIOrigin: q.APIOrigin, Harness: trusted.Harness, NativeSessionID: trusted.NativeSessionID, NodeID: trusted.NodeID, Workspace: trusted.Workspace, EndpointID: a.Registration.EndpointID, OwnerID: a.Registration.OwnerID, BindingID: a.BindingID, BindingEpoch: a.BindingEpoch, LeaseExpiresAt: a.LeaseExpiresAt, SessionToken: self.SessionToken, codexDomainBinding: codexDomainBinding{codexEndpointGroupsBinding: q.codexEndpointGroupsBinding}, EndpointGroupsLocalAccessRevision: self.LocalAccessRevision, EndpointGroupAuthority: wire.EndpointGroupCurrentEndpoint{}}, nil
 }
 
 // Only the terminal operator configures this private authorizer. Reading an

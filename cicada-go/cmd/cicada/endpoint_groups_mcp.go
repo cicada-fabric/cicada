@@ -55,12 +55,22 @@ func (m *mcpServer) endpointGroupsSelfContext(ctx context.Context, operation, gr
 	if err != nil {
 		return nil, err
 	}
-	a := result.Description.Registration
-	if result.LocalAccessRevision == 0 || result.LocalAccessRevision >= 1<<63 || result.SessionToken == "" || a.Profile != LocalCodexContextProfileEndpointGroups || a.RegistrationSource != wire.EndpointGroupsRegistrationSource || a.Registration.NativeSessionID != q.NativeSessionID || a.Registration.Workspace != q.Workspace || a.Registration.NodeID != m.codexContext.nodeID ||
-		a.Registration.Harness != q.Harness || a.RegistrationDigest != q.RegistrationDigest || a.RegistrationRevision != q.RegistrationRevision || a.BindingID != q.RegistrationBindingID || a.BindingEpoch != q.RegistrationBindingEpoch || a.NodeKeyEpoch != q.RegistrationNodeKeyEpoch {
-		return nil, errEndpointGroupsRegistration
+	if err := validateEndpointGroupsSelfResult(q, m.codexContext.nodeID, result); err != nil {
+		return nil, err
 	}
 	return result, nil
+}
+
+func validateEndpointGroupsSelfResult(q localEndpointGroupsRequest, node string, result *localEndpointGroupsResult) error {
+	if result == nil {
+		return errEndpointGroupsRegistration
+	}
+	a := result.Description.Registration
+	if result.LocalAccessRevision == 0 || result.LocalAccessRevision >= 1<<63 || result.SessionToken == "" || a.Profile != LocalCodexContextProfileEndpointGroups || a.RegistrationSource != wire.EndpointGroupsRegistrationSource || a.Registration.NativeSessionID != q.NativeSessionID || a.Registration.Workspace != q.Workspace || a.Registration.NodeID != node ||
+		a.Registration.Harness != q.Harness || a.RegistrationDigest != q.RegistrationDigest || a.RegistrationRevision != q.RegistrationRevision || a.BindingID != q.RegistrationBindingID || a.BindingEpoch != q.RegistrationBindingEpoch || a.NodeKeyEpoch != q.RegistrationNodeKeyEpoch {
+		return errEndpointGroupsRegistration
+	}
+	return nil
 }
 
 func (m *mcpServer) refreshEndpointGroupsSession(native harness.SessionContext) (*localEndpointGroupsResult, error) {

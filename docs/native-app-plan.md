@@ -6,6 +6,28 @@ Its Go implementation remains in `cicada-go`; Android is maintained under
 native Windows acceptance. “App” is the current product name; older Client-facing wire names,
 code and evidence remain attributed to their original contract and source.
 
+Completed Join cache correction — 2026-11-09: the real two-stage CLI fixture
+found a completed original Join with no saved session. Its retained intent used
+LocalDomain v1, while fresh native verification correctly returned the registered
+EndpointGroups profile. The CLI had silently skipped cache persistence on that
+profile transition and still acknowledged success. It now obtains a fresh real
+operator proof, reads the existing private `endpoint_groups_self`, verifies the
+same Endpoint, binding and original credential, and calls the existing
+authenticated registration-cache writer before acknowledging. Registered-again
+commands use the same path without manufacturing a Join payload. No Group is
+selected implicitly. Refresh or storage failure leaves the completed original
+unacknowledged for exact retry. The shared MCP self-result verifier is reused;
+no Hub protocol, role, authority or state limit changes here.
+
+At base `75c967ccf3bd7487ae1740710769e518819e7566` plus the three production/test
+source hashes in
+`/home/zyf/Cicada/.local/evidence/n2-app/completed-join-cache-um_t7gw3/source.json`,
+the six focused tops / 50 named test results pass without failures or skips,
+and cmd `go vet` passes. This is a scripted trusted-Node consumer/cache scope;
+the real five-Thread lifecycle and cold-recovery fixture remains separately
+pending. Physical Windows, installed Codex Runtime/model, Android and public
+deployment remain NOT_RUN for this correction.
+
 Current native presentation scope — 2026-11-05: the reported device-code action
 visibility failure is reproduced in the actual Gio renderer after extracting
 only the Windows event-loop/font boundary. Short and long codes have identical
