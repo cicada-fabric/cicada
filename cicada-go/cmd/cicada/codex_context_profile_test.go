@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -11,8 +12,66 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cicada-ai/cicada/internal/harness"
 	wire "github.com/cicada-ai/cicada/internal/hubaccountwire"
 )
+
+func TestCodexGroupLockSlotUsesConsumedPurposeWithoutPairConfusion(t *testing.T) {
+	for _, name := range []string{"cicada_group_lock_acquire", "cicada_group_lock_renew", "cicada_group_lock_release", "cicada_join"} {
+		t.Run(name, func(t *testing.T) {
+			m := newMCPServer("http://127.0.0.1:1", "", filepath.Join(t.TempDir(), "sessions.json"))
+			m.hubStateDir = shortLocalJoinStateDir(t)
+			if err := m.enableCodexContext("synthetic-node"); err != nil {
+				t.Fatal(err)
+			}
+			defer m.stopCodexHeartbeat()
+			profile := syntheticEndpointGroupsContext()
+			profile.NativeSessionID, profile.Workspace = "synthetic-lock-thread", t.TempDir()
+			arguments := map[string]any{"slot": 1, "expected_version": 1, "idempotency_key": "SYNTHETIC-operation"}
+			if name != "cicada_group_lock_acquire" {
+				arguments["generation"] = 1
+			}
+			if name == "cicada_join" {
+				arguments = map[string]any{"pair_id": strings.Repeat("a", 32), "slot": "A"}
+			}
+			var authority localCodexContextAuthority
+			q := syntheticCodexContextIssue()
+			q.APIOrigin, q.NativeSessionID, q.Workspace, q.ConnectionNonce, q.ToolName = m.baseURL, profile.NativeSessionID, profile.Workspace, m.codexContext.nonce, name
+			q.ArgumentsDigest, _ = codexArgumentsDigest(arguments)
+			profile.Harness, profile.TurnID, profile.ToolUseID = q.Harness, q.TurnID, q.ToolUseID
+			issued, err := authority.issueVerified(q, "synthetic-node-binding", time.Now(), profile)
+			if err != nil {
+				t.Fatal(err)
+			}
+			codexConsumerNode(t, m.hubStateDir, "synthetic-node", func(c net.Conn, raw json.RawMessage) {
+				var consume localCodexContextConsume
+				_ = json.Unmarshal(raw, &consume)
+				value, err := authority.consume(consume, "synthetic-node-binding", time.Now())
+				response := localJoinResponse{Version: 1, CodexContextConsume: value}
+				if err != nil {
+					response.Error = "synthetic one-use context denied"
+				}
+				_ = json.NewEncoder(c).Encode(response)
+			})
+			arguments[codexMCPContextArgument] = map[string]any{"connection_nonce": m.codexContext.nonce, "ticket": issued.Ticket}
+			calls := 0
+			_, err = m.callContextualToolVerified(name, arguments, func(_ harness.SessionContext, _ localCodexContext, _ *localEndpointGroupsResult, _ map[string]any) (any, error) {
+				calls++
+				return "SYNTHETIC-consumed-lock-purpose", nil
+			})
+			if name == "cicada_join" {
+				if !errors.Is(err, errCodexMCPContext) || calls != 0 {
+					t.Fatal("Pair Join borrowed registered-Thread authority", err)
+				}
+			} else if err != nil || calls != 1 {
+				t.Fatal("integer protocol slot confused with reserved Pair slot", err)
+			}
+			if _, err := m.callContextualToolVerified(name, arguments, nil); !errors.Is(err, errCodexMCPContext) {
+				t.Fatal("purpose ticket became reusable", err)
+			}
+		})
+	}
+}
 
 func TestCodexConsumedContextProfileHasNoPartialOrUnknownFallback(t *testing.T) {
 	selection := wire.LocalDomainSelection{PolicyID: strings.Repeat("a", 32), PolicyEpoch: 1, PolicyDigest: strings.Repeat("b", 64)}

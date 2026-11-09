@@ -28,6 +28,23 @@ the real five-Thread lifecycle and cold-recovery fixture remains separately
 pending. Physical Windows, installed Codex Runtime/model, Android and public
 deployment remain NOT_RUN for this correction.
 
+Protocol-slot purpose correction — 2026-11-09: a generic consumed-context
+precondition interpreted every tool's `slot` field as a reserved native Pair
+Join, rejecting Group-lock mutations after valid Host consumption. Pair parsing
+now runs only for `cicada_join`, its actual operation. Registered/domain context
+still cannot borrow the legacy Pair Join. A focused consumer test consumes a
+real one-use Host MAC for each lock purpose, reaches the exact verified
+callback, rejects ticket reuse, and preserves the Pair negative case. Together
+with the existing closed lock-argument test, three tops / 24 named results pass
+with no skips or failures; source/log receipts are at
+`/home/zyf/Cicada/.local/evidence/n2-app/lock-slot-context-final-*`.
+The first development test incorrectly used a legacy-profile-only fixture
+helper and remains a recorded failure at `lock-slot-context-jn4r5c7j`; it did not
+establish a production context failure after this correction. QA separately
+passed the real five-Thread normal lifecycle using the exact production source
+overlay at `closeout-nominal-6e287a2-0x4w0elg`; its cold-recovery scope remains
+separately pending. No Node/Hub authority or ticket validation was weakened.
+
 Current native presentation scope — 2026-11-05: the reported device-code action
 visibility failure is reproduced in the actual Gio renderer after extracting
 only the Windows event-loop/font boundary. Short and long codes have identical

@@ -195,8 +195,10 @@ func (m *mcpServer) callContextualToolVerifiedContext(callCtx context.Context, n
 	if err != nil {
 		return nil, err
 	}
-	if _, pair, _ := parseNativePairJoinSelection(business); pair && verifiedDomain != (codexDomainBinding{}) {
-		return nil, errCodexMCPContext
+	if name == "cicada_join" {
+		if _, pair, _ := parseNativePairJoinSelection(business); pair && verifiedDomain != (codexDomainBinding{}) {
+			return nil, errCodexMCPContext
+		}
 	}
 	context := harness.SessionContext{Harness: consumed.Context.Harness, NativeSessionID: consumed.Context.NativeSessionID,
 		MachineID: state.nodeID, Workspace: consumed.Context.Workspace, Capabilities: map[string]any{"fabric_tools": true, "wake": "codex_queue"}}
