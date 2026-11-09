@@ -1,6 +1,6 @@
 # CICADA technical documentation
 
-## Current development — 2026-11-05
+## Current development — 2026-11-09
 
 Software **0.0.5 remains unreleased**; **v0.1.0 is the planned first release**.
 The [adopted specification](../CICADA.md) defines the product, while the
@@ -32,8 +32,14 @@ track implementation and remaining acceptance. Current integrated source include
   [native Endpoint contract](native-endpoint-directory-contract.md).
 - Hub-authoritative Owner management of exact Thread/Group relations: the App
   creates a named empty Group, then separately reviews adding or removing one
-  Thread. A Thread can retain several Groups and its original identity; current
-  MCP Group selection is separate from membership. See the
+  Thread. Each real Thread retains one Network; a Worker has at most one
+  effective Group, while explicitly classified Advisor/Manager Threads may
+  retain several Groups within that Network. Current MCP Group selection is
+  separate from membership. The [Thread/Network and eight-slot contract](thread-network-group-locks-contract.md)
+  and [current actual-carrier closeout](native-app-validation.md#thread-group-and-lock-carrier-closeout--2026-11-09)
+  record five-participant lock operations, original cold recovery and two-Hub
+  isolation as scoped passes. Physical Windows and installed Runtime remain
+  NOT_RUN. See the
   [Owner-managed Group contract](native-endpoint-directory-contract.md#proposed-owner-managed-endpoint-groups-v1).
 
 The current Node lifecycle is **SCOPED_PASS** on production `afb2bad8`: six

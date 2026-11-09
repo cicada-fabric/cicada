@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"crypto/tls"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -31,6 +32,7 @@ import (
 	"github.com/cicada-ai/cicada/internal/hubnodes"
 	"github.com/cicada-ai/cicada/internal/hubowner"
 	"github.com/cicada-ai/cicada/internal/hubtransport"
+	"github.com/cicada-ai/cicada/internal/nodewire"
 	"github.com/cicada-ai/cicada/internal/server"
 	"github.com/cicada-ai/cicada/internal/store"
 )
@@ -52,6 +54,7 @@ type nodeHubLifecycleHub struct {
 	control       int
 	vaultRoot     string
 	dropPath      string
+	dropOperation string
 	droppedDigest [32]byte
 	droppedStatus int
 }
@@ -120,7 +123,8 @@ func newNodeHubLifecycleHub(t *testing.T) *nodeHubLifecycleHub {
 			f.control++
 		}
 		drop := r.Method == http.MethodPost && r.URL.Path == f.dropPath
-		if drop {
+		dropOperation := f.dropOperation
+		if drop && dropOperation == "" {
 			f.dropPath = ""
 		}
 		f.mu.Unlock()
@@ -133,6 +137,17 @@ func newNodeHubLifecycleHub(t *testing.T) *nodeHubLifecycleHub {
 				return
 			}
 			r.Body = io.NopCloser(bytes.NewReader(raw))
+			if dropOperation != "" {
+				packet, decodeErr := nodewire.DecodePacket(raw)
+				if decodeErr != nil || packet.Route.Operation != dropOperation {
+					handler.ServeHTTP(w, r)
+					clear(raw)
+					return
+				}
+				f.mu.Lock()
+				f.dropPath, f.dropOperation = "", ""
+				f.mu.Unlock()
+			}
 			capture := httptest.NewRecorder()
 			handler.ServeHTTP(capture, r)
 			f.mu.Lock()
@@ -214,7 +229,17 @@ func (f *nodeHubLifecycleHub) dispatch(a appcore.Action) {
 	if err := f.app.Dispatch(ctx, a); err != nil {
 		// Actions redact their own secrets, but even failures record only the
 		// closed action kind and sanitized App code, never the input/payload.
-		f.t.Fatalf("actual App action %s failed; code=%s", a.Kind, f.app.Snapshot().ErrorCode)
+		snapshot := f.app.Snapshot()
+		selected := snapshot.ThreadGroups.Selected
+		classState := ""
+		classCurrent, classCanChange, hasGesture := false, false, false
+		if selected != nil && selected.Classification != nil {
+			classState = selected.Classification.State
+			classCurrent = selected.Classification.Current
+			classCanChange = selected.Classification.CanChange
+			hasGesture = selected.Classification.GestureID != ""
+		}
+		f.t.Fatalf("actual App action %s failed; code=%s coordination_code=%s coordination_pending=%t groups_current=%t class_state=%s class_current=%t class_can_change=%t class_gesture=%t", a.Kind, snapshot.ErrorCode, snapshot.Coordination.ErrorCode, snapshot.Coordination.Pending, snapshot.ThreadGroups.Current, classState, classCurrent, classCanChange, hasGesture)
 	}
 }
 
@@ -524,4 +549,121 @@ func TestNodeHubLifecycleCurrentNPTAddRemoveColdAcceptance(t *testing.T) {
 		t.Fatal("local remove deleted retained original credentials", err)
 	}
 	t.Log("SYNTHETIC real TLS/SQLite/current NPT/private ACK/production Agent lifecycle; Control inference absent; native Runtime/systemd/Windows NOT_RUN")
+}
+
+// Classification is an explicit real Owner Core read/review/apply ceremony.
+// The DB read locates only the existing Node-created public Endpoint; it never
+// creates an anchor or supplies a role/proof to the Hub.
+func (f *nodeHubLifecycleAcceptance) classifyThread(connection LocalNodeConnection, thread nodeHubAcceptanceThread, class string) wire.ThreadScopeView {
+	f.t.Helper()
+	var hub *nodeHubLifecycleHub
+	for _, candidate := range f.hubs {
+		if candidate.native.d.Claims.Hub.HubID == connection.Pin.HubID {
+			hub = candidate
+		}
+	}
+	if hub == nil {
+		f.t.Fatal("exact Owner classification Hub absent")
+	}
+	locate := func() (string, string) {
+		f.t.Helper()
+		u := url.URL{Scheme: "file", Path: filepath.ToSlash(filepath.Join(filepath.Dir(hub.native.file), "cicada.sqlite3"))}
+		db, err := sql.Open("sqlite", u.String()+"?mode=ro&_busy_timeout=5000")
+		if err != nil {
+			f.t.Fatal(err)
+		}
+		defer db.Close()
+		var count int
+		var endpoint, network string
+		err = db.QueryRow(`SELECT count(*),coalesce(min(endpoint_id),''),coalesce(min(network_id),'') FROM hub_endpoint_groups_registrations_v1 WHERE node_id=? AND json_extract(anchor_json,'$.registration.harness')='codex' AND json_extract(anchor_json,'$.registration.native_session_id')=? AND json_extract(anchor_json,'$.registration.workspace')=?`, connection.Pin.NodeID, thread.native, thread.workspace).Scan(&count, &endpoint, &network)
+		if err != nil || count != 1 || endpoint == "" || network == "" {
+			f.t.Fatal("exact Node-created zero-attested registration anchor missing before Owner read", err)
+		}
+		return endpoint, network
+	}
+	endpoint, network := locate()
+	read := func() *appcore.ThreadClassificationView {
+		f.t.Helper()
+		snapshot := hub.app.Snapshot()
+		if snapshot.Node.Binding == nil || snapshot.Node.Binding.NodeID != connection.Pin.NodeID || snapshot.ThreadGroups.NetworkID != network {
+			f.t.Fatal("actual App classification parent scope mismatch")
+		}
+		cursor := ""
+		seen := map[string]bool{}
+		var card appcore.GroupThreadView
+		for {
+			snapshot = hub.app.Snapshot()
+			hub.dispatch(appcore.Action{Kind: appcore.ActionReadThreadGroups, ThreadGroups: appcore.ThreadGroupAction{GestureID: snapshot.ThreadGroups.GestureID, Cursor: cursor}})
+			snapshot = hub.app.Snapshot()
+			for _, candidate := range snapshot.ThreadGroups.Threads {
+				if candidate.EndpointID == endpoint {
+					card = candidate
+				}
+			}
+			if card.EndpointID != "" {
+				break
+			}
+			cursor = snapshot.ThreadGroups.ThreadsNextCursor
+			if cursor == "" || seen[cursor] {
+				f.t.Fatal("actual Owner directory did not locate the original Endpoint")
+			}
+			seen[cursor] = true
+		}
+		hub.dispatch(appcore.Action{Kind: appcore.ActionReadThreadRelations, ThreadGroups: appcore.ThreadGroupAction{GestureID: card.GestureID, EndpointID: card.EndpointID}})
+		selected := hub.app.Snapshot().ThreadGroups.Selected
+		if selected == nil || selected.EndpointID != endpoint || selected.CoordinationGestureID == "" {
+			f.t.Fatal("actual App offered no scoped classification gesture")
+		}
+		hub.dispatch(appcore.Action{Kind: appcore.ActionReadThreadCoordination, Coordination: appcore.CoordinationAction{EndpointID: selected.EndpointID, GestureID: selected.CoordinationGestureID}})
+		selected = hub.app.Snapshot().ThreadGroups.Selected
+		if selected == nil || selected.Classification == nil || !selected.Classification.Current {
+			f.t.Fatal("actual App classification observation is not current")
+		}
+		afterEndpoint, afterNetwork := locate()
+		if endpoint != afterEndpoint || network != afterNetwork {
+			f.t.Fatal("Owner read changed the registration anchor")
+		}
+		return selected.Classification
+	}
+	current := read()
+	// A fresh registration receives an explicit Worker ceremony. Exact
+	// registration recovery preserves a class already explicitly set by Owner.
+	if class == "" {
+		class = current.Classification
+		if class == "" {
+			class = wire.ThreadClassificationWorker
+		}
+	}
+	if current.Classification != class {
+		hub.dispatch(appcore.Action{Kind: appcore.ActionPrepareCoordination, Coordination: appcore.CoordinationAction{Change: wire.ThreadCollaborationSetClassification, EndpointID: endpoint, Classification: class, GestureID: current.GestureID}})
+		review := hub.app.Snapshot().Coordination.Review
+		if review == nil || !review.CanApply || review.Classification != class {
+			f.t.Fatal("actual App classification review was not explicit/current")
+		}
+		hub.dispatch(appcore.Action{Kind: appcore.ActionApplyCoordination, Coordination: appcore.CoordinationAction{GestureID: review.GestureID, Confirm: true}})
+		current = read()
+	}
+	if current.Classification != class || current.State != "CURRENT" {
+		f.t.Fatal("real Owner Apply did not establish the requested single classification")
+	}
+	// Read the actual common DTO through the public Native MCP carrier. The
+	// display model is never converted into an invented protocol observation.
+	m, err := newLocalNodeMCPServer(LocalNodeSelection{UserRoot: f.root, HubID: connection.Pin.HubID, NodeID: connection.Pin.NodeID})
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	defer closeCodexMCPChild(m)
+	value, err := f.tool(m, thread, "cicada_thread_scope", map[string]any{})
+	if err != nil {
+		f.t.Fatal("actual Native classification read after Owner Apply", err)
+	}
+	raw, err := json.Marshal(value)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	var scope wire.ThreadScopeView
+	if json.Unmarshal(raw, &scope) != nil || wire.ValidateThreadScopeView(scope) != nil || scope.HubID != connection.Pin.HubID || scope.NodeID != connection.Pin.NodeID || scope.EndpointID != endpoint || scope.NetworkID != network || scope.Classification != class || scope.State != "CURRENT" {
+		f.t.Fatal("actual Native common scope did not confirm Owner classification")
+	}
+	return scope
 }

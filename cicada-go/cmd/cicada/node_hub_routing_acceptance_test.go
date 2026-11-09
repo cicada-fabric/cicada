@@ -9,6 +9,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/url"
 	"os"
@@ -148,6 +149,11 @@ func (f *nodeHubLifecycleAcceptance) activateGroup(index int) appcore.LocalColla
 
 func (f *nodeHubLifecycleAcceptance) register(connection LocalNodeConnection, thread nodeHubAcceptanceThread) *mcpCachedSession {
 	f.t.Helper()
+	return f.registerAs(connection, thread, "")
+}
+
+func (f *nodeHubLifecycleAcceptance) registerAs(connection LocalNodeConnection, thread nodeHubAcceptanceThread, class string) *mcpCachedSession {
+	f.t.Helper()
 	// Use the current production CLI operator with an exact original owned
 	// Thread record and managed alias. It owns intent persistence, actual Node
 	// tickets, Join/key receipts and the original private cache. Historical
@@ -168,13 +174,23 @@ func (f *nodeHubLifecycleAcceptance) register(connection LocalNodeConnection, th
 		args = append(args, "--hub-id", connection.Pin.HubID)
 	}
 	var output bytes.Buffer
+	firstErr := nativeThreadOperatorCommand("join", args, &output)
+	clear(output.Bytes())
+	output.Reset()
+	if firstErr != nil && !strings.Contains(firstErr.Error(), wire.ThreadCollaborationErrorClassificationRequired) && !strings.HasSuffix(firstErr.Error(), ": CLASSIFICATION_REQUIRED") {
+		f.t.Fatal("actual CLI zero-stage registration", firstErr)
+	}
+	f.classifyThread(connection, thread, class)
 	if err := nativeThreadOperatorCommand("join", args, &output); err != nil {
-		f.t.Fatal("actual CLI Thread registration", err)
+		f.t.Fatal("actual CLI original registration after explicit Owner classification", err)
 	}
 	clear(output.Bytes())
 	cached, err := newMCPSessionStateStore(connection.Pin.MCPSessionStateFile).load(connection.Pin.APIOrigin, harness.SessionContext{Harness: "codex", NativeSessionID: thread.native, MachineID: connection.Pin.NodeID, Workspace: thread.workspace})
-	if err != nil || cached == nil || cached.SessionToken == "" || cached.EndpointID == "" || cached.ConnectionPin == nil || *cached.ConnectionPin != connection.Pin {
-		f.t.Fatal("actual CLI did not retain original Endpoint/session/pin", err)
+	if err != nil || cached == nil {
+		f.t.Fatalf("actual CLI cache absent after original Join: cache_present=%t read_error=%t", cached != nil, err != nil)
+	}
+	if cached.SessionToken == "" || cached.EndpointID == "" || cached.ConnectionPin == nil || *cached.ConnectionPin != connection.Pin {
+		f.t.Fatalf("actual CLI did not retain original Endpoint/session/pin: token=%t endpoint=%t pin=%t same_pin=%t endpoint_groups=%d local_domain=%d", cached.SessionToken != "", cached.EndpointID != "", cached.ConnectionPin != nil, cached.ConnectionPin != nil && *cached.ConnectionPin == connection.Pin, cached.EndpointGroupsVersion, cached.LocalDomainVersion)
 	}
 	return cached
 }
@@ -208,11 +224,12 @@ func (f *nodeHubLifecycleAcceptance) tool(m *mcpServer, thread nodeHubAcceptance
 	// enumerator/adoption wiring. Host coordinates never enter tool business
 	// arguments; child tickets are issued and replaced only by the real Hook.
 	if err := runCodexHook(flags, bytes.NewReader(rawEvent), &output); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("actual Hook runner: %w", err)
 	}
 	var hook struct {
 		Specific struct {
 			Decision string         `json:"permissionDecision"`
+			Reason   string         `json:"permissionDecisionReason"`
 			Updated  map[string]any `json:"updatedInput"`
 		} `json:"hookSpecificOutput"`
 	}
@@ -221,9 +238,17 @@ func (f *nodeHubLifecycleAcceptance) tool(m *mcpServer, thread nodeHubAcceptance
 	}
 	clear(output.Bytes())
 	if hook.Specific.Decision != "allow" {
-		return nil, errCodexMCPContext
+		code := strings.SplitN(hook.Specific.Reason, ":", 2)[0]
+		if code == "" || len(code) > 80 || strings.Trim(code, "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_") != "" {
+			code = "REDACTED_NON_CODE_REASON"
+		}
+		return nil, fmt.Errorf("actual Hook denied: %s: %w", code, errCodexMCPContext)
 	}
-	return m.callTool(name, hook.Specific.Updated)
+	value, err := m.callTool(name, hook.Specific.Updated)
+	if err != nil {
+		return nil, fmt.Errorf("actual MCP after Hook allow: %w", err)
+	}
+	return value, nil
 }
 
 func (f *nodeHubLifecycleAcceptance) selectGroup(m *mcpServer, thread nodeHubAcceptanceThread, pin LocalNodeConnectionPin, group appcore.LocalCollaborationSnapshot) {

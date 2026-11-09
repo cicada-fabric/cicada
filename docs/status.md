@@ -1,6 +1,6 @@
 # Release status
 
-## 2026-10-26 current development — unreleased; acceptance partial
+## 2026-11-09 current development — unreleased; acceptance partial
 
 The development version is **0.0.5**, as recorded in [VERSION](../VERSION).
 **v0.1.0 is the planned first release**; no release or deployment is established
@@ -12,8 +12,15 @@ Integrated source includes the existing Node's explicit background `on/off/statu
 Node-first device requests approved by the Owner in the Windows App, original
 Codex Thread registration/resume through the external CLI, and a default plugin
 with only the Cicada MCP `PreToolUse` hook. The Hub enforces Owner-authorized,
-exact Thread/Group changes through the App; one original Thread can retain
-multiple Groups, with Group selection separate from membership. Contracts and
+exact Thread/Group changes through the App. Each original Thread retains one
+Network; Worker has at most one effective Group, while explicitly classified
+Advisor/Manager may retain multiple Groups within that Network. Group selection
+remains separate from membership. Each Group can enable eight general protocol
+lock slots with explicit acquire/renew/release and automatic TTL expiry.
+The [current three-lane closeout](native-app-validation.md#thread-group-and-lock-carrier-closeout--2026-11-09)
+passes the real five-participant carrier, original cold recovery and two-Hub
+isolation on their recorded sources; physical Windows and installed Runtime
+remain NOT_RUN. Contracts and
 scope are recorded in [distribution](distribution.md),
 [device pairing](node-pair-trust-contract.md), and the
 [Endpoint/Owner Group contract](native-endpoint-directory-contract.md).

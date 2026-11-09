@@ -1,5 +1,79 @@
 # Native App validation
 
+## Thread, Group and lock carrier closeout — 2026-11-09
+
+**SCOPED_PASS** for the three bounded lanes below. Production integration is
+`98b8ae3f3c748e496792c7adf923fd3363dbb3d5`; the executions retain their actual
+bases and frozen real-source overlays, rather than being attributed solely to
+that later clean commit. All three return exit 0, with two named completion
+events each and zero failures/skips. No additional full regression, paid model
+or installed Runtime was started for this closeout.
+
+The fixture uses two disposable configured HubNodes services, real TLS/TCP,
+current NPT pairing, SQLite, the production Node manager/Agent, public App Core
+Owner actions, the actual external CLI Join and `PreToolUse`/MCP handlers.
+Native Thread records and the inert queue executable are visibly synthetic,
+owned fixtures. Their presence is not an installed Codex/model Runtime result.
+
+| Lane | Actual accepted behavior | Actual source and result SHA-256 |
+| --- | --- | --- |
+| Five participants | The same Owner App explicitly classifies one Advisor and four Workers; each resumes its original Join and authenticated private cache. The Owner enables eight slots. Real MCP reads scope and slots, acquires, renews and releases with exact versions/generation. Closing the App retains the held slot; no Task/physical Resource authority changes and Control calls remain zero. | `6e287a2` plus frozen `codex_context.go`, equal to final `98b8ae3`; `45429e5c1028f0cc234b9580877d076dc65dceb2ca5d797cd9f96756d1411454` |
+| Lost acquire and cold recovery | The real Hub commits acquire and withholds its response. After a cold manager/client reopen using the original private Node identity, a fresh Host invocation recovers the same operation and encrypted request packet, then reads, renews and releases normally. | Same `6e287a2` plus exact frozen source; `c36656bbc8eda4918cf0a3889a3058685b0b02ad17c390f23e0409b338813d8a` |
+| Two Hubs | The same original SID is refused before second-Hub business mutation and the first private cache remains unchanged. A different SID succeeds on the other Hub and explicitly selects its Group. A genuinely committed/lost Join survives manager restart, fences the second Hub and restores the unique original Endpoint/binding/member; duplicate registration does not replace it. | `75c967c` plus frozen CLI/self-cache files, both equal to final production; `5947e0348e7af54fb8f4416b70c33ecc3d3fd6d6b8e63470779c69d664a9f1bb` |
+
+Private evidence root is
+`/home/zyf/Cicada/.local/evidence/v01-thread-network-locks-qa/`:
+
+- `closeout-nominal-6e287a2-0x4w0elg/`: 88.206 seconds including compile;
+- `closeout-cold-fault-6e287a2-ss3kjzv_/`: 35.911 seconds including compile;
+- `closeout-two-hub-75c967c-iwbcriai/`: 99.034 seconds including compile.
+
+Each retains `argv.json`, stable before/after Go-input inventories, real frozen
+production files where overlaid, result/log hashes and redacted authority
+witnesses. `closeout-20261109.json` records the final-commit overlay equivalence.
+The two-Hub run does not execute lock tools; the subsequent `98b8ae3` lock-slot
+versus Pair-dispatch correction does not become a new two-Hub execution.
+A final QA-only formatting step sorts the `fmt` import; after removing that one
+import line, the before/after file is byte-identical. No semantic source change
+or retest is inferred from formatting.
+
+Reproduce only the needed lane with the recorded immutable offline Go 1.27.3
+image and module cache, from `cicada-go`, using the actual recorded environment:
+
+```sh
+go test -mod=readonly -p=1 -count=1 -tags=cicada_scoped_app_integration \
+  -timeout=240s -json ./cmd/cicada \
+  -run '^TestAcceptanceGroupLocksActualHostOwnerLifecycle/nominal$'
+# Replace the selector with /lost-acquire-cold-manager$ for cold recovery,
+# or ^TestAcceptanceThread(SameSID|LostJoin) for the two-Hub lane.
+```
+
+The combined offline driver `scripts/test-thread-network-locks-acceptance.sh`
+is retained for replay; this closeout does not claim a fresh combined-driver
+execution or repeat the earlier common-codec/Store/race gates. Its shell syntax
+and final diff checks pass. Root's separate existing four-case client Docker
+interop gate on clean `9265cdf` remains its own PASS and source fingerprint,
+as recorded below; it is not a new Group-lock Runtime result.
+
+Resolved integration failures remain preserved: the real retained-vault budget
+was overcounted across mutually exclusive receipt phases (`b9aca39`); the
+managed public metadata whitelist omitted the new capability path (`dc707c4`);
+recovering CLI Join skipped its authenticated cache while still acknowledging
+success (`6e287a2`); and generic Pair parsing mistook a lock's numeric `slot`
+for a Pair selection (`98b8ae3`). The final fixture also replaces its historical
+automatic Group-selection assumption with a real explicit MCP selection.
+The additional `3re1d5iq`, `pajny46a`, `k6hh08kc` and `9uxyl6dk` receipts retain
+respectively the exact absent-cache diagnosis, initial acquire failure, a
+QA-only missing-import build failure and the confirmed post-Hook-allow failure.
+None is relabeled as a passing run.
+
+**NOT_RUN** in this closeout: physical Windows GUI/IME/DPAPI/ACL, installed real
+Codex Runtime/model consumption, Android, public Hub deployment or physical
+multi-Node acceptance. Real keys and resident installations were unchanged.
+Existing role-quota/TTL/CAS/race evidence retains its own earlier source; these
+three lanes do not claim every matrix row or 24-hour elapsed expiry. Software
+remains unreleased **0.0.5**, targeting v0.1.0 after user physical acceptance.
+
 ## Thread scope, role limits and Group notice-slot preparation — 2026-11-05
 
 Preparation source: clean `381842d848fd52b9cee005406ca1342215fa17ce` in
@@ -224,6 +298,74 @@ obsolete fixture under the new encoding will not be classified as a production
 defect. Actual Worker cardinality/Owner class changes, lease acquire/renew/
 release/expiry, lost operation responses and Hub/Node recovery remain
 **NOT_RUN** until the business carrier is delivered.
+
+### Actual configured carrier — first App classification blocker
+
+The reviewed integrated source
+`9265cdf575a121e7303708df2ceee13cc8a10053` includes the actual enabled profile,
+zero-attested bootstrap/Guard and nonterminal CLI classification adapter. The
+new nominal carrier uses the real disposable Hub/SQLite/current NPT/TLS,
+production manager and CLI, public Owner Core gestures and actual PreToolUse/MCP.
+It does not override capabilities or replace an Owner SDK/Store/Host verifier.
+
+The first actual CLI observation correctly retained its zero-authority original
+and returned the local `CLASSIFICATION_REQUIRED` state. QA initially expected
+the separate `THREAD_CLASSIFICATION_REQUIRED` wire error; this fixture mismatch
+is classified in `actual-nominal-9265cdf-j2u2pptx/classification.json`, with its
+original failed receipt unchanged. The correction accepts only those explicit
+classification codes, never arbitrary UNKNOWN/transport failure.
+
+The subsequent actual nominal run reaches the public App role read and fails
+on `ActionPrepareCoordination` for the initial explicit Worker classification:
+`Snapshot.Coordination.ErrorCode=APP_COORDINATION_STORAGE_BUDGET`.
+`Coordination.Pending=false`, `ThreadGroups.Current=true`, and the actual role
+card is `CLASSIFICATION_REQUIRED`, current, changeable and has its Core gesture.
+The generic `Snapshot.ErrorCode` is empty, so QA added only closed coordination
+codes/booleans to the fixture's existing redacted diagnostics. This observed
+blocker is assigned to the App producer; QA does not lower protection budgets,
+parse vault state, sign a management request or bypass the public action.
+
+The executed nominal lane is **FAIL / exit 1**, 2 failed named completion events,
+zero passes/skips, with identical before/after source inventories. It stops
+before enabling policy or running slot business. Acquire/renew/release, cold
+slot recovery, App-close independence and the updated two-Hub carriers remain
+**NOT_RUN** at this point. Original evidence is retained under
+`/home/zyf/Cicada/.local/evidence/v01-thread-network-locks-qa/actual-nominal-9265cdf-fnh0rjmz`,
+`result.json` SHA-256
+`776316514b56c868c5b66d1adcffe5bab9cf9c7a02a68204e4e7246a6b33990e`.
+The earlier less-specific failure is preserved separately in
+`actual-nominal-9265cdf-e5i6hifv`, result SHA-256
+`92641ee570d0ce45d306043873a02eefca5796f05e0413a08c8e05c125831e15`.
+Neither receipt is relabeled as a passing product gate.
+
+Root's separate existing four-case client Docker interop gate **PASS** on clean
+`9265cdf`, source fingerprint
+`cb8e8472841eee8f633327fd21b36be8cf48410158cdc006cc2bd0bd26c89cd8`.
+Its logs and cleanup are retained under
+`/home/zyf/Cicada/.local/evidence/v01-thread-network-locks-root-20261105/docker-client-9265cdf/`.
+This is the actually executed pre-existing client scope, not the new lock or
+physical Runtime gate; QA does not repeat or reattribute it.
+
+The App producer subsequently reproduced an impossible combined budget:
+20 existing records/1.36 MiB were projected together with mutually exclusive
+query response, review and direct-response upper bounds. Its private four-phase
+fix, without changing global vault limits or erasing UNKNOWN/Owner data,
+passes the first real Prepare/Apply and authenticated Owner re-read in an
+App-owned dirty-source diagnostic. That overall run still fails at the next
+assertion: actual Native `cicada_thread_scope` returns `UNSUPPORTED_PROFILE`
+while the registration is `ZERO_ATTESTED`, after Owner classification and before
+original key completion. Evidence is preserved separately at
+`/home/zyf/Cicada/.local/evidence/n2-app/coordination-budget-actual-bfymu2ol/`;
+this producer-owned partial progress is not the independent final gate or a
+whole-chain PASS.
+
+Root confirms the zero-attested stage must support this complete real
+Hook/MCP own-scope/classification read without Group choice, session generation
+or Group business rights. QA preserves its assertion and order; Hub owns the
+issuer/profile fix. The read will not be moved past key completion to conceal
+the observed integration gap. The frozen nominal fixture now sequentially
+classifies exactly one Advisor and four Workers through the same actual App,
+then uses a Worker for the slot lifecycle. The cold-fault branch uses one Worker.
 
 ### Private Node collaboration producer checkpoint
 
