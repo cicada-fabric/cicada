@@ -1,5 +1,144 @@
 # Native App plan
 
+## Current manual acceptance entry — 2026-11-09
+
+Use the complete **0.0.5** package below, built from `98b8ae3f` and qualified
+by the scoped five-Thread, cold-recovery and two-Hub checks recorded in
+[validation](native-app-validation.md). Physical Windows, installed Codex
+Runtime/model and the Aliyun public deployment are still **NOT_RUN** for this
+package. These commands are instructions for the operator; they have not been
+executed against resident installations. They replace component programs while
+preserving existing accounts, identities and all `~/.cicada` user data.
+
+1. **Windows PowerShell:** close the old Cicada App, then download and verify.
+   Program/package files stay in `F:\DOWNLOAD\Cicada`; user data stays in
+   `~/.cicada`.
+
+   ```powershell
+   $ErrorActionPreference = "Stop"
+   $Work = "F:\DOWNLOAD\Cicada"
+   $Drop = "/home/zyf/Cicada/.local/artifacts/native-ip-complete/run-group-coordination-98b8ae3-20261109"
+   $Zip = "Cicada-0.0.5-group-coordination-98b8ae3f.zip"
+   New-Item -ItemType Directory -Force $Work | Out-Null
+   Set-Location -LiteralPath $Work
+   scp "gpu1:${Drop}/${Zip}" .
+   if ($LASTEXITCODE -ne 0) { throw "下载失败" }
+   if ((Get-FileHash -LiteralPath $Zip -Algorithm SHA256).Hash -ne "8112f72ae176e8848e3271f4a715e0fec5fce3fde1a055b82482cb37a4c72a39") { throw "安装包校验失败" }
+   $Stage = Join-Path $Work "group-coordination-98b8ae3f"
+   Expand-Archive -LiteralPath $Zip -DestinationPath $Stage
+   Get-Content -LiteralPath (Join-Path $Stage "SHA256SUMS") | ForEach-Object {
+       $Parts = $_ -split '  ', 2
+       if ((Get-FileHash -LiteralPath (Join-Path $Stage $Parts[1]) -Algorithm SHA256).Hash -ne $Parts[0]) { throw "文件校验失败：$($Parts[1])" }
+   }
+   ssh aliyun 'mkdir -p ~/Downloads/Cicada'
+   if ($LASTEXITCODE -ne 0) { throw "远端目录准备失败" }
+   scp -O $Zip "aliyun:Downloads/Cicada/"
+   if ($LASTEXITCODE -ne 0) { throw "上传失败" }
+   ```
+
+   Extract into a new directory: if `$Stage` already exists, stop and use a
+   fresh staging directory rather than mixing files. `scp -O` is intentional
+   for the reported Aliyun noninteractive-shell banner.
+
+2. **Aliyun SSH terminal:** update the existing `/opt/cicada` Hub component.
+   Keep its service configuration and `~/.cicada/state/hub` unchanged.
+
+   ```bash
+   (
+   set -eu
+   Z="$HOME/Downloads/Cicada/Cicada-0.0.5-group-coordination-98b8ae3f.zip"
+   P="$HOME/Downloads/Cicada/group-coordination-98b8ae3f"
+   printf '%s  %s\n' 8112f72ae176e8848e3271f4a715e0fec5fce3fde1a055b82482cb37a4c72a39 "$Z" | sha256sum -c -
+   test ! -e "$P"
+   python3 -m zipfile -e "$Z" "$P"
+   cd "$P"
+   sha256sum -c SHA256SUMS >/dev/null
+   chmod 0700 ./cicada
+   B=$(python3 -c 'import json; x=json.load(open("BUILD-METADATA.json")); print(next(b["sha256"] for b in x["binaries"] if b["path"]=="cicada"))')
+   systemctl stop cicada-hub.service
+   ./cicada components remove --prefix /opt/cicada --components hub
+   ./cicada components install --prefix /opt/cicada --components hub --binary "$P/cicada" --sha256 "$B" --licenses "$P/licenses"
+   systemctl start cicada-hub.service
+   systemctl is-active cicada-hub.service
+   sha256sum /opt/cicada/components/hub/bin/cicada
+   )
+   ```
+
+   Expected executable SHA-256:
+   `c7c74bee7fa02a484a4c82f90e7e3af3caef9041b3f97193c963d9ce101d66fc`.
+   If owned-component removal refuses changed files, stop and retain its error;
+   do not delete state or initialize a second Hub.
+
+3. **GPU1 system terminal:** close existing test Codex processes, update Node
+   programs and restart the retained manager. This is a user-performed update
+   on the development machine, not an automatic action by the build.
+
+   ```bash
+   (
+   set -eu
+   Z=/home/zyf/Cicada/.local/artifacts/native-ip-complete/run-group-coordination-98b8ae3-20261109/Cicada-0.0.5-group-coordination-98b8ae3f.zip
+   P="$HOME/Downloads/Cicada/group-coordination-98b8ae3f"
+   printf '%s  %s\n' 8112f72ae176e8848e3271f4a715e0fec5fce3fde1a055b82482cb37a4c72a39 "$Z" | sha256sum -c -
+   test ! -e "$P"
+   python3 -m zipfile -e "$Z" "$P"
+   cd "$P"
+   sha256sum -c SHA256SUMS >/dev/null
+   chmod 0700 ./cicada
+   B=$(python3 -c 'import json; x=json.load(open("BUILD-METADATA.json")); print(next(b["sha256"] for b in x["binaries"] if b["path"]=="cicada"))')
+   A=$(python3 -c 'import json; print(json.load(open("BUILD-METADATA.json"))["plugin"]["asset_set_sha256"])')
+   "$HOME/.cicada/components/node/bin/cicada" off --user-root "$HOME/.cicada"
+   ./cicada components remove --prefix "$HOME/.cicada" --components node
+   ./cicada components install --prefix "$HOME/.cicada" --components node --binary "$P/cicada" --sha256 "$B" --licenses "$P/licenses" --codex-plugin-assets "$P" --codex-plugin-sha256 "$A"
+   "$HOME/.cicada/bin/cicada" on --user-root "$HOME/.cicada"
+   "$HOME/.cicada/bin/cicada" node hubs list --user-root "$HOME/.cicada"
+   )
+   export PATH="$HOME/.cicada/bin:$PATH"
+   ```
+
+   The installer manages the Bash PATH entry; do not append a second manual
+   block. The package's plugin asset-set SHA is
+   `f95aacdf0b285624fef67bd6e104d1df3cbedee293eb6edf8a03f2ae747e21f0`.
+   `RUNNING` manager state alone does not establish Hub enrollment. The last
+   resident inspection showed `aliyun` **PENDING**, not connected. If still
+   pending, run `cicada node hubs add aliyun --user-root "$HOME/.cicada"`, use
+   its device pairing code in the App's **Devices** screen, approve the exact
+   GPU1 request, and let the original Node finish. Only if it reports expiry,
+   rerun that command with `--retry-pairing`. Keep uncertain requests for
+   recovery; do not remove/re-add the connection to evade them.
+
+4. **GPU1 system terminal:** refresh only Cicada's installed Codex plugin.
+   These original CLI command forms were checked with local `--help` only;
+   installation/trust and native Runtime acceptance are operator steps.
+   If a removal says the named plugin or marketplace is absent, skip that
+   removal; other failures need their original output.
+
+   ```bash
+   codex plugin remove cicada@cicada-repo
+   codex plugin marketplace remove cicada-repo
+   codex plugin marketplace add "$HOME/.cicada/components/node/share/codex"
+   codex plugin add cicada@cicada-repo
+   ```
+
+   Restart Codex and review the changed Cicada plugin through its normal trust
+   flow. `/mcp` should show Cicada connected with 78 tools. Default Cicada uses
+   **PreToolUse**; it does not provide `/cicada` commands or a composer picker.
+
+5. **Windows PowerShell:** start the verified App with the same data root:
+
+   ```powershell
+   & (Join-Path $Stage "cicada-app.exe") --user-root (Join-Path $HOME ".cicada")
+   ```
+
+   Sign in to the retained Aliyun Hub (`8.155.139.253:8787`), finish any pending
+   Node pairing, then follow the [five-Thread sequence below](#five-thread-group-lock-order):
+   create five fresh native Threads, register their real IDs from the system
+   terminal, classify one Advisor and four Workers in the App, and repeat each
+   original Join. Existing Thread history cannot be reset by changing its name.
+   Check Worker second-Group refusal, Advisor same-Network multi-Group, eight
+   slots, contention, explicit renew/release and automatic expiry. AI calls
+   `cicada_groups` / `cicada_use_group` before Group-lock operations. A response
+   loss requires the same returned recovery arguments, not a new acquisition.
+
 This plan describes the Windows-first native App inside the CICADA monorepo.
 Its Go implementation remains in `cicada-go`; Android is maintained under
 `apps/android` with its original history retained. The layout does not establish
@@ -145,6 +284,8 @@ management, exact one-slot clearing and restart recovery. Native MCP/CLI source
 and its scoped frozen-provider validation are implemented below. Integrated
 Store/Guard/Runtime acceptance remains pending separately; the backend's
 public availability flags remain gated until that integration completes.
+
+<a id="five-thread-group-lock-order"></a>
 
 User sequence for the **1 Advisor + 4 Workers** acceptance fixture, source-checked
 on unified `25876b29f573fa98495ea36271c5decc8b0505b3`. This is the order to verify
